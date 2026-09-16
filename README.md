@@ -15,6 +15,41 @@ Peggle-inspired sectors, and a six-event championship.
 - The fastest heat of a completed Grand Prix earns one bonus point.
 - Your season saves locally as soon as a heat finishes. No account or server is needed.
 
+## Multiplayer (in progress)
+
+The transport layer is in. `src/net/transport.ts` is the **only** client module
+that talks to RUN.world's realtime API (room create/join by code, quick match,
+room-code helpers, the per-player active-match memo); everything else imports
+its wrappers, and `tests/multiplayer.test.ts` fails the moment another file
+reaches for the SDK's realtime client. The room itself is registered in
+`rundot/realtime.config.json` (`hmgp-race`, six seats) and currently just seats
+players — the relay, the race protocol and the lobby UI land in MP-03…MP-06.
+
+To try it locally, `npm run dev`, then open **two tabs** (a second window or an
+incognito window is the cleanest way to be two players — each tab mints its own
+dev identity, and no sign-in is involved) at:
+
+```
+http://localhost:5173/?mpdebug=1
+```
+
+That URL adds a small dev-only debug panel — **Host race**, **Join** with a
+six-character code, **Quick race** — which is the throwaway harness for this
+ticket; the real lobby replaces it. Vite also starts the room sidecar on port
+`9001` from `rundot/realtime.config.json`: that is what makes host and join
+meet, and it only exists on `npm run dev` (a built or previewed page mocks rooms
+instead, and `src/net/transport.ts` detects that state and says so).
+
+Two notes for a browser that is not on the dev machine (a tunnel, a sandbox
+preview, a phone on the LAN): the sidecar origin the plugin injects is
+`localhost`, so point it at the origin that forwards to port 9001 with
+`RUNDOT_DEV_ROOM_URL=https://… npm run dev`. And editing `vite.config.ts` while
+the dev server runs makes Vite restart it, which can lose the race for port 9001
+and exit with `EADDRINUSE`; restart `npm run dev` if that happens. A deliberate
+leave is held for the room's 60-second reconnect grace before the other seat
+sees the player leave — that is the platform's seat hold, and MP-08 is where it
+becomes visible.
+
 ## Credits And The Pit Shop
 
 Your first account receives 400 welcome credits. Every completed quick race or
@@ -88,6 +123,11 @@ funnels, traps, out-of-bounds recovery, freeze/oil timing, anvil mass, stat budg
 inventory consumption, effect expiry and championship points. Economy tests in
 `tests/economy.test.ts` cover purchases, insufficient funds, capped inventory,
 corrupt saves, payout amounts and duplicate-payout prevention.
+`tests/multiplayer.test.ts` covers the transport seam: that exactly one client
+module may import the SDK's realtime API (and one server module the room
+server), that the room registration and the transport agree on the room type,
+criteria and capacity, and the room-code, matchmaking-expiry and access-denied
+helpers.
 
 Browser coverage checks desktop/mobile layouts, real control interactions, pause,
 result contrast, long-race completion, season persistence, setup locking,
