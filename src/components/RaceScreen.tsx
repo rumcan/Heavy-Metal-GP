@@ -50,7 +50,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
   const gameRef = useRef<Game | null>(null);
   const controls = useRef({ left: false, right: false, touch: 0 });
   const pausedRef = useRef(false);
-  const fastRef = useRef(false);
+  const fastRef = useRef(1);
   const zoomRef = useRef(loadZoom());
   const [zoom, setZoomState] = useState(zoomRef.current);
   const setZoom = useCallback((value: number) => {
@@ -64,7 +64,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
   const [muted, setMuted] = useState(() => raceAudio.loadPreference());
   const toggleMute = useCallback(() => { raceAudio.unlock(); raceAudio.setMuted(!raceAudio.muted); setMuted(raceAudio.muted); }, []);
   const [confirmExit, setConfirmExit] = useState(false);
-  const [fast, setFast] = useState(false);
+  const [fast, setFast] = useState(1);
   const [toast, setToast] = useState<{ message: string; color: string } | null>(null);
   const [results, setResults] = useState<HeatResult[] | null>(null);
   const [mapTrack, setMapTrack] = useState<Track | null>(null);
@@ -208,7 +208,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
           if (formationElapsed >= lightsOutAt) { lights = -1; game.openGate(); }
         }
         game.nudge = controls.current.touch || Number(controls.current.right) - Number(controls.current.left);
-        accumulator += dt * (fastRef.current && game.player.finishedAt !== null ? 2 : 1);
+        accumulator += dt * (game.player.finishedAt !== null ? fastRef.current : 1);
         while (accumulator >= PHYSICS_STEP) { game.step(PHYSICS_STEP); accumulator -= PHYSICS_STEP; }
         if (game.allFinished()) { finishHold += dt; if (finishHold > 750) finish(); }
         else if (game.raceTime() >= HEAT_TIME_LIMIT) finish();
@@ -307,7 +307,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
       <div className="race-sector"><span>SECTOR {String(hud.sectorIndex + 1).padStart(2, '0')}</span><b>{hud.sector.toUpperCase()}</b></div>
       {(preStart || showGo) && <div className={`start-sequence ${showGo ? 'lights-out' : ''}`}><div className="start-light-bank">{Array.from({ length: 5 }, (_, i) => <div key={i} className={`start-light-pair ${hud.lights > i ? 'lit' : ''}`}><i /><i /></div>)}</div><span>{showGo ? 'LIGHTS OUT. FULL SEND.' : hud.lights === 5 ? 'HOLD YOUR LINE.' : 'THE GRID IS SET.'}</span></div>}
       {toast && <div key={toast.message} className="race-toast" role="status" style={{ '--toast-color': toast.color } as CSSProperties}><span />{toast.message}</div>}
-      {hud.finished && !results && <div className="finish-follow"><Flag size={20} /><div><strong>P{hud.rank} secured.{championship ? ` +${pointsFor(hud.rank)} points.` : ''}</strong><span>Following {hud.following}. {roster.length - hud.finishedCount} marbles still racing.</span></div><button className={`button-secondary ${fast ? 'fast-active' : ''}`} onClick={() => { fastRef.current = !fast; setFast(!fast); }}><FastForward size={16} />{fast ? '2x speed' : 'Fast forward'}</button></div>}
+      {hud.finished && !results && <div className="finish-follow"><Flag size={20} /><div><strong>P{hud.rank} secured.{championship ? ` +${pointsFor(hud.rank)} points.` : ''}</strong><span>Following {hud.following}. {roster.length - hud.finishedCount} marbles still racing.</span></div><button className={`button-secondary ${fast > 1 ? 'fast-active' : ''}`} onClick={() => { const next = fast === 1 ? 2 : fast === 2 ? 4 : 1; fastRef.current = next; setFast(next); }} aria-label={`Replay speed ${fast}x, click to change`}><FastForward size={16} />{fast === 1 ? 'Fast forward' : `${fast}x speed`}</button></div>}
       <div className="race-progress"><span style={{ width: `${hud.progress * 100}%` }} /></div>
     </div>
     <footer className="race-dashboard race-cockpit"><div className="race-telemetry">

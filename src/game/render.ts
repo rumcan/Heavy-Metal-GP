@@ -970,13 +970,27 @@ function blurredSprite(name: string): HTMLCanvasElement | null {
   const m = mid.getContext('2d')!;
   m.imageSmoothingQuality = 'high';
   m.drawImage(c, 0, 0, mid.width, mid.height);
+  if (name.startsWith('tower')) {
+    // soft top and bottom so stacked scaffold sections blend into one continuous column
+    m.globalCompositeOperation = 'destination-in';
+    const fade = m.createLinearGradient(0, 0, 0, mid.height);
+    fade.addColorStop(0, 'rgba(0,0,0,0)');
+    fade.addColorStop(0.12, 'rgba(0,0,0,1)');
+    fade.addColorStop(0.88, 'rgba(0,0,0,1)');
+    fade.addColorStop(1, 'rgba(0,0,0,0)');
+    m.fillStyle = fade;
+    m.fillRect(0, 0, mid.width, mid.height);
+  }
   blurred.set(name, mid);
   return mid;
 }
 
 const FOREGROUND = ['tower-1', 'banner', 'tower-3', 'torch', 'tower-2', 'wrecking-ball', 'tower-4', 'banner'];
 const FG_PARALLAX = 2.2;
-const FG_GAP = 1500;
+const FG_GAP = 2600;
+/** Scaffold columns are a run of stacked sections (overlapping at their faded ends) rather than one floating piece. */
+const FG_TOWER_SECTIONS = 3;
+const FG_TOWER_OVERLAP = 0.14;
 
 /** Big out-of-focus props sweeping past the screen edges faster than the track, for a sense of speed and depth. */
 function drawForeground(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, cw: number, ch: number) {
@@ -984,7 +998,7 @@ function drawForeground(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, 
   const seed = game.track.seed;
   ctx.save();
   ctx.imageSmoothingEnabled = true;
-  for (let i = Math.floor((v - ch) / FG_GAP); i * FG_GAP - v < ch * 2; i++) {
+  for (let i = Math.floor((v - ch * 4) / FG_GAP); i * FG_GAP - v < ch * 2; i++) {
     if (hash01(seed, i, 31) < 0.3) continue;
     const name = FOREGROUND[Math.floor(hash01(seed, i, 32) * FOREGROUND.length)];
     const img = blurredSprite(name);
@@ -994,16 +1008,24 @@ function drawForeground(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, 
     const h = tall ? ch * 1.2 : ch * (0.4 + hash01(seed, i, 34) * 0.15);
     const w = h * img.width / img.height;
     const y = i * FG_GAP - v + hash01(seed, i, 35) * 400;
-    if (y > ch || y + h < 0) continue;
+    const sections = tall ? FG_TOWER_SECTIONS : 1;
+    const step = h * (1 - FG_TOWER_OVERLAP);
+    if (y > ch || y + step * (sections - 1) + h < 0) continue;
     // hug the screen edge so the racing line stays clear
     const x = left ? cw * 0.04 - w * 0.2 : cw * 0.96 - w * 0.8;
-    ctx.globalAlpha = 0.85;
+    ctx.globalAlpha = tall ? 1 : 0.85;
     ctx.save();
     if (!left) {
       ctx.translate(x + w, 0);
       ctx.scale(-1, 1);
-      ctx.drawImage(img, 0, y, w, h);
-    } else ctx.drawImage(img, x, y, w, h);
+    } else ctx.translate(x, 0);
+    for (let k = 0; k < sections; k++) {
+      const sy = y + k * step;
+      if (sy > ch || sy + h < 0) continue;
+      // alternate section art so the column does not look copy-pasted
+      const part = tall ? blurredSprite(TOWERS[Math.floor(hash01(seed, i * 7 + k, 36) * TOWERS.length)]) ?? img : img;
+      ctx.drawImage(part, 0, sy, h * part.width / part.height, h);
+    }
     ctx.restore();
   }
   ctx.restore();
