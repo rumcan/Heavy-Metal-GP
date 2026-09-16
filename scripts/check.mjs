@@ -6,7 +6,7 @@ const cwd = fileURLToPath(new URL('../', import.meta.url));
 mkdirSync(new URL('../tests/artifacts/', import.meta.url), { recursive: true });
 const commands = [
   ['node_modules/typescript/bin/tsc', '--noEmit'],
-  ['--import', 'tsx', '--test', '--test-concurrency=3', '--test-reporter=tap', '--test-reporter-destination=stdout', '--test-reporter=tap', '--test-reporter-destination=tests/artifacts/latest-test-run.tap', 'tests/physics.test.ts', 'tests/economy.test.ts', 'tests/browser.test.ts'],
+  ['--import', 'tsx', '--test', '--test-concurrency=3', '--test-reporter=tap', '--test-reporter-destination=stdout', '--test-reporter=tap', '--test-reporter-destination=tests/artifacts/latest-test-run.tap', 'tests/physics.test.ts', 'tests/economy.test.ts', 'tests/multiplayer.test.ts', 'tests/browser.test.ts'],
 ];
 
 for (const args of commands) {

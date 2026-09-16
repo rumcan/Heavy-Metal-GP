@@ -1,0 +1,16 @@
+{
+  "rooms": [
+    {
+      "type": "hmgp-race",
+      "file": "src/rooms/RaceRoom.ts",
+      "export": "default",
+      "config": {
+        "maxPlayers": 6,
+        "idleTimeout": 300,
+        "allowReconnect": true,
+        "reconnectTimeout": 60,
+        "metadata": { "mode": "race" }
+      }
+    }
+  ]
+}
