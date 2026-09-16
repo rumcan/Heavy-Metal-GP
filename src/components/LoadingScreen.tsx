@@ -7,7 +7,7 @@ import Banter from './Banter';
 import Brand from './Brand';
 
 export const MIN_LOADING_MS = 3200;
-const TIPS = ['Glowing pegs hide free items.', 'Heavy balls break shortcut walls.', 'Bounce gets you onto the high ledges.', 'Setups lock for all three heats of a Grand Prix.', 'Oil behind you. Rivals in it.'];
+const TIPS = ['Glowing pegs hide free items.', 'Heavy balls break shortcut walls.', 'Bounce gets you onto the high ledges.', 'Setups lock for all three heats of a Grand Prix.', 'Oil behind you. Rivals in it.', 'Fire hoops throw you forward. Aim for the middle.', 'Loops need speed. Hit the chevrons first.', 'Wrecking balls swing on a beat. Wait for it.', 'The sheep do not move. You do.'];
 
 interface Props { eyebrow: string; title: string; banter?: Line[]; cta: string; onContinue: () => void }
 

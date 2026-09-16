@@ -4,7 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { viteSingleFile } from "vite-plugin-singlefile";
-import { rundotGameLibrariesPlugin, rundotGamePlaygroundPlugin } from '@series-inc/rundot-game-sdk/vite';
+import { rundotGameLibrariesPlugin } from '@series-inc/rundot-game-sdk/vite';
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -19,7 +19,8 @@ export default defineConfig({
   plugins: [
             // rundot-import:vite-plugins:begin
             rundotGameLibrariesPlugin(),
-            rundotGamePlaygroundPlugin({ target: 'playground' }),
+            // Disabled for local dev (requires Google sign-in). Re-enable to test run.world platform features.
+            // rundotGamePlaygroundPlugin({ target: 'playground' }),
             // rundot-import:vite-plugins:end
             react(), tailwindcss(), viteSingleFile(),
   ],

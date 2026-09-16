@@ -7,6 +7,7 @@ import RundotGameAPI from '@series-inc/rundot-game-sdk/api';
 export const STORAGE_KEYS = [
   'heavy-metal-gp:portrait',
   'heavy-metal-gp:zoom',
+  'heavy-metal-gp:muted',
   'mrr-account-v1',
   'mrr-season-v1',
 ] as const;

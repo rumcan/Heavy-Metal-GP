@@ -8,6 +8,8 @@ import type { RacePayout } from '../game/economy';
 import { postRaceBanter } from '../game/characters';
 import Portrait from './Portrait';
 import Banter from './Banter';
+import crowd from '../assets/game/goblin-crowd.webp';
+import raceFlag from '../assets/game/flag-race.webp';
 
 export interface RaceAction { label: string; onClick: () => void; primary?: boolean }
 interface Props {
@@ -34,7 +36,7 @@ export default function RaceResults({ results, roster, title, subtitle, actions,
   return <div className="results-backdrop">
     <section className="results-panel" role="dialog" aria-modal="true" aria-labelledby="results-title">
       <header className="results-header">
-        <div className="eyebrow"><Flag size={16} /> CHEQUERED FLAG <span className="muted">/ {subtitle}</span></div>
+        <div className="eyebrow results-eyebrow"><Flag size={16} /> CHEQUERED FLAG <span className="muted">/ {subtitle}</span><span className="results-crowd" aria-hidden="true"><img src={raceFlag} alt="" className="results-flag" /><img src={crowd} alt="" /></span></div>
         <div className="results-heading-row"><div><h2 id="results-title" className="results-title">{me.time === null ? 'NEXT TIME. FULL SEND.' : me.rank === 1 ? 'THAT\'S A RACE WIN.' : me.rank <= 3 ? 'A PLACE ON THE PODIUM.' : 'EVERY POSITION COUNTS.'}</h2><p>{title}</p></div><div className="result-position"><span>YOUR FINISH</span><strong>{me.time === null ? 'DNF' : `P${me.rank}`}</strong></div></div>
         <div className="result-summary"><span><Timer size={14} /> {me.time === null ? 'Time limit reached' : formatTime(me.time)}</span>{championship && <span className="accent"><Trophy size={14} /> +{points} championship points</span>}<span><Check size={14} /> {finished.length}/{roster.length} finished</span></div>
         <Banter lines={banter} className="results-banter" delay={600} interval={1100} />

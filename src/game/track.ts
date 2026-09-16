@@ -12,6 +12,10 @@ export const T = 26; // pipe thickness
 export const CAT_WALL = 0x0001;
 export const CAT_MARBLE = 0x0002;
 export const CAT_SENSOR = 0x0004;
+/** Loop pieces marbles collide with on the way in (rising quarter). */
+export const CAT_LOOP_UP = 0x0008;
+/** Loop pieces marbles collide with once past the top (closing quarter back down to the bottom). */
+export const CAT_LOOP_CLOSE = 0x0010;
 
 export type Kind =
   | 'wall'
@@ -27,7 +31,13 @@ export type Kind =
   | 'ice'
   | 'block'
   | 'ppeg'
-  | 'bucket';
+  | 'bucket'
+  | 'loop'
+  | 'loopTop'
+  | 'loopExit'
+  | 'loopBail'
+  | 'hoop'
+  | 'wrecker';
 
 export type PegColor = 'blue' | 'orange' | 'green';
 
@@ -51,7 +61,18 @@ export interface Meta {
   surface?: RampSurface;
   itemDrop?: ItemType;
   destroyed?: boolean;
+  /** Rail ends that get an iron cap in the skin; curves only cap their outer ends. */
+  caps?: Matter.Vector[];
+  /** Wrecking ball swing: pivot, chain length, amplitude (rad), angular speed and phase. */
+  pivot?: Matter.Vector;
+  chain?: number;
+  amp?: number;
 }
+
+/** Anchors for the art skin. Physics never reads these; sprites are drawn over the vector bodies. */
+export type Decor =
+  | { type: 'loop'; x: number; y: number; r: number; flip: boolean }
+  | { type: 'curve'; points: Matter.Vector[] };
 
 export interface SegmentInfo {
   name: string;
@@ -73,6 +94,8 @@ export interface Track {
   startY: number;
   finishY: number;
   theme: TrackTheme;
+  decor: Decor[];
+  wreckers: Matter.Body[];
 }
 
 export function meta(b: Matter.Body): Meta {
@@ -98,6 +121,8 @@ class Builder {
   spinners: Matter.Body[] = [];
   itemBoxes: Matter.Body[] = [];
   buckets: Matter.Body[] = [];
+  decor: Decor[] = [];
+  wreckers: Matter.Body[] = [];
   pegCount = { orange: 0, total: 0 };
   flip = false;
   rng: () => number;
@@ -238,6 +263,85 @@ class Builder {
     return blade;
   }
 
+  /** Curved ramp: a quadratic bezier (p0 -> control -> p1) laid as short ramp pieces. Keep it monotonic in y to avoid valleys. */
+  curve(x0: number, y0: number, cx: number, cy: number, x1: number, y1: number, pieces = 12) {
+    const pts: Matter.Vector[] = [];
+    for (let i = 0; i <= pieces; i++) {
+      const t = i / pieces, u = 1 - t;
+      pts.push({ x: u * u * x0 + 2 * u * t * cx + t * t * x1, y: u * u * y0 + 2 * u * t * cy + t * t * y1 });
+    }
+    const caps = [{ x: this.X(pts[0].x), y: pts[0].y }, { x: this.X(pts[pieces].x), y: pts[pieces].y }];
+    for (let i = 0; i < pieces; i++) meta(this.ramp(pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y)).caps = caps;
+    this.decor.push({ type: 'curve', points: pts.map((q) => ({ x: this.X(q.x), y: q.y })) });
+    return pts;
+  }
+
+  /** Arc from angle a0 to a1 (radians, screen space: 0 = right, PI/2 = bottom) with its inner surface at radius r. */
+  private arc(cx: number, cy: number, r: number, a0: number, a1: number, category: number) {
+    const steps = Math.max(2, Math.ceil(Math.abs(a1 - a0) / (Math.PI / 14)));
+    const ccx = this.X(cx);
+    for (let i = 0; i < steps; i++) {
+      const pa = a0 + (a1 - a0) * i / steps, pb = a0 + (a1 - a0) * (i + 1) / steps;
+      const ax = this.X(cx + r * Math.cos(pa)), ay = cy + r * Math.sin(pa);
+      const bx = this.X(cx + r * Math.cos(pb)), by = cy + r * Math.sin(pb);
+      const mx = (ax + bx) / 2, my = (ay + by) / 2;
+      const ol = Math.hypot(mx - ccx, my - cy) || 1;
+      const ox = (mx - ccx) / ol, oy = (my - cy) / ol;
+      const len = Math.hypot(bx - ax, by - ay) + 4;
+      const b = Bodies.rectangle(mx + ox * T / 2, my + oy * T / 2, len, T, {
+        ...STATIC_OPTS, angle: Math.atan2(by - ay, bx - ax), label: 'loop',
+        collisionFilter: { category, mask: 0xffff, group: 0 },
+      });
+      b.friction = 0.002;
+      b.frictionStatic = 0;
+      b.plugin = { kind: 'loop' } as Meta;
+      this.bodies.push(b);
+    }
+  }
+
+  /**
+   * Loop-the-loop with its bottom at (cx, bottomY); marbles enter travelling right (mirrored when flipped).
+   * A 2D loop crosses its own entry, so the two lower quarters are collision-filtered per marble:
+   * the rising quarter is solid until the marble passes the top sensor, then the closing quarter is.
+   */
+  loop(cx: number, bottomY: number, r: number) {
+    const cy = bottomY - r;
+    this.arc(cx, cy, r, 0, Math.PI / 2, CAT_LOOP_UP);
+    this.arc(cx, cy, r, Math.PI / 2, Math.PI, CAT_LOOP_CLOSE);
+    this.arc(cx, cy, r, Math.PI, Math.PI * 2, CAT_WALL);
+    const sensor = (x: number, yy: number, w: number, h: number, kind: Kind) => {
+      const b = Bodies.rectangle(this.X(x), yy, w, h, { ...SENSOR_OPTS, label: kind });
+      b.plugin = { kind } as Meta;
+      this.bodies.push(b);
+    };
+    sensor(cx, cy - r + 22, 40, 44, 'loopTop');
+    sensor(cx, bottomY - 20, 120, 40, 'loopBail');
+    sensor(cx + r + 70, cy, 30, r * 2 + 160, 'loopExit');
+    this.decor.push({ type: 'loop', x: this.X(cx), y: cy, r, flip: this.flip });
+  }
+
+  /** Flaming hoop: flying through it throws the marble forward. */
+  hoop(x: number, y: number, dirX: number, dirY: number) {
+    const dx = this.flip ? -dirX : dirX;
+    const m = Math.hypot(dx, dirY) || 1;
+    const b = Bodies.circle(this.X(x), y, 34, { ...SENSOR_OPTS, label: 'hoop' });
+    b.plugin = { kind: 'hoop', dir: { x: dx / m, y: dirY / m } } as Meta;
+    this.bodies.push(b);
+    return b;
+  }
+
+  /** Wrecking ball on a chain, swinging about a pivot. Moved kinematically by the engine each step. */
+  wrecker(px: number, py: number, chain: number, amp: number, speed: number) {
+    const phase = this.rng() * Math.PI * 2;
+    const pivot = { x: this.X(px), y: py };
+    const angle = amp * Math.sin(phase);
+    const b = Bodies.circle(pivot.x + Math.sin(angle) * chain, pivot.y + Math.cos(angle) * chain, 24, { ...STATIC_OPTS, label: 'wrecker', restitution: 0.6 });
+    b.plugin = { kind: 'wrecker', pivot, chain, amp, spin: speed, phase, radius: 24 } as Meta;
+    this.bodies.push(b);
+    this.wreckers.push(b);
+    return b;
+  }
+
   ice(x1: number, y1: number, x2: number, y2: number) {
     const b = this.ramp(x1, y1, x2, y2, T, 'ice');
     b.friction = 0;
@@ -306,6 +410,7 @@ const segZigzag: Seg = (b, y) => {
   b.ramp(W, y2, end2, y2 + 110);
   if (b.rng() < 0.5) b.itemBox(300 + b.rng() * 400, y2 - 40);
   if (b.rng() < 0.4) b.peg(end1 - 40 - b.rng() * 200, y2 + 60 - 70);
+  else if (b.rng() < 0.6) b.wrecker(end1 + 90, y + 10, 95, 0.5, 0.0019 + b.rng() * 0.0008);
   return y2 + 110 + 60 - y;
 };
 
@@ -382,12 +487,17 @@ const segBouncePad: Seg = (b, y) => {
 const segChicane: Seg = (b, y) => {
   b.flip = b.rng() < 0.5;
   const n = 4;
+  const lens: number[] = [];
   for (let i = 0; i < n; i++) {
     const yy = y + 30 + i * 108;
     const len = W * (0.5 + b.rng() * 0.15);
+    lens.push(len);
     if (i % 2 === 0) b.ramp(0, yy, len, yy + 46);
     else b.ramp(W, yy, W - len, yy + 46);
   }
+  // wrecking balls swing across the first and third drop-offs
+  b.wrecker(lens[0] + 100, y + 20, 80, 0.6, 0.0021 + b.rng() * 0.0008);
+  if (b.rng() < 0.6) b.wrecker(lens[2] + 100, y + 236, 80, 0.6, 0.0021 + b.rng() * 0.0008);
   if (b.rng() < 0.6) b.itemBox(W / 2 + (b.rng() - 0.5) * 300, y + 30 + n * 108 + 10);
   return 30 + n * 108 + 70;
 };
@@ -431,7 +541,33 @@ const segIceSlide: Seg = (b, y) => {
   b.ramp(W, y + 170, 150, y + 260);
   b.boostOnRamp(W, y + 170, 150, y + 260, 0.35);
   b.peg(W / 2 + (b.rng() - 0.5) * 200, y + 130, 14);
+  if (b.rng() < 0.5) b.hoop(W - 90, y + 110, 0, 1);
   return 330;
+};
+
+const segLoop: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  const r = 90 + b.rng() * 15;
+  const cx = 470;
+  const bottom = y + 480;
+  // catch ramp funnels the field to the entry side
+  b.ramp(W, y + 20, 70, y + 110);
+  b.curve(0, y + 150, cx - 260, bottom, cx, bottom, 14);
+  b.boost(cx - 150, bottom - 26, 110, 40, 1, 0);
+  b.loop(cx, bottom, r);
+  // ends short of the side wall so marbles drop through instead of wedging in the corner
+  b.curve(cx, bottom, cx + 200, bottom, W - 80, bottom + 80, 10);
+  return bottom + 150 - y;
+};
+
+const segCurveDrop: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  // swooping drop that flattens out and launches onto a second curve
+  b.curve(0, y + 30, 150, y + 280, 620, y + 300, 14);
+  b.hoop(700, y + 296, 1, 0);
+  b.curve(W, y + 340, W - 140, y + 540, 250, y + 570, 14);
+  if (b.rng() < 0.5) b.itemBox(560, y + 200);
+  return 660;
 };
 
 const segFinish: Seg = (b, y) => {
@@ -457,6 +593,8 @@ const POOL: { seg: Seg; name: string; weight: number }[] = [
   { seg: segSpinner, name: 'Spinners', weight: 1.2 },
   { seg: segIceSlide, name: 'Ice Slide', weight: 1 },
   { seg: segPeggle, name: 'Peggle Board', weight: 2.2 },
+  { seg: segLoop, name: 'Loop', weight: 1.8 },
+  { seg: segCurveDrop, name: 'Curve Drop', weight: 2 },
 ];
 
 export const DEFAULT_PROFILE: TrackProfile = {
@@ -497,7 +635,7 @@ export function generateTrack(seed: number, profile: TrackProfile = DEFAULT_PROF
     chosen.push(pick);
     lastName = pick.name;
   }
-  const signatures = ['Crack Wall Shortcut', 'Bounce Ramp', 'Peggle Board'];
+  const signatures = ['Crack Wall Shortcut', 'Bounce Ramp', 'Peggle Board', 'Loop'];
   const ensure = (name: string, minimum = 1) => {
     while (chosen.filter((c) => c.name === name).length < minimum) {
       const counts = chosen.reduce<Record<string, number>>((all, c) => ({ ...all, [c.name]: (all[c.name] ?? 0) + 1 }), {});
@@ -510,10 +648,11 @@ export function generateTrack(seed: number, profile: TrackProfile = DEFAULT_PROF
   ensure('Crack Wall Shortcut');
   ensure('Bounce Ramp');
   ensure('Peggle Board', Math.max(1, Math.floor(segmentCount / 5)));
+  ensure('Loop', Math.max(1, Math.floor(segmentCount / 8)));
 
   for (const c of chosen) {
     const h = c.seg(b, y);
-    if (c.name !== 'Peggle Board' && c.name !== 'Peg Field') b.scatterPegs(y, h);
+    if (!['Peggle Board', 'Peg Field', 'Loop', 'Curve Drop'].includes(c.name)) b.scatterPegs(y, h);
     segments.push({ name: c.name, y, h });
     y += h;
   }
@@ -548,5 +687,7 @@ export function generateTrack(seed: number, profile: TrackProfile = DEFAULT_PROF
     startY,
     finishY,
     theme: profile.theme,
+    decor: b.decor,
+    wreckers: b.wreckers,
   };
 }

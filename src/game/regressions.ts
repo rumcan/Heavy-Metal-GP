@@ -51,7 +51,7 @@ function fixture(obstacles: Matter.Body[], finishY = 1000): Track {
     seed: 42, bodies: [gate, finish, ...walls, ...obstacles], height: finishY + 200,
     startY: 116, finishY, gate, segments: [{ name: 'Test fixture', y: 0, h: finishY }],
     spinners: [], itemBoxes: [], buckets: [], pegCount: { orange: 0, total: 0 },
-    ramps: obstacles.filter((body) => !!meta(body).surface), theme: DEFAULT_PROFILE.theme,
+    ramps: obstacles.filter((body) => !!meta(body).surface), theme: DEFAULT_PROFILE.theme, decor: [], wreckers: [],
   };
 }
 

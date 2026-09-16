@@ -72,6 +72,61 @@ export function bodyFrame(body: Matter.Body) {
   return { minU, maxU, minV, maxV };
 }
 
+const middles = new Map<string, HTMLCanvasElement>();
+/** The plank between a rail sprite's iron end caps, cached as its own tileable image. */
+function railMiddle(img: HTMLImageElement, name: string, capFrac: number): HTMLCanvasElement {
+  let c = middles.get(name);
+  if (!c) {
+    const cap = Math.round(img.naturalWidth * capFrac);
+    c = document.createElement('canvas');
+    c.width = img.naturalWidth - cap * 2;
+    c.height = img.naturalHeight;
+    c.getContext('2d')!.drawImage(img, cap, 0, c.width, c.height, 0, 0, c.width, c.height);
+    middles.set(name, c);
+  }
+  return c;
+}
+
+const RAIL_CAP = 0.125;
+/**
+ * Nine-slice style rail: iron end caps stay undistorted, the plank between them tiles along the body.
+ * `caps` lists world points that should get a cap; ends near them are capped (default: both ends).
+ */
+export function drawRail(ctx: CanvasRenderingContext2D, body: Matter.Body, name: string, caps?: Matter.Vector[], thicknessScale = 1.3): boolean {
+  const img = sprite(name);
+  if (!img) return false;
+  const frame = bodyFrame(body);
+  // lay the rail along the body's long axis (upright walls are unrotated tall boxes)
+  const upright = frame.maxV - frame.minV > frame.maxU - frame.minU;
+  const angle = body.angle + (upright ? Math.PI / 2 : 0);
+  const { minU, maxU, minV, maxV } = upright
+    ? { minU: frame.minV, maxU: frame.maxV, minV: -frame.maxU, maxV: -frame.minU }
+    : frame;
+  const thick = (maxV - minV) * thicknessScale;
+  const scale = thick / img.naturalHeight;
+  const capW = img.naturalWidth * RAIL_CAP * scale;
+  const ux = Math.cos(angle), uy = Math.sin(angle);
+  const endNear = (u: number) => !caps || caps.some((p) => Math.hypot(body.position.x + ux * u - p.x, body.position.y + uy * u - p.y) < 24);
+  const capL = endNear(minU), capR = endNear(maxU);
+  const cy = (minV + maxV) / 2 - thick / 2;
+  ctx.save();
+  ctx.translate(body.position.x, body.position.y);
+  ctx.rotate(angle);
+  const mid = railMiddle(img, name, RAIL_CAP);
+  const x0 = minU + (capL ? capW * 0.6 : 0);
+  const x1 = maxU - (capR ? capW * 0.6 : 0);
+  const tileW = mid.width * scale;
+  for (let x = x0; x < x1; x += tileW) {
+    const w = Math.min(tileW, x1 - x);
+    ctx.drawImage(mid, 0, 0, w / scale, mid.height, x, cy, w + 0.5, thick);
+  }
+  const srcCap = img.naturalWidth * RAIL_CAP;
+  if (capL) ctx.drawImage(img, 0, 0, srcCap, img.naturalHeight, minU - capW * 0.4, cy, capW, thick);
+  if (capR) ctx.drawImage(img, img.naturalWidth - srcCap, 0, srcCap, img.naturalHeight, maxU - capW * 0.6, cy, capW, thick);
+  ctx.restore();
+  return true;
+}
+
 /**
  * Fill a body with a tiled strip sprite, scaled so the strip height matches the body thickness.
  * Returns false when the sprite is not loaded yet so callers can fall back to flat drawing.

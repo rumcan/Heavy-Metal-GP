@@ -13,6 +13,7 @@ import WalletButton from './WalletButton';
 import LoadoutPreview from './LoadoutPreview';
 import type { RacerAccount } from '../game/economy';
 import Portrait from './Portrait';
+import crowd from '../assets/game/goblin-crowd.webp';
 
 interface Props {
   season: SeasonState;
@@ -56,7 +57,7 @@ export default function ChampionshipScreen({ season, onStartHeat, onRetune, onAb
     <header className="app-header"><Brand onClick={onAbandon} /><nav className="main-nav" aria-label="Main navigation"><button onClick={onAbandon}>Garage</button><button className="active" aria-current="page">Championship</button><button onClick={() => setDialog('rules')}>How to play</button></nav><div className="header-tools"><button className="icon-button mobile-only" onClick={() => setDialog('rules')} aria-label="How to play"><CircleHelp size={17} /></button><button className="text-button lab-link" onClick={() => setDialog('lab')}><FlaskConical size={16} /><span>Physics lab</span></button><WalletButton credits={account.credits} onClick={onShop} /></div></header>
     <main className="fit-main champ-fit">
       <div className="fit-pane event-pane" data-pane-id="event">
-      {champion && <section className="champion-banner"><Trophy size={45} /><div><span className="eyebrow">WORLD CHAMPION</span><h2>{champion.isPlayer ? 'YOU DID IT.' : `${champion.name.toUpperCase()} TAKES THE TITLE.`}</h2><p>{standings[0].points} points. {standings[0].wins} Grand Prix wins. {teams[0].team.name} wins the constructors' championship.</p><span>You finished P{playerPosition} in the championship.</span></div></section>}
+      {champion && <section className="champion-banner"><Trophy size={45} /><div><span className="eyebrow">WORLD CHAMPION</span><h2>{champion.isPlayer ? 'YOU DID IT.' : `${champion.name.toUpperCase()} TAKES THE TITLE.`}</h2><p>{standings[0].points} points. {standings[0].wins} Grand Prix wins. {teams[0].team.name} wins the constructors' championship.</p><span>You finished P{playerPosition} in the championship.</span></div><img className="champion-crowd" src={crowd} alt="" aria-hidden="true" /></section>}
           {!season.complete && <section className="next-event" aria-labelledby="next-event-title"><div className="section-topline"><span className="eyebrow"><Flag size={14} /> ROUND {String(round + 1).padStart(2, '0')} OF 06</span><span className="local-save"><Check size={12} />PROGRESS SAVED LOCALLY</span></div><div className="next-gp-title"><h2 id="next-event-title">{gp.name.toUpperCase()}</h2><p>{gp.desc.replace(/—/g, '-')}</p></div><div className="heat-progress" aria-label={`${completedHeats} of 3 heats complete`}>{Array.from({ length: 3 }, (_, i) => <div key={i} className={i < completedHeats ? 'heat-complete' : i === completedHeats ? 'heat-current' : ''}><span>{i < completedHeats ? <Check size={12} /> : String(i + 1).padStart(2, '0')}</span><b>HEAT {i + 1}</b><small>{i < completedHeats ? 'COMPLETE' : i === completedHeats ? 'UP NEXT' : 'SAME CIRCUIT'}</small></div>)}</div><CircuitPreview seed={gpSeed(season.seed, round)} roster={season.roster} profile={gp.profile} /></section>}
       <LoadoutPreview inventory={account.inventory} onShop={onShop} />
       </div>

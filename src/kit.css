@@ -18,6 +18,15 @@
   background: var(--kit-navy);
 }
 body, .app-shell, .race-shell { background: var(--kit-navy); color: var(--kit-parchment); }
+/* Menu screens: the mine entrance ("DOWN WE GO") on top, fading into the repeating mine shaft the races drop into. */
+.app-shell:not(.race-shell) {
+  background:
+    radial-gradient(ellipse at center, rgb(10 8 20 / 0.05) 25%, rgb(6 6 16 / 0.8) 100%),
+    linear-gradient(rgb(8 18 40 / 0.5), rgb(20 12 8 / 0.62)),
+    url('./assets/bg/menu-entrance.webp') center top / max(100%, 1100px) auto no-repeat,
+    url('./assets/bg/mine.webp') center top / max(100%, 941px) auto repeat-y,
+    var(--kit-navy);
+}
 
 /* ---------- typography ---------- */
 h1, h2, h3, .results-title, .circuit-title-row h2, .next-gp-title h2, .driver-identity h2, .shop-heading h2, .dialog h2, .loading-bottom h1, .race-event h1 {
@@ -29,10 +38,10 @@ h1, h2, h3, .results-title, .circuit-title-row h2, .next-gp-title h2, .driver-id
 
 /* ---------- logo ---------- */
 .brand { color: inherit; }
-.brand-logo { display: block; height: 44px; width: auto; filter: drop-shadow(0 3px 6px #0009); }
-.brand-compact .brand-logo, .race-topbar .brand-logo { height: 34px; }
-.loading-top .brand-logo { height: 64px; }
-@media (max-width: 760px) { .brand-logo { height: 34px; } .race-topbar .brand-logo { height: 26px; } }
+.brand-logo { display: block; height: 56px; width: auto; filter: drop-shadow(0 3px 6px #0009); }
+.brand-compact .brand-logo, .race-topbar .brand-logo { height: 50px; }
+.loading-top .brand-logo { height: 120px; }
+@media (max-width: 760px) { .brand-logo { height: 44px; } .race-topbar .brand-logo { height: 38px; } .loading-top .brand-logo { height: 84px; } }
 
 /* ---------- panels ---------- */
 .app-header, .race-topbar { background: linear-gradient(180deg, #102236, var(--kit-navy)); border-bottom: 2px solid var(--kit-steel-line); }
@@ -127,7 +136,7 @@ button:disabled.button-primary, button:disabled.button-secondary { background: #
 /* ---------- framed portraits ---------- */
 .kit-portrait { position: relative; display: inline-block; flex-shrink: 0; width: var(--size); height: var(--size); border: 0 !important; background: none !important; box-shadow: none !important; }
 .kit-portrait img { position: absolute; inset: 11%; width: 78%; height: 78%; border-radius: 50%; object-fit: cover; background: radial-gradient(circle, #1f3650, var(--kit-navy)); }
-.kit-portrait::after { content: ''; position: absolute; inset: 0; background: center / 100% 100% no-repeat; pointer-events: none; filter: drop-shadow(0 2px 3px #000a); }
+.kit-portrait::after { content: ''; position: absolute; inset: 0; background: center / contain no-repeat; pointer-events: none; filter: drop-shadow(0 2px 3px #000a); }
 .ring-steel::after { background-image: url('./assets/ui/ring-steel.webp'); }
 .ring-crown::after { background-image: url('./assets/ui/ring-crown.webp'); }
 .ring-spiked::after { background-image: url('./assets/ui/ring-spiked.webp'); inset: -12%; }
@@ -171,7 +180,7 @@ button:disabled.button-primary, button:disabled.button-secondary { background: #
 .banter-player .banter-bubble p, .banter-player .banter-bubble b { color: #fff3dc; }
 .button-primary, .button-primary svg { color: #fff3dc; }
 @media (max-width: 760px) {
-  .fit-shell .app-header .brand-logo { height: 28px; }
+  .fit-shell .app-header .brand-logo { height: 40px; }
   .fit-shell .header-tools { gap: 6px; min-width: 0; }
   .fit-shell .wallet-button { padding: 6px 8px; }
   .fit-shell .wallet-button > span, .fit-shell .wallet-button > i { display: none; }
@@ -180,3 +189,25 @@ button:disabled.button-primary, button:disabled.button-secondary { background: #
   .fit-actions .mode-switch button { flex: 1; }
   .fit-actions .button-secondary, .fit-actions .launch-button { flex: 1 1 0; min-height: 42px; }
 }
+
+/* ---------- art accents in menus ---------- */
+.results-eyebrow { display: flex; align-items: center; gap: 6px; }
+.results-crowd { margin-left: auto; display: inline-flex; align-items: flex-end; gap: 4px; pointer-events: none; margin-block: -14px -6px; }
+.results-crowd img { height: 44px; width: auto; filter: drop-shadow(0 4px 6px #0008); }
+.results-crowd .results-flag { height: 34px; transform: rotate(-8deg); margin-bottom: 6px; }
+@media (max-width: 720px) { .results-crowd { display: none; } }
+
+.shop-minecart { height: 74px; width: auto; margin-left: auto; filter: drop-shadow(0 6px 8px #0009); }
+@media (max-width: 760px) { .shop-minecart { display: none; } }
+
+.champion-banner { position: relative; }
+.champion-crowd { height: 84px; width: auto; margin-left: auto; filter: drop-shadow(0 6px 8px #0009); }
+@media (max-width: 760px) { .champion-crowd { display: none; } }
+
+.rules-subhead { font-size: 12px; letter-spacing: 1.2px; text-transform: uppercase; color: #c9d6e2; margin: 6px 0 14px; }
+.rules-hazards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 26px; }
+.rules-hazards > div { display: flex; gap: 10px; align-items: center; }
+.rules-hazards img { width: 46px; height: 46px; object-fit: contain; flex-shrink: 0; filter: drop-shadow(0 3px 4px #0008); }
+.rules-hazards strong { font-size: 11px; }
+.rules-hazards p { font-size: 9px; line-height: 1.6; color: #859bb0; margin: 3px 0 0; }
+@media (max-width: 640px) { .rules-hazards { grid-template-columns: repeat(2, 1fr); } }

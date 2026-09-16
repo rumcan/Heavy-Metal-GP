@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import { ArrowRight, Coins, ShoppingBag, Check, PackageCheck, Trophy } from 'lucide-react';
 import Dialog from './Dialog';
+import minecart from '../assets/game/minecart.webp';
 import ItemGlyph from './ItemGlyph';
 import { ITEM_TYPES, ITEM_INFO, inventoryCount, MAX_ITEM_STACK } from '../game/types';
 import type { ItemType } from '../game/types';
@@ -15,7 +16,7 @@ export default function PitShop({ account, onBuy, onClose }: Props) {
   const [message, setMessage] = useState('');
   const visible = ITEM_TYPES.filter((item) => filter === 'All' || ITEM_INFO[item].category === filter);
   return <Dialog onClose={onClose} titleId="shop-title" className="pit-shop-dialog">
-    <div className="shop-heading"><div><span className="eyebrow"><ShoppingBag size={14} /> THE PIT SHOP / RACE CONSUMABLES</span><h2 id="shop-title">BUY YOUR NEXT ADVANTAGE.</h2><p>Earn it on the track. Spend it on your next move.</p></div><div className="shop-balance"><span>YOUR BALANCE</span><strong><Coins size={24} />{account.credits.toLocaleString()}<small>CR</small></strong></div></div>
+    <div className="shop-heading"><div><span className="eyebrow"><ShoppingBag size={14} /> THE PIT SHOP / RACE CONSUMABLES</span><h2 id="shop-title">BUY YOUR NEXT ADVANTAGE.</h2><p>Earn it on the track. Spend it on your next move.</p></div><img className="shop-minecart" src={minecart} alt="" aria-hidden="true" /><div className="shop-balance"><span>YOUR BALANCE</span><strong><Coins size={24} />{account.credits.toLocaleString()}<small>CR</small></strong></div></div>
     <div className="shop-toolbar"><div className="shop-tabs" aria-label="Filter items">{(['All', 'Performance', 'Disruption'] as const).map((tab) => <button key={tab} className={tab === filter ? 'selected' : ''} onClick={() => setFilter(tab)} aria-pressed={tab === filter}>{tab === 'All' ? 'All items' : tab}</button>)}</div><span><PackageCheck size={14} /><b>{inventoryCount(account.inventory)}</b> charges owned</span></div>
     <div className="shop-catalog">{visible.map((item) => {
       const info = ITEM_INFO[item];

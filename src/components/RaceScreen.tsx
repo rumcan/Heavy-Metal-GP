@@ -1,7 +1,8 @@
 import * as storage from '../game/storage';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { ArrowLeft, ArrowRight, Pause, Play, Flag, ChevronRight, FastForward, Timer, Gauge, Coins, Snowflake, ZoomIn, ZoomOut } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Pause, Play, Flag, ChevronRight, FastForward, Timer, Gauge, Coins, Snowflake, ZoomIn, ZoomOut, Volume2, VolumeX } from 'lucide-react';
+import { raceAudio } from '../game/audio';
 import { Game } from '../game/engine';
 import { render } from '../game/render';
 import { W } from '../game/track';
@@ -60,6 +61,8 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
   }, []);
   const doneRef = useRef(false);
   const [paused, setPaused] = useState(false);
+  const [muted, setMuted] = useState(() => raceAudio.loadPreference());
+  const toggleMute = useCallback(() => { raceAudio.unlock(); raceAudio.setMuted(!raceAudio.muted); setMuted(raceAudio.muted); }, []);
   const [confirmExit, setConfirmExit] = useState(false);
   const [fast, setFast] = useState(false);
   const [toast, setToast] = useState<{ message: string; color: string } | null>(null);
@@ -156,6 +159,8 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
       if (down && (event.code === 'Equal' || event.code === 'NumpadAdd')) { setZoom(zoomRef.current * 1.2); return; }
       if (down && (event.code === 'Minus' || event.code === 'NumpadSubtract')) { setZoom(zoomRef.current / 1.2); return; }
       if (down && (event.code === 'Digit0' || event.code === 'Numpad0')) { setZoom(1); return; }
+      if (down) raceAudio.unlock();
+      if (event.code === 'KeyM' && down && !event.repeat) { toggleMute(); return; }
       if (event.code === 'KeyP' && down && !event.repeat) { setPause(!pausedRef.current); return; }
       if (event.code === 'Escape' && down && !event.repeat) { if (!pausedRef.current) setPause(true); return; }
       if (pausedRef.current) return;
@@ -175,6 +180,9 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
     const keyUp = (e: KeyboardEvent) => onKey(e, false);
     const blur = () => { controls.current = { left: false, right: false, touch: 0 }; if (!doneRef.current) setPause(true); };
     const hidden = () => { if (document.hidden) blur(); };
+    const unlockAudio = () => raceAudio.unlock();
+    unlockAudio();
+    window.addEventListener('pointerdown', unlockAudio);
     window.addEventListener('keydown', keyDown);
     window.addEventListener('keyup', keyUp);
     window.addEventListener('blur', blur);
@@ -194,7 +202,9 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
       if (!pausedRef.current && !doneRef.current) {
         formationElapsed += dt;
         if (!game.gateOpen) {
-          lights = Math.min(5, Math.floor(formationElapsed / 650));
+          const nextLights = Math.min(5, Math.floor(formationElapsed / 650));
+          if (nextLights > lights && nextLights > 0) raceAudio.play({ type: 'light', x: W / 2, y: 0, player: true }, { x: 0, y: 0, halfHeight: 1 });
+          lights = nextLights;
           if (formationElapsed >= lightsOutAt) { lights = -1; game.openGate(); }
         }
         game.nudge = controls.current.touch || Number(controls.current.right) - Number(controls.current.left);
@@ -223,6 +233,11 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
         camera.y += (p.y + 115 - camera.y) * (1 - Math.exp(-dt / 150));
         camera.y = halfHeight * 2 >= game.track.height ? game.track.height / 2 : Math.max(halfHeight - 15, Math.min(game.track.height - halfHeight + 15, camera.y));
         render(ctx, game, camera, width, height, pausedRef.current || doneRef.current ? game.time : now, { shake: !reduceMotion, minimap: false });
+        if (game.sounds.length) {
+          const listener = { x: camera.x, y: camera.y, halfHeight: height / 2 / camera.scale };
+          for (const cue of game.sounds) raceAudio.play(cue, listener);
+          game.sounds.length = 0;
+        }
       }
 
       hudTimer += dt;
@@ -252,13 +267,14 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
     raf = requestAnimationFrame(loop);
     return () => {
       cancelAnimationFrame(raf); clearTimeout(toastTimer); observer.disconnect();
+      window.removeEventListener('pointerdown', unlockAudio);
       window.removeEventListener('keydown', keyDown); window.removeEventListener('keyup', keyUp);
       canvas.removeEventListener('wheel', wheel); canvas.removeEventListener('pointerdown', pointerDown); canvas.removeEventListener('pointermove', pointerMove);
       canvas.removeEventListener('pointerup', pointerUp); canvas.removeEventListener('pointercancel', pointerUp);
       window.removeEventListener('blur', blur); document.removeEventListener('visibilitychange', hidden);
       game.destroy(); gameRef.current = null;
     };
-  }, [seed, roster, profile, gridOrder, setPause, setZoom]);
+  }, [seed, roster, profile, gridOrder, setPause, setZoom, toggleMute]);
 
   const byId = (id: number) => roster.find((m) => m.id === id)!;
   const preStart = hud.lights >= 0;
@@ -278,7 +294,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
   });
 
   return <div className="race-shell">
-    <header className="race-topbar"><Brand compact /><div className="race-event"><span>{subtitle}</span><h1>{title}</h1></div><div className="race-clock"><span>RACE TIME</span><strong>{formatTime(hud.time)}</strong></div><div className="race-top-actions"><button className="icon-button" onClick={() => setPause(true)} aria-label="Pause race" disabled={!!results}><Pause size={18} /></button><button className="text-button" onClick={requestExit} disabled={!!results}>Exit <ArrowUpRightIcon /></button></div></header>
+    <header className="race-topbar"><Brand compact /><div className="race-event"><span>{subtitle}</span><h1>{title}</h1></div><div className="race-clock"><span>RACE TIME</span><strong>{formatTime(hud.time)}</strong></div><div className="race-top-actions"><button className="icon-button" onClick={toggleMute} aria-label={muted ? 'Unmute sound (M)' : 'Mute sound (M)'} aria-pressed={muted} title={muted ? 'Sound off (M)' : 'Sound on (M)'}>{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button><button className="icon-button" onClick={() => setPause(true)} aria-label="Pause race" disabled={!!results}><Pause size={18} /></button><button className="text-button" onClick={requestExit} disabled={!!results}>Exit <ArrowUpRightIcon /></button></div></header>
     <div className="race-stage">
       <canvas ref={canvasRef} className="race-canvas" aria-label="2D marble race. Arrow keys nudge. Keys 1 to 8 deploy power-ups; plus and minus zoom; Space repeats the last item. P pauses." />
       {mapTrack && <RaceMinimap track={mapTrack} racers={hud.field} roster={roster} viewTop={hud.viewTop} viewBottom={hud.viewBottom} progress={hud.progress} />}

@@ -1,10 +1,11 @@
 import Matter from 'matter-js';
-import { generateTrack, meta, Track, CAT_MARBLE, CAT_WALL, CAT_SENSOR, W } from './track';
+import { generateTrack, meta, Track, CAT_MARBLE, CAT_WALL, CAT_SENSOR, CAT_LOOP_UP, CAT_LOOP_CLOSE, W } from './track';
 import { ItemType, MarbleInfo, MARBLE_RADIUS, statsToPhysics, mulberry32, TrackProfile, emptyInventory, normalizeInventory, ITEM_TYPES, ITEM_INFO, MAX_ITEM_STACK } from './types';
 import type { Inventory } from './types';
 import { gridSlots } from './season';
 import { assistRolling, BASE_TICK, createMarble, downhill } from './physics';
 import type { RampSurface } from './physics';
+import type { SoundEvent, SoundType } from './audio';
 
 export interface GameOptions {
   profile?: TrackProfile;
@@ -35,6 +36,8 @@ export interface Marble {
   aiUseAt: number;
   frozenUntil: number;
   ghostUntil: number;
+  /** 0 = entering a loop (rising quarter solid), 1 = past the top (closing quarter solid). */
+  loopStage: 0 | 1;
   anvilUntil: number;
   rocketUntil: number;
   padCooldownUntil: number;
@@ -93,6 +96,8 @@ export class Game {
   player: Marble;
   oils: OilSlick[] = [];
   effects: Effect[] = [];
+  /** Sound cues for the race screen to play and clear each frame. */
+  sounds: SoundEvent[] = [];
   time = 0;
   started = false;
   gateOpen = false;
@@ -160,6 +165,7 @@ export class Game {
         inOil: false,
         finishedAt: null,
         stuckTime: 0,
+        loopStage: 0,
         lastPickupAt: 0,
         trail: [],
         pegs: 0,
@@ -244,6 +250,7 @@ export class Game {
     if (this.gateOpen) return;
     this.gateOpen = true;
     this.raceStartTime = this.time;
+    this.sfx('go', this.player, W / 2, 0);
     // trapdoor opens: marbles start from rest and let gravity do the work
     this.removeTrackBody(this.track.gate);
     this.marbles.forEach((m) => {
@@ -271,6 +278,7 @@ export class Game {
       else if (ma && mb) {
         const sp = Math.hypot(ma.body.velocity.x - mb.body.velocity.x, ma.body.velocity.y - mb.body.velocity.y);
         if (sp > 4) {
+          this.sfx('clack', ma.info.isPlayer ? ma : mb, a.position.x, a.position.y);
           this.effects.push({
             type: 'flash',
             x: (a.position.x + b.position.x) / 2,
@@ -284,15 +292,59 @@ export class Game {
     }
   }
 
+  private sfx(type: SoundType, m: Marble | null, x: number, y: number, extra: Partial<SoundEvent> = {}) {
+    if (this.sounds.length < 48) this.sounds.push({ type, x, y, player: !!m?.info.isPlayer, ...extra });
+  }
+
+  private applyMask(m: Marble) {
+    const ghost = m.ghostUntil > this.time;
+    m.body.collisionFilter.mask = CAT_WALL | CAT_SENSOR | (ghost ? 0 : CAT_MARBLE) | (m.loopStage === 1 ? CAT_LOOP_CLOSE : CAT_LOOP_UP);
+  }
+
+  private setLoopStage(m: Marble, stage: 0 | 1) {
+    if (m.loopStage === stage) return;
+    m.loopStage = stage;
+    this.applyMask(m);
+  }
+
   private marbleHits(m: Marble, other: Matter.Body) {
     if (m.finishedAt !== null || m.frozen || !this.gateOpen) return;
     const md = meta(other);
     if (!md) return;
     switch (md.kind) {
+      case 'loopTop':
+        if (m.loopStage === 0) this.sfx('loop', m, other.position.x, other.position.y);
+        this.setLoopStage(m, 1);
+        break;
+      case 'loopExit':
+        this.setLoopStage(m, 0);
+        break;
+      case 'hoop': {
+        const v = Body.getVelocity(m.body);
+        const speed = Math.hypot(v.x, v.y);
+        const dir = speed > 1.5 ? { x: v.x / speed, y: v.y / speed } : md.dir ?? { x: 0, y: 1 };
+        const boosted = Math.min(20, Math.max(speed * 1.35, speed + 5));
+        Body.setVelocity(m.body, { x: dir.x * boosted, y: dir.y * boosted });
+        this.effects.push({ type: 'ring', x: other.position.x, y: other.position.y, ttl: 22, maxTtl: 22, color: '#fb923c' });
+        this.sfx('hoop', m, other.position.x, other.position.y);
+        break;
+      }
+      case 'wrecker': {
+        const dx = m.body.position.x - other.position.x, dy = m.body.position.y - other.position.y;
+        const d = Math.hypot(dx, dy) || 1;
+        const v = Body.getVelocity(m.body);
+        const push = 7;
+        Body.setVelocity(m.body, { x: v.x * 0.4 + dx / d * push, y: v.y * 0.4 + dy / d * push });
+        this.shake = Math.max(this.shake, 5);
+        this.sfx('clang', m, other.position.x, other.position.y);
+        this.effects.push({ type: 'ring', x: m.body.position.x, y: m.body.position.y, ttl: 14, maxTtl: 14, color: '#e2e8f0' });
+        break;
+      }
       case 'breakable': {
         const speed = Body.getSpeed(m.body);
         const dmg = m.body.mass * speed;
         md.hp = (md.hp ?? 0) - dmg;
+        if (md.hp > 0 && dmg > 0.5) this.sfx('crack', m, other.position.x, other.position.y);
         this.effects.push({
           type: 'debris',
           x: other.position.x,
@@ -310,6 +362,7 @@ export class Game {
             this.pendingBreaks.push({ body: other, marble: m, v: { x: v.x * 0.85, y: v.y } });
           }
           this.shake = 10;
+          this.sfx('smash', m, other.position.x, other.position.y);
           this.effects.push({
             type: 'debris',
             x: other.position.x,
@@ -332,6 +385,7 @@ export class Game {
         const dir = md.dir ?? { x: -1, y: -1 };
         const vy = Math.min(12.2, 3.5 + 9.5 * m.restitution);
         this.pendingLaunches.set(m.info.id, { x: dir.x * 4.5, y: -vy });
+        this.sfx('spring', m, other.position.x, other.position.y);
         this.effects.push({ type: 'ring', x: other.position.x, y: other.position.y - 10, ttl: 20, maxTtl: 20, color: '#34d399' });
         if (m.info.isPlayer) this.onEvent?.(`Boing! Bounce power ${(m.restitution * 100).toFixed(0)}%`, '#34d399');
         break;
@@ -343,6 +397,7 @@ export class Game {
         md.active = false;
         md.respawnAt = this.time + 7000;
         this.grantItem(m, available[Math.floor(this.rng() * available.length)]);
+        this.sfx('pickup', m, other.position.x, other.position.y);
         this.effects.push({ type: 'ring', x: other.position.x, y: other.position.y, ttl: 18, maxTtl: 18, color: '#facc15' });
         break;
       }
@@ -352,6 +407,7 @@ export class Game {
         md.hitAt = this.time;
         this.poppingPegs.add(other);
         const col = md.pegColor ?? 'blue';
+        this.sfx('peg', m, other.position.x, other.position.y, { color: col });
         const pc = col === 'orange' ? '#fb923c' : col === 'green' ? '#4ade80' : '#60a5fa';
         this.effects.push({ type: 'ring', x: other.position.x, y: other.position.y, ttl: 14, maxTtl: 14, color: pc });
         this.effects.push({ type: 'debris', x: other.position.x, y: other.position.y, ttl: 22, maxTtl: 22, color: pc, particles: this.makeParticles(other.position.x, other.position.y, 6, 2.5) });
@@ -373,17 +429,27 @@ export class Game {
         md.cooldownUntil = this.time + 250;
         Body.setPosition(m.body, { x: other.position.x, y: other.position.y + 30 });
         this.pendingLaunches.set(m.info.id, { x: 0, y: 17 });
+        this.sfx('bucket', m, other.position.x, other.position.y);
         m.trail = [];
         this.shake = 6;
-        this.effects.push({ type: 'ring', x: other.position.x, y: other.position.y, ttl: 24, maxTtl: 24, color: '#f0abfc' });
-        this.effects.push({ type: 'text', x: other.position.x, y: other.position.y - 30, ttl: 60, maxTtl: 60, color: '#f0abfc', text: 'FREE BALL!' });
-        if (m.info.isPlayer) this.onEvent?.('FREE BALL! Bucket launch', '#f0abfc');
+        this.effects.push({ type: 'ring', x: other.position.x, y: other.position.y, ttl: 24, maxTtl: 24, color: '#fbbf24' });
+        this.effects.push({ type: 'text', x: other.position.x, y: other.position.y - 30, ttl: 60, maxTtl: 60, color: '#fbbf24', text: 'ALL ABOARD!' });
+        if (m.info.isPlayer) this.onEvent?.('ALL ABOARD! Minecart express', '#fbbf24');
         break;
       }
       case 'finish': {
         this.finishMarble(m);
         break;
       }
+      case 'peg': {
+        if (Body.getSpeed(m.body) > 2) this.sfx('bump', m, other.position.x, other.position.y);
+        break;
+      }
+      case 'ramp':
+      case 'wall':
+      case 'loop':
+        if (m.info.isPlayer && Body.getSpeed(m.body) > 6) this.sfx('thud', m, m.body.position.x, m.body.position.y);
+        break;
       default:
         break;
     }
@@ -401,6 +467,8 @@ export class Game {
       const md = meta(other);
       if (!md) continue;
       this.contactSurface(m, other, pair);
+      // A marble too slow to make the loop settles at the bottom; let it roll out instead of rocking forever.
+      if (md.kind === 'loopBail' && m.loopStage === 0 && Body.getSpeed(m.body) < 2.5) this.setLoopStage(m, 1);
       if (md.kind === 'boost' && md.dir) {
         const v = Body.getVelocity(m.body);
         const k = 0.45 * Math.sqrt(1 / m.body.mass) * this.engine.timing.lastDelta / BASE_TICK;
@@ -437,6 +505,7 @@ export class Game {
     if (m.finishedAt !== null || !this.gateOpen) return;
     m.finishedAt = this.raceTime();
     this.finishOrder.push(m);
+    if (m.info.isPlayer) this.sfx('finish', m, m.body.position.x, m.body.position.y, { rank: this.finishOrder.length });
     m.body.frictionAir = 0.045;
     m.trail = [];
     this.effects.push({ type: 'ring', x: m.body.position.x, y: m.body.position.y, ttl: 30, maxTtl: 30, color: m.info.color });
@@ -513,9 +582,10 @@ export class Game {
       Composite.remove(this.world, m.body);
       m.body = createMarble(m.info, destination);
       if (m.anvilUntil > this.time) Body.setDensity(m.body, m.baseDensity * 3);
-      if (m.ghostUntil > this.time) m.body.collisionFilter.mask = CAT_WALL | CAT_SENSOR;
       Composite.add(this.world, m.body);
     } else Body.setPosition(m.body, destination);
+    m.loopStage = 0;
+    this.applyMask(m);
     Body.setVelocity(m.body, { x: 0, y: 1 });
     Body.setAngularVelocity(m.body, 0);
     m.trail = [];
@@ -604,6 +674,7 @@ export class Game {
     }
     m.inventory[item]--;
     m.itemCooldownUntil = this.time + 450;
+    this.sfx('item', m, p.x, p.y);
     switch (item) {
       case 'oil': {
         this.oils.push({ x: p.x, y: p.y - 10, r: 48, ownerId: m.info.id, expiresAt: this.time + 9000 });
@@ -664,7 +735,7 @@ export class Game {
       }
       case 'ghost': {
         m.ghostUntil = this.time + ITEM_INFO.ghost.duration;
-        m.body.collisionFilter.mask = CAT_WALL | CAT_SENSOR;
+        this.applyMask(m);
         break;
       }
     }
@@ -692,6 +763,12 @@ export class Game {
     for (const sp of this.track.spinners) {
       const md = meta(sp);
       (Body.setAngle as unknown as (b: Matter.Body, a: number, u: boolean) => void)(sp, sp.angle + (md.spin ?? 0) * s, true);
+    }
+    // wrecking balls swing on their chains (kinematic, so collisions see their velocity)
+    for (const wb of this.track.wreckers) {
+      const md = meta(wb);
+      const angle = (md.amp ?? 0) * Math.sin(this.time * (md.spin ?? 0) + (md.phase ?? 0));
+      (Body.setPosition as unknown as (b: Matter.Body, p: Matter.Vector, u: boolean) => void)(wb, { x: md.pivot!.x + Math.sin(angle) * md.chain!, y: md.pivot!.y + Math.cos(angle) * md.chain! }, true);
     }
     // oil expiry
     this.oils = this.oils.filter((o) => o.expiresAt > this.time);
@@ -729,7 +806,7 @@ export class Game {
       }
       if (m.ghostUntil && this.time > m.ghostUntil) {
         m.ghostUntil = 0;
-        b.collisionFilter.mask = CAT_WALL | CAT_MARBLE | CAT_SENSOR;
+        this.applyMask(m);
       }
 
       if (m.frozen) {
