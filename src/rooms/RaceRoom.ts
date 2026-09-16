@@ -20,16 +20,21 @@
 //   - Import the SDK's `mp-server` surface ONLY. This module runs on the room
 //     server, never in the browser, so it must never reach `…/mp-client`,
 //     `…/api` or `src/net/transport.ts` (that would drag the client bundle into
-//     the room and the room into the page).
+//     the room and the room into the page). `src/net/protocol.ts` is the one
+//     shared import both sides are allowed: it is pure.
 //   - Never generate anything here with `Math.random()`: the seed every client
 //     regenerates its circuit from is minted once, by the room, from a seeded
 //     RNG (MP-03/MP-04).
 // ══════════════════════════════════════════════════════════════════════════
 import { GameRoom } from '@series-inc/rundot-game-sdk/mp-server';
-import type { Protocol } from '@series-inc/rundot-game-sdk/mp-server';
+// MP-02: the wire the room relays. `src/net/protocol.ts` is pure (no SDK, no
+// DOM, no Matter.js — only `game/types` and `game/audio`), so the room bundle
+// may import it: the relay validates what it forwards with the same code the
+// client validates what it applies.
+import type { RaceProtocol } from '../net/protocol';
 
-/** The message union the room relays. MP-02 narrows this to `RaceProtocol`. */
-export type RoomProtocol = Protocol;
+/** The message union the room relays. */
+export type RoomProtocol = RaceProtocol;
 
 /**
  * The race room. See the header: MP-01 registers the seat-taking skeleton

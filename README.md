@@ -53,7 +53,21 @@ room-code helpers, the per-player active-match memo); everything else imports
 its wrappers, and `tests/multiplayer.test.ts` fails the moment another file
 reaches for the SDK's realtime client. The room itself is registered in
 `rundot/realtime.config.json` (`hmgp-race`, six seats) and currently just seats
-players — the relay, the race protocol and the lobby UI land in MP-03…MP-06.
+players — the relay, host-authoritative simulation, guest rendering and the
+lobby UI land in MP-03…MP-06.
+
+The **race protocol** (`src/net/protocol.ts`) is the wire both ends speak:
+`welcome`/`lobby`/`ready`/`start`, a 20 Hz `state` frame (ten marbles packed
+into 21 bytes each — five float32 plus a flag byte — and base64'd, ~330 bytes
+a frame), `events` (pegs, crates, boxes, items, oil, freeze, shock, finishes
+and sound cues), a chunked `snapshot` for join and resync, `intent` (analog
+nudge or item), `resync`, `results` and presence. `validateMessage` is the one
+door: it refuses an unknown type as malformed, an out-of-domain value as forged
+(a nudge past ±1, an item the game does not have, a body index no circuit has),
+a frame past the 16 KiB cap as oversized, and a welcome from another build with
+the reload message rather than a silent desync. The module is pure — no SDK, no
+DOM, no Matter.js — so the room bundle can import it and relay with the same
+code the client validates with.
 
 To try it locally, `npm run dev`, then open **two tabs** (a second window or an
 incognito window is the cleanest way to be two players — each tab mints its own
@@ -157,7 +171,13 @@ corrupt saves, payout amounts and duplicate-payout prevention.
 module may import the SDK's realtime API (and one server module the room
 server), that the room registration and the transport agree on the room type,
 criteria and capacity, and the room-code, matchmaking-expiry and access-denied
-helpers.
+helpers. `tests/protocol.test.ts` covers the race wire: that every message
+validates, that unknown, oversized and forged frames are refused with the code
+that says which, that a version mismatch produces the reload message, that a
+ten-marble `state` frame stays far under 4 KiB, that chunked snapshots
+reassemble (out of order, and after a newer transfer supersedes an older one)
+and are dropped when they do not describe a world, and that the protocol module
+keeps the imports the room bundle can live with.
 
 Story coverage: `tests/story-schema.test.ts` enforces the script/art contract — every scene
 id in the outline exists, every speaker resolves to a portrait mood that was drawn, every
