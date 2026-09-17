@@ -127,7 +127,7 @@ export interface SessionOptions {
  * host's own token bucket (30/s per seat): a key held down is 60 Hz of key
  * repeat, and there is no reason to spend the wire on it.
  */
-export const NUDGE_SEND_INTERVAL_MS = 33;
+export const NUDGE_SEND_INTERVAL_MS = 100;
 
 /**
  * One race, on one screen.

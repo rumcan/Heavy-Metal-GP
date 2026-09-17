@@ -252,7 +252,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
       if (down && (event.code === 'Equal' || event.code === 'NumpadAdd')) { setZoom(zoomRef.current * 1.2); return; }
       if (down && (event.code === 'Minus' || event.code === 'NumpadSubtract')) { setZoom(zoomRef.current / 1.2); return; }
       if (down && (event.code === 'Digit0' || event.code === 'Numpad0')) { setZoom(1); return; }
-      if (down) raceAudio.unlock();
+      if (down && !event.repeat) raceAudio.unlock();
       if (event.code === 'KeyM' && down && !event.repeat) { toggleMute(); return; }
       // Online there is no pause: the race clock is not this tab's, and a host
       // that stopped stepping would take the whole grid with it.
