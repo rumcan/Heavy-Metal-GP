@@ -65,8 +65,10 @@ import ValidationPanel from './editor/ValidationPanel';
 import { validateTrackAsync } from './editor/validate';
 import type { ValidationResult } from './editor/validate';
 import MyTracksPanel from './editor/MyTracksPanel';
+import SharePanel from './editor/SharePanel';
 import { loadTracksSync, loadTracks, loadDraftSync, saveDraft, createTrack, updateTrack, deleteTrack as deleteSavedTrack, duplicateTrack as duplicateSavedTrack, renameTrack as renameSavedTrack } from '../game/tracks';
 import type { SavedTrack } from '../game/tracks';
+import { encodeShareCode } from '../game/sharecode';
 import '../editor.css';
 
 interface Props {
@@ -227,6 +229,40 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
   useEffect(() => {
     try { saveDraft(circuit.def); } catch { /* ignore */ }
   }, [circuit.def]);
+
+  // MB-07: handle ?share=CODE link — decode and offer import
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('share');
+      if (!code) return;
+      void (async () => {
+        try {
+          const { decodeShareCode } = await import('../game/sharecode');
+          const def = await decodeShareCode(code);
+          // Auto-import to My tracks and load
+          const res = createTrack(def);
+          if (!('error' in res)) {
+            setSavedTracks(loadTracksSync());
+            history.push(circuit.def);
+            setCircuit({ def: cloneDef((res as SavedTrack).def), build: 0 });
+            setActiveTrackId((res as SavedTrack).id);
+            setDraftMsg(`Imported shared track “${def.name}”`);
+            setTimeout(() => setDraftMsg(null), 4000);
+          } else {
+            setDraftMsg(`Share link valid but could not save: ${(res as { error: string }).error}`);
+          }
+          // clean URL
+          params.delete('share');
+          const next = params.toString();
+          try { window.history.replaceState(null, '', window.location.pathname + (next ? `?${next}` : '') + window.location.hash); } catch { /* ignore */ }
+        } catch (e) {
+          setDraftMsg(e instanceof Error ? e.message : String(e));
+          setTimeout(() => setDraftMsg(null), 4000);
+        }
+      })();
+    } catch { /* ignore */ }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pushHistory = useCallback(() => {
     history.push(circuit.def);
@@ -482,14 +518,14 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
       setShareMsg(result.issues.filter((i) => i.severity === 'error').map((i) => i.message).slice(0, 2).join(' — ') || 'Fix errors before sharing. Need ≥9/10 finishers and no hard errors.');
       return;
     }
-    const code = btoa(unescape(encodeURIComponent(JSON.stringify(circuit.def))));
     try {
+      const code = await encodeShareCode(circuit.def);
       await navigator.clipboard.writeText(code);
       setShareMsg(`Share code copied (${code.slice(0, 24)}…${code.slice(-12)}). Paste to race online.`);
-    } catch {
-      setShareMsg(`Share code: ${code.slice(0, 80)}…`);
+      setTimeout(() => setShareMsg(null), 4500);
+    } catch (e) {
+      setShareMsg(e instanceof Error ? e.message : String(e));
     }
-    setTimeout(() => setShareMsg(null), 4500);
   }, [circuit.def, validation, validating]);
 
   // MB-06: My tracks — save current, load, rename, duplicate, delete + exit autosave
@@ -563,6 +599,25 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
     setDraftMsg('Track deleted.');
     setTimeout(() => setDraftMsg(null), 2500);
   }, [activeTrackId]);
+
+  const handleImportTrack = useCallback((def: TrackDef) => {
+    const res = createTrack(def);
+    if ('error' in res) {
+      setDraftMsg((res as { error: string }).error);
+      setTimeout(() => setDraftMsg(null), 3500);
+      return;
+    }
+    setSavedTracks(loadTracksSync());
+    // auto-load the imported track
+    history.push(circuit.def);
+    setCircuit({ def: cloneDef((res as SavedTrack).def), build: 0 });
+    setActiveTrackId((res as SavedTrack).id);
+    setSelected([]);
+    setValidation(null);
+    bumpHistory();
+    setDraftMsg(`Imported “${def.name}” to My tracks.`);
+    setTimeout(() => setDraftMsg(null), 3000);
+  }, [circuit.def, history, bumpHistory]);
 
   const handleExit = useCallback(() => {
     try { saveDraft(circuit.def); } catch { /* ignore */ }
@@ -700,6 +755,7 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
             onDelete={handleDeleteTrack}
             onSaveCurrent={handleSaveCurrent}
           />
+          <SharePanel def={circuit.def} validation={validation} validating={validating} onImport={handleImportTrack} />
           <div className="editor-savebar" role="toolbar" aria-label="Save and share">
             <button className="button-secondary" onClick={handleSaveDraft} title="Save as draft — always allowed, even with errors">
               <Save size={13} /> Save draft

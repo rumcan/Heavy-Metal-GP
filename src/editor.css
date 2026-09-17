@@ -151,6 +151,40 @@
 .my-tracks-draft summary { cursor: pointer; color: #a8b6c3; }
 .my-tracks-draft-body { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; }
 
+/* ---------- MB-07 Share codes ---------- */
+.share-panel { display: flex; flex-direction: column; gap: 10px; padding: 12px 10px; background: #0e141d; border: 1px solid #1e2936; border-radius: 6px; }
+.share-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.share-head .eyebrow { font-size: 9px; letter-spacing: 1.4px; color: #c3cdd7; }
+.share-head .eyebrow b { color: var(--accent); }
+.share-hint { font: 8px var(--mono); letter-spacing: .3px; color: #5f6d7c; }
+.share-section { display: flex; flex-direction: column; gap: 8px; padding: 10px 0; border-top: 1px solid #1e2936; }
+.share-section:first-of-type { border-top: none; padding-top: 0; }
+.share-section-head { display: flex; align-items: center; gap: 6px; font: 9px var(--mono); letter-spacing: .4px; color: #a8b6c3; text-transform: uppercase; }
+.share-badge { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; padding: 2px 6px; border-radius: 3px; font: 8px var(--mono); }
+.share-badge.is-pass { background: #0f2a1a; border: 1px solid #1a5a2e; color: #7ddf90; }
+.share-badge.is-fail { background: #2a1414; border: 1px solid #5a1a1a; color: #ffb4ac; }
+.share-export-btn { width: 100%; justify-content: center; }
+.share-code-box { display: flex; flex-direction: column; gap: 7px; padding: 9px; background: #0b1016; border: 1px solid #1e2936; border-radius: 5px; }
+.share-code-head { display: flex; align-items: center; justify-content: space-between; font: 8px var(--mono); letter-spacing: .3px; color: #8ea2b5; }
+.share-code-text { width: 100%; min-height: 64px; padding: 7px 8px; background: #0e141d; border: 1px solid #2b3644; border-radius: 3px; color: #e6edf3; font: 10px/1.4 var(--mono); word-break: break-all; resize: vertical; }
+.share-code-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.share-link-preview { margin: 0; font: 8px var(--mono); color: #5f6d7c; word-break: break-all; }
+.share-link-text { color: #8ec8ff; }
+.share-short { display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: #0e141d; border: 1px dashed #2b3644; border-radius: 4px; }
+.share-short-label { font: 8px var(--mono); color: #8ea2b5; }
+.share-short-code { font: 12px var(--mono); letter-spacing: .8px; color: #7ddf90; }
+.share-import-row { display: flex; gap: 6px; }
+.share-import-input { flex: 1; min-width: 0; padding: 6px 8px; background: #0b1016; border: 1px solid #2b3644; border-radius: 3px; color: #eef1f3; font: 10px var(--mono); }
+.share-import-input::placeholder { color: #5f6d7c; }
+.share-import-input:focus { border-color: var(--accent); outline: none; }
+.share-error { display: flex; align-items: center; gap: 6px; margin: 0; padding: 7px 8px; background: #2a1414; border: 1px solid #5a1a1a; border-radius: 4px; color: #ffb4ac; font: 9px var(--mono); }
+.share-preview { display: flex; gap: 10px; padding: 8px; background: #0b1016; border: 1px solid #1e2936; border-radius: 5px; align-items: flex-start; }
+.share-preview-meta { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.share-preview-meta strong { font: 11px var(--sans); font-weight: 600; color: #e6edf3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.share-preview-stat { display: inline-flex; align-items: center; gap: 4px; font: 8px var(--mono); color: #8ea2b5; }
+.share-preview-valid { display: inline-flex; align-items: center; gap: 4px; font: 8px var(--mono); color: #7ddf90; }
+.share-msg { display: flex; align-items: center; gap: 6px; margin: 0; padding: 6px 8px; background: #0f2a1a; border: 1px solid #1a5a2e; border-radius: 4px; color: #7ddf90; font: 8px var(--mono); }
+
 /* ---------- the course map ---------- */
 .editor-map { display: flex; flex-direction: column; gap: 8px; min-height: 0; padding: 12px 10px; background: #0e131a; border-left: 1px solid var(--line); }
 .editor-map-head { display: flex; align-items: center; justify-content: space-between; font: 7px var(--mono); letter-spacing: .8px; color: #8ea2b5; }
