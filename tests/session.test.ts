@@ -57,7 +57,7 @@ interface Pair {
 }
 
 /** A host session and a guest session joined by a late, slightly lossy wire. */
-function pair(opts: { loss?: number } = {}): Pair {
+function pair(opts: { loss?: number; settings?: SessionOptions['settings'] } = {}): Pair {
   const loss = opts.loss ?? 0;
   const rng = mulberry32(0xc0ffee);
   let now = CLOCK_START;
@@ -74,7 +74,7 @@ function pair(opts: { loss?: number } = {}): Pair {
     seed: SEED,
     seats,
     profile: PROFILE,
-    settings: { circuit: 0 },
+    settings: opts.settings ?? { circuit: 0 },
     now: () => now,
     countdownAt,
   } satisfies Partial<SessionOptions>;
@@ -351,4 +351,56 @@ test('MP-06 session: the screen holds one grid, numbered the same way on both en
   assert.deepEqual(p.guest.seats, p.host.seats);
   p.host.dispose();
   p.guest.dispose();
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// Playtest fixes: steering from both ends, benched AI, kit frames.
+// ══════════════════════════════════════════════════════════════════════════
+
+test('Playtest session: host and guest each steer their OWN marble, never each other’s', () => {
+  const p = pair();
+  while (!p.host.gateOpen) p.tick();
+  for (let i = 0; i < 160; i++) p.tick();
+
+  // The host holds right: its own input only.
+  for (let i = 0; i < 30; i++) { p.host.setNudge(1); p.guest.setNudge(0); p.tick(); }
+  assert.equal(p.host.game.nudge, 1, 'the host steers with its own hands');
+  assert.equal(p.host.game.humanInput.get(1)?.nudge ?? 0, 0, 'the guest seat is not steered by the host');
+  assert.equal(p.host.game.humanInput.has(0), false, 'the host seat is not driven by an intent');
+
+  // The guest holds left: it lands on the guest seat only.
+  for (let i = 0; i < 30; i++) { p.host.setNudge(0); p.guest.setNudge(-1); p.tick(); }
+  assert.equal(p.host.game.humanInput.get(1)?.nudge, -1, 'the guest steers seat 1');
+  assert.equal(p.host.game.nudge, 0, 'and not the host marble');
+  p.host.dispose();
+  p.guest.dispose();
+});
+
+test('Playtest session: AI taken off the grid are gone on both screens', () => {
+  const p = pair({ settings: { circuit: 0, benched: [5, 6, 7] } });
+  assert.deepEqual([...p.host.game.benched].sort(), [5, 6, 7]);
+  assert.deepEqual([...p.guest.game.benched].sort(), [5, 6, 7]);
+  while (!p.host.gateOpen) p.tick();
+  for (let i = 0; i < 300; i++) p.tick();
+  for (const session of [p.host, p.guest]) {
+    const ids = session.game.ranking().map((r) => r.marble.info.id);
+    assert.equal(ids.length, MARBLE_COUNT - 3);
+    assert.ok(![5, 6, 7].some((id) => ids.includes(id)));
+  }
+  // A resync must not bring them back on the guest.
+  p.guest.requestResync();
+  for (let i = 0; i < 30; i++) p.tick();
+  assert.ok(![5, 6, 7].some((id) => p.guest.game.ranking().some((r) => r.marble.info.id === id)), 'still benched after a snapshot');
+  p.host.dispose();
+  p.guest.dispose();
+});
+
+test('Playtest session: a kit change reaches the guest without a snapshot', () => {
+  const p = pair();
+  for (let i = 0; i < 60; i++) p.tick();
+  p.hostFrames.length = 0;
+  p.host.game.marbles[1].inventory.ghost = 4;
+  for (let i = 0; i < 20; i++) p.tick();
+  assert.equal(p.guest.kit.ghost, 4);
+  assert.equal(p.hostFrames.filter((f) => f.type === 'snapshot').length, 0, 'no world republished for a kit');
 });

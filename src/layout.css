@@ -306,3 +306,8 @@ body { min-width: 0; }
 .lobby-auto-status { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; margin: 8px 0 0; padding: 8px 10px; border-left: 3px solid var(--accent); background: #ffffff0a; font-size: 13px; line-height: 1.35; color: #e6edf3; text-align: left; }
 .lobby-auto-status .live-dot { flex: none; }
 .lobby-auto-status.is-closed { border-left-color: #8e9caa; color: #bac7d5; }
+
+.lobby-grid li.is-benched { opacity: .45; }
+.lobby-grid li.is-benched strong { text-decoration: line-through; }
+.lobby-ai-items { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; font-size: 13px; }
+.lobby-ai-items .mode-switch { flex: none; }
