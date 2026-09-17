@@ -42,7 +42,11 @@ interface Props {
   mpError?: string | null;
   onHostGame?: () => void;
   onJoinGame?: (code: string) => void;
+  /** MP-07: quick match, and the cancel that goes with it. */
   onQuickGame?: () => void;
+  searching?: boolean;
+  windows?: number;
+  onCancelSearch?: () => void;
 }
 
 const PANES = [['circuit', 'Circuit'], ['driver', 'Driver'], ['grid', 'Grid']] as const;
@@ -57,7 +61,7 @@ const COLOR_NAMES = ['Race Red', 'Glacier', 'Coral', 'Tangerine', 'Violet', 'Pea
 export default function SetupScreen(props: Props) {
   const { stats, onStats, color, onColor, rivals, onRerollRivals, seed, onNewSeed, onStart, onStartSeason, onContinueSeason, seasonMode, onBackToSeason, circuitIndex, onCircuit } = props;
   const { account, onShop, portrait, onPortrait, onStartStory } = props;
-  const { mpBusy = false, mpError = null, onHostGame, onJoinGame, onQuickGame } = props;
+  const { mpBusy = false, mpError = null, onHostGame, onJoinGame, onQuickGame, searching = false, windows = 0, onCancelSearch } = props;
   const [pane, setPane] = useState<'circuit' | 'driver' | 'grid'>('driver');
   const [mode, setMode] = useState<'season' | 'quick' | 'online'>('season');
   const [dialog, setDialog] = useState<'rules' | 'lab' | null>(null);
@@ -120,7 +124,16 @@ export default function SetupScreen(props: Props) {
           {onContinueSeason && mode === 'season' && <button className="button-secondary" onClick={onContinueSeason}>Continue <ArrowUpRight size={16} /></button>}
           {mode === 'online'
             ? onHostGame && onJoinGame && onQuickGame
-              ? <OnlinePanel busy={mpBusy} error={mpError} onHost={onHostGame} onJoin={onJoinGame} onQuick={onQuickGame} />
+              ? <OnlinePanel
+                busy={mpBusy}
+                error={mpError}
+                onHost={onHostGame}
+                onJoin={onJoinGame}
+                onQuick={onQuickGame}
+                searching={searching}
+                windows={windows}
+                onCancelSearch={onCancelSearch}
+              />
               : <p className="mode-note">Online needs the RUN.world host — race the AI here.</p>
             : <button className="button-primary launch-button" onClick={mode === 'season' ? onStartSeason : onStart}>{mode === 'season' ? (onContinueSeason ? 'NEW SEASON' : 'START CHAMPIONSHIP') : 'LIGHTS OUT'}<ArrowRight size={20} /></button>}
         </>}

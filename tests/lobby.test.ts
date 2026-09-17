@@ -22,6 +22,7 @@ import {
   rosterOf,
   seatOfPlayer,
   setReady,
+  seededCircuit,
   startBlockedReason,
 } from '../src/net/lobby';
 import type { Seat } from '../src/net/protocol';
@@ -123,6 +124,20 @@ test('MP-06 lobby: the roster is the grid, numbered by slot', () => {
   assert.equal(seatOfPlayer(grid, 'player-1'), 1);
   assert.equal(seatOfPlayer(grid, 'player-7'), null, 'not on the grid');
   assert.equal(seatOfPlayer(grid, undefined), null);
+});
+
+test('MP-07 lobby: a quick race runs the circuit the seed picked, not Math.random', () => {
+  // The host republishing a lobby (a rejoin, a refresh) must not hand the field
+  // a different track — and the calendar is not the wire's business, so it is
+  // the seed that decides.
+  const count = 6; // the calendar's length, as the caller knows it
+  assert.equal(seededCircuit(9182, count), seededCircuit(9182, count), 'the same room, the same circuit');
+  const picks = new Set(Array.from({ length: 60 }, (_, i) => seededCircuit(i * 7919, count)));
+  assert.ok(picks.size > 1, 'and different rooms get different tracks');
+  for (const pick of picks) assert.ok(pick >= 0 && pick < count, `${pick} is not on the calendar`);
+  // Degenerate inputs are a circuit, not a crash.
+  assert.equal(seededCircuit(1, 0), 0);
+  assert.equal(seededCircuit(1, 1), 0);
 });
 
 test('MP-06 lobby: a circuit is a calendar index until the lobby says otherwise', () => {

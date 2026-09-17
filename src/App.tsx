@@ -10,13 +10,16 @@ import type { OnlineRace } from './components/RaceScreen';
 import {
   createRoom,
   isAccessDenied,
+  isMatchmakeWindowExpired,
   isOfflineMockRealtime,
   joinRoomByCode,
   NO_ROOM_SERVER_MESSAGE,
   promptLogin,
+  quickMatch,
   writeActiveMatch,
   type RaceRoom,
 } from './net/transport';
+import { Matchmaker } from './net/matchmake';
 import type { RaceProtocol } from './net/transport';
 import type { RaceLink } from './net/session';
 import { circuitIndexOf, gridOrderOf, rosterOf } from './net/lobby';
@@ -79,6 +82,11 @@ export default function App() {
   const [online, setOnline] = useState<OnlineRaceStart | null>(null);
   const [mpBusy, setMpBusy] = useState(false);
   const [mpError, setMpError] = useState<string | null>(null);
+  /** MP-07: a quick-match search, and how many windows it has burned through. */
+  const [search, setSearch] = useState<{ windows: number } | null>(null);
+  const searchRef = useRef<Matchmaker<RaceRoom> | null>(null);
+  /** True when this lobby came from matchmaking rather than a typed code. */
+  const [quick, setQuick] = useState(false);
   /**
    * The room, as the screens see it: intents go out through `send`, frames come
    * in through `onMessage`/`onPlayerLeft`, and whichever screen is live is the
@@ -106,6 +114,16 @@ export default function App() {
     [room, color, stats, portrait],
   );
 
+  /** Why a room did not open, in words a player can act on. */
+  const explain = useCallback(async (err: unknown): Promise<string> => {
+    if (isAccessDenied(err)) {
+      // Anonymous: the platform's login sheet, and the AI is still there to race.
+      const { success } = await promptLogin();
+      return success ? 'Signed in — press Host, Join or Quick race again.' : 'Multiplayer needs a signed-in RUN.world account.';
+    }
+    return err instanceof Error ? err.message : String(err);
+  }, []);
+
   const openRoom = useCallback(async (action: () => Promise<RaceRoom>) => {
     if (isOfflineMockRealtime()) { setMpError(NO_ROOM_SERVER_MESSAGE); return; }
     setMpBusy(true);
@@ -115,24 +133,59 @@ export default function App() {
       // The rejoin memo (MP-08): a drop is precisely the case that CANNOT clear
       // it, which is what lets a return offer the same race back.
       void writeActiveMatch({ roomCode: next.roomCode, at: Date.now() });
+      setQuick(false);
       setRoom(next);
       setPhase('lobby');
     } catch (err) {
-      if (isAccessDenied(err)) {
-        // Anonymous: the platform's login sheet, and the AI is still there to race.
-        const { success } = await promptLogin();
-        setMpError(success ? 'Signed in — press Host or Join again.' : 'Multiplayer needs a signed-in RUN.world account.');
-      } else {
-        setMpError(err instanceof Error ? err.message : String(err));
-      }
+      setMpError(await explain(err));
     } finally {
       setMpBusy(false);
     }
-  }, []);
+  }, [explain]);
+
+  /**
+   * MP-07: QUICK RACE. One SDK request is one thirty-second window, so the loop
+   * lives here — press the button, be in a race when somebody else presses it.
+   */
+  const findRace = useCallback(async () => {
+    if (isOfflineMockRealtime()) { setMpError(NO_ROOM_SERVER_MESSAGE); return; }
+    setMpError(null);
+    setMpBusy(true);
+    setSearch({ windows: 0 });
+    const matchmaker = new Matchmaker<RaceRoom>({
+      request: () => quickMatch(),
+      isExpired: isMatchmakeWindowExpired,
+      onWindowClosed: (windows) => setSearch({ windows }),
+      // Paired on the way out: nobody is waiting in it, so leave it rather than
+      // hold a seat in a room nobody can see.
+      abandon: (room) => room.leave(),
+    });
+    searchRef.current = matchmaker;
+    try {
+      const next = await matchmaker.find();
+      if (next) {
+        void writeActiveMatch({ roomCode: next.roomCode, at: Date.now() });
+        setQuick(true);
+        setRoom(next);
+        setPhase('lobby');
+      } else {
+        setMpError('Search cancelled — nobody was paired.');
+      }
+    } catch (err) {
+      setMpError(await explain(err));
+    } finally {
+      setMpBusy(false);
+      setSearch(null);
+      searchRef.current = null;
+    }
+  }, [explain]);
+
+  const cancelSearch = useCallback(() => searchRef.current?.cancel(), []);
 
   const leaveRoom = useCallback(() => {
     setRoom(null);
     setOnline(null);
+    setQuick(false);
     setMpError(null);
     setPhase('menu');
   }, []);
@@ -267,7 +320,10 @@ export default function App() {
         mpError={mpError}
         onHostGame={() => void openRoom(createRoom)}
         onJoinGame={(code) => void openRoom(() => joinRoomByCode(code))}
-        onQuickGame={() => setMpError('Quick race lands with MP-07 — host or join by code for now.')}
+        onQuickGame={() => void findRace()}
+        searching={search !== null}
+        windows={search?.windows ?? 0}
+        onCancelSearch={cancelSearch}
       />
     );
   }
@@ -283,6 +339,7 @@ export default function App() {
         onLeave={leaveRoom}
         onStart={startOnlineRace}
         link={link}
+        autoStart={quick}
         error={mpError}
         onError={setMpError}
       />,

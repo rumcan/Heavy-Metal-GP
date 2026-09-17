@@ -133,6 +133,19 @@ export function circuitIndexOf(settings: RaceSettings | undefined): number {
   return typeof settings.circuit === 'number' ? settings.circuit : 0;
 }
 
+/**
+ * The circuit a QUICK RACE runs: picked by the host, from the room's seed.
+ *
+ * Not `Math.random()`, for the same reason nothing else in this game uses it:
+ * the host republishing the lobby (a rejoin, a refresh) must not hand the field
+ * a different track, and the seed is the one thing both ends already agree on.
+ * The host still says which circuit in `lobby` — this only decides it.
+ */
+export function seededCircuit(seed: number, count: number): number {
+  if (count <= 0) return 0;
+  return Math.floor(mulberry32(seed >>> 0)() * count) % count;
+}
+
 /** A whole grid of seats, for a test or a lobby that has not heard from a room yet. */
 export function emptyGrid(): Seat[] {
   return Array.from({ length: MARBLE_COUNT }, (_, slot) => ({

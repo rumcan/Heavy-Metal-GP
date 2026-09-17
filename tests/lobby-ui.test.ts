@@ -99,6 +99,18 @@ test('MP-06 lobby: the panel offers host, join and quick race, and asks for six 
   assert.match(html, /Six drivers per race/);
 });
 
+test('MP-07 lobby: a quick-match search says it is still looking, and can be cancelled', () => {
+  const html = renderToStaticMarkup(createElement(OnlinePanel, { busy: true, error: null, onHost() {}, onJoin() {}, onQuick() {}, searching: true, windows: 2, onCancelSearch() {} }));
+  assert.match(html, /Looking for a race/);
+  // Two windows closed is not a failure — it is two thirty-second windows
+  // nobody else was looking in.
+  assert.match(html, /still looking after 2 attempts/);
+  assert.match(html, /Cancel/, 'and the search can be given up on');
+  // The host and join doors stay shut while a search is in flight: two rooms
+  // at once is two seats, and one of them is a ghost.
+  assert.match(html, /disabled/);
+});
+
 test('MP-06 lobby: the host screen shows the code, the circuit and a Start button', () => {
   const html = lobby(HOST);
   assert.match(html, /HM4X9Q/, 'the code is on the screen — big enough to read across a room');

@@ -100,8 +100,9 @@ code the client validates with.
 
 **The lobby ships in MP-06.** The garage's bottom bar has an **Online** mode
 next to Championship and Quick race: **Host game**, **Join with code** (the
-six-character code your host is showing) and **Quick race**, which waits for
-MP-07's matchmaking. The lobby (`src/components/OnlineLobby.tsx`) shows the code
+six-character code your host is showing) and **Quick race** (MP-07), which pairs
+you with anybody else who pressed the same button — no code typed by either
+side. The lobby (`src/components/OnlineLobby.tsx`) shows the code
 big enough to read across a room, with a copy button; the ten-slot grid (drivers
 with a portrait, livery and tune, the rest marked AI, and a kick button for the
 host); and, for the host, the circuit pick and the Start button, which lights up
@@ -110,6 +111,19 @@ seconds out — long enough for both browsers to build a ten-marble world from t
 seed — and `RaceScreen` runs the race through a `RaceSession`
 (`src/net/session.ts`), which is either the host's simulation or the guest's
 picture of it. The same screen, the same HUD, one prop's difference.
+
+**Quick race is a loop, not a request.** The SDK's `matchmakeRoom` is a bounded
+window: it waits, and when the window closes it rejects and drops the ticket.
+`src/net/matchmake.ts` is the "keep looking" part — it asks again after a pause,
+counts the windows it has burned through for the "still looking" line, lets the
+player cancel (the in-flight request can still land, so a room that arrives after
+a cancel is left rather than left holding a seat), and passes a real failure —
+access denied, no room server — straight to the player instead of spinning on it.
+Whoever the platform pairs first is the host. A quick lobby has no Ready button
+and no Start button: everybody is ready by sitting down, the host takes the
+circuit from the room's seed (never `Math.random()` — a republished lobby must
+not move the race to another track), and the lights go out twenty seconds after
+the second driver arrives, or the instant a sixth one does.
 
 The room owns who sits where; the host owns what the grid looks like. A guest's
 garage (tune, livery, portrait) reaches the host inside `ready` — the one frame
@@ -125,18 +139,23 @@ dev identity, and no sign-in is involved) at:
 http://localhost:5173/
 ```
 
-In the garage, pick **Online** → **Host game**; the lobby shows a code. In the
-other tab, **Online** → type the code → **Join with code**. Both drivers press
-**Ready**, the host presses **Start the race**, and both screens count down to
-the same instant. Vite also starts the room sidecar on port `9001` from
+In one tab, **Online** → **Host game**; the lobby shows a code. In the other,
+**Online** → type the code → **Join with code**. Both drivers press **Ready**,
+the host presses **Start the race**, and both screens count down to the same
+instant. Or skip both: press **Quick race** in each tab and wait — the pair
+lands in one room and the lights come down by themselves. Vite also starts the
+room sidecar on port `9001` from
 `rundot/realtime.config.json`: that is what makes host and join meet, and it
 only exists on `npm run dev` (a built or previewed page mocks rooms instead, and
 `src/net/transport.ts` detects that state and says so).
 
-Still to come in the epic: **MP-07** quick match, **MP-08** presence,
-reconnect and the rejoin offer (the active-match memo is already written when a
-race is entered and cleared when it is left), and **MP-09** results and payouts
-— an online race pays nothing yet, and online items wait for that ticket too.
+Still to come in the epic: **MP-08** presence, reconnect and the rejoin offer
+(the active-match memo is already written when a race is entered and cleared when
+it is left), **MP-09** results and payouts — an online race pays nothing yet, and
+online items wait for that ticket too — and **MP-10** the two-browser E2E
+harness. Online nudge-vs-simulation parity is also still hand-checked: the guest
+leans locally and sends the intent, but the host's picture of that lean has not
+been played side by side with the offline game.
 
 Two notes for a browser that is not on the dev machine (a tunnel, a sandbox
 preview, a phone on the LAN): the sidecar origin the plugin injects is

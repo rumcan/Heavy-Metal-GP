@@ -12,7 +12,7 @@
 // realtime API has exactly one door in this app, and this panel is not it.
 // ══════════════════════════════════════════════════════════════════════════
 import { useState } from 'react';
-import { Globe, LogIn, Radio, Users } from 'lucide-react';
+import { Globe, LogIn, Radio, Users, X } from 'lucide-react';
 import {
   ROOM_CODE_LENGTH,
   isOfflineMockRealtime,
@@ -28,15 +28,20 @@ interface Props {
   error: string | null;
   onHost: () => void;
   onJoin: (code: string) => void;
-  /** MP-07. Wired to matchmaking when that ticket lands. */
+  /** MP-07: pair with anybody else looking for a race. */
   onQuick: () => void;
-  quickEnabled?: boolean;
+  /** True while a quick-match search is in flight (MP-07). */
+  searching?: boolean;
+  /** How many matchmaking windows have closed with nobody found. */
+  windows?: number;
+  /** Give up looking (the in-flight request ends when its window does). */
+  onCancelSearch?: () => void;
 }
 
 /** Shown under a code that is not six characters yet. */
 export const CODE_HINT = 'Enter the six-character code your host is showing.';
 
-export default function OnlinePanel({ busy, error, onHost, onJoin, onQuick, quickEnabled = false }: Props) {
+export default function OnlinePanel({ busy, error, onHost, onJoin, onQuick, searching = false, windows = 0, onCancelSearch }: Props) {
   const [code, setCode] = useState('');
   const [hint, setHint] = useState<string | null>(null);
   // No room server means host and join can never meet: the SDK's offline mock
@@ -82,13 +87,20 @@ export default function OnlinePanel({ busy, error, onHost, onJoin, onQuick, quic
       </div>
       <button
         className="button-secondary"
-        disabled={!quickEnabled || busy || offline}
+        disabled={searching || busy || offline}
         onClick={onQuick}
-        title={quickEnabled ? 'Pair with any driver looking for a race' : 'Quick race lands with MP-07 — matchmaking'}
+        title="Pair with any driver looking for a race"
       >
-        <Users size={15} />Quick race{quickEnabled ? '' : ' (soon)'}
+        <Users size={15} />Quick race
       </button>
     </div>
+    {searching && <div className="online-search">
+      <span className="live-dot" aria-hidden />
+      {/* One SDK request is one window; the loop keeps asking, so "still
+          looking" is honest — nothing about this state is a failure. */}
+      <span>Looking for a race{windows > 0 ? ` — still looking after ${windows} attempt${windows === 1 ? '' : 's'}` : '…'}</span>
+      <button className="text-button" onClick={onCancelSearch}><X size={14} />Cancel</button>
+    </div>}
     {(hint ?? error) && <p className="online-note online-note-warn">{hint ?? error}</p>}
   </div>;
 }
