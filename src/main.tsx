@@ -18,16 +18,6 @@ import { preloadStorage } from "./game/storage";
 
 await preloadStorage();
 
-// MP-01 debug harness: `npm run dev` → `http://localhost:5173/?mpdebug=1` puts
-// Host / Join / Quick-match buttons on the page so two tabs can be paired
-// through the local room sidecar. Dev-only and opt-in (`import.meta.env.DEV`
-// lets the bundler drop this whole branch from a published build), and MP-06
-// deletes the entry point when the real lobby ships.
-if (import.meta.env.DEV && new URLSearchParams(window.location.search).has('mpdebug')) {
-  const { mountMpDebugPanel } = await import('./components/MpDebugPanel');
-  mountMpDebugPanel();
-}
-
 // ST-03 scene preview: `npm run dev` → `http://localhost:5173/?story=<sceneId>` (or `?story=list`)
 // mounts one dialogue scene full screen so script, portraits, props and choices can be checked without
 // racing into them. Dev-only and opt-in, so the bundler drops it from a published build.

@@ -52,6 +52,12 @@ export interface MarbleInfo {
   isPlayer: boolean;
   /** Rival sprite index, or the player's chosen portrait. */
   character?: number;
+  /**
+   * What this marble is carrying at the start (MP-09). Offline this is the
+   * local player's own kit and nobody else has one; online every human seat
+   * brings the items it bought.
+   */
+  inventory?: Inventory;
 }
 
 export interface PhysicsProps {

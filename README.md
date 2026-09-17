@@ -52,23 +52,150 @@ that talks to RUN.world's realtime API (room create/join by code, quick match,
 room-code helpers, the per-player active-match memo); everything else imports
 its wrappers, and `tests/multiplayer.test.ts` fails the moment another file
 reaches for the SDK's realtime client. The room itself is registered in
-`rundot/realtime.config.json` (`hmgp-race`, six seats) and currently just seats
-players — the relay, the race protocol and the lobby UI land in MP-03…MP-06.
+`rundot/realtime.config.json` (`hmgp-race`, six seats) and is now the **thin
+validating relay** (`src/rooms/RaceRoom.ts`): it mints the seed, names the host,
+keeps the seat table (player → grid slot), relays host state to everyone and
+guest intents to the host only, drops a guest-forged frame or one the protocol
+refuses, locks the room once the lights go out, and ends the race for everyone
+when the host leaves mid-heat. It never simulates.
+
+**Guests render** (`src/net/guest.ts`): the guest builds the identical circuit
+from the seed, then only ever MOVES bodies — no `Engine.update` anywhere. State
+frames land in a 100 ms interpolation buffer and the picture is played out on
+the guest's own clock, which is allowed to run 25 % fast to absorb a hole but
+never snaps the buffer in one frame. Events change what there is to see (a
+popped peg, a broken wall, a slick, a freeze, a finish) and are held until the
+picture reaches the frame they belong to, so they are drawn in step with the
+state they describe. The host says every batch twice: a state frame is
+absolute, so one the network eats heals itself, but an events frame is the
+only copy of "that peg popped", so each publish repeats the one before it and
+the guest ignores a sequence it has already drawn. The local marble leans the moment a key goes down and the
+next frame corrects it — a render-only lie the simulation never sees. A frame
+or two may go missing (every frame carries every marble, so the buffer steps
+over the hole); a bigger hole costs one `resync` and the world comes back
+whole.
+
+**The host simulates** (`src/net/host.ts`): one browser runs the Matter.js
+`Game` for all ten marbles and publishes `state` at 20 Hz, an `events` batch
+whenever something happened, a chunked snapshot on join/resync and the
+`results` once. Guests never step physics. The host applies a guest's intents at the next step,
+pacing nudges to 30 a second and holding items to the same `canUseItem` rule
+its own hands obey, and it owns the race clock: the lights go out at a
+wall-clock instant every tab was told about in advance. `Game` itself now takes
+N human seats (`humanInput`), so the AI keeps its hands off a guest who has
+joined but not touched a control, and offline play is unchanged.
+
+The **race protocol** (`src/net/protocol.ts`) is the wire both ends speak:
+`welcome`/`lobby`/`ready`/`start`, a 20 Hz `state` frame (ten marbles packed
+into 21 bytes each — five float32 plus a flag byte — and base64'd, ~330 bytes
+a frame), `events` (pegs, crates, boxes, items, oil, freeze, shock, finishes
+and sound cues), a chunked `snapshot` for join and resync, `intent` (analog
+nudge or item), `resync`, `results` and presence. `validateMessage` is the one
+door: it refuses an unknown type as malformed, an out-of-domain value as forged
+(a nudge past ±1, an item the game does not have, a body index no circuit has),
+a frame past the 16 KiB cap as oversized, and a welcome from another build with
+the reload message rather than a silent desync. The module is pure — no SDK, no
+DOM, no Matter.js — so the room bundle can import it and relay with the same
+code the client validates with.
+
+**The lobby ships in MP-06.** The garage's bottom bar has an **Online** mode
+next to Championship and Quick race: **Host game**, **Join with code** (the
+six-character code your host is showing) and **Quick race** (MP-07), which pairs
+you with anybody else who pressed the same button — no code typed by either
+side. The lobby (`src/components/OnlineLobby.tsx`) shows the code
+big enough to read across a room, with a copy button; the ten-slot grid (drivers
+with a portrait, livery and tune, the rest marked AI, and a kick button for the
+host); and, for the host, the circuit pick and the Start button, which lights up
+when two drivers are in and everybody is ready. Start arms the lights six
+seconds out — long enough for both browsers to build a ten-marble world from the
+seed — and `RaceScreen` runs the race through a `RaceSession`
+(`src/net/session.ts`), which is either the host's simulation or the guest's
+picture of it. The same screen, the same HUD, one prop's difference.
+
+**Quick race is a loop, not a request.** The SDK's `matchmakeRoom` is a bounded
+window: it waits, and when the window closes it rejects and drops the ticket.
+`src/net/matchmake.ts` is the "keep looking" part — it asks again after a pause,
+counts the windows it has burned through for the "still looking" line, lets the
+player cancel (the in-flight request can still land, so a room that arrives after
+a cancel is left rather than left holding a seat), and passes a real failure —
+access denied, no room server — straight to the player instead of spinning on it.
+Whoever the platform pairs first is the host. A quick lobby has no Ready button
+and no Start button: everybody is ready by sitting down, the host takes the
+circuit from the room's seed (never `Math.random()` — a republished lobby must
+not move the race to another track), and the lights go out twenty seconds after
+the second driver arrives, or the instant a sixth one does.
+
+**A dropped socket is not a dropped driver** (MP-08). The platform holds a seat
+for `reconnectTimeout` and flips `player.connected`, and the ROOM is the only
+end that sees both sides, so it is the room that speaks — one poll a second, and
+the two transitions go out as `peerStatus` with the hold window. What the two
+ends do with that frame is `src/net/presence.ts`, and the rule it exists to
+enforce is: **a race does not wait on a socket.** Three seconds without a driver
+and the AI has the marble (`humanInput` is what makes a marble a human's, so
+releasing one is a `delete`); the SEAT is still theirs until the room gives it
+up, and coming back inside the window hands it back with the world (`resync` →
+snapshot) rather than a shrug. A driver who never comes back is evicted when the
+window closes. A driver whose page REFRESHED is the same player asking for the
+same marble: the room re-greets them mid-race instead of refusing them, the host
+answers that greeting with the real grid (the room's welcome is only a seating
+plan — it does not know a livery from a tune), and their screen joins the race
+already in progress instead of waiting for a Start that already happened. The
+host is the one case with no way back: the host IS the simulation, so a host who
+drops ends the race for everyone — an overlay says so, the grid goes back to the
+garage, and the unfinished race pays nothing.
+
+The room owns who sits where; the host owns what the grid looks like. A guest's
+garage (tune, livery, portrait) reaches the host inside `ready` — the one frame
+a guest owns — and the room STAMPS that frame with `from`, because the SDK hands
+a client the payload alone, with no sender. A guest cannot forge another seat's
+nudges or file another driver's garage.
 
 To try it locally, `npm run dev`, then open **two tabs** (a second window or an
 incognito window is the cleanest way to be two players — each tab mints its own
 dev identity, and no sign-in is involved) at:
 
 ```
-http://localhost:5173/?mpdebug=1
+http://localhost:5173/
 ```
 
-That URL adds a small dev-only debug panel — **Host race**, **Join** with a
-six-character code, **Quick race** — which is the throwaway harness for this
-ticket; the real lobby replaces it. Vite also starts the room sidecar on port
-`9001` from `rundot/realtime.config.json`: that is what makes host and join
-meet, and it only exists on `npm run dev` (a built or previewed page mocks rooms
-instead, and `src/net/transport.ts` detects that state and says so).
+In one tab, **Online** → **Host game**; the lobby shows a code. In the other,
+**Online** → type the code → **Join with code**. Both drivers press **Ready**,
+the host presses **Start the race**, and both screens count down to the same
+instant. Or skip both: press **Quick race** in each tab and wait — the pair
+lands in one room and the lights come down by themselves. Vite also starts the
+room sidecar on port `9001` from
+`rundot/realtime.config.json`: that is what makes host and join meet, and it
+only exists on `npm run dev` (a built or previewed page mocks rooms instead, and
+`src/net/transport.ts` detects that state and says so).
+
+**Coming back:** close a tab mid-race and the garage offers it back — **You were
+in a race / ABC123 → Rejoin race**. The memo (`ACTIVE_MATCH_KEY`) is written when
+a race is entered and cleared when it is left *through a door this client
+controls*, which is exactly why a crash or a closed tab leaves it standing for up
+to ten minutes.
+
+**Money and kit are every screen's own business** (MP-09). There is no host
+banker: a host that could pay its guests could also simply not pay them. The host
+publishes `results` once, and every client settles ITSELF — its own seat out of
+that classification, at `ONLINE_PAYOUT_SCALE` (60 %: an online heat costs nothing
+to enter and is the easiest race in the game to repeat) — under a race id built
+from the room code and the published countdown instant, so the same race can
+never be collected twice. A driver who did not finish is paid nothing, and a race
+that never reached a classification (the host left, the results never came) calls
+nothing at all. Kits work the same way: each driver's items travel with their
+garage in `ready` (counts clamped by the wire), the host puts them on that seat's
+marble, and a human's kit changing republishes the world — one snapshot per
+change — so a guest's toolbar is never lying about what they are holding. Come
+home with what you came home with: spent is spent, picked is kept. **Race again**
+returns the whole room to the lobby with its seats intact, and the host may pick
+another circuit before dropping the lights.
+
+Still to come in the epic: **MP-10**, the two-browser E2E harness — the
+acceptance for the reconnect work above is a Playwright test (a guest goes
+offline for ten seconds and takes the same marble back), and this repository has
+no browser in it yet. Online nudge-vs-simulation parity is also still
+hand-checked: the guest leans locally and sends the intent, but the host's
+picture of that lean has not been played side by side with the offline game.
 
 Two notes for a browser that is not on the dev machine (a tunnel, a sandbox
 preview, a phone on the LAN): the sidecar origin the plugin injects is
@@ -76,9 +203,9 @@ preview, a phone on the LAN): the sidecar origin the plugin injects is
 `RUNDOT_DEV_ROOM_URL=https://… npm run dev`. And editing `vite.config.ts` while
 the dev server runs makes Vite restart it, which can lose the race for port 9001
 and exit with `EADDRINUSE`; restart `npm run dev` if that happens. A deliberate
-leave is held for the room's 60-second reconnect grace before the other seat
-sees the player leave — that is the platform's seat hold, and MP-08 is where it
-becomes visible.
+leave is held for the room's 30-second reconnect grace before the other seat
+sees the player leave — that is the platform's seat hold, and the room already
+announces the drop (`peerStatus`) with the countdown attached.
 
 ## Credits And The Pit Shop
 
@@ -160,6 +287,11 @@ Run physics and championship tests only with
 
 Run browser tests with `node --import tsx --test tests/browser.test.ts`.
 
+The simulation's import tree is deliberately free of the SDK — `season.ts`
+hands its device cache to `storage.ts` at boot (`bindStorage`) rather than
+importing it, because the SDK builds its API object at module scope and reads
+`window` doing it. That is what lets a node test construct a `Game` at all.
+
 The build automatically runs type checking and the regression suites. A small
 PostCSS configuration provides this build gate without changing the supplied
 npm scripts or Vite configuration. It does not transform CSS or run tests when
@@ -176,7 +308,35 @@ corrupt saves, payout amounts and duplicate-payout prevention.
 module may import the SDK's realtime API (and one server module the room
 server), that the room registration and the transport agree on the room type,
 criteria and capacity, and the room-code, matchmaking-expiry and access-denied
-helpers.
+helpers. `tests/protocol.test.ts` covers the race wire: that every message
+validates, that unknown, oversized and forged frames are refused with the code
+that says which, that a version mismatch produces the reload message, that a
+ten-marble `state` frame stays far under 4 KiB, that chunked snapshots
+reassemble (out of order, and after a newer transfer supersedes an older one)
+and are dropped when they do not describe a world, and that the protocol module
+keeps the imports the room bundle can live with. `tests/room.test.ts` drives the
+relay through the SDK's own dispatch with a fake room protocol: the seed is
+minted from the room id, guest-forged state is dropped while the host's is
+broadcast, intents reach the host and nobody else, the seventh player is
+refused, `start` locks the door, the host leaving mid-race ends the race for
+everyone, and a dropped socket is announced with its reconnect window.
+`tests/host.test.ts` runs a whole race through the host on a clock the test
+moves by hand: the gate opens on the countdown and not before, the lights ride
+out in the frames, publishing holds 20 Hz, every frame the host emits survives
+`validateMessage`, guest intents steer their marble while the AI leaves human
+seats alone, nudges are pacing-limited and items held to `canUseItem`, a
+snapshot reassembles into the world, and — the acceptance — a guest replaying
+the frame stream (it has the seed, so it has the track, so it can tell a
+scoring peg from a dud) classifies the race exactly as the host's `results`
+frame does. It also times the publishing against a frame budget.
+`tests/guest.test.ts` stands a host and a guest either side of a fake network —
+a queue with a delivery time and a seeded coin for loss — and plays a whole
+race across 150 ms and 2 % loss: the picture never teleports, the guest asks
+for at most one resync, and its world agrees with the host's. It also covers a
+snapshot handing over the whole world, a twenty-frame blackout costing exactly
+one resync, late/duplicate/out-of-order/garbage frames, every event kind, a
+forged body index being ignored rather than crashed on, and the optimistic
+lean being bounded and corrected.
 
 `tests/trackdef.test.ts` covers the track definition format (MB-01): 28
 recordings across the six circuits and the default profile rebuild body for

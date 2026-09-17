@@ -107,8 +107,11 @@ test('MP-01 isolation: the seam is real, so the scan above cannot pass vacuously
   assert.match(seam, /RundotGameAPI\s*\.\s*realtime/, 'transport.ts must read the realtime API off the SDK singleton');
   assert.ok(seam.includes('createRoom') && seam.includes('joinRoomByCode') && seam.includes('matchmakeRoom'));
   assert.ok(files.length > 20, `expected a populated src/ tree, scanned ${files.length} files`);
-  // The dev harness of MP-01 goes through the wrappers like any other caller.
-  assert.equal(imports('src/components/MpDebugPanel.tsx', 'mp-client'), false);
+  // The lobby (MP-06) goes through the wrappers like any other caller: the
+  // realtime API has one door, and the UI is not it.
+  assert.equal(imports('src/components/OnlineLobby.tsx', 'mp-client'), false);
+  assert.equal(imports('src/components/OnlinePanel.tsx', 'mp-client'), false);
+  assert.equal(imports('src/components/RaceScreen.tsx', 'mp-client'), false);
 });
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -134,7 +137,9 @@ test('MP-01 registration: rundot/realtime.config.json registers the room the tra
   // humans + AI filling the other seats of a 10-marble grid").
   assert.equal(room.config?.maxPlayers, 6);
   assert.ok(room.config?.allowReconnect, 'a dropped seat must be held for the reconnect window (MP-08)');
-  assert.equal(room.config?.reconnectTimeout, 60);
+  // MP-03 set this to 30: half the grace the room started with. It is the
+  // number `peerStatus.graceMs` prints, so it is the room's copy that counts.
+  assert.equal(room.config?.reconnectTimeout, 30);
 });
 
 test('MP-01 registration: the registered room file exists and default-exports the room class', () => {
@@ -151,8 +156,16 @@ test('MP-01 registration: the e2e rooms file ships the same room with the suite-
   // repo owns instead of one inherited from the shipped file.
   const shipped = readRooms('rundot/realtime.config.json');
   const e2e = readRooms('rundot/realtime.e2e.config.json');
-  assert.deepEqual(e2e, shipped, 'the e2e file must not drift from the shipped room shape');
-  assert.equal(e2e.rooms[0].config?.reconnectTimeout, 60);
+  // …everything except the grace, which is the one number the suite owns: the
+  // shipped 30 seconds is a player's window, and a spec that waits on one is a
+  // spec that takes half a minute per departure.
+  const withoutGrace = (config: RoomsConfig): RoomsConfig => ({
+    rooms: config.rooms.map((r) => ({ ...r, config: { ...r.config, reconnectTimeout: 0 } })),
+  });
+  assert.deepEqual(withoutGrace(e2e), withoutGrace(shipped), 'the e2e file must not drift from the shipped room shape');
+  assert.equal(shipped.rooms[0].config?.reconnectTimeout, 30, 'the shipped grace is a player’s');
+  assert.equal(e2e.rooms[0].config?.reconnectTimeout, 12, 'the suite’s grace is a spec’s');
+  assert.ok(e2e.rooms[0].config?.allowReconnect, 'a dropped seat is still held for the (shorter) window');
 });
 
 test('MP-01 registration: npm run dev wires the local room sidecar', () => {

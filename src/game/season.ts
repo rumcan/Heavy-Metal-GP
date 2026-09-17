@@ -1,6 +1,5 @@
 import * as storage from './storage';
 import { GrandPrix, HeatResult, MarbleInfo, POINTS, FASTEST_BONUS, HEATS_PER_GP, TEAMS, Team, TrackProfile, CIRCUIT_LENGTH_MULTIPLIER, TRACK_THEMES, ThemeId } from './types';
-import { W } from './track';
 
 const P = (segments: number, weights: Record<string, number>, theme: ThemeId): TrackProfile => ({ segments: segments * CIRCUIT_LENGTH_MULTIPLIER, weights, theme: TRACK_THEMES[theme] });
 
@@ -173,16 +172,10 @@ export function gridOrder(s: SeasonState): number[] {
   return st.map((x) => x.id);
 }
 
-/** Convert a grid order (P1..P10) into x positions on the start line: pole in the centre, alternating outward. */
-export function gridSlots(order: number[]): { id: number; x: number; slot: number }[] {
-  const n = order.length;
-  if (n === 0) return [];
-  if (n === 1) return [{ id: order[0], x: W / 2, slot: 1 }];
-  const spacing = (W - 120) / (n - 1);
-  const xs = Array.from({ length: n }, (_, i) => 60 + i * spacing);
-  const byCenter = [...xs].sort((a, b) => Math.abs(a - W / 2) - Math.abs(b - W / 2));
-  return order.map((id, i) => ({ id, x: byCenter[i], slot: i + 1 }));
-}
+// The start grid moved to `grid.ts` (pure geometry, no SDK) so the simulation
+// no longer imports the season — and through it the SDK — just to place ten
+// marbles on a line. Re-exported here: the season still hands out grid orders.
+export { gridSlots } from './grid';
 
 const KEY = 'mrr-season-v1';
 export function saveSeason(s: SeasonState | null) {

@@ -32,11 +32,15 @@ import RundotGameAPI from '@series-inc/rundot-game-sdk/api';
 import type {
   ConnectionState,
   MultiplayerApi,
-  Protocol,
   RoomEvents,
   ServerPlayer,
   ServerRoom,
 } from '@series-inc/rundot-game-sdk/mp-client';
+// MP-02: the message union this transport speaks now exists. `protocol.ts` is
+// pure (no SDK, no DOM, no Matter) so importing it here costs nothing and does
+// not drag the room bundle into the page.
+import type { RaceProtocol } from './protocol';
+export type { RaceProtocol };
 // `ListUserRoomsOptions` / `RealtimeRoomSummary` are not re-exported from
 // `/mp-client` — they live on the package root. Type-only: erased at build.
 import type { ListUserRoomsOptions, RealtimeRoomSummary } from '@series-inc/rundot-game-sdk';
@@ -55,15 +59,15 @@ export const MATCH_CRITERIA: Record<string, string | number> = { mode: 'race' };
 export const ROOM_CODE_LENGTH = 6;
 
 /**
- * The message union this transport speaks.
+ * The message union this transport speaks: the race protocol, `RaceProtocol`
+ * from `src/net/protocol.ts` (MP-02), re-exported above.
  *
- * MP-01 registers the room with the SDK's base `Protocol` (`{ type: string }`)
- * because the race protocol is MP-02's ticket: the relayed messages (snapshots,
- * deltas, intents, version refusal) land in `src/net/protocol.ts` and this alias
- * becomes that union. Until then the transport is typed, not untyped — every
- * room call below still goes through `ServerRoom<…>`.
+ * MP-01 registered the room with the SDK's base `Protocol` (`{ type: string }`)
+ * because the wire itself was MP-02's ticket. Now that it exists, every room
+ * call below is typed against it: `room.send()` takes a real race message, and
+ * `onMessage` hands back a validated-looking one (validation itself is
+ * `validateMessage`, not the type).
  */
-export type RaceProtocol = Protocol;
 
 /** A connected RUN room speaking the race protocol. */
 export type RaceRoom = ServerRoom<RaceProtocol>;

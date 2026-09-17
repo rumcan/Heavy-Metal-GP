@@ -1,9 +1,9 @@
 import Matter from 'matter-js';
 import { generateTrack, meta, Track, CAT_MARBLE, CAT_WALL, CAT_SENSOR, CAT_LOOP_UP, CAT_LOOP_CLOSE, W } from './track';
 import { TrackDefError, buildTrackFromDef } from './trackdef';
-import { ItemType, MarbleInfo, MARBLE_RADIUS, statsToPhysics, mulberry32, TrackProfile, emptyInventory, normalizeInventory, ITEM_TYPES, ITEM_INFO, MAX_ITEM_STACK } from './types';
+import { ItemType, MarbleInfo, MARBLE_RADIUS, statsToPhysics, mulberry32, TrackProfile, normalizeInventory, ITEM_TYPES, ITEM_INFO, MAX_ITEM_STACK } from './types';
 import type { Inventory } from './types';
-import { gridSlots } from './season';
+import { gridSlots } from './grid';
 import { assistRolling, BASE_TICK, createMarble, downhill } from './physics';
 import type { RampSurface } from './physics';
 import type { SoundEvent, SoundType } from './audio';
@@ -11,6 +11,7 @@ import type { SoundEvent, SoundType } from './audio';
 // hooks themselves live in `src/game/story/modifiers.ts`, which the race screen supplies. Nothing in the
 // story folder is imported at runtime by the engine, so a race without story mode is byte-for-byte today's.
 import type { RaceCounter, StoryHooks } from './story/types';
+import type { ItemBoxState, MarbleState, RaceEvent } from '../net/protocol';
 
 export interface GameOptions {
   profile?: TrackProfile;
@@ -28,7 +29,39 @@ export interface GameOptions {
   inventory?: Partial<Inventory>;
   /** STORY HOOKS (ST-07), additive and optional. Unset: the engine behaves exactly as before. */
   story?: StoryHooks;
+  /**
+   * MP-04: marble ids (seat slots) driven by a human on ANOTHER machine. The
+   * host seats them and drives them from their intents; the AI never touches
+   * them. The local seat is not listed — it uses `nudge`.
+   */
+  humanSeats?: number[];
+  /**
+   * MP-04: collect wire events for a host to publish (`drainRaceEvents`). Off
+   * by default, so a single-player race pays nothing for a wire it never uses.
+   */
+  wireEvents?: boolean;
 }
+
+/**
+ * MP-04: the `loop` value of every marble once the gate is open. The three
+ * spare bits in a state frame's flag byte hold the start-light stage (0..5),
+ * so a guest can draw the lights from the frames it is already applying; 6 is
+ * "the gate is open". `MAX_LOOP_STAGE` is 7, so this stays in range.
+ */
+export const LIGHTS_OUT_STAGE = 6;
+
+/**
+ * MP-04: how many wire events may wait for a host that has stopped publishing.
+ * A drained queue is the normal case (20 Hz); this only bounds the burst.
+ */
+export const EVENT_QUEUE_CAP = 256;
+
+/**
+ * MP-04: how long a lit peg glows before it pops away. Exported because the
+ * guest hides it on the same clock: the `peg` event fires when the marble hits
+ * it, and both ends retire the peg this many milliseconds later.
+ */
+export const PEG_POP_MS = 150;
 
 const { Engine, Bodies, Body, Composite, Events, Query } = Matter;
 
@@ -114,6 +147,16 @@ export class Game {
   time = 0;
   started = false;
   gateOpen = false;
+  /** MP-04: start-light stage — 0..5 on the grid, LIGHTS_OUT_STAGE once racing. */
+  stage = 0;
+  /**
+   * MP-04: marbles driven by a human who is NOT this machine, keyed by marble
+   * id (= seat slot). The local player keeps using `nudge` — it never crosses a
+   * wire — and every entry here is a guest the HOST is driving on their behalf.
+   * An entry means "a person is in this seat", so the AI keeps its hands off
+   * even before the guest's first intent arrives.
+   */
+  humanInput = new Map<number, { nudge: number }>();
   finishOrder: Marble[] = [];
   nudge = 0;
   rng: () => number;
@@ -133,6 +176,13 @@ export class Game {
   private pendingBreaks: { body: Matter.Body; marble: Marble; v: { x: number; y: number } }[] = [];
   onEvent?: (msg: string, color?: string) => void;
   onInventoryChange?: (inventory: Inventory) => void;
+  /** MP-04: wire events queued since the last `drainRaceEvents`. */
+  private raceEvents: RaceEvent[] = [];
+  /** Body → its index in `track.bodies`: the stable reference the wire speaks. */
+  private bodyIndex = new Map<Matter.Body, number>();
+  /** Indices of destroyed track bodies, for the join/resync snapshot. */
+  private destroyed = new Set<number>();
+  private wireEvents: boolean;
   /** Why `GameOptions.def` was refused, in the player's words, or null when there was nothing to refuse. */
   trackDefError: string | null = null;
   private poppingPegs = new Set<Matter.Body>();
@@ -156,7 +206,14 @@ export class Game {
     this.story = opts.story;
     const storyWeights = opts.story?.weights;
     const profile = opts.profile && storyWeights ? { ...opts.profile, weights: { ...opts.profile.weights, ...storyWeights } } : opts.profile;
+    // A custom `TrackDef` wins over the seed; the seed is what a multiplayer
+    // race agrees on, and either way the circuit is built once, here.
     this.track = opts.track ?? this.trackFor(seed, profile, opts.def);
+    this.wireEvents = opts.wireEvents === true;
+    // The wire names track bodies by their index in `track.bodies`. Both sides
+    // build the identical circuit from the seed, so an index IS the body — and
+    // an index either end can check against `track.bodies.length`.
+    this.bodyIndex = new Map(this.track.bodies.map((body, i) => [body, i]));
     this.recoveryEnabled = opts.recovery !== false;
     this.effectsEnabled = opts.effects !== false;
     this.aiItemsEnabled = opts.aiItems !== false;
@@ -175,7 +232,9 @@ export class Game {
         restitution: ph.restitution,
         frictionAir: ph.frictionAir,
         maxSpeed: ph.maxSpeed,
-        inventory: info.isPlayer ? normalizeInventory(opts.inventory) : emptyInventory(),
+        // MP-09: the local player's kit, or the kit this seat came to the grid
+        // with online — every human seat spends its own items.
+        inventory: info.isPlayer ? normalizeInventory(opts.inventory) : normalizeInventory(info.inventory),
         itemCooldownUntil: 0,
         aeroUntil: 0,
         jumpUntil: 0,
@@ -208,6 +267,9 @@ export class Game {
       this.byId.set(info.id, m);
     });
     this.marbles.sort((a, b) => a.info.id - b.info.id);
+    // Guest seats are human from the moment they are seated, not from their
+    // first intent: an idle guest must not be driven by the AI.
+    for (const id of opts.humanSeats ?? []) if (!this.humanInput.has(id)) this.humanInput.set(id, { nudge: 0 });
     Composite.add(
       this.world,
       this.marbles.map((m) => m.body),
@@ -257,6 +319,70 @@ export class Game {
     this.started = true;
   }
 
+  /** MP-04: true when a person — local or remote — is driving this marble. */
+  isHuman(m: Marble): boolean {
+    return m.info.isPlayer || this.humanInput.has(m.info.id);
+  }
+
+  /** MP-04: this body's index in `track.bodies`, or -1 when it is not the track. */
+  indexOf(body: Matter.Body): number {
+    return this.bodyIndex.get(body) ?? -1;
+  }
+
+  /**
+   * MP-04: queue one wire event for the host to publish.
+   *
+   * Only the things a guest cannot re-derive travel: a crate, a peg, a box, an
+   * item, a finish. Everything with its own event carries NO sound cue — the
+   * guest makes the noise from the event it is already drawing. Cues are for
+   * the rest: the gate, the countdown, a bounce pad, a bucket.
+   */
+  emit(event: RaceEvent): void {
+    if (!this.wireEvents) return;
+    if (this.raceEvents.length >= EVENT_QUEUE_CAP) this.raceEvents.shift();
+    this.raceEvents.push(event);
+  }
+
+  /** MP-04: hand the host everything that happened since the last drain. */
+  drainRaceEvents(): RaceEvent[] {
+    if (!this.raceEvents.length) return [];
+    const out = this.raceEvents;
+    this.raceEvents = [];
+    return out;
+  }
+
+  /**
+   * MP-04: every marble as the wire wants it, in seat order.
+   *
+   * `marbles` is sorted by `info.id`, and the roster is ten marbles with ids
+   * 0..9 — one seat, one id, one offset in every packed frame.
+   */
+  marbleStates(): MarbleState[] {
+    return this.marbles.map((m) => ({
+      x: m.body.position.x,
+      y: m.body.position.y,
+      vx: m.body.velocity.x,
+      vy: m.body.velocity.y,
+      a: m.body.angle,
+      finished: m.finishedAt !== null,
+      frozen: m.frozen,
+      oil: m.inOil,
+      ghost: this.time < m.ghostUntil,
+      anvil: this.time < m.anvilUntil,
+      loop: this.stage,
+    }));
+  }
+
+  /** MP-04: indices of the track bodies this race has destroyed, ascending. */
+  destroyedIndices(): number[] {
+    return [...this.destroyed].sort((a, b) => a - b);
+  }
+
+  /** MP-04: every item box as the wire wants it. */
+  boxStates(): ItemBoxState[] {
+    return this.track.itemBoxes.map((box) => ({ i: this.indexOf(box), active: meta(box).active !== false }));
+  }
+
   private syncTrack() {
     if (!this.streaming) return;
     const cells = new Set<number>();
@@ -279,10 +405,23 @@ export class Game {
     this.loadedBodies = wanted;
   }
 
+  /**
+   * Destroy a track body BY INDEX — what a guest does with the host's
+   * `destroyed` list (and with a `peg` or `crate` event). The guest has no
+   * physics of its own, but it must keep the same bookkeeping as the host or
+   * the two screens disagree about which pegs are still standing.
+   */
+  destroyBody(index: number): void {
+    const body = this.track.bodies[index];
+    if (body) this.removeTrackBody(body);
+  }
+
   private removeTrackBody(body: Matter.Body) {
     meta(body).destroyed = true;
     Composite.remove(this.world, body);
     this.loadedBodies.delete(body.id);
+    const index = this.indexOf(body);
+    if (index >= 0) this.destroyed.add(index);
   }
 
   openGate() {
@@ -290,6 +429,8 @@ export class Game {
     this.gateOpen = true;
     this.raceStartTime = this.time;
     this.sfx('go', this.player, W / 2, 0);
+    this.stage = LIGHTS_OUT_STAGE;
+    this.emit({ kind: 'sound', cue: 'gate' });
     // trapdoor opens: marbles start from rest and let gravity do the work
     this.removeTrackBody(this.track.gate);
     this.marbles.forEach((m) => {
@@ -386,6 +527,7 @@ export class Game {
         const dmg = m.body.mass * speed;
         md.hp = (md.hp ?? 0) - dmg;
         if (md.hp > 0 && dmg > 0.5) this.sfx('crack', m, other.position.x, other.position.y);
+        this.emit({ kind: 'crate', i: this.indexOf(other), hp: Math.max(0, md.hp), broken: md.hp <= 0 });
         this.effects.push({
           type: 'debris',
           x: other.position.x,
@@ -430,6 +572,10 @@ export class Game {
         this.sfx('spring', m, other.position.x, other.position.y);
         this.storyCounter('pads', m); // STORY HOOK (ST-07)
         this.effects.push({ type: 'ring', x: other.position.x, y: other.position.y - 10, ttl: 20, maxTtl: 20, color: '#34d399' });
+        // Pad, bucket, gate and countdown have no event of their own, so they
+        // cross as a cue. A booster does not: it fires every step, and a guest
+        // can see a marble is on a booster from the track it already built.
+        this.emit({ kind: 'sound', cue: 'pad', seat: m.info.id });
         if (m.info.isPlayer) this.onEvent?.(`Boing! Bounce power ${(m.restitution * 100).toFixed(0)}%`, '#34d399');
         break;
       }
@@ -442,6 +588,7 @@ export class Game {
         this.grantItem(m, available[Math.floor(this.rng() * available.length)]);
         this.sfx('pickup', m, other.position.x, other.position.y);
         this.storyCounter('itemBoxes', m); // STORY HOOK (ST-07)
+        this.emit({ kind: 'box', i: this.indexOf(other), taken: true, seat: m.info.id });
         this.effects.push({ type: 'ring', x: other.position.x, y: other.position.y, ttl: 18, maxTtl: 18, color: '#facc15' });
         break;
       }
@@ -450,6 +597,7 @@ export class Game {
         md.hit = true;
         md.hitAt = this.time;
         this.poppingPegs.add(other);
+        this.emit({ kind: 'peg', i: this.indexOf(other), seat: m.info.id });
         const col = md.pegColor ?? 'blue';
         this.sfx('peg', m, other.position.x, other.position.y, { color: col });
         const pc = col === 'orange' ? '#fb923c' : col === 'green' ? '#4ade80' : '#60a5fa';
@@ -481,6 +629,7 @@ export class Game {
         this.effects.push({ type: 'ring', x: other.position.x, y: other.position.y, ttl: 24, maxTtl: 24, color: '#fbbf24' });
         this.effects.push({ type: 'text', x: other.position.x, y: other.position.y - 30, ttl: 60, maxTtl: 60, color: '#fbbf24', text: 'ALL ABOARD!' });
         if (m.info.isPlayer) this.onEvent?.('ALL ABOARD! Minecart express', '#fbbf24');
+        this.emit({ kind: 'sound', cue: 'bucket', seat: m.info.id });
         break;
       }
       case 'finish': {
@@ -552,9 +701,45 @@ export class Game {
     m.finishedAt = this.raceTime();
     this.finishOrder.push(m);
     if (m.info.isPlayer) this.sfx('finish', m, m.body.position.x, m.body.position.y, { rank: this.finishOrder.length });
+    this.emit({ kind: 'finish', seat: m.info.id, time: m.finishedAt, rank: this.finishOrder.length });
     m.body.frictionAir = 0.045;
     m.trail = [];
     this.effects.push({ type: 'ring', x: m.body.position.x, y: m.body.position.y, ttl: 30, maxTtl: 30, color: m.info.color });
+  }
+
+  /**
+   * Move a finished marble off the track: a sensor parked by the finish line,
+   * out of everyone's way. The host does this from `step`; a GUEST does it from
+   * the `finish` event, because it never steps — and both ends must park in the
+   * same place or the two screens disagree about where the finishers are.
+   */
+  park(m: Marble): void {
+    if (m.body.isSensor) return;
+    Composite.remove(this.world, m.body);
+    m.body.isSensor = true;
+    Body.setPosition(m.body, { x: 80 + (m.info.id % 10) * 80, y: this.track.finishY + 75 });
+    Body.setVelocity(m.body, { x: 0, y: 0 });
+    Body.setAngularVelocity(m.body, 0);
+  }
+
+  /**
+   * Age the effects (and the screen shake) by `dt` ms. `step` calls this; a
+   * GUEST calls it from its own loop, because it never steps physics but still
+   * has to retire the rings and sparks it drew from the host's `events`.
+   */
+  ageEffects(dt: number): void {
+    const s = dt / TICK;
+    for (const e of this.effects) {
+      e.ttl -= s;
+      if (e.particles)
+        for (const p of e.particles) {
+          p.x += p.vx * s;
+          p.y += p.vy * s;
+          p.vy += 0.15 * s;
+        }
+    }
+    this.effects = this.effects.filter((e) => e.ttl > 0);
+    if (this.shake > 0) this.shake = Math.max(0, this.shake - s);
   }
 
   private updateRecovery(m: Marble, dt: number) {
@@ -726,9 +911,12 @@ export class Game {
     m.inventory[item]--;
     m.itemCooldownUntil = this.time + 450;
     this.sfx('item', m, p.x, p.y);
+    this.emit({ kind: 'item', seat: m.info.id, item });
     switch (item) {
       case 'oil': {
-        this.oils.push({ x: p.x, y: p.y - 10, r: 48, ownerId: m.info.id, expiresAt: this.time + 9000 });
+        const slick = { x: p.x, y: p.y - 10, r: 48, ownerId: m.info.id, expiresAt: this.time + 9000 };
+        this.oils.push(slick);
+        this.emit({ kind: 'oil', x: slick.x, y: slick.y, r: slick.r, seat: m.info.id, until: slick.expiresAt });
         break;
       }
       case 'freeze': {
@@ -738,6 +926,7 @@ export class Game {
           this.setFrozen(target, true);
           this.effects.push({ type: 'beam', x: p.x, y: p.y, x2: target.body.position.x, y2: target.body.position.y, ttl: 20, maxTtl: 20, color: '#7dd3fc' });
           this.effects.push({ type: 'snow', x: target.body.position.x, y: target.body.position.y, ttl: 40, maxTtl: 40, color: '#bae6fd', particles: this.makeParticles(target.body.position.x, target.body.position.y, 12, 2) });
+          this.emit({ kind: 'freeze', seat: target.info.id, by: m.info.id, until: target.frozenUntil });
           if (target.info.isPlayer) this.onEvent?.(`${m.info.name} froze you!`, '#7dd3fc');
           if (m.info.isPlayer) this.onEvent?.(`Froze ${target.info.name}!`, '#7dd3fc');
         }
@@ -764,6 +953,7 @@ export class Game {
       case 'shock': {
         this.shake = 8;
         this.effects.push({ type: 'ring', x: p.x, y: p.y, ttl: 30, maxTtl: 30, color: '#facc15' });
+        this.emit({ kind: 'shock', seat: m.info.id, x: p.x, y: p.y });
         for (const o of this.marbles) {
           if (o === m || o.finishedAt !== null) continue;
           const dx = o.body.position.x - p.x;
@@ -867,7 +1057,10 @@ export class Game {
     // item boxes respawn
     for (const box of this.track.itemBoxes) {
       const md = meta(box);
-      if (!md.active && this.time >= (md.respawnAt ?? 0)) md.active = true;
+      if (!md.active && this.time >= (md.respawnAt ?? 0)) {
+        md.active = true;
+        this.emit({ kind: 'box', i: this.indexOf(box), taken: false });
+      }
     }
     // spinners
     for (const sp of this.track.spinners) {
@@ -892,7 +1085,7 @@ export class Game {
     // hit pegs pop away after a short glow
     for (const body of this.poppingPegs) {
       const md = meta(body);
-      if (this.time > (md.hitAt ?? 0) + 150) {
+      if (this.time > (md.hitAt ?? 0) + PEG_POP_MS) {
         this.removeTrackBody(body);
         this.poppingPegs.delete(body);
         this.effects.push({ type: 'ring', x: body.position.x, y: body.position.y, ttl: 10, maxTtl: 10, color: 'rgba(255,255,255,0.6)' });
@@ -954,10 +1147,11 @@ export class Game {
         }
       }
 
-      // player nudge
-      if (m.info.isPlayer && this.nudge !== 0) {
-        if (Math.abs(v.x) < 9 || Math.sign(v.x) !== Math.sign(this.nudge)) v = { x: v.x + this.nudge * 0.16 * s, y: v.y };
-      }
+      // MP-04: input is per-seat now. The local player drives `nudge` (it never
+      // crosses a wire); any other human seat is a guest whose intents the host
+      // has already applied to `humanInput`.
+      const input = this.humanInput.get(m.info.id)?.nudge ?? (m === this.player ? this.nudge : 0);
+      if (input !== 0 && (Math.abs(v.x) < 9 || Math.sign(v.x) !== Math.sign(input))) v = { x: v.x + input * 0.16 * s, y: v.y };
 
       // speed cap
       const cap = this.speedLimit(m);
@@ -973,7 +1167,7 @@ export class Game {
 
       // AI item usage
       const item = this.availableItem(m);
-      if (this.aiItemsEnabled && !m.info.isPlayer && item && this.time > m.aiUseAt) {
+      if (this.aiItemsEnabled && !this.isHuman(m) && item && this.time > m.aiUseAt) {
         // STORY HOOK (ST-07): a chapter may give this rival a preferred target. Unset: today's AI, unchanged.
         const hunted = this.story ? this.storyTarget(m) : undefined;
         const shockRange = hunted ? 260 : 200;
@@ -986,31 +1180,14 @@ export class Game {
       }
     }
 
-    // effects
-    for (const e of this.effects) {
-      e.ttl -= s;
-      if (e.particles)
-        for (const p of e.particles) {
-          p.x += p.vx * s;
-          p.y += p.vy * s;
-          p.vy += 0.15 * s;
-        }
-    }
-    this.effects = this.effects.filter((e) => e.ttl > 0);
-    if (this.shake > 0) this.shake = Math.max(0, this.shake - s);
+    this.ageEffects(dt);
 
     this.supports.clear();
     Engine.update(this.engine, dt);
 
     for (const m of this.marbles) {
       if (m.finishedAt !== null) {
-        if (!m.body.isSensor) {
-          Composite.remove(this.world, m.body);
-          m.body.isSensor = true;
-          Body.setPosition(m.body, { x: 80 + (m.info.id % 10) * 80, y: this.track.finishY + 75 });
-          Body.setVelocity(m.body, { x: 0, y: 0 });
-          Body.setAngularVelocity(m.body, 0);
-        }
+        this.park(m);
         continue;
       }
       if (m.frozen) continue;
