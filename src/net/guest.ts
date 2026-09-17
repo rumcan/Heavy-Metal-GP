@@ -75,6 +75,8 @@ export const MAX_LOCAL_TILT = 0.4;
  * motion on screen never looks like a fast-forward.
  */
 export const MAX_CATCHUP_RATE = 1.25;
+/** The most extra playout delay bursty delivery may add. */
+export const MAX_JITTER_MS = 400;
 
 export interface RaceGuestOptions {
   seed: number;
@@ -129,6 +131,16 @@ export class RaceGuest {
   private resyncCount = 0;
   private lastUpdate = 0;
   private tilt = 0;
+  /**
+   * Host clock → local clock. The smallest (arrival − host time) seen, relaxed
+   * upward slowly. Frames are placed at `t + offset`, NOT at their arrival
+   * time: a browser busy with input (a held key) delivers socket messages late
+   * and in bursts, and interpolating on arrival turned that into a frozen
+   * marble followed by a fast-forward.
+   */
+  private offset: number | null = null;
+  /** How late frames have recently been beyond the offset. The playout delay grows to cover it, then shrinks back. */
+  private jitter = 0;
   /** The guest's playout clock (see `update`). */
   private playout = 0;
   private classified: ResultsMsg | null = null;
@@ -247,7 +259,10 @@ export class RaceGuest {
     const marbles = unpackState(msg.marbles);
     if (!marbles) return; // not a frame this version can read
     if (msg.seq <= this.appliedSeq && !this.snapPending) return; // duplicate, or late
-    this.frames.push({ seq: msg.seq, t: msg.t, at, marbles });
+    const raw = at - msg.t;
+    if (this.offset === null || raw < this.offset) this.offset = raw;
+    this.jitter = Math.min(MAX_JITTER_MS, Math.max(this.jitter, raw - this.offset));
+    this.frames.push({ seq: msg.seq, t: msg.t, at: msg.t + this.offset, marbles });
     if (this.frames.length > MAX_BUFFER_FRAMES) this.frames.shift();
     // Ordered by seq even when the network is not: interpolation on arrival
     // time is the point, but a frame that arrives out of order must not sit
@@ -331,13 +346,16 @@ export class RaceGuest {
   update(nowMs: number = this.clock()): void {
     const dt = this.lastUpdate === 0 ? 0 : Math.max(0, nowMs - this.lastUpdate);
     this.lastUpdate = nowMs;
+    // Let the offset drift up (5 %) so a lasting rise in latency is absorbed; the next on-time frame pulls it back down.
+    if (this.offset !== null) this.offset += dt * 0.05;
+    this.jitter = Math.max(0, this.jitter - dt * 0.02);
     if (!this.frames.length || this.snapPending) return; // nothing to draw yet, or the world is being replaced
 
     // The guest keeps its OWN playout clock rather than rendering at
     // `now - delay` directly: after a stall the picture catches up at 25 % over
     // real time instead of snapping the whole buffer in one frame. Never faster
     // than the data, never slower than a quarter behind it.
-    const target = nowMs - this.interpDelay;
+    const target = nowMs - this.interpDelay - this.jitter;
     if (this.playout === 0) this.playout = target;
     this.playout = Math.min(target, this.playout + dt * MAX_CATCHUP_RATE);
     this.checkGap(nowMs);

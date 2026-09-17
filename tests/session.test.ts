@@ -57,7 +57,7 @@ interface Pair {
 }
 
 /** A host session and a guest session joined by a late, slightly lossy wire. */
-function pair(opts: { loss?: number; settings?: SessionOptions['settings'] } = {}): Pair {
+function pair(opts: { loss?: number; settings?: SessionOptions['settings']; burstMs?: number } = {}): Pair {
   const loss = opts.loss ?? 0;
   const rng = mulberry32(0xc0ffee);
   let now = CLOCK_START;
@@ -103,7 +103,13 @@ function pair(opts: { loss?: number; settings?: SessionOptions['settings'] } = {
     },
   });
 
+  let lastBurst = now;
   const deliver = () => {
+    // A busy browser (a held key) hands socket messages over late and in clumps.
+    if (opts.burstMs) {
+      if (now - lastBurst < opts.burstMs) return;
+      lastBurst = now;
+    }
     for (const queue of [toGuest, toHost]) {
       while (queue.length && queue[0].due <= now) {
         const { msg } = queue.shift()!;
@@ -202,10 +208,10 @@ test('MP-06 session: a guest nudge reaches the host and moves that seat, and no 
   const intents = p.intents.filter((m) => m.kind === 'nudge');
   assert.ok(intents.length > 0, 'the guest said something');
   assert.ok(intents.every((m) => m.kind === 'nudge' && m.v === 1));
-  // 60 frames at 60 Hz is 30 nudges a second, not 60: the client paces itself
-  // the way the host's own token bucket paces a guest.
-  assert.ok(intents.length <= 34, `${intents.length} nudges in a second`);
-  assert.ok(intents.length >= 15, `${intents.length} nudges in a second — the wire is being starved`);
+  // A held key is re-sent ten times a second, not sixty: the host keeps the
+  // last nudge until it changes, so repeats are only insurance.
+  assert.ok(intents.length <= 13, `${intents.length} nudges in a second`);
+  assert.ok(intents.length >= 5, `${intents.length} nudges in a second — the wire is being starved`);
 
   // The host applied them to the seat that sent them.
   const after = p.host.game.marbles[1].body.position.x;
@@ -403,4 +409,29 @@ test('Playtest session: a kit change reaches the guest without a snapshot', () =
   for (let i = 0; i < 20; i++) p.tick();
   assert.equal(p.guest.kit.ghost, 4);
   assert.equal(p.hostFrames.filter((f) => f.type === 'snapshot').length, 0, 'no world republished for a kit');
+});
+
+test('Playtest session: frames that arrive in clumps still play smoothly on the guest (no freeze, no fast-forward)', () => {
+  // Reported: a guest holding a key saw its marble stop, then race to catch up.
+  const p = pair({ burstMs: 250 });
+  while (!p.host.gateOpen) p.tick();
+  for (let i = 0; i < 120; i++) p.tick();
+  let still = 0;
+  let longestStill = 0;
+  let biggestJump = 0;
+  let prev = p.guest.game.marbles[1].body.position.y;
+  for (let i = 0; i < 180; i++) {
+    p.tick();
+    const y = p.guest.game.marbles[1].body.position.y;
+    const moved = Math.abs(y - prev);
+    still = moved < 0.01 ? still + 1 : 0;
+    longestStill = Math.max(longestStill, still);
+    biggestJump = Math.max(biggestJump, moved);
+    prev = y;
+  }
+  assert.ok(longestStill < 8, `the marble held still for ${longestStill} frames`);
+  const hostSpeed = Math.hypot(p.host.game.marbles[1].body.velocity.x, p.host.game.marbles[1].body.velocity.y);
+  assert.ok(biggestJump < Math.max(40, hostSpeed * 4), `a ${biggestJump.toFixed(1)} unit jump in one frame`);
+  p.host.dispose();
+  p.guest.dispose();
 });
