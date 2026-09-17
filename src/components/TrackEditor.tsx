@@ -1,15 +1,15 @@
 /**
- * MB-02 + MB-03. The Workshop: editor shell plus direct manipulation.
+ * MB-02 + MB-03 + MB-04. The Workshop: editor shell plus direct manipulation
+ * and test drive.
  *
  * Opens on a copy of the circuit the garage is showing (MB-01 def).  MB-02
  * provided the shell (camera, grid, palette, map).  MB-03 adds placing via
  * palette, selection via body bounds → piece index, handles per type,
  * multi-select/box/duplicate/delete/nudge/mirror and an undo/redo stack of
- * exact def snapshots plus a properties panel for numeric editing.
- *
- * The track is built from the def with the race's own Builder+render path,
- * static chunks are rebaked on every geometry edit, and the editor never
- * steps physics (that is MB-04).
+ * exact def snapshots plus a properties panel for numeric editing.  MB-04
+ * adds a test drive that runs the real `Game` on the def-built track with
+ * a minimal HUD, ghost field toggle and a live trail, returning to the
+ * editor with def and camera unchanged.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -17,14 +17,19 @@ import {
   ArrowUpToLine,
   CircleHelp,
   Copy,
+  Crosshair,
   Flag,
   Grid3x3,
   LayoutGrid,
+  Pause,
+  Play,
   Redo2,
   Ruler,
   ScanSearch,
+  Target,
   Trash2,
   Undo2,
+  Users,
   X,
   ZoomIn,
   ZoomOut,
@@ -38,7 +43,7 @@ import EditorMap from './editor/EditorMap';
 import PiecePalette from './editor/PiecePalette';
 import PropertiesPanel from './editor/PropertiesPanel';
 import { SNAP, formatUnits, formatZoom, newRig, rigCenter, rigFit, rigZoom } from './editor/camera';
-import type { CameraRig } from './editor/camera';
+import type { CameraRig, Point } from './editor/camera';
 import { tileFor } from './editor/palette';
 import type { PieceType } from './editor/palette';
 import { defaultPiece } from './editor/defaults';
@@ -52,6 +57,7 @@ import { Game } from '../game/engine';
 import { clearStaticChunks } from '../game/render';
 import { THEME_IDS } from '../game/types';
 import type { MarbleInfo, ThemeId, TrackProfile } from '../game/types';
+import TestDrive from './editor/TestDrive';
 import '../editor.css';
 
 interface Props {
@@ -122,6 +128,11 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
   const [drawer, setDrawer] = useState(false);
   const [status, setStatus] = useState<EditorStatus>({ top: 0, bottom: 0, scale: 1, cursor: null });
   const [selected, setSelected] = useState<number[]>([]);
+  // MB-04: test drive state — def and camera are preserved across the round-trip
+  const [testing, setTesting] = useState(false);
+  const [ghost, setGhost] = useState(false);
+  const [spawnAt, setSpawnAt] = useState<Point | null>(null);
+  const [pickSpawn, setPickSpawn] = useState(false);
   const rigRef = useRef<CameraRig | null>(null);
   if (!rigRef.current) rigRef.current = newRig();
   const rig = rigRef.current;
@@ -365,9 +376,26 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
     [],
   );
 
+  // MB-04: test drive handlers — def and camera preserved on round-trip
+  const handlePickSpawn = useCallback((world: Point) => {
+    setSpawnAt(world);
+    setPickSpawn(false);
+  }, []);
+  const enterTest = useCallback(() => setTesting(true), []);
+  const exitTest = useCallback(() => setTesting(false), []);
+
   // Keyboard: delete, duplicate, undo/redo, nudge, mirror, escape clears selection / disarms
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (testing) {
+        // While test drive is active its own canvas owns Esc.  We only
+        // handle Esc here as a fallback if the test canvas lost focus.
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          setTesting(false);
+        }
+        return;
+      }
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
@@ -420,7 +448,7 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selected, handleDelete, handleDuplicate, handleMirror, handleNudge, handleUndo, handleRedo]);
+  }, [testing, selected, handleDelete, handleDuplicate, handleMirror, handleNudge, handleUndo, handleRedo]);
 
   const editName = useCallback(
     (value: string) => {
@@ -555,41 +583,89 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
             </span>
           </div>
 
-          {buildError && (
-            <p className="editor-error" role="alert">
-              This circuit cannot be built: {buildError}
-            </p>
-          )}
-
-          <EditorCanvas
-            game={stage}
-            rig={rig}
-            grid={grid}
-            ruler={ruler}
-            onStatus={setStatus}
-            armed={armed}
-            track={track}
-            bodyToPiece={bodyToPiece}
-            selected={selected}
-            onPlace={handlePlace}
-            onSelect={handleSelect}
-            onClear={handleClear}
-            onMoveSelected={handleMoveSelected}
-            onHandleChange={applyHandleChange}
-            startTransaction={startTransaction}
-            transact={transact}
-            endTransaction={endTransaction}
-          />
-
-          <footer className="editor-status">
-            <span className={`editor-chip ${cursor ? '' : 'is-muted'}`}>{cursorText}</span>
-            <span className="editor-chip">VIEW {formatUnits(status.top)} – {formatUnits(status.bottom)} u</span>
-            <span className="editor-chip">LENGTH {track ? formatUnits(track.height) : '—'} u</span>
-            <span className="editor-chip">{circuit.def.pieces.length} PIECES</span>
-            <span className={`editor-chip ${selected.length ? '' : 'is-muted'}`}>
-              {selected.length ? `${selected.length} selected` : armed ? 'ARMED' : 'NO SELECTION'}
+          <div className="editor-testbar">
+            <button
+              className={`button-primary editor-testdrive ${testing ? 'is-testing' : ''}`}
+              onClick={testing ? exitTest : enterTest}
+              aria-pressed={testing}
+              title={testing ? 'Stop test and return to editor (Esc)' : 'Test drive this circuit — Esc returns, camera preserved'}
+            >
+              {testing ? <Pause size={14} /> : <Play size={14} />}
+              {testing ? 'Stop test' : 'Test drive'}
+            </button>
+            <button
+              type="button"
+              className={`editor-toggle ${ghost ? 'on' : ''}`}
+              aria-pressed={ghost}
+              onClick={() => setGhost((v) => !v)}
+              title="Ghost field: 10 marbles with AI (toggle before or after starting test, trail shows player)"
+            >
+              <Users size={13} /> Ghost field
+            </button>
+            <button
+              type="button"
+              className={`editor-toggle ${pickSpawn ? 'on' : ''} ${spawnAt ? 'has-spawn' : ''}`}
+              aria-pressed={pickSpawn}
+              onClick={() => setPickSpawn((v) => !v)}
+              title={spawnAt ? `Start at ${Math.round(spawnAt.x)}, ${Math.round(spawnAt.y)} — click to re-pick` : 'Pick a start point on the canvas (or leave at grid)'}
+            >
+              <Crosshair size={13} />
+              {spawnAt ? `Start ${Math.round(spawnAt.x)},${Math.round(spawnAt.y)}` : pickSpawn ? 'Click track…' : 'Set start'}
+            </button>
+            {spawnAt && (
+              <button className="text-button" onClick={() => setSpawnAt(null)} title="Clear custom start — next test starts at grid">
+                <Target size={13} /> Clear start
+              </button>
+            )}
+            <span className={`editor-chip ${testing ? 'is-testing' : 'is-muted'}`} style={{ marginLeft: 'auto' }}>
+              {testing ? 'TESTING · Esc to return · Def & camera preserved' : pickSpawn ? 'PICK A POINT ON THE CIRCUIT' : ghost ? '10 MARBLES ON TEST' : 'SOLO TEST · A/D nudge · Trail live'}
             </span>
-          </footer>
+          </div>
+
+          {testing ? (
+            <TestDrive def={circuit.def} driver={driver} seed={seed} ghost={ghost} spawnAt={spawnAt} onExit={exitTest} />
+          ) : (
+            <>
+              {buildError && (
+                <p className="editor-error" role="alert">
+                  This circuit cannot be built: {buildError}
+                </p>
+              )}
+
+              <EditorCanvas
+                game={stage}
+                rig={rig}
+                grid={grid}
+                ruler={ruler}
+                onStatus={setStatus}
+                armed={armed}
+                track={track}
+                bodyToPiece={bodyToPiece}
+                selected={selected}
+                onPlace={handlePlace}
+                onSelect={handleSelect}
+                onClear={handleClear}
+                onMoveSelected={handleMoveSelected}
+                onHandleChange={applyHandleChange}
+                startTransaction={startTransaction}
+                transact={transact}
+                endTransaction={endTransaction}
+                spawnAt={spawnAt}
+                pickingSpawn={pickSpawn}
+                onPickSpawn={handlePickSpawn}
+              />
+
+              <footer className="editor-status">
+                <span className={`editor-chip ${cursor ? '' : 'is-muted'}`}>{cursorText}</span>
+                <span className="editor-chip">VIEW {formatUnits(status.top)} – {formatUnits(status.bottom)} u</span>
+                <span className="editor-chip">LENGTH {track ? formatUnits(track.height) : '—'} u</span>
+                <span className="editor-chip">{circuit.def.pieces.length} PIECES</span>
+                <span className={`editor-chip ${selected.length ? '' : 'is-muted'}`}>
+                  {selected.length ? `${selected.length} selected` : armed ? 'ARMED' : 'NO SELECTION'}
+                </span>
+              </footer>
+            </>
+          )}
         </section>
 
         <EditorMap track={track} top={status.top} bottom={status.bottom} onJump={(worldY) => rigCenter(rig, worldY)} />

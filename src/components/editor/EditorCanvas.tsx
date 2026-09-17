@@ -47,6 +47,9 @@ interface Props {
   startTransaction: () => void;
   transact: (mutate: (def: import('../../game/trackdef').TrackDef) => import('../../game/trackdef').TrackDef) => void;
   endTransaction: () => void;
+  spawnAt?: Point | null;
+  pickingSpawn?: boolean;
+  onPickSpawn?: (world: Point) => void;
 }
 
 const STATUS_MS = 90;
@@ -54,7 +57,7 @@ const DRAG_SLOP = 3;
 const HANDLE_SCREEN = 10;
 
 export default function EditorCanvas(props: Props) {
-  const { game, rig, grid, ruler, onStatus, armed, track, bodyToPiece, selected, onPlace, onSelect, onClear, onMoveSelected, onHandleChange, startTransaction, endTransaction } = props;
+  const { game, rig, grid, ruler, onStatus, armed, track, bodyToPiece, selected, onPlace, onSelect, onClear, onMoveSelected, onHandleChange, startTransaction, endTransaction, spawnAt, pickingSpawn, onPickSpawn } = props;
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const gameRef = useRef(game);
@@ -72,6 +75,9 @@ export default function EditorCanvas(props: Props) {
   const onHandleRef = useRef(onHandleChange);
   const startTxRef = useRef(startTransaction);
   const endTxRef = useRef(endTransaction);
+  const spawnAtRef = useRef(spawnAt);
+  const pickingSpawnRef = useRef(pickingSpawn);
+  const onPickSpawnRef = useRef(onPickSpawn);
   gameRef.current = game;
   gridRef.current = grid;
   rulerRef.current = ruler;
@@ -87,6 +93,9 @@ export default function EditorCanvas(props: Props) {
   onHandleRef.current = onHandleChange;
   startTxRef.current = startTransaction;
   endTxRef.current = endTransaction;
+  spawnAtRef.current = spawnAt;
+  pickingSpawnRef.current = pickingSpawn;
+  onPickSpawnRef.current = onPickSpawn;
 
   // Def access for transact moves: we need to keep the transaction helpers stable.
   // They are passed from TrackEditor and already capture def via closure.
@@ -195,6 +204,11 @@ export default function EditorCanvas(props: Props) {
       const world = toWorld(local);
       cursorRaw = worldRaw;
       cursor = world;
+      // MB-04: picking spawn point has priority over all editor interactions
+      if (pickingSpawnRef.current) {
+        onPickSpawnRef.current?.(world);
+        return;
+      }
       // Two-pointer pinch
       canvas.setPointerCapture(event.pointerId);
       pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -742,6 +756,50 @@ export default function EditorCanvas(props: Props) {
       void curRaw;
     };
 
+    const drawSpawn = (ctx: CanvasRenderingContext2D, overlay: OverlayView) => {
+      const spawn = spawnAtRef.current;
+      const picking = pickingSpawnRef.current;
+      if (!spawn && !picking) return;
+      const cam = overlay.camera;
+      const toScreen = (w: Point): Point => ({ x: (w.x - cam.x) * cam.scale + overlay.width / 2, y: (w.y - cam.y) * cam.scale + overlay.height / 2 });
+      if (spawn) {
+        const s = toScreen(spawn);
+        ctx.save();
+        ctx.strokeStyle = '#16c8ff';
+        ctx.fillStyle = 'rgba(22,200,255,0.18)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, 14, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(s.x - 10, s.y);
+        ctx.lineTo(s.x + 10, s.y);
+        ctx.moveTo(s.x, s.y - 10);
+        ctx.lineTo(s.x, s.y + 10);
+        ctx.stroke();
+        ctx.fillStyle = '#16c8ff';
+        ctx.font = '9px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText('START', s.x, s.y - 18);
+        ctx.restore();
+      }
+      if (picking && cursor) {
+        const s = toScreen(cursor);
+        ctx.save();
+        ctx.strokeStyle = 'rgba(22,200,255,0.65)';
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, 10, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(22,200,255,0.9)';
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    };
+
     const loop = (now: number) => {
       raf = requestAnimationFrame(loop);
       const stage = gameRef.current;
@@ -774,6 +832,7 @@ export default function EditorCanvas(props: Props) {
       drawSelection(ctx, overlayView);
       drawBox(ctx, overlayView);
       drawGhost(ctx, overlayView);
+      drawSpawn(ctx, overlayView);
 
       if (now - lastStatus > STATUS_MS) {
         lastStatus = now;

@@ -65,6 +65,18 @@
 .editor-chip.is-muted { color: #63707d; }
 .editor-chip.is-armed { color: var(--accent); }
 
+/* ---------- MB-04 test drive ---------- */
+.editor-testbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 7px 14px; background: #0b1016; border-bottom: 1px solid var(--line); }
+.editor-testdrive { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; font: 10px var(--mono); letter-spacing: .4px; }
+.editor-testdrive.is-testing { background: #d63e2e; border-color: #d63e2e; color: #fff; }
+.editor-chip.is-testing { color: #16c8ff; }
+.testdrive-wrap { position: relative; flex: 1; min-height: 320px; display: flex; flex-direction: column; background: #080c12; overflow: hidden; }
+.testdrive-canvas { display: block; width: 100%; flex: 1; min-height: 340px; background: #0a1a33; touch-action: none; }
+.testdrive-hud { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 14px; background: #0e131a; border-top: 1px solid var(--line); }
+.testdrive-hud-left, .testdrive-hud-right { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.testdrive-chip { font: 9px var(--mono); letter-spacing: .3px; color: #b3c2cf; background: #131a23; border: 1px solid #2b3644; padding: 4px 8px; border-radius: 3px; white-space: nowrap; }
+.testdrive-help { margin: 0; padding: 6px 14px; font: 7px var(--mono); letter-spacing: .5px; color: #8ea2b5; text-align: center; background: #0b1016; border-top: 1px solid var(--line); }
+
 /* ---------- the course map ---------- */
 .editor-map { display: flex; flex-direction: column; gap: 8px; min-height: 0; padding: 12px 10px; background: #0e131a; border-left: 1px solid var(--line); }
 .editor-map-head { display: flex; align-items: center; justify-content: space-between; font: 7px var(--mono); letter-spacing: .8px; color: #8ea2b5; }
