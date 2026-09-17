@@ -49,6 +49,19 @@ export function purchaseItem(account: RacerAccount, item: ItemType): { account: 
 export const ONLINE_PAYOUT_SCALE = 0.6;
 
 /**
+ * MB-08 — a CUSTOM track pays this fraction.
+ *
+ * A player-built circuit can be made trivially farmable (short, flat, boxed
+ * with pegs), so custom heats are intentionally stingy: 30 % of the calendar
+ * purse before the online scale is applied. Multiplicative — an online custom
+ * heat is 0.30 × 0.60 = 18 % of the offline prize, which is enough to feel
+ * rewarded for finishing but not enough to make a 10-second loot loop the
+ * fastest way to fill the wallet. Offline custom is 30 %; online custom is
+ * 18 %. The value is small, named, and applied in one place so auditable.
+ */
+export const CUSTOM_PAYOUT_SCALE = 0.3;
+
+/**
  * MP-09: the ID an online race is paid under.
  *
  * Every screen pays ITSELF (there is no host banker: a host that could pay its
@@ -105,6 +118,18 @@ export function settleRace(
 export function settleOnlineRace(account: RacerAccount, raceId: string, result: HeatResult): { account: RacerAccount; payout: RacePayout } {
   return settleRace(account, raceId, result, ONLINE_PAYOUT_SCALE);
 }
+
+/**
+ * MB-08: settle a heat that was on a custom circuit.
+ * @param isOnline - when true the online scale is folded in (0.30 × 0.60 = 0.18).
+ */
+export function settleCustomRace(account: RacerAccount, raceId: string, result: HeatResult, isOnline = false): { account: RacerAccount; payout: RacePayout } {
+  const scale = isOnline ? CUSTOM_PAYOUT_SCALE * ONLINE_PAYOUT_SCALE : CUSTOM_PAYOUT_SCALE;
+  return settleRace(account, raceId, result, scale);
+}
+
+/** Display note for results screens: why a custom purse is reduced. */
+export const CUSTOM_PAYOUT_NOTE = 'Custom circuits pay 30% — online custom 18% — to keep farming in check. Calendar races pay full purse.';
 
 export function parseAccount(raw: string | null): RacerAccount {
   try {

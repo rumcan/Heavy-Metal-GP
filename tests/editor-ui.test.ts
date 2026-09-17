@@ -193,9 +193,9 @@ test('Editor grid: every snap is a whole 25 units, and the lattice keeps up with
 
 test('Palette: the ticket\'s groups, every piece a def can store, and the race art', () => {
   assert.deepEqual(PALETTE.map((g) => g.label), ['Rails', 'Features', 'Pegs', 'Walls']);
-  assert.deepEqual(PALETTE.map((g) => g.tiles.length), [4, 7, 3, 1]);
+  assert.deepEqual(PALETTE.map((g) => g.tiles.length), [4, 7, 3, 2]);
   const types = TILES.map((tile) => tile.t).sort();
-  assert.deepEqual(types, ['boost', 'breakable', 'bucket', 'curve', 'hoop', 'ice', 'itembox', 'loop', 'pad', 'peg', 'ppeg', 'ramp', 'spinner', 'wall', 'wrecker'], 'the palette should cover exactly the def format\'s placeable pieces');
+  assert.deepEqual(types, ['block', 'boost', 'breakable', 'bucket', 'curve', 'hoop', 'ice', 'itembox', 'loop', 'pad', 'peg', 'ppeg', 'ramp', 'spinner', 'wall', 'wrecker'], 'the palette should cover exactly the def format\'s placeable pieces');
   assert.equal(new Set(types).size, types.length, 'a piece type is on two tiles');
   for (const tile of TILES) {
     assert.ok(tile.label && tile.hint, `${tile.t} needs a label and a hint`);

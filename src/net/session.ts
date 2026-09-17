@@ -23,6 +23,8 @@
 import { Game, LIGHTS_OUT_STAGE } from '../game/engine';
 import { generateTrack } from '../game/track';
 import type { Track } from '../game/track';
+import type { TrackDef } from '../game/trackdef';
+import { buildTrackFromDef } from '../game/trackdef';
 import type { SoundEvent as CueName } from '../game/cues';
 import type { SoundEvent, SoundType } from '../game/audio';
 import { emptyInventory } from '../game/types';
@@ -106,6 +108,8 @@ export interface SessionOptions {
   seats: readonly Seat[];
   /** Which circuit — already resolved by the caller (the lobby owns the calendar). */
   profile: TrackProfile;
+  /** MB-08: when the race is on a custom circuit, the def wins over `profile`. */
+  trackDef?: TrackDef;
   /** What the race is (carried into snapshots, and shown on the loading card). */
   settings?: RaceSettings;
   /** The slot this screen's hands are on. */
@@ -158,7 +162,7 @@ export class RaceSession {
     this.localSeat = opts.localSeat;
     this.isHost = opts.isHost;
     this.seats = inSlotOrder(opts.seats);
-    const track: Track = generateTrack(opts.seed, opts.profile);
+    const track: Track = opts.trackDef ? buildTrackFromDef(opts.trackDef) : generateTrack(opts.seed, opts.profile);
 
     if (opts.isHost) {
       const hostOpts: RaceHostOptions = {

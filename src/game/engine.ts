@@ -44,6 +44,8 @@ export interface GameOptions {
    * by default, so a single-player race pays nothing for a wire it never uses.
    */
   wireEvents?: boolean;
+  /** MB-05: called each time the recovery marshal fires — lets the validator collect stuck spots off-screen. */
+  onRecover?: (marbleId: number, pos: { x: number; y: number }) => void;
 }
 
 /**
@@ -171,6 +173,7 @@ export class Game {
   private recoveryEnabled: boolean;
   private effectsEnabled: boolean;
   private aiItemsEnabled: boolean;
+  private onRecover?: (marbleId: number, pos: { x: number; y: number }) => void;
   /** STORY HOOKS (ST-07). Undefined in every non-story race. */
   private story?: StoryHooks;
   private storySectors = new Map<number, number>();
@@ -231,6 +234,7 @@ export class Game {
     this.recoveryEnabled = opts.recovery !== false;
     this.effectsEnabled = opts.effects !== false;
     this.aiItemsEnabled = opts.aiItems !== false;
+    this.onRecover = opts.onRecover;
     Composite.add(this.world, this.track.bodies);
 
     const order = opts.gridOrder && opts.gridOrder.length === roster.length ? opts.gridOrder : roster.map((r) => r.id);
@@ -851,6 +855,7 @@ export class Game {
     m.recoveries++;
     this.effects.push({ type: 'ring', ...destination, ttl: 30, maxTtl: 30, color: '#d63e2e' });
     if (m.info.isPlayer) this.onEvent?.('Race marshal: back on track', '#d63e2e');
+    this.onRecover?.(m.info.id, { x: origin.x, y: origin.y });
   }
 
   makeParticles(x: number, y: number, n: number, sp: number) {

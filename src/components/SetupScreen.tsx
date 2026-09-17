@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { BookOpen, ArrowRight, ArrowUpRight, RotateCcw, Shuffle, Flag, Trophy, FlaskConical, CircleHelp, Gauge, Weight, MoveUp, LockKeyhole, ChevronRight, ChevronLeft, Radio, Hammer } from 'lucide-react';
 import { adjustStat, statsToPhysics, STAT_BUDGET, PLAYER_COLORS, teamOf } from '../game/types';
@@ -13,6 +13,8 @@ import OnlinePanel from './OnlinePanel';
 import RulesDialog from './RulesDialog';
 import WalletButton from './WalletButton';
 import LoadoutPreview from './LoadoutPreview';
+import TrackThumbnail from './editor/TrackThumbnail';
+import { loadTracksSync } from '../game/tracks';
 import type { RacerAccount } from '../game/economy';
 
 interface Props {
@@ -31,6 +33,9 @@ interface Props {
   onBackToSeason?: () => void;
   circuitIndex: number;
   onCircuit: (index: number) => void;
+  /** MB-08: quick race can run a player-built circuit instead of the calendar. */
+  customTrackId?: string | null;
+  onSelectCustom?: (id: string | null) => void;
   account: RacerAccount;
   onShop: () => void;
   portrait: number;
@@ -77,6 +82,11 @@ export default function SetupScreen(props: Props) {
   const ph = useMemo(() => statsToPhysics(stats), [stats]);
   const roster = useMemo<MarbleInfo[]>(() => [{ id: 0, name: 'You', color, stats, isPlayer: true, character: portrait }, ...rivals], [color, stats, rivals, portrait]);
   const circuit = CALENDAR[circuitIndex];
+  // MB-08: quick race can run a player-built circuit. Tabs are calendar vs My tracks.
+  const myTracks = loadTracksSync();
+  const selectedCustom = myTracks.find((t) => t.id === props.customTrackId) ?? null;
+  const [circuitTab, setCircuitTab] = useState<'calendar' | 'custom'>(props.customTrackId ? 'custom' : 'calendar');
+  useEffect(() => { if (props.customTrackId) setCircuitTab('custom'); }, [props.customTrackId]);
 
   return <div className="app-shell garage-page fit-shell" data-pane={pane}>
     <header className="app-header">
@@ -93,9 +103,55 @@ export default function SetupScreen(props: Props) {
     <main className="fit-main garage-fit">
       <section className="fit-pane circuit-panel" data-pane-id="circuit" aria-labelledby="circuit-title">
         <div className="section-topline"><span className="eyebrow"><b>01</b> THE CIRCUIT</span><button className="text-button" onClick={onNewSeed}><Shuffle size={14} />Regenerate</button></div>
-        <div className="circuit-title-row"><div><h2 id="circuit-title">{circuit.short}</h2><span>{circuit.location}</span></div><span className="circuit-seed">SEED<br /><b>{seed.toString(16).slice(0, 6).toUpperCase()}</b></span></div>
-        <CircuitPreview seed={seed} roster={roster} profile={circuit.profile} />
-        <div className="circuit-selector" aria-label="Select a circuit">{CALENDAR.map((gp, i) => <button key={gp.id} className={i === circuitIndex ? 'selected' : ''} aria-pressed={i === circuitIndex} onClick={() => onCircuit(i)}><span>{String(i + 1).padStart(2, '0')}</span><strong>{gp.short}</strong></button>)}</div>
+        <div className="circuit-tabs" role="tablist" aria-label="Circuit source">
+          <button role="tab" aria-selected={circuitTab === 'calendar'} className={circuitTab === 'calendar' ? 'selected' : ''} onClick={() => { setCircuitTab('calendar'); props.onSelectCustom?.(null); }}>Calendar</button>
+          <button role="tab" aria-selected={circuitTab === 'custom'} className={circuitTab === 'custom' ? 'selected' : ''} onClick={() => setCircuitTab('custom')}>My tracks{myTracks.length ? ` (${myTracks.length})` : ''}</button>
+        </div>
+        {circuitTab === 'calendar' ? (
+          <>
+            <div className="circuit-title-row"><div><h2 id="circuit-title">{circuit.short}</h2><span>{circuit.location}</span></div><span className="circuit-seed">SEED<br /><b>{seed.toString(16).slice(0, 6).toUpperCase()}</b></span></div>
+            <CircuitPreview seed={seed} roster={roster} profile={circuit.profile} />
+            <div className="circuit-selector" aria-label="Select a circuit">{CALENDAR.map((gp, i) => <button key={gp.id} className={i === circuitIndex ? 'selected' : ''} aria-pressed={i === circuitIndex} onClick={() => { props.onSelectCustom?.(null); onCircuit(i); }}><span>{String(i + 1).padStart(2, '0')}</span><strong>{gp.short}</strong></button>)}</div>
+          </>
+        ) : (
+          <div className="custom-circuit-pane" aria-label="My tracks">
+            {selectedCustom ? (
+              <div className="custom-selected">
+                <div className="circuit-title-row"><div><h2 id="circuit-title">{selectedCustom.def.name.toUpperCase()}</h2><span>CUSTOM • {selectedCustom.def.pieces.length} pieces • {selectedCustom.def.height}px</span></div><span className="circuit-seed">CUSTOM<br /><b>{selectedCustom.id.slice(0, 6).toUpperCase()}</b></span></div>
+                <div className="custom-preview"><TrackThumbnail def={selectedCustom.def} /><p className="muted">{selectedCustom.def.name} — a player-built circuit. Quick race payout is reduced (30 %) to keep farming in check; calendar races pay full purse.</p></div>
+                <button className="text-button" onClick={() => props.onSelectCustom?.(null)}>Back to Calendar</button>
+              </div>
+            ) : (
+              <p className="muted">Pick a track from My tracks. Quick race on a custom circuit pays 30 % (calendar races pay full).</p>
+            )}
+            <div className="my-tracks-list" role="listbox" aria-label="Saved tracks">
+              {myTracks.length === 0 ? (
+                <div className="my-tracks-empty">
+                  <p>You have no saved tracks yet.</p>
+                  {onWorkshop && <button className="button-secondary" onClick={onWorkshop}><Hammer size={14} />Open Workshop</button>}
+                  <p className="muted">Build a circuit, save it, and it appears here for quick races.</p>
+                </div>
+              ) : (
+                myTracks.map((t) => (
+                  <button
+                    key={t.id}
+                    role="option"
+                    aria-selected={t.id === props.customTrackId}
+                    className={`my-track-row ${t.id === props.customTrackId ? 'selected' : ''}`}
+                    onClick={() => props.onSelectCustom?.(t.id)}
+                  >
+                    <TrackThumbnail def={t.def} />
+                    <span className="my-track-meta">
+                      <strong>{t.def.name}</strong>
+                      <span className="muted">{t.def.pieces.length} pcs • {t.def.height}px • {t.def.theme}</span>
+                    </span>
+                    <span className="my-track-check" aria-hidden>{t.id === props.customTrackId ? '●' : ''}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="fit-pane tuning-panel" data-pane-id="driver" aria-labelledby="tuning-title">

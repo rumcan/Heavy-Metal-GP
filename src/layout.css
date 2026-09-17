@@ -302,6 +302,28 @@ body { min-width: 0; }
   .lobby-powerup-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
+/* MB-08: My tracks tab for garage and lobby */
+.circuit-tabs { display: flex; gap: 6px; padding: 2px; background: #0e151d; border: 1px solid var(--line); border-radius: 6px; align-self: flex-start; }
+.circuit-tabs button { padding: 6px 12px; font-size: 11px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; border: 1px solid transparent; border-radius: 4px; background: none; color: var(--muted); cursor: pointer; }
+.circuit-tabs button.selected { background: #d63e2e; color: #fff; border-color: #ff6b5a; }
+.custom-circuit-pane { display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow: hidden; }
+.custom-selected { display: flex; flex-direction: column; gap: 8px; padding: 8px; border: 1px solid #2a3a4a; border-radius: 6px; background: #0c1219; }
+.custom-preview { display: flex; gap: 12px; align-items: flex-start; }
+.custom-preview .track-thumb { border: 1px solid #1e2936; border-radius: 4px; }
+.custom-preview p { margin: 0; font-size: 11px; color: var(--muted); line-height: 1.5; flex: 1; }
+.my-tracks-list { display: flex; flex-direction: column; gap: 6px; overflow: auto; max-height: 260px; padding-right: 4px; scrollbar-width: thin; }
+.my-track-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border: 1px solid #1e2936; border-radius: 6px; background: #0f141a; cursor: pointer; text-align: left; width: 100%; }
+.my-track-row.selected { border-color: var(--accent); background: #2a1512; }
+.my-track-row .track-thumb { width: 48px; height: 54px; flex-shrink: 0; }
+.my-track-meta { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.my-track-meta strong { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #e6e9ef; }
+.my-track-meta .muted { font-size: 10px; color: var(--muted); }
+.my-track-check { font-size: 14px; color: var(--accent); margin-left: auto; }
+.my-tracks-empty { padding: 12px; border: 1px dashed #334252; border-radius: 6px; background: #0c1219; text-align: center; display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.my-tracks-empty p { margin: 0; font-size: 11px; color: var(--muted); }
+.lobby-custom-list { max-height: 240px; }
+@media (max-width: 760px) { .my-tracks-list { max-height: 180px; } }
+
 /* Auto Match Making: what is happening, always visible (the footer note hides on phones). */
 .lobby-auto-status { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; margin: 8px 0 0; padding: 8px 10px; border-left: 3px solid var(--accent); background: #ffffff0a; font-size: 13px; line-height: 1.35; color: #e6edf3; text-align: left; }
 .lobby-auto-status .live-dot { flex: none; }

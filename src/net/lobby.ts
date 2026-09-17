@@ -147,7 +147,13 @@ export function benchedSlots(seats: readonly Seat[], settings: RaceSettings | un
 /** The circuit the lobby is showing, as a calendar index. A whole `TrackDef` reads as the first. */
 export function circuitIndexOf(settings: RaceSettings | undefined): number {
   if (!settings) return 0;
+  if (isCustomSettings(settings)) return typeof settings.circuit === 'number' ? settings.circuit : 0;
   return typeof settings.circuit === 'number' ? settings.circuit : 0;
+}
+
+/** True when the settings carry a custom track (MB-08). */
+export function isCustomSettings(settings: RaceSettings | undefined): boolean {
+  return typeof settings?.customCode === 'string' && settings.customCode.length > 0;
 }
 
 /**
