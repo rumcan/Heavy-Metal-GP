@@ -69,6 +69,9 @@ import SharePanel from './editor/SharePanel';
 import { loadTracksSync, loadTracks, loadDraftSync, saveDraft, createTrack, updateTrack, deleteTrack as deleteSavedTrack, duplicateTrack as duplicateSavedTrack, renameTrack as renameSavedTrack } from '../game/tracks';
 import type { SavedTrack } from '../game/tracks';
 import { encodeShareCode } from '../game/sharecode';
+import bannerUrl from '../assets/editor/workshop-banner.png';
+import NewTrackDialog from './editor/NewTrackDialog';
+import CoachMarks from './editor/CoachMarks';
 import '../editor.css';
 
 interface Props {
@@ -156,6 +159,8 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
   const [validating, setValidating] = useState(false);
   const [draftMsg, setDraftMsg] = useState<string | null>(null);
   const [shareMsg, setShareMsg] = useState<string | null>(null);
+  const [showNew, setShowNew] = useState(false);
+  const [coachForced, setCoachForced] = useState(false);
   const rigRef = useRef<CameraRig | null>(null);
   if (!rigRef.current) rigRef.current = newRig();
   const rig = rigRef.current;
@@ -619,6 +624,17 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
     setTimeout(() => setDraftMsg(null), 3000);
   }, [circuit.def, history, bumpHistory]);
 
+  const handleNewTrack = useCallback((def: TrackDef) => {
+    history.push(circuit.def);
+    setCircuit({ def: cloneDef(def), build: 0 });
+    setActiveTrackId(null);
+    setSelected([]);
+    setValidation(null);
+    bumpHistory();
+    setDraftMsg(`New track “${def.name}” loaded. Save to My tracks to keep it.`);
+    setTimeout(() => setDraftMsg(null), 3000);
+  }, [circuit.def, history, bumpHistory]);
+
   const handleExit = useCallback(() => {
     try { saveDraft(circuit.def); } catch { /* ignore */ }
     onExit();
@@ -719,6 +735,8 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
         </nav>
         <div className="header-tools">
           <span className="editor-seed">SEED <b>{seed.toString(16).slice(0, 6).toUpperCase()}</b></span>
+          <button className="text-button" onClick={() => setCoachForced(true)} title="Show the 5-step Workshop tutorial">Tutorial</button>
+          <button className="button-secondary" onClick={() => setShowNew(true)} title="Start a new track — blank, calendar copy or starter template">New track</button>
           <button className="icon-button mobile-only" onClick={() => setRules(true)} aria-label="How to play">
             <CircleHelp size={17} />
           </button>
@@ -728,6 +746,11 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
         </div>
       </header>
 
+      <div className="workshop-banner" aria-hidden="true">
+        <img src={bannerUrl as unknown as string} alt="" draggable={false} />
+        <div className="workshop-banner-title"><strong>Workshop</strong><span>GOBLIN MECHANICS AT WORK — BUILD, TEST, SHARE</span></div>
+      </div>
+
       <main className="editor-main">
         <section className="editor-tools" aria-label="Piece palette">
           <header className="editor-tools-head">
@@ -736,6 +759,7 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
               <X size={15} />
             </button>
           </header>
+          <button className="button-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={() => setShowNew(true)}><LayoutGrid size={13} /> New track</button>
           <PiecePalette active={armed} onPick={(t) => setArmed((cur) => (cur === t ? null : t))} />
           <div className="editor-inspector">
             <header className="eyebrow"><b>02</b> PROPERTIES</header>
@@ -744,7 +768,7 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
           <p className="palette-note" style={{ marginTop: 8 }}>
             MB-03: click a palette piece then the canvas to place. Drag pieces or their handles to edit. Shift+click / drag a box to multi-select.
           </p>
-          <ValidationPanel result={validation} validating={validating} onJump={handleValidationJump} onValidate={handleValidate} />
+          <div data-coach="validate"><ValidationPanel result={validation} validating={validating} onJump={handleValidationJump} onValidate={handleValidate} /></div>
           <MyTracksPanel
             tracks={savedTracks}
             activeId={activeTrackId}
@@ -761,6 +785,7 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
               <Save size={13} /> Save draft
             </button>
             <button
+              data-coach="share"
               className={`button-primary ${validation?.canShare ? '' : 'is-disabled'}`}
               onClick={handleShare}
               aria-disabled={!validation?.canShare}
@@ -853,6 +878,7 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
 
           <div className="editor-testbar">
             <button
+              data-coach="testdrive"
               className={`button-primary editor-testdrive ${testing ? 'is-testing' : ''}`}
               onClick={testing ? exitTest : enterTest}
               aria-pressed={testing}
@@ -942,6 +968,8 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
       </main>
 
       {rules && <RulesDialog onClose={() => setRules(false)} />}
+      {showNew && <NewTrackDialog onClose={() => setShowNew(false)} onCreate={handleNewTrack} />}
+      <CoachMarks def={circuit.def} testing={testing} validating={validating} canShare={!!validation?.canShare} armed={armed} onClose={() => setCoachForced(false)} forceOpen={coachForced} />
     </div>
   );
 }

@@ -1,15 +1,14 @@
 /**
- * MB-02. The piece palette: the sidebar a player builds from.
+ * MB-02 + MB-09. The piece palette: the sidebar a player builds from.
  *
- * Every tile shows the piece's real race sprite (the same art `src/game/render.ts` draws it with), and arming a
- * tile is the whole of this ticket's canvas interaction — MB-03 turns an armed tile into a placed piece. Until
- * then the armed tile is stated plainly in the toolbar rather than pretended at.
- *
- * Art comes from a component-local glob rather than `sprite()` so a tile is never blank while the game's
- * sprite cache is still decoding (the same pattern as the race's item toolbar).
+ * MB-09 adds a Blizzard-style riveted frame around each icon
+ * (src/assets/editor/palette-frame.png, easily replaceable) and data-coach
+ * hooks for the 5-step tutorial.
  */
 import { PALETTE } from './palette';
 import type { PieceType } from './palette';
+// MB-09 palette icon frame — Blizzard style, easily replaceable at src/assets/editor/palette-frame.png
+import frameUrl from '../../assets/editor/palette-frame.png';
 
 const art = import.meta.glob<string>('../../assets/game/*.webp', { eager: true, import: 'default' });
 const artFor = (name: string | null) => (name ? art[`../../assets/game/${name}.webp`] ?? null : null);
@@ -33,12 +32,16 @@ export default function PiecePalette({ active, onPick }: Props) {
           aria-pressed={armed}
           title={`${tile.label} — ${tile.hint}`}
           onClick={() => onPick(tile.t)}
+          data-coach={`palette-${tile.t}`}
         >
-          <span className="palette-art">{src ? <img src={src} alt="" draggable={false} /> : <i className="palette-art-fallback" aria-hidden="true" />}</span>
+          <span className="palette-art">
+            <span className="palette-frame" style={{ backgroundImage: `url(${frameUrl})` }} aria-hidden="true" />
+            <span className="palette-art-inner">{src ? <img src={src} alt="" draggable={false} /> : <i className="palette-art-fallback" aria-hidden="true" />}</span>
+          </span>
           <span className="palette-label">{tile.label}</span>
         </button>;
       })}</div>
     </section>)}
-    <p className="palette-note">Arm a piece to build with it. Placing, moving and rotating come next — for now the Workshop is the camera, the grid and the palette.</p>
+    <p className="palette-note">Arm a piece to build with it. Click the canvas to place. Drag pieces or handles to edit. Shift+click / drag a box to multi-select.</p>
   </div>;
 }

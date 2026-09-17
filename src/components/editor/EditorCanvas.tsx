@@ -21,6 +21,14 @@ import type { OverlayView } from './overlay';
 import { hitPieceAt, piecesInBox } from './build';
 import { handlesFor } from './handles';
 import type { PieceType } from './palette';
+// MB-09 handle knobs — Blizzard style, easily replaceable PNGs
+import knobUrl from '../../assets/editor/handle-knob.png';
+import knobMoveUrl from '../../assets/editor/handle-knob-move.png';
+
+const knobImg = typeof Image !== 'undefined' ? new Image() : null;
+const knobMoveImg = typeof Image !== 'undefined' ? new Image() : null;
+if (knobImg) knobImg.src = knobUrl as unknown as string;
+if (knobMoveImg) knobMoveImg.src = knobMoveUrl as unknown as string;
 
 export interface EditorStatus {
   top: number;
@@ -584,23 +592,34 @@ export default function EditorCanvas(props: Props) {
         const handles = handlesFor(piece);
         for (const h of handles) {
           const s = toScreen(h);
-          ctx.save();
-          ctx.beginPath();
-          ctx.arc(s.x, s.y, HANDLE_SCREEN, 0, Math.PI * 2);
           const isMove = h.id === 'move';
-          ctx.fillStyle = isMove ? '#d63e2e' : '#e6edf3';
-          ctx.strokeStyle = isMove ? '#fff' : '#0b1016';
-          ctx.lineWidth = isMove ? 2 : 1.5;
-          ctx.fill();
-          ctx.stroke();
-          // Inner dot for move handle
-          if (isMove) {
+          const img = isMove ? knobMoveImg : knobImg;
+          const size = isMove ? 22 : 18;
+          if (img && img.complete && img.naturalWidth) {
+            ctx.save();
+            // subtle shadow for Blizzard pop
+            ctx.shadowColor = 'rgba(0,0,0,0.55)';
+            ctx.shadowBlur = 4;
+            ctx.shadowOffsetY = 1;
+            ctx.drawImage(img, s.x - size / 2, s.y - size / 2, size, size);
+            ctx.restore();
+          } else {
+            ctx.save();
             ctx.beginPath();
-            ctx.arc(s.x, s.y, 3, 0, Math.PI * 2);
-            ctx.fillStyle = '#fff';
+            ctx.arc(s.x, s.y, HANDLE_SCREEN, 0, Math.PI * 2);
+            ctx.fillStyle = isMove ? '#d63e2e' : '#e6edf3';
+            ctx.strokeStyle = isMove ? '#fff' : '#0b1016';
+            ctx.lineWidth = isMove ? 2 : 1.5;
             ctx.fill();
+            ctx.stroke();
+            if (isMove) {
+              ctx.beginPath();
+              ctx.arc(s.x, s.y, 3, 0, Math.PI * 2);
+              ctx.fillStyle = '#fff';
+              ctx.fill();
+            }
+            ctx.restore();
           }
-          ctx.restore();
         }
         // Direction arrows for pad/boost/hoop etc: draw line from move handle to dir handle
         const move = handles.find((h) => h.id === 'move');
