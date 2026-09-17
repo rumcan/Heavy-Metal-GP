@@ -17,8 +17,12 @@
 import { spawn } from 'node:child_process';
 import { readdir } from 'node:fs/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = new URL('..', import.meta.url).pathname;
+// fileURLToPath, not `.pathname`: on Windows the pathname is `/C:/…` with %20s, which is no working directory.
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
+// `npx` is `npx.cmd` on Windows and cannot be spawned without a shell.
+const SHELL = process.platform === 'win32';
 const SPECS = 'tests/e2e-mp';
 const PORT = Number(process.env.MP_PORT ?? 5173);
 const BASE = process.env.MP_BASE_URL ?? `http://127.0.0.1:${PORT}/`;
@@ -49,6 +53,7 @@ if (!(await healthy(BASE))) {
     cwd: ROOT,
     env: { ...process.env, RUNDOT_DEV_ROOMS_CONFIG: 'rundot/realtime.e2e.config.json' },
     stdio: ['ignore', 'pipe', 'pipe'],
+    shell: SHELL,
   });
   vite.stdout.on('data', (chunk) => process.stdout.write(`[vite] ${chunk}`));
   vite.stderr.on('data', (chunk) => process.stderr.write(`[vite] ${chunk}`));
@@ -81,6 +86,7 @@ const run = spawn('npx', ['tsx', '--test', '--test-concurrency=1', ...files], {
   cwd: ROOT,
   env: { ...process.env, MP_BASE_URL: BASE },
   stdio: 'inherit',
+  shell: SHELL,
 });
 const code = await new Promise((resolve) => run.on('exit', (c) => resolve(c ?? 1)));
 vite?.kill('SIGTERM');

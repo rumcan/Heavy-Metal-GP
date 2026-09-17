@@ -36,6 +36,10 @@ import type { RaceLink } from '../net/session';
 import type { RaceProtocol, RaceSettings, Seat, SeatGarage, WelcomeMsg } from '../net/protocol';
 import { CALENDAR } from '../game/season';
 import LobbyGrid from './LobbyGrid';
+import ItemGlyph from './ItemGlyph';
+import { ITEM_INFO, ITEM_TYPES } from '../game/types';
+import type { ItemType } from '../game/types';
+import { UNLIMITED_ITEM } from '../net/protocol';
 import Brand from './Brand';
 
 /** What App needs to launch an online race once the lights are armed. */
@@ -89,6 +93,9 @@ export const AUTO_START_MS = 20_000;
 /** Six humans and there is nobody left to wait for. */
 export const AUTO_START_FULL_GRID = 6;
 
+/** Charges a host can set per power-up: none, a few, or unlimited. */
+const HOUSE_STEPS = [0, 1, 2, 3, 5, UNLIMITED_ITEM];
+
 export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onLeave, onStart, link, autoStart = false, peers, greeting = null, error, onError }: Props) {
   const [welcome, setWelcome] = useState<WelcomeMsg | null>(greeting);
   /** The host's own copy of the grid (guests read the host's out of `lobby`). */
@@ -96,13 +103,15 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
   const [lobbySeats, setLobbySeats] = useState<Seat[] | null>(null);
   const [lobbySettings, setLobbySettings] = useState<RaceSettings | null>(null);
   const [copied, setCopied] = useState(false);
+  /** Host only: house rules for power-ups (null = everyone brings their own kit). */
+  const [items, setItems] = useState<Partial<Record<ItemType, number>> | null>(null);
   /** MP-07: when a quick race's lights go out (wall clock ms), once armed. */
   const [autoAt, setAutoAt] = useState<number | null>(null);
   const [remaining, setRemaining] = useState(0);
 
   const isHost = welcome ? welcome.hostId === room.playerId : room.isCreator;
   const seats = (isHost ? grid ?? welcome?.seats : lobbySeats ?? welcome?.seats) ?? [];
-  const settings: RaceSettings = isHost ? { circuit: circuitIndex } : lobbySettings ?? welcome?.settings ?? { circuit: circuitIndex };
+  const settings: RaceSettings = isHost ? { circuit: circuitIndex, ...(items ? { items } : {}) } : lobbySettings ?? welcome?.settings ?? { circuit: circuitIndex };
   const circuit = isHost ? circuitIndex : circuitIndexOf(settings);
   const gp = CALENDAR[circuit] ?? CALENDAR[0];
   const localSeat = seatOfPlayer(seats, room.playerId) ?? 0;
@@ -156,8 +165,13 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
   const filed = useRef(new Map<string, SeatGarage>());
   const readies = useRef(new Map<string, boolean>());
   // Everything the message handler needs, without re-subscribing on every render.
-  const latest = useRef({ welcome, grid, lobbySeats, isHost, circuit: circuitIndex });
-  latest.current = { welcome, grid, lobbySeats, isHost, circuit: circuitIndex };
+  const latest = useRef({ welcome, grid, lobbySeats, isHost, circuit: circuitIndex, items });
+  latest.current = { welcome, grid, lobbySeats, isHost, circuit: circuitIndex, items };
+  /** The host's full rules for a circuit: the circuit plus any power-up house rules. */
+  const hostSettings = (circuitId: number): RaceSettings => {
+    const rules = latest.current.items;
+    return { circuit: circuitId, ...(rules ? { items: rules } : {}) };
+  };
 
   /** The host's grid: the room's seat table, dressed, with every garage filed. */
   const dress = useCallback((from: Seat[], seed: number): Seat[] => {
@@ -170,10 +184,20 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
     return next;
   }, [autoStart, garage, room.playerId]);
 
+  /** Power-up rules as everyone currently sees them. */
+  const rules = settings.items ?? null;
+  /** Host only: change the house rules and republish the lobby straight away. */
+  const changeItems = (next: Partial<Record<ItemType, number>> | null) => {
+    if (!isHost) return;
+    setItems(next);
+    latest.current.items = next;
+    publish(latest.current.grid ?? seats, circuitIndex);
+  };
+
   /** Host only: keep the grid and tell everybody what it looks like. */
   const publish = useCallback((next: Seat[], circuitId: number) => {
     setGrid(next);
-    link.send({ type: 'lobby', seats: next, settings: { circuit: circuitId } });
+    link.send({ type: 'lobby', seats: next, settings: hostSettings(circuitId) });
   }, [link]);
 
   const handle = useCallback((msg: RaceProtocol) => {
@@ -225,7 +249,7 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
         onStart({
           seed: base.seed,
           seats: grid_,
-          settings: latest.current.isHost ? { circuit: latest.current.circuit } : lobbySettings ?? base.settings,
+          settings: latest.current.isHost ? hostSettings(latest.current.circuit) : lobbySettings ?? base.settings,
           localSeat: seatOfPlayer(grid_, room.playerId) ?? 0,
           isHost: latest.current.isHost,
           countdownAt: msg.countdownAt,
@@ -364,15 +388,6 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
   return <div className="app-shell lobby-page fit-shell">
     <header className="app-header">
       <Brand />
-      <div className="lobby-code-block">
-        <span className="eyebrow">{isHost ? 'YOUR ROOM CODE' : 'ROOM CODE'}</span>
-        <div className="lobby-code">
-          <b>{room.roomCode || '······'}</b>
-          <button className="icon-button" onClick={() => void copyCode()} aria-label="Copy the room code">
-            {copied ? <Check size={16} /> : <Copy size={16} />}
-          </button>
-        </div>
-      </div>
       <div className="header-tools">
         <span className="eyebrow">{autoStart ? 'QUICK RACE' : isHost ? 'HOSTING' : 'JOINED'} <span className="muted">/ {seats.filter((s) => !s.isAI).length} DRIVERS</span></span>
         <button className="text-button" onClick={onLeave}>Leave <ArrowUpRight size={15} /></button>
@@ -380,6 +395,20 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
     </header>
 
     <main className="fit-main lobby-fit">
+      {/* The room code, big and first: HexMatch's lobby pattern, sized to be read across a room. */}
+      <section className="lobby-code-card" aria-labelledby="lobby-code-title">
+        <span className="eyebrow">{isHost ? 'YOUR ROOM CODE' : 'ROOM CODE'}{autoStart ? ' · QUICK RACE' : ''}</span>
+        <h2 id="lobby-code-title">{isHost && !autoStart ? 'Invite your rivals' : 'You are in'}</h2>
+        <div className="lobby-code">
+          <b aria-label={`Room code ${(room.roomCode || '').split('').join(' ')}`}>{room.roomCode || '······'}</b>
+          <button className="button-secondary" onClick={() => void copyCode()} aria-label="Copy the room code">
+            {copied ? <><Check size={16} />Copied</> : <><Copy size={16} />Copy</>}
+          </button>
+        </div>
+        <p className="lobby-code-note">{isHost && !autoStart
+          ? 'Share this code. Friends press Online → Join with code.'
+          : 'Friends can still join with this code until the race starts.'}</p>
+      </section>
       <section className="fit-pane lobby-circuit" aria-labelledby="lobby-circuit-title">
         <div className="section-topline">
           <span className="eyebrow"><b>01</b> THE CIRCUIT</span>
@@ -404,6 +433,35 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
             ? 'Everybody races the circuit you pick, on the track the room seeded. Two drivers minimum, six at most.'
             : 'The host picks the circuit. You race the same seed, so you are looking at the same track.'}
         </p>
+      </section>
+
+      <section className="fit-pane lobby-powerups" aria-labelledby="lobby-powerups-title">
+        <div className="section-topline">
+          <span className="eyebrow" id="lobby-powerups-title"><b>03</b> POWER-UPS</span>
+          <span className="muted">{isHost ? 'You set' : 'Set by the host'}</span>
+        </div>
+        <div className="mode-switch lobby-powerup-mode" role="group" aria-label="Power-up rules">
+          <button className={!rules ? 'selected' : ''} aria-pressed={!rules} disabled={!isHost} onClick={() => changeItems(null)}>Own kits</button>
+          <button className={rules ? 'selected' : ''} aria-pressed={!!rules} disabled={!isHost} onClick={() => changeItems(rules ?? Object.fromEntries(ITEM_TYPES.map((item) => [item, 1])))}>House rules</button>
+        </div>
+        {rules
+          ? <ul className="lobby-powerup-list">{ITEM_TYPES.map((item) => {
+            const count = rules[item] ?? 0;
+            return <li key={item} style={{ '--item-color': ITEM_INFO[item].color } as React.CSSProperties}>
+              <span className="lobby-powerup-name"><ItemGlyph item={item} size={18} />{ITEM_INFO[item].name}</span>
+              <span className="lobby-powerup-steps" role="group" aria-label={`${ITEM_INFO[item].name} charges`}>
+                {HOUSE_STEPS.map((step) => <button
+                  key={step}
+                  className={step === count ? 'selected' : ''}
+                  aria-pressed={step === count}
+                  disabled={!isHost}
+                  onClick={() => changeItems({ ...rules, [item]: step })}
+                >{step === UNLIMITED_ITEM ? '∞' : step}</button>)}
+              </span>
+            </li>;
+          })}</ul>
+          : <p className="lobby-note">Everybody races the power-ups they bought or picked up, and spends them for real.</p>}
+        {rules && <p className="lobby-note">Every driver starts with these, AI included. House-rule charges never touch anyone's own kit.</p>}
       </section>
 
       <section className="fit-pane lobby-grid-pane" aria-labelledby="lobby-grid-title">

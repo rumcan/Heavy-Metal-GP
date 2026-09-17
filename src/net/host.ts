@@ -28,10 +28,10 @@
 import { Game } from '../game/engine';
 import type { Marble } from '../game/engine';
 import { HEAT_TIME_LIMIT, PHYSICS_STEP } from '../game/physics';
-import type { MarbleInfo, TrackProfile } from '../game/types';
+import type { Inventory, ItemType, MarbleInfo, TrackProfile } from '../game/types';
 import type { Track } from '../game/track';
 import { generateTrack } from '../game/track';
-import { ITEM_TYPES } from '../game/types';
+import { ITEM_TYPES, MAX_ITEM_STACK, normalizeInventory } from '../game/types';
 import {
   MARBLE_COUNT,
   MAX_EVENTS_PER_FRAME,
@@ -39,6 +39,7 @@ import {
   nextSeq,
   packState,
   SEQ_START,
+  UNLIMITED_ITEM,
 } from './protocol';
 import type {
   IntentMsg,
@@ -130,6 +131,23 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
  * Drive it with `advance(dtMs)` from a requestAnimationFrame loop (or from a
  * test's clock) and hand it guest intents as they arrive.
  */
+/**
+ * Online house rules → the starting kit every seat gets, and which items never run out.
+ * `null` when the host left power-ups as "bring your own kit".
+ */
+export function houseInventory(settings: RaceSettings | undefined): { inventory: Partial<Inventory>; unlimited: ItemType[] } | null {
+  const rules = settings?.items;
+  if (!rules) return null;
+  const inventory: Partial<Inventory> = {};
+  const unlimited: ItemType[] = [];
+  for (const item of ITEM_TYPES) {
+    const count = rules[item] ?? 0;
+    if (count === UNLIMITED_ITEM) { inventory[item] = MAX_ITEM_STACK; unlimited.push(item); }
+    else inventory[item] = Math.max(0, Math.min(MAX_ITEM_STACK, count));
+  }
+  return { inventory, unlimited };
+}
+
 export class RaceHost {
   readonly game: Game;
   private readonly send: (msg: RaceProtocol) => void;
@@ -145,6 +163,8 @@ export class RaceHost {
   private lightsShown = -1;
   private snapshotId = 0;
   private finishHold = 0;
+  /** Fast forward (1, 2 or 4). Only honoured once every human driver has finished: it changes the race for everyone. */
+  private speed = 1;
   private classified: ResultsMsg | null = null;
   /** The events sent with the last publish — sent again with the next one. */
   private previousEvents: { seq: number; list: RaceEvent[] } | null = null;
@@ -171,6 +191,7 @@ export class RaceHost {
     const seats = [...opts.seats].sort((a, b) => a.slot - b.slot);
     this.seats = seats;
     const humanSeats = seats.filter((s) => !s.isAI).map((s) => s.slot);
+    const house = houseInventory(opts.settings);
     const roster: MarbleInfo[] = seats.map((seat) => ({
       // One numbering, three jobs: the seat's slot, the marble's id, and the
       // marble's offset in every packed `state` frame. No translation table,
@@ -181,8 +202,8 @@ export class RaceHost {
       stats: seat.stats,
       isPlayer: seat.slot === opts.localSeat,
       character: seat.portrait,
-      // MP-09: each human seat races on the kit it brought.
-      inventory: seat.inventory,
+      // MP-09: each human seat races on the kit it brought — unless the host set house rules for everyone.
+      inventory: house ? normalizeInventory(house.inventory) : seat.inventory,
     }));
     this.game = new Game(opts.seed, roster, {
       track: opts.track ?? generateTrack(opts.seed, opts.profile),
@@ -191,6 +212,7 @@ export class RaceHost {
       // host is publishing them.
       wireEvents: true,
       aiItems: opts.aiItems,
+      ...(house ? { inventory: { ...house.inventory }, unlimitedItems: house.unlimited } : {}),
       gridOrder: opts.gridOrder ?? seats.map((s) => s.slot),
     });
     this.game.start();
@@ -377,6 +399,16 @@ export class RaceHost {
    * Advance by `dtMs` of wall time: run the fixed-step simulation, then publish
    * if a state frame is due.
    */
+  /** Every human seat (including the host's own) has crossed the line: only AI are still racing. */
+  get allHumansFinished(): boolean {
+    return this.seats.every((seat) => seat.isAI || this.game.marbles.find((m) => m.info.id === seat.slot)?.finishedAt != null);
+  }
+
+  /** Host control: 1, 2 or 4. Ignored until every human has finished. */
+  setSpeed(speed: number): void {
+    this.speed = speed === 2 || speed === 4 ? speed : 1;
+  }
+
   advance(dtMs: number): void {
     const dt = Math.max(0, dtMs);
     const now = this.clock();
@@ -385,16 +417,17 @@ export class RaceHost {
     for (const peer of this.peers) if (takeoverDue(peer, now)) this.releaseSeat(peer.playerId);
     if (!this.game.gateOpen) this.runCountdown(now);
 
-    this.accumulator += dt;
+    // Frames are stamped with wall time, so a faster sim is a faster picture on every guest too.
+    this.accumulator += dt * (this.speed > 1 && this.allHumansFinished ? this.speed : 1);
     let steps = 0;
-    while (this.accumulator >= PHYSICS_STEP && steps < MAX_STEPS_PER_FRAME) {
+    while (this.accumulator >= PHYSICS_STEP && steps < MAX_STEPS_PER_FRAME * this.speed) {
       this.game.step(PHYSICS_STEP);
       this.accumulator -= PHYSICS_STEP;
       steps++;
     }
     // A tab that stalled must not spend the next ten frames catching up on ten
     // seconds of sim — it would fall further behind every frame. Drop the debt.
-    if (steps === MAX_STEPS_PER_FRAME) this.accumulator = 0;
+    if (steps === MAX_STEPS_PER_FRAME * this.speed) this.accumulator = 0;
 
     // A human's kit changed, so the world it belongs to is republished: a
     // pickup is one snapshot, not a stream.

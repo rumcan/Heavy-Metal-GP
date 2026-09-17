@@ -78,7 +78,7 @@ export default function OnlinePanel({ busy, error, onHost, onJoin, onQuick, sear
     </div>}
     {offline
       ? <p className="online-note online-note-warn">{NO_ROOM_SERVER_MESSAGE}</p>
-      : <p className="online-note">Six drivers per race — AI fills whatever the humans leave.</p>}
+      : <p className="online-note">Up to six players per race — AI drivers fill the rest of the grid.</p>}
     <div className="online-panel-row">
       <button className="button-primary" disabled={busy || offline} onClick={onHost}>
         <Radio size={16} />{busy ? 'Opening the room…' : 'Host game'}

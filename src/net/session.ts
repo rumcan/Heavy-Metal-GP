@@ -259,6 +259,16 @@ export class RaceSession {
     else this.guest?.update(this.clock());
   }
 
+  /** Fast forward once only AI are left racing. Host only; a guest's picture follows the host's clock. */
+  setSpeed(speed: number): void {
+    this.host?.setSpeed(speed);
+  }
+
+  /** Online fast forward is available: this client hosts and every human driver has finished. */
+  get canFastForward(): boolean {
+    return !!this.host && this.host.allHumansFinished;
+  }
+
   /** The local driver's hands. -1 (left) … 0 … +1 (right). */
   setNudge(v: number): void {
     if (this.host) {
