@@ -35,6 +35,9 @@ import type { PeerPresence } from '../net/presence';
 import type { RaceLink } from '../net/session';
 import type { RaceProtocol, RaceSettings, Seat, SeatGarage, WelcomeMsg } from '../net/protocol';
 import { CALENDAR } from '../game/season';
+import { loadTracksSync } from '../game/tracks';
+import TrackThumbnail from './editor/TrackThumbnail';
+import { encodeShareCode } from '../game/sharecode';
 import LobbyGrid from './LobbyGrid';
 import ItemGlyph from './ItemGlyph';
 import { ITEM_INFO, ITEM_TYPES } from '../game/types';
@@ -105,6 +108,11 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
   const [copied, setCopied] = useState(false);
   /** Host only: house rules for power-ups (null = everyone brings their own kit). */
   const [items, setItems] = useState<Partial<Record<ItemType, number>> | null>(null);
+  // MB-08: custom track picking for the host — share-code in settings.customCode
+  const myTracks = loadTracksSync();
+  const [circuitTab, setCircuitTab] = useState<'calendar' | 'custom'>('calendar');
+  const [customCode, setCustomCode] = useState<string | null>(null);
+  const [customName, setCustomName] = useState<string | null>(null);
   /** MP-07: when a quick race's lights go out (wall clock ms), once armed. */
   const [autoAt, setAutoAt] = useState<number | null>(null);
   const [remaining, setRemaining] = useState(0);
@@ -170,7 +178,9 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
   /** The host's full rules for a circuit: the circuit plus any power-up house rules. */
   const hostSettings = (circuitId: number): RaceSettings => {
     const rules = latest.current.items;
-    return { circuit: circuitId, ...(rules ? { items: rules } : {}) };
+    const base: RaceSettings = { circuit: circuitId, ...(rules ? { items: rules } : {}) };
+    if (customCode) (base as unknown as { customCode: string }).customCode = customCode;
+    return base;
   };
 
   /** The host's grid: the room's seat table, dressed, with every garage filed. */
@@ -200,6 +210,32 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
     link.send({ type: 'lobby', seats: next, settings: hostSettings(circuitId) });
   }, [link]);
 
+  /** Host picks a custom track — encode to share code (5 KB, fits frame) and publish. */
+  const pickCustomTrack = async (trackId: string | null) => {
+    if (!isHost) return;
+    if (!trackId) {
+      setCustomCode(null);
+      setCustomName(null);
+      setCircuitTab('calendar');
+      publish(latest.current.grid ?? seats, circuitIndex);
+      return;
+    }
+    const track = myTracks.find((t) => t.id === trackId);
+    if (!track) return;
+    try {
+      const code = await encodeShareCode(track.def);
+      setCustomCode(code);
+      setCustomName(track.def.name);
+      setCircuitTab('custom');
+      // Publish with the new code — circuitId is kept for HUD title fallback
+      const settings: RaceSettings = { circuit: circuitIndex, ...(latest.current.items ? { items: latest.current.items } : {}), customCode: code } as RaceSettings;
+      setGrid((prev) => prev ?? seats);
+      link.send({ type: 'lobby', seats: latest.current.grid ?? seats, settings });
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'Could not share that track.');
+    }
+  };
+
   const handle = useCallback((msg: RaceProtocol) => {
     switch (msg.type) {
       case 'welcome': {
@@ -219,7 +255,18 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
       }
       case 'lobby': {
         setLobbySeats(msg.seats);
-        if (msg.settings) setLobbySettings(msg.settings);
+        if (msg.settings) {
+          setLobbySettings(msg.settings);
+          const code = (msg.settings as unknown as { customCode?: string })?.customCode;
+          if (typeof code === 'string') {
+            setCustomCode(code);
+            // Try to resolve name from local tracks (host's own list) for display
+              setCircuitTab('custom');
+          } else if (!isHost) {
+            setCustomCode(null);
+            setCustomName(null);
+          }
+        }
         // The host answers a re-greeting with the grid (MP-08) — which is the
         // last thing a returning driver was waiting for.
         joinLive(msg.seats);
@@ -414,24 +461,65 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
           <span className="eyebrow"><b>01</b> THE CIRCUIT</span>
           <span className="muted">{isHost ? 'You pick' : `Picked by ${welcome?.seats.find((s) => s.playerId === welcome.hostId)?.name ?? 'the host'}`}</span>
         </div>
-        <div>
-          <h2 id="lobby-circuit-title">{gp.name.toUpperCase()}</h2>
-          <span className="muted">{gp.flag} {gp.location}</span>
-          <p className="lobby-circuit-desc">{gp.desc}</p>
-        </div>
-        <div className="circuit-selector" aria-label="Select a circuit">
-          {CALENDAR.map((item, i) => <button
-            key={item.id}
-            className={i === circuit ? 'selected' : ''}
-            aria-pressed={i === circuit}
-            disabled={!isHost}
-            onClick={() => { if (!isHost) return; onCircuit(i); publish(latest.current.grid ?? seats, i); }}
-          ><span>{String(i + 1).padStart(2, '0')}</span><strong>{item.short}</strong></button>)}
-        </div>
+        {isHost && (
+          <div className="circuit-tabs" role="tablist" aria-label="Circuit source">
+            <button role="tab" aria-selected={circuitTab === 'calendar'} className={circuitTab === 'calendar' ? 'selected' : ''} onClick={() => { setCircuitTab('calendar'); setCustomCode(null); setCustomName(null); publish(latest.current.grid ?? seats, circuitIndex); }}>Calendar</button>
+            <button role="tab" aria-selected={circuitTab === 'custom'} className={circuitTab === 'custom' ? 'selected' : ''} onClick={() => setCircuitTab('custom')}>My tracks{myTracks.length ? ` (${myTracks.length})` : ''}</button>
+          </div>
+        )}
+        {customCode ? (
+          <div>
+            <h2 id="lobby-circuit-title">{(customName ?? 'CUSTOM CIRCUIT').toUpperCase()}</h2>
+            <span className="muted">CUSTOM • Host's track • {customCode.slice(0, 8)}…</span>
+            <p className="lobby-circuit-desc">A player-built circuit. Payout reduced to 30 % (18 % online) to keep farming in check. Everyone races the same custom layout.</p>
+            {isHost && <button className="text-button" onClick={() => { setCustomCode(null); setCustomName(null); setCircuitTab('calendar'); publish(latest.current.grid ?? seats, circuitIndex); }}>Back to Calendar</button>}
+          </div>
+        ) : (
+          <div>
+            <h2 id="lobby-circuit-title">{gp.name.toUpperCase()}</h2>
+            <span className="muted">{gp.flag} {gp.location}</span>
+            <p className="lobby-circuit-desc">{gp.desc}</p>
+          </div>
+        )}
+        {circuitTab === 'calendar' || !isHost ? (
+          <div className="circuit-selector" aria-label="Select a circuit">
+            {CALENDAR.map((item, i) => <button
+              key={item.id}
+              className={i === circuit && !customCode ? 'selected' : ''}
+              aria-pressed={i === circuit && !customCode}
+              disabled={!isHost}
+              onClick={() => { if (!isHost) return; setCustomCode(null); setCustomName(null); onCircuit(i); publish(latest.current.grid ?? seats, i); }}
+            ><span>{String(i + 1).padStart(2, '0')}</span><strong>{item.short}</strong></button>)}
+          </div>
+        ) : (
+          <div className="my-tracks-list lobby-custom-list" aria-label="My tracks">
+            {myTracks.length === 0 ? (
+              <p className="lobby-note">You have no saved tracks — build one in Workshop, then pick it here.</p>
+            ) : (
+              myTracks.map((t) => (
+                <button
+                  key={t.id}
+                  className={`my-track-row ${customName === t.def.name && customCode ? 'selected' : ''}`}
+                  onClick={() => void pickCustomTrack(t.id)}
+                  disabled={!isHost}
+                >
+                  <TrackThumbnail def={t.def} />
+                  <span className="my-track-meta">
+                    <strong>{t.def.name}</strong>
+                    <span className="muted">{t.def.pieces.length} pcs • {t.def.height}px</span>
+                  </span>
+                  <span className="my-track-check" aria-hidden>{customName === t.def.name && customCode ? '●' : ''}</span>
+                </button>
+              ))
+            )}
+          </div>
+        )}
         <p className="lobby-note">
-          {isHost
-            ? 'Everybody races the circuit you pick, on the track the room seeded. Two drivers minimum, six at most.'
-            : 'The host picks the circuit. You race the same seed, so you are looking at the same track.'}
+          {customCode
+            ? 'Custom circuit: everyone races the host’s layout. Payout reduced (see results). Two drivers minimum, six at most.'
+            : isHost
+              ? 'Everybody races the circuit you pick, on the track the room seeded. Two drivers minimum, six at most.'
+              : 'The host picks the circuit. You race the same seed, so you are looking at the same track.'}
         </p>
       </section>
 

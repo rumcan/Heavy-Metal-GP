@@ -195,6 +195,9 @@ export interface Seat {
   inventory?: Inventory;
 }
 
+/** Largest share-code the wire will carry (a full track is ~5 KB as a code, well inside the frame cap). */
+export const MAX_CUSTOM_CODE_CHARS = 12000;
+
 /** What the race is: which circuit, and how many times around it. */
 export interface RaceSettings {
   /**
@@ -212,6 +215,17 @@ export interface RaceSettings {
    * House-rule charges never come out of (or go back into) anyone's own kit.
    */
   items?: Partial<Record<ItemType, number>>;
+  /**
+   * MB-08: a custom track as a share-code string (`1-` + deflate+base64url, see
+   * `src/game/sharecode.ts`). When present the host is racing a player-built
+   * circuit; `circuit` is ignored by the simulation (kept for compatibility and
+   * for the HUD title) and the track is built with `buildTrackFromDef` after
+   * `decodeShareCode`. Fits inside `FRAME_CAP_BYTES` (~5 KB) so the settings
+   * still travel in a single `welcome`/`lobby` frame — no extra chunk type is
+   * needed, but the value is still size-checked and validated before it is
+   * decoded.
+   */
+  customCode?: string;
 }
 
 /** An item the host set to "unlimited". */
@@ -1043,6 +1057,14 @@ export function readTrackDef(value: unknown): TrackDef | null {
   return { segments: p.segments, weights: { ...(p.weights as Record<string, number>) }, theme: { ...(p.theme as TrackTheme) } };
 }
 
+/** True when the settings describe a custom track (validate before building). */
+export function isCustomSettings(settings: RaceSettings | undefined): boolean {
+  return typeof settings?.customCode === 'string' && settings.customCode.length > 0;
+}
+
+/** Share-code prefix for a valid custom track code (v1 deflate). */
+const CUSTOM_CODE_PREFIX = '1-';
+
 /** Read the race settings; `null` when present-but-unreadable. */
 export function readRaceSettings(value: unknown): RaceSettings | null {
   if (!value || typeof value !== 'object') return null;
@@ -1069,7 +1091,19 @@ export function readRaceSettings(value: unknown): RaceSettings | null {
       items[key as ItemType] = count as number;
     }
   }
-  return { circuit, ...(s.laps !== undefined ? { laps: s.laps as number } : {}), ...(items ? { items } : {}) };
+  if (s.customCode !== undefined) {
+    if (typeof s.customCode !== 'string') return null;
+    if (s.customCode.length === 0 || s.customCode.length > MAX_CUSTOM_CODE_CHARS) return null;
+    if (!s.customCode.startsWith(CUSTOM_CODE_PREFIX)) return null;
+    // Base64url shape check — the full deflate validation is `decodeShareCode`.
+    if (!/^[A-Za-z0-9_-]+$/.test(s.customCode.slice(2))) return null;
+  }
+  return {
+    circuit,
+    ...(s.laps !== undefined ? { laps: s.laps as number } : {}),
+    ...(items ? { items } : {}),
+    ...(typeof s.customCode === 'string' ? { customCode: s.customCode } : {}),
+  };
 }
 
 /** Validate the relay stamp: present-or-absent, and a non-empty string when present. */

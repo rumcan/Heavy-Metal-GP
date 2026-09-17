@@ -13,6 +13,7 @@ import type { Track } from '../game/track';
 import { HEAT_TIME_LIMIT, PHYSICS_STEP, formatTime } from '../game/physics';
 import { teamOf, ITEM_TYPES, emptyInventory, normalizeInventory } from '../game/types';
 import type { MarbleInfo, ItemType, TrackProfile, HeatResult, Inventory } from '../game/types';
+import type { TrackDef } from '../game/trackdef';
 import type { RacePayout } from '../game/economy';
 import { pointsFor } from '../game/season';
 import Brand from './Brand';
@@ -27,6 +28,8 @@ export type { RaceAction } from './RaceResults';
 
 interface Props {
   seed: number; roster: MarbleInfo[]; profile: TrackProfile; gridOrder: number[];
+  /** MB-08: a player-built circuit — when present the `seed` still seeds RNG but the track is built from the def. */
+  trackDef?: TrackDef | null;
   title: string; subtitle: string; championship?: boolean;
   onExit: () => void;
   /**
@@ -39,6 +42,8 @@ interface Props {
   onInventoryChange: (inventory: Inventory) => void;
   payout: RacePayout | null;
   onShop: () => void;
+  /** MB-08: show reduced-payout note when the heat was on a custom circuit. */
+  isCustom?: boolean;
   /** Story mode only (ST-03/ST-07): mid-race beats, objective chips and chapter engine hooks. */
   story?: StoryRaceProps;
   /**
@@ -82,7 +87,7 @@ interface Hud {
   viewTop: number; viewBottom: number;
 }
 
-export default function RaceScreen({ seed, roster, profile, gridOrder, title, subtitle, onExit, onFinished, actions, championship = false, inventory, credits, onInventoryChange, payout, onShop, story, online }: Props) {
+export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef, title, subtitle, onExit, onFinished, actions, championship = false, inventory, credits, onInventoryChange, payout, onShop, isCustom = false, story, online }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef<Game | null>(null);
   /** MP-06: the online session, when there is one. The host's simulation or the guest's picture. */
@@ -160,6 +165,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
           seats: onlineRef.current.seats,
           settings: onlineRef.current.settings,
           profile,
+          trackDef: trackDef ?? undefined,
           localSeat: onlineRef.current.localSeat,
           isHost: onlineRef.current.isHost,
           countdownAt: onlineRef.current.countdownAt,
@@ -167,7 +173,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
         })
       : null;
     sessionRef.current = session;
-    const game = session ? session.game : new Game(seed, roster, { profile, gridOrder, inventory: initialInventory.current, story: story?.hooks });
+    const game = session ? session.game : new Game(seed, roster, { profile, gridOrder, inventory: initialInventory.current, story: story?.hooks, def: trackDef ?? undefined });
     // Online, this screen does not own the wallet: the race inventory is the
     // host's book until MP-09 puts each driver's own items on the grid, and a
     // pickup here must not empty the account it was bought with.
@@ -382,7 +388,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
       sessionRef.current = null;
       gameRef.current = null;
     };
-  }, [seed, roster, profile, gridOrder, setPause, setZoom, toggleMute, online, useItem]);
+  }, [seed, roster, profile, trackDef, gridOrder, setPause, setZoom, toggleMute, online, useItem]);
 
   const byId = (id: number) => roster.find((m) => m.id === id)!;
   const preStart = hud.lights >= 0;
@@ -467,7 +473,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
       </div><InventoryToolbar unlimited={online?.settings.items} inventory={hud.inventory} remaining={hud.remaining} selected={selected} blocked={paused || hud.finished || preStart || hud.frozen || !!results} coolingDown={hud.coolingDown} onUse={deploy} />
     </footer>
     {paused && !results && <Dialog titleId="pause-title" onClose={() => { setConfirmExit(false); setPause(false); }} className="pause-dialog"><span className="eyebrow"><Timer size={15} /> {confirmExit ? 'RACE CONTROL' : 'TIME OUT'}</span><h2 id="pause-title">{confirmExit ? 'Leaving the grid?' : 'A quick pit stop.'}</h2><p className="dialog-intro">{confirmExit ? 'This heat will not be scored or paid. Used items stay spent; unused items and pickups stay in your inventory. Previous results are safe.' : 'The clock, every marble, and all item timers are paused. Your next move can wait.'}</p><div className="pause-actions"><button className="button-primary" onClick={() => { setConfirmExit(false); setPause(false); }}><Play size={17} />Back to the race</button><button className="button-secondary" onClick={confirmExit ? onExit : () => setConfirmExit(true)}>{confirmExit ? 'Leave heat' : 'Return to paddock'}<ChevronRight size={16} /></button></div></Dialog>}
-    {results && <RaceResults results={results} roster={roster} title={title} subtitle={subtitle} actions={actions} championship={championship} payout={payout} credits={credits} onShop={onShop} />}
+    {results && <RaceResults results={results} roster={roster} title={title} subtitle={subtitle} actions={actions} championship={championship} payout={payout} credits={credits} onShop={onShop} isCustom={isCustom} />}
   </div>;
 }
 

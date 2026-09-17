@@ -5,6 +5,7 @@ import { teamOf } from '../game/types';
 import { pointsFor } from '../game/season';
 import { formatTime } from '../game/physics';
 import type { RacePayout } from '../game/economy';
+import { CUSTOM_PAYOUT_NOTE } from '../game/economy';
 import { postRaceBanter } from '../game/characters';
 import Portrait from './Portrait';
 import Banter from './Banter';
@@ -22,9 +23,11 @@ interface Props {
   payout?: RacePayout | null;
   credits?: number;
   onShop?: () => void;
+  /** MB-08: custom circuits pay 30 % (18 % online) — show the note under the payout. */
+  isCustom?: boolean;
 }
 
-export default function RaceResults({ results, roster, title, subtitle, actions, championship, payout, credits, onShop }: Props) {
+export default function RaceResults({ results, roster, title, subtitle, actions, championship, payout, credits, onShop, isCustom = false }: Props) {
   const byId = (id: number) => roster.find((m) => m.id === id)!;
   const me = results.find((r) => byId(r.id).isPlayer)!;
   const finished = results.filter((r) => r.time !== null);
@@ -56,7 +59,7 @@ export default function RaceResults({ results, roster, title, subtitle, actions,
         })}</tbody>
       </table></div>
       <footer className="results-footer">{fastest && <div className="fastest-result"><Timer size={15} /><span>FASTEST FINISH</span><strong>{byId(fastest.id).isPlayer ? 'You' : byId(fastest.id).name}</strong><span>{formatTime(fastest.time!)}</span></div>}
-        {payout && <div className="race-payout" role="status"><div className="payout-total"><Coins size={24} /><div><span>{payout.total > 0 ? 'RACE WINNINGS' : 'NO PAYOUT / DNF'}</span><strong>+{payout.total.toLocaleString()} <small>CR</small></strong></div></div><p><span>Placement <b>{payout.placement} CR</b></span><span>Orange pegs <b>+{payout.pegBonus} CR</b></span></p><div className="payout-wallet"><span>BALANCE: {(credits ?? payout.balance).toLocaleString()} CR</span>{onShop && <button className="text-button" onClick={onShop}><ShoppingBag size={14} />Spend winnings <ArrowRight size={14} /></button>}</div></div>}
+        {payout && <div className="race-payout" role="status"><div className="payout-total"><Coins size={24} /><div><span>{payout.total > 0 ? 'RACE WINNINGS' : 'NO PAYOUT / DNF'}</span><strong>+{payout.total.toLocaleString()} <small>CR</small></strong></div></div><p><span>Placement <b>{payout.placement} CR</b></span><span>Orange pegs <b>+{payout.pegBonus} CR</b></span></p>{isCustom && <p className="payout-custom-note" style={{ fontSize: '10px', color: 'var(--muted)', margin: '6px 0 0' }}>{CUSTOM_PAYOUT_NOTE}</p>}<div className="payout-wallet"><span>BALANCE: {(credits ?? payout.balance).toLocaleString()} CR</span>{onShop && <button className="text-button" onClick={onShop}><ShoppingBag size={14} />Spend winnings <ArrowRight size={14} /></button>}</div></div>}
         <div className="results-actions">{actions.map((action, i) => <button key={action.label} autoFocus={i === 0} className={action.primary ? 'button-primary' : 'button-secondary'} onClick={action.onClick}>{action.label}{action.primary && <ArrowRight size={18} />}</button>)}</div></footer>
     </section>
   </div>;

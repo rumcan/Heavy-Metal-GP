@@ -34,8 +34,10 @@ import { circuitIndexOf, gridOrderOf, rosterOf } from './net/lobby';
 import type { SeatGarage } from './net/lobby';
 import { MarbleInfo, MarbleStats, AI_COLORS, randomStats, mulberry32, PLAYER_COLORS, HeatResult, HEATS_PER_GP } from './game/types';
 import { SeasonState, newSeason, recordHeat, gridOrder, gpSeed, CALENDAR, saveSeason, loadSeason } from './game/season';
-import { loadAccount, saveAccount, purchaseItem, onlineRaceId, settleOnlineRace, settleRace } from './game/economy';
+import { loadAccount, saveAccount, purchaseItem, onlineRaceId, settleOnlineRace, settleRace, settleCustomRace } from './game/economy';
 import type { RacerAccount, RacePayout } from './game/economy';
+import { loadTracksSync } from './game/tracks';
+import type { TrackDef } from './game/trackdef';
 import { normalizeInventory } from './game/types';
 import type { Inventory, ItemType } from './game/types';
 import PitShop from './components/PitShop';
@@ -88,6 +90,7 @@ export default function App() {
   const [rivalSeed, setRivalSeed] = useState(() => Math.floor(Math.random() * 0xffffffff));
   const [raceKey, setRaceKey] = useState(0);
   const [circuitIndex, setCircuitIndex] = useState(0);
+  const [customTrackId, setCustomTrackId] = useState<string | null>(null);
   const [season, setSeason] = useState<SeasonState | null>(() => loadSeason());
   const [account, setAccount] = useState(loadAccount);
   const accountRef = useRef(account);
@@ -123,9 +126,12 @@ export default function App() {
   const [now, setNow] = useState(() => Date.now());
   /** MP-08: the race a return can offer back — a rejoin memo, and its room. */
   const [rejoin, setRejoin] = useState<ActiveMatchMemo | null>(null);
+  // MB-08: decoded custom track for the online race (host and guest decode from settings.customCode)
+  const [onlineCustomDef, setOnlineCustomDef] = useState<TrackDef | null>(null);
   const leaveRoom = useCallback(() => {
     setRoom(null);
     setOnline(null);
+    setOnlineCustomDef(null);
     setQuick(false);
     setPeers([]);
     setHostId(null);
@@ -320,6 +326,7 @@ export default function App() {
    */
   const raceAgain = useCallback(() => {
     setOnline(null);
+    // keep onlineCustomDef for next race if host reuses same settings; it will be refreshed on next start
     setPayout(null);
     setPhase('lobby');
   }, []);
@@ -337,10 +344,24 @@ export default function App() {
     void writeActiveMatch(null);
   }, []);
 
-  const startOnlineRace = useCallback((race: OnlineRaceStart) => {
+  const startOnlineRace = useCallback(async (race: OnlineRaceStart) => {
     setOnline(race);
     setPayout(null);
     setRaceKey((k) => k + 1);
+    const code = (race.settings as unknown as { customCode?: string })?.customCode;
+    if (code) {
+      try {
+        const { decodeShareCode } = await import('./game/sharecode');
+        const def = await decodeShareCode(code);
+        setOnlineCustomDef(def);
+      } catch (err) {
+        console.warn('Custom track decode failed', err);
+        setOnlineCustomDef(null);
+        setMpError(err instanceof Error ? err.message : 'Custom track is invalid — falling back to calendar.');
+      }
+    } else {
+      setOnlineCustomDef(null);
+    }
     setPhase('online');
   }, []);
 
@@ -379,7 +400,8 @@ export default function App() {
     const mine = rows.find((row) => row.id === online.localSeat);
     if (!mine) return;
     const raceId = onlineRaceId(room?.roomCode ?? 'race', online.countdownAt);
-    const paid = settleOnlineRace(accountRef.current, raceId, mine);
+    const isCustom = !!(online.settings as unknown as { customCode?: string })?.customCode;
+    const paid = isCustom ? settleCustomRace(accountRef.current, raceId, mine, true) : settleOnlineRace(accountRef.current, raceId, mine);
     // What you came home with is what you have: spent is spent, picked is kept.
     publishAccount(kit ? { ...paid.account, inventory: normalizeInventory(kit) } : paid.account);
     setPayout(paid.payout);
@@ -388,7 +410,8 @@ export default function App() {
   const awardWinnings = (results: HeatResult[]) => {
     const result = results.find((r) => r.id === 0);
     if (!result) return;
-    const paid = settleRace(accountRef.current, raceId, result);
+    const isCustom = !!customTrackDef;
+    const paid = isCustom ? settleCustomRace(accountRef.current, raceId, result, false) : settleRace(accountRef.current, raceId, result);
     publishAccount(paid.account);
     setPayout(paid.payout);
   };
@@ -407,8 +430,12 @@ export default function App() {
     setRaceId(`quick:${crypto.randomUUID()}`);
     setPayout(null);
     setRaceKey((k) => k + 1);
-    const circuit = CALENDAR[circuitIndex];
-    setLoading({ eyebrow: 'QUICK RACE / SINGLE HEAT', title: circuit.name.toUpperCase(), cta: 'Lights out', banter: preRaceBanter(quickRoster, Math.random), next: 'quick' });
+    if (customTrackDef) {
+      setLoading({ eyebrow: 'QUICK RACE / CUSTOM HEAT', title: customTrackDef.name.toUpperCase(), cta: 'Lights out', banter: preRaceBanter(quickRoster, Math.random), next: 'quick' });
+    } else {
+      const circuit = CALENDAR[circuitIndex];
+      setLoading({ eyebrow: 'QUICK RACE / SINGLE HEAT', title: circuit.name.toUpperCase(), cta: 'Lights out', banter: preRaceBanter(quickRoster, Math.random), next: 'quick' });
+    }
   };
 
   useEffect(() => saveSeason(season), [season]);
@@ -423,6 +450,8 @@ export default function App() {
   }, [phase]);
   const quickRoster = useMemo<MarbleInfo[]>(() => [{ id: 0, name: 'You', color, stats, isPlayer: true, character: portrait }, ...rivals], [rivals, color, stats, portrait]);
   const quickGrid = useMemo(() => quickRoster.map((m) => m.id), [quickRoster]);
+  const customTrack = customTrackId ? loadTracksSync().find((t) => t.id === customTrackId) ?? null : null;
+  const customTrackDef: TrackDef | null = customTrack?.def ?? null;
   const newSeed = useCallback(() => setSeed(Math.floor(Math.random() * 0xffffffff)), []);
 
   // ---- season helpers ----
@@ -494,6 +523,8 @@ export default function App() {
         onBackToSeason={lockSetup}
         circuitIndex={circuitIndex}
         onCircuit={setCircuitIndex}
+        customTrackId={customTrackId}
+        onSelectCustom={setCustomTrackId}
         account={account}
         onShop={openShop}
         portrait={portrait}
@@ -616,7 +647,8 @@ export default function App() {
   // online race (MP-06): the same screen, driven by a `RaceSession` instead of
   // its own `Game`. The host simulates and publishes; a guest draws the frames.
   if (phase === 'online' && online && onlineView) {
-    const gp = CALENDAR[circuitIndexOf(online.settings)] ?? CALENDAR[0];
+    const isCustomOnline = !!(online.settings as unknown as { customCode?: string })?.customCode;
+    const gp = isCustomOnline && onlineCustomDef ? { name: onlineCustomDef.name, profile: CALENDAR[0].profile } as unknown as typeof CALENDAR[0] : CALENDAR[circuitIndexOf(online.settings)] ?? CALENDAR[0];
     const drivers = online.seats.filter((s) => !s.isAI).length;
     return withShop(
       <RaceScreen
@@ -624,9 +656,11 @@ export default function App() {
         seed={online.seed}
         roster={onlineRoster}
         profile={gp.profile}
+        trackDef={onlineCustomDef}
         gridOrder={onlineGrid}
         title={gp.name}
-        subtitle={`ONLINE / ${online.isHost ? 'HOSTING' : 'JOINED'} / ${drivers} DRIVERS`}
+        isCustom={isCustomOnline}
+        subtitle={`ONLINE / ${online.isHost ? 'HOSTING' : 'JOINED'} / ${drivers} DRIVERS${isCustomOnline ? ' / CUSTOM' : ''}`}
         onExit={leaveRoom}
         // MP-09: an online race settles this screen's own seat, at the online
         // scale, and writes back the kit it came home with.
@@ -657,15 +691,21 @@ export default function App() {
     },
     { label: 'Back to garage', onClick: () => setPhase('menu') },
   ];
+  // MB-08: quick race on a custom circuit — title/seed/profile follow the def when present
+  const quickProfile = customTrackDef ? CALENDAR[0].profile : CALENDAR[circuitIndex].profile;
+  const quickTitle = customTrackDef ? customTrackDef.name : CALENDAR[circuitIndex].name;
+  const quickSubtitle = customTrackDef ? `QUICK RACE / CUSTOM // ${customTrackDef.pieces.length} PCS` : "QUICK RACE / SINGLE HEAT";
   return withShop(
     <RaceScreen
       key={raceKey}
       seed={seed}
       roster={quickRoster}
-      profile={CALENDAR[circuitIndex].profile}
+      profile={quickProfile}
+      trackDef={customTrackDef}
       gridOrder={quickGrid}
-      title={CALENDAR[circuitIndex].name}
-      subtitle="QUICK RACE / SINGLE HEAT"
+      title={quickTitle}
+      isCustom={!!customTrackDef}
+      subtitle={quickSubtitle}
       onExit={() => setPhase('menu')}
       onFinished={awardWinnings}
       actions={quickActions}
