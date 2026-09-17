@@ -143,8 +143,8 @@ button, a, input { outline-offset: 5px; }
 .brand-compact .brand-symbol { width: 32px; height: 30px; }
 .brand-compact .brand-wordmark { font-size: 15px; letter-spacing: .8px; }
 .brand-compact .brand-wordmark > span { font-size: 14px; }
-.race-event { border-left: 1px solid #37404a; padding-left: 24px; min-width: 0; }
-.race-event > span { font-family: var(--mono); font-size: 8px; color: #8695a6; letter-spacing: 1px; }
+.race-event { border-left: 1px solid #37404a; padding-left: 24px; min-width: 0; flex: 1 1 auto; }
+.race-event > span { display: block; font-family: var(--mono); font-size: 8px; color: #8695a6; letter-spacing: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .race-event h1 { font-size: 14px; font-weight: 650; margin: 4px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .race-clock { margin-left: auto; text-align: right; white-space: nowrap; }
 .race-clock > span { display: block; font: 7px var(--mono); letter-spacing: 1.6px; color: #8191a2; margin-bottom: 3px; }

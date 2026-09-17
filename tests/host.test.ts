@@ -578,3 +578,44 @@ test('MP-04 host: publishing costs the host a fraction of a frame', (context) =>
   host.dispose();
   racing.host.dispose();
 });
+
+test('host fast forward: ignored while a human is racing, 4x once every human has finished', () => {
+  const h = harness();
+  start(h);
+  h.host.setSpeed(4);
+  assert.equal(h.host.allHumansFinished, false);
+  const before = h.host.game.time;
+  for (let i = 0; i < 60; i++) h.tick();
+  const normal = h.host.game.time - before;
+  assert.ok(Math.abs(normal - 1000) < 40, `a human still racing keeps real time (advanced ${normal.toFixed(0)} ms in 1 s)`);
+
+  // Put both humans over the line, then the same second of wall time runs four seconds of race.
+  for (const m of h.host.game.marbles.filter((m) => m.info.id < 2)) m.finishedAt = h.host.game.raceTime();
+  assert.equal(h.host.allHumansFinished, true);
+  const mark = h.host.game.time;
+  for (let i = 0; i < 60; i++) h.tick();
+  const fast = h.host.game.time - mark;
+  assert.ok(fast > 3600, `four times the race time once only AI are left (advanced ${fast.toFixed(0)} ms in 1 s)`);
+});
+
+test('house rules: every seat starts with the host\'s power-ups, and unlimited ones never run out', async () => {
+  const { houseInventory } = await import('../src/net/host');
+  const { readRaceSettings, UNLIMITED_ITEM } = await import('../src/net/protocol');
+  // The wire refuses nonsense and keeps the rules it can read.
+  assert.equal(readRaceSettings({ circuit: 0, items: { rocket: 99 } }), null);
+  assert.equal(readRaceSettings({ circuit: 0, items: { teleport: 1 } }), null);
+  const settings = readRaceSettings({ circuit: 0, items: { rocket: UNLIMITED_ITEM, jump: 2 } });
+  assert.ok(settings?.items);
+  assert.equal(houseInventory({ circuit: 0 }), null, 'no rules: everyone brings their own kit');
+
+  const h = harness({ settings: settings! });
+  for (const m of h.host.game.marbles) {
+    assert.equal(m.inventory.jump, 2, `seat ${m.info.id} got the house jumps`);
+    assert.equal(m.inventory.oil, 0, `seat ${m.info.id} got no oil (not in the rules)`);
+  }
+  start(h);
+  const me = h.host.game.player;
+  const before = me.inventory.rocket;
+  assert.ok(h.host.game.useItem(me, 'rocket'), 'the rocket fires');
+  assert.equal(me.inventory.rocket, before, 'an unlimited item is never spent');
+});

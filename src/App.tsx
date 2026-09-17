@@ -39,7 +39,7 @@ import type { RacerAccount, RacePayout } from './game/economy';
 import { normalizeInventory } from './game/types';
 import type { Inventory, ItemType } from './game/types';
 import PitShop from './components/PitShop';
-import { RIVALS, PLAYER_PORTRAIT_COUNT, preRaceBanter } from './game/characters';
+import { RIVALS, PLAYER_PORTRAIT_COUNT, DRIVER_NAMES, preRaceBanter } from './game/characters';
 import type { Line } from './game/characters';
 import LoadingScreen from './components/LoadingScreen';
 import StoryMode from './components/story/StoryMode';
@@ -241,7 +241,7 @@ export default function App() {
   const garage = useMemo<SeatGarage>(
     // MP-09: the kit goes with the garage — an online race spends what this
     // driver bought, not what the host happens to be carrying.
-    () => ({ name: room?.players.find((p) => p.id === room.playerId)?.username || 'You', color, stats, portrait, inventory: account.inventory }),
+    () => ({ name: room?.players.find((p) => p.id === room.playerId)?.username || DRIVER_NAMES[portrait] || 'Driver', color, stats, portrait, inventory: account.inventory }),
     [room, color, stats, portrait, account.inventory],
   );
 
@@ -380,7 +380,8 @@ export default function App() {
     const raceId = onlineRaceId(room?.roomCode ?? 'race', online.countdownAt);
     const paid = settleOnlineRace(accountRef.current, raceId, mine);
     // What you came home with is what you have: spent is spent, picked is kept.
-    publishAccount(kit ? { ...paid.account, inventory: normalizeInventory(kit) } : paid.account);
+    // House-rule power-ups were the host's to hand out: your own kit is untouched.
+    publishAccount(kit && !online.settings.items ? { ...paid.account, inventory: normalizeInventory(kit) } : paid.account);
     setPayout(paid.payout);
   }, [online, publishAccount, room]);
 

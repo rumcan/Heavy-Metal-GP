@@ -206,7 +206,18 @@ export interface RaceSettings {
   circuit: number | TrackDef;
   /** Laps. Absent reads as `DEFAULT_LAPS`. */
   laps?: number;
+  /**
+   * House rules for power-ups. Absent: every driver races the kit they brought (MP-09).
+   * Present: every driver, AI included, starts with these charges per item; `UNLIMITED_ITEM` never runs out.
+   * House-rule charges never come out of (or go back into) anyone's own kit.
+   */
+  items?: Partial<Record<ItemType, number>>;
 }
+
+/** An item the host set to "unlimited". */
+export const UNLIMITED_ITEM = -1;
+/** The largest finite house-rule count a host can set. */
+export const MAX_HOUSE_ITEMS = MAX_ITEM_STACK;
 
 /** The room's rules before the host has filed any (MP-06 files the real ones). */
 export function defaultRaceSettings(): RaceSettings {
@@ -1048,7 +1059,17 @@ export function readRaceSettings(value: unknown): RaceSettings | null {
     circuit = def;
   }
   if (s.laps !== undefined && !isInt(s.laps, DEFAULT_LAPS, MAX_LAPS)) return null;
-  return { circuit, ...(s.laps !== undefined ? { laps: s.laps as number } : {}) };
+  let items: Partial<Record<ItemType, number>> | undefined;
+  if (s.items !== undefined) {
+    if (!s.items || typeof s.items !== 'object') return null;
+    items = {};
+    for (const [key, count] of Object.entries(s.items as Record<string, unknown>)) {
+      if (!(ITEM_TYPES as readonly string[]).includes(key)) return null;
+      if (!isInt(count, UNLIMITED_ITEM, MAX_HOUSE_ITEMS)) return null;
+      items[key as ItemType] = count as number;
+    }
+  }
+  return { circuit, ...(s.laps !== undefined ? { laps: s.laps as number } : {}), ...(items ? { items } : {}) };
 }
 
 /** Validate the relay stamp: present-or-absent, and a non-empty string when present. */

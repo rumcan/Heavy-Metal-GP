@@ -216,3 +216,7 @@ button:disabled.button-primary, button:disabled.button-secondary { background: #
 .dev-skip-race { display: flex; align-items: center; gap: 2px; padding: 2px 6px; margin-right: 6px; border: 1px dashed #e0b44a; border-radius: 4px; }
 .dev-skip-race span { font: 8px var(--mono); letter-spacing: 1.2px; color: #e0b44a; margin-right: 4px; }
 .dev-skip-race .text-button { font-size: 10px; padding: 3px 5px; }
+
+@media (max-width: 1100px) { .dev-skip-race span { display: none; } }
+@media (max-width: 760px) { .dev-skip-race { display: none; } }
+.finish-follow-note { font: 9px var(--mono); letter-spacing: 1px; text-transform: uppercase; color: #93a2af; max-width: 220px; }

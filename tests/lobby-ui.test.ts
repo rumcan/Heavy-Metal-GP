@@ -104,8 +104,8 @@ test('MP-06 lobby: the panel offers host, join and quick race, and asks for six 
   assert.match(html, /Quick race/, 'MP-07 wires it; until then it says so');
   assert.match(html, /maxlength="6"/i, 'the code field takes six characters, no more');
   assert.match(html, /Room code/);
-  // Six drivers per race, and the machines fill the rest.
-  assert.match(html, /Six drivers per race/);
+  // Up to six players per race, and AI drivers fill the rest.
+  assert.match(html, /Up to six players per race/);
 });
 
 test('MP-07 lobby: a quick-match search says it is still looking, and can be cancelled', () => {

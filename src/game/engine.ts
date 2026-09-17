@@ -27,6 +27,8 @@ export interface GameOptions {
   effects?: boolean;
   aiItems?: boolean;
   inventory?: Partial<Inventory>;
+  /** Online house rules: these items never run out for anyone (the count shown stays full). */
+  unlimitedItems?: ItemType[];
   /** STORY HOOKS (ST-07), additive and optional. Unset: the engine behaves exactly as before. */
   story?: StoryHooks;
   /**
@@ -192,7 +194,11 @@ export class Game {
   private loadedCells = '';
   private streaming = false;
 
+  /** Items that never run out this race (online house rules). */
+  private readonly unlimitedItems: Set<ItemType>;
+
   constructor(seed: number, roster: MarbleInfo[], opts: GameOptions = {}) {
+    this.unlimitedItems = new Set(opts.unlimitedItems ?? []);
     this.rng = mulberry32(seed ^ 0x9e3779b9);
     this.engine = Engine.create({
       enableSleeping: false,
@@ -908,7 +914,7 @@ export class Game {
       else m.aiUseAt = this.time + 1500;
       return false;
     }
-    m.inventory[item]--;
+    if (!this.unlimitedItems.has(item)) m.inventory[item]--;
     m.itemCooldownUntil = this.time + 450;
     this.sfx('item', m, p.x, p.y);
     this.emit({ kind: 'item', seat: m.info.id, item });
