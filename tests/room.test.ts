@@ -16,6 +16,7 @@ import { Clock } from '@series-inc/rundot-game-sdk/mp-server';
 import type { GameRoomProps, LeaveReason, Logger, PlatformServices, Player, RoomProtocol } from '@series-inc/rundot-game-sdk/mp-server';
 import RaceRoom, {
   HOST_LEFT_REASON,
+  KICKED_REASON,
   MAX_HUMAN_SEATS,
   PRESENCE_POLL_MS,
   RACE_IN_PROGRESS_REASON,
@@ -305,6 +306,71 @@ test('MP-03 relay: intents reach the HOST ONLY', async () => {
   assert.deepEqual(sentTo(frames, 'p1').map((m) => m.type), ['intent', 'intent', 'resync', 'ready']);
   assert.equal(ofType(frames, 'intent').filter((f) => f.target === 'broadcast').length, 0, 'never broadcast');
   assert.equal(sentTo(frames, 'p2').length, 0, 'the sender does not get its own intent back');
+});
+
+test('MP-06 relay: every guest frame reaches the host STAMPED with its sender', async () => {
+  const h = setup();
+  await h.protocol.handleCreate();
+  await join(h, 'p1');
+  await join(h, 'p2');
+  h.frames.length = 0;
+
+  // The SDK hands a client the payload alone — no envelope, no sender — so
+  // without the stamp the host could not tell which seat a nudge or a garage
+  // belongs to.
+  await send(h, 'p2', { type: 'intent', kind: 'nudge', v: -0.5 });
+  await send(h, 'p2', { type: 'resync' });
+  await send(h, 'p2', { type: 'ready', ready: true, garage: { name: 'Sprocket', color: '#22d3ee', stats: { weight: 7, speed: 4, bounce: 4 }, portrait: 2 } });
+  const relayed = sentTo(h.frames, 'p1');
+  assert.deepEqual(relayed.map((m) => m.type), ['intent', 'resync', 'ready']);
+  for (const msg of relayed) assert.equal((msg as { from?: string }).from, 'p2', `"${msg.type}" carries no stamp`);
+  // The garage survived the trip: it is the whole point of the frame.
+  const garage = (relayed[2] as { garage?: { name: string } }).garage;
+  assert.equal(garage?.name, 'Sprocket');
+});
+
+test('MP-06 relay: a guest cannot forge the stamp', async () => {
+  const h = setup();
+  await h.protocol.handleCreate();
+  await join(h, 'p1');
+  await join(h, 'p2');
+  h.frames.length = 0;
+  // p2 claims to be p1 — with no stamp-check this would let a guest file
+  // another driver's garage, or nudge a marble that is not theirs.
+  await send(h, 'p2', { type: 'ready', ready: true, from: 'p1' });
+  const relayed = sentTo(h.frames, 'p1');
+  assert.equal(relayed.length, 1);
+  assert.equal((relayed[0] as { from?: string }).from, 'p2', 'the room overwrites what a client claims');
+});
+
+test('MP-06 relay: a kick from the host evicts the player — and only the host may', async () => {
+  const h = setup();
+  await h.protocol.handleCreate();
+  await join(h, 'p1');
+  await join(h, 'p2');
+  await join(h, 'p3');
+  h.frames.length = 0;
+
+  // A guest kicking the host would empty every room it walked into.
+  await send(h, 'p2', { type: 'kick', playerId: 'p1' });
+  await send(h, 'p2', { type: 'kick', playerId: 'p3' });
+  assert.deepEqual(ofType(h.frames, 'kick'), [], 'a guest cannot evict anybody');
+
+  // Nobody may kick the host: no host, no truth, and the room says so loudly
+  // enough already when one walks out.
+  await send(h, 'p1', { type: 'kick', playerId: 'p1' });
+  await send(h, 'p1', { type: 'kick', playerId: 'nobody-here' });
+  assert.deepEqual(ofType(h.frames, 'kick'), [], 'the host and strangers are not kickable');
+
+  await send(h, 'p1', { type: 'kick', playerId: 'p2' });
+  const kicks = ofType(h.frames, 'kick');
+  assert.equal(kicks.length, 1);
+  assert.equal(kicks[0].target, 'p2');
+  assert.equal((kicks[0].data as { reason: string }).reason, KICKED_REASON);
+  // The eviction is a leave, and a leave is a new welcome for everybody left.
+  await leave(h, 'p2', 'kick');
+  const grid = welcomeOf(h.frames).seats;
+  assert.deepEqual(grid.filter((s) => !s.isAI).map((s) => s.playerId), ['p1', 'p3'], 'the kicked seat is free again');
 });
 
 test('MP-03 relay: the host is not a guest — its own intents are not echoed', async () => {

@@ -184,6 +184,10 @@ const VALID: RaceProtocol[] = [
   { type: 'peerStatus', playerId: 'player-guest', status: 'disconnected', graceMs: 47_000, username: 'Rival 1' },
   { type: 'peerStatus', playerId: 'player-guest', status: 'reconnected' },
   { type: 'reject', reason: HOST_LEFT_REASON },
+  // MP-06: the lobby's two frames — a guest filing its garage, and the host
+  // taking a driver off the grid.
+  { type: 'ready', ready: true, garage: { name: 'Sprocket', color: '#22d3ee', stats: { weight: 7, speed: 4, bounce: 4 }, portrait: 2 }, from: 'player-guest' },
+  { type: 'kick', playerId: 'player-guest' },
 ];
 
 /** Static and dynamic import specifiers of a source file (comments cannot fake one). */
@@ -473,6 +477,45 @@ test('MP-02 validation: presence and refusal', () => {
   // The host-left line is the one both ends compare against, so it is the
   // wire's business, not the room's private string.
   assert.match(HOST_LEFT_REASON, /host/i);
+});
+
+test('MP-06 validation: a guest files its garage in the only frame it owns', () => {
+  const garage = { name: 'Sprocket', color: '#d63e2e', stats: { weight: 6, speed: 5, bounce: 4 }, portrait: 3 };
+  assert.equal(check({ type: 'ready', ready: true }), null, 'a plain ready toggle needs no garage');
+  assert.equal(check({ type: 'ready', ready: false, garage }), null);
+  assert.equal(check({ type: 'ready', ready: 'yes' })?.code, 'malformed', 'ready is a boolean');
+  // A garage is painted into a canvas fill and a style string, and it is the
+  // tune the simulation reads — so every field is checked the way a seat's is.
+  assert.equal(check({ type: 'ready', ready: true, garage: { ...garage, color: 'red' } })?.code, 'malformed');
+  assert.equal(check({ type: 'ready', ready: true, garage: { ...garage, name: 'x'.repeat(33) } })?.code, 'malformed');
+  assert.equal(check({ type: 'ready', ready: true, garage: { ...garage, stats: { weight: 11, speed: 5, bounce: 5 } } })?.code, 'forged');
+  assert.equal(check({ type: 'ready', ready: true, garage: { ...garage, portrait: -1 } })?.code, 'forged');
+  assert.equal(check({ type: 'ready', ready: true, garage: null })?.code, 'malformed');
+});
+
+test('MP-06 validation: the room stamps the sender, and nobody else may', () => {
+  // `from` is written by the relay as it forwards, so the host can tell which
+  // seat a nudge or a garage belongs to. A frame without one is simply one the
+  // host cannot place — legal, and ignored; a frame with a stamp that is not a
+  // player id is not a frame.
+  assert.equal(check({ type: 'ready', ready: true, from: 'p2' }), null);
+  assert.equal(check({ type: 'resync', from: 'p2' }), null);
+  assert.equal(check({ type: 'intent', kind: 'nudge', v: 0.5, from: 'p2' }), null);
+  assert.equal(check({ type: 'resync', from: 7 })?.code, 'malformed');
+  assert.equal(check({ type: 'resync', from: '' })?.code, 'malformed');
+  // Host frames are not relayed with a stamp — stamping one would be a client
+  // speaking for the room (`validateMessage` only reads the field where the
+  // room writes it, but the shape is the same test).
+  assert.equal(check({ type: 'start', countdownAt: 1, from: 'p2' }), null);
+});
+
+test('MP-06 validation: a kick names a driver, and the room decides whether it lands', () => {
+  assert.equal(check({ type: 'kick', playerId: 'p2' }), null);
+  assert.equal(check({ type: 'kick', playerId: '' })?.code, 'malformed');
+  assert.equal(check({ type: 'kick' })?.code, 'malformed');
+  // It is a wire message now, which is what makes `isRaceProtocol` accept it —
+  // a room that does not know the type drops it before it can be routed.
+  assert.ok((RACE_MESSAGE_TYPES as readonly string[]).includes('kick'));
 });
 
 // ══════════════════════════════════════════════════════════════════════════

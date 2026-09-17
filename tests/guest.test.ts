@@ -16,6 +16,7 @@ import assert from 'node:assert/strict';
 import { generateTrack, meta } from '../src/game/track';
 import { AI_COLORS, AI_NAMES, mulberry32, randomStats } from '../src/game/types';
 import { RaceHost, COUNTDOWN_MS } from '../src/net/host';
+import { LIGHTS_OUT_STAGE } from '../src/game/engine';
 import type { RaceHostOptions } from '../src/net/host';
 import { RaceGuest, MAX_LOCAL_TILT } from '../src/net/guest';
 import {
@@ -207,6 +208,33 @@ test('MP-05 guest: 150 ms and 2 % loss — a whole race, smooth, and at most one
     'the finishing order is the same on both screens',
   );
   assert.equal(net.guest.game.destroyedIndices().length > 0, true, 'the guest removed the pegs the host popped');
+});
+
+test('MP-06 guest: the lights-out state frame opens the gate, with no snapshot in sight', () => {
+  // A guest that joined before the lights and never asked for the world sees
+  // nothing but state frames. The light stage rides in them — but the gate does
+  // not, and a guest whose `gateOpen` stayed false would watch the lights reach
+  // five and then stand still while the host's field was already away.
+  const net = wire({ latencyMs: 20, loss: 0 });
+  net.host.scheduleStart(net.now() + COUNTDOWN_MS);
+  assert.equal(net.guest.game.gateOpen, false);
+
+  let frames = 0;
+  while (!net.host.game.gateOpen && frames++ < 3000) net.tick();
+  assert.ok(net.host.game.gateOpen, 'the host opened its gate');
+  assert.ok(net.guest.game.stage < LIGHTS_OUT_STAGE, 'the guest has not been told yet — its frames are 20 ms old');
+  assert.equal(net.guest.game.gateOpen, false);
+
+  // Two frames later the lights-out stage has crossed the wire.
+  for (let i = 0; i < 6; i++) net.tick();
+  assert.ok(net.guest.game.gateOpen, 'the state frame opened the guest gate too');
+
+  // And the marbles actually roll: the guest is racing, not posing.
+  const before = net.guest.me.body.position.y;
+  for (let i = 0; i < 120; i++) net.tick();
+  assert.ok(net.guest.me.body.position.y > before + 50, `the guest marble moved ${(net.guest.me.body.position.y - before).toFixed(1)}px in two seconds`);
+  assert.equal(net.guest.game.gateOpen, true, 'the gate stays open');
+  assert.equal(net.guest.resyncs, 0, 'a plain start needs no resync');
 });
 
 test('MP-05 guest: a snapshot hands over the whole world', () => {

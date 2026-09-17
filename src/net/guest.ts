@@ -18,7 +18,7 @@
 // its own making.
 // ══════════════════════════════════════════════════════════════════════════
 import Matter from 'matter-js';
-import { Game } from '../game/engine';
+import { Game, LIGHTS_OUT_STAGE } from '../game/engine';
 import type { Marble } from '../game/engine';
 import type { Track } from '../game/track';
 import { meta } from '../game/track';
@@ -427,7 +427,7 @@ export class RaceGuest {
         if (m.trail.length > 14) m.trail.shift();
       }
     }
-    if (b.marbles[0]) this.game.stage = b.marbles[0].loop;
+    if (b.marbles[0]) this.setStage(b.marbles[0].loop);
     this.game.time = lerp(a.t, b.t, alpha);
     if (this.tilt !== 0) {
       const mine = this.me;
@@ -435,6 +435,22 @@ export class RaceGuest {
       this.tilt *= 0.85; // corrected by the next frame
       if (Math.abs(this.tilt) < 0.001) this.tilt = 0;
     }
+  }
+
+  /**
+   * The start-light stage, and the gate that follows it.
+   *
+   * The stage rides in the spare bits of every state frame, but the GATE does
+   * not: a guest that only ever receives state frames would watch the lights
+   * reach five and then nothing — its own `gateOpen` would stay false and the
+   * marbles would stand still while the host's were already away. So the
+   * lights-out stage in the frame is what opens it, exactly once, through the
+   * engine's own `openGate()` (which drops the trapdoor body and sounds the
+   * cue, the same as it does on the host).
+   */
+  private setStage(stage: number): void {
+    this.game.stage = stage;
+    if (stage >= LIGHTS_OUT_STAGE && !this.game.gateOpen) this.game.openGate();
   }
 
   /** Apply the whole world: join, resync, or the answer to a gap. */
@@ -466,7 +482,7 @@ export class RaceGuest {
     this.game.oils = snap.oils.map((o) => ({ x: o.x, y: o.y, r: o.r, ownerId: o.owner, expiresAt: o.expiresAt }));
     this.game.finishOrder = snap.order.map((seat) => marbles[seat]).filter((m): m is Marble => Boolean(m));
     this.game.gateOpen = snap.started;
-    this.game.stage = snap.started ? 6 : 0;
+    this.game.stage = snap.started ? LIGHTS_OUT_STAGE : 0;
     this.game.time = snap.t;
     this.game.raceStartTime = snap.t - snap.clock;
     this.game.started = true;

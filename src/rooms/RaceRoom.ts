@@ -23,7 +23,8 @@
 //
 // Routing, in one table:
 //
-//   intent / resync / ready   guest  → HOST ONLY  (sendTo hostId)
+//   intent / resync / ready   guest  → HOST ONLY  (sendTo hostId, stamped `from`)
+//   kick                      host   → SERVER     (the room evicts the player)
 //   state / events / snapshot host   → EVERYONE   (broadcast)
 //   lobby / start / results   host   → EVERYONE   (broadcast)
 //   welcome / reject / peerStatus    server-only: a client sending one is ignored
@@ -68,6 +69,9 @@ export const RACE_IN_PROGRESS_REASON = 'This race is already under way.';
 
 /** Sent to the seventh human: the grid seats six of you, AI fills the rest. */
 export const ROOM_FULL_REASON = 'This race is full — six drivers, no more.';
+
+/** The reason a kicked player's `onPlayerLeave` carries (MP-06). */
+export const KICKED_REASON = 'The host took you off the grid.';
 
 /**
  * Human seats on the grid. The room's `maxPlayers` is the platform's number;
@@ -164,10 +168,29 @@ export default class RaceRoom extends GameRoom<RoomProtocol> {
     switch (p.type) {
       // guest → HOST ONLY. The host applies its own nudges locally, so a host
       // intent would be a self-echo — forwarded only when the sender is a guest.
+      //
+      // The relay STAMPS the sender on the way through (`from`): the SDK hands
+      // a client the payload alone, so without it the host could not tell which
+      // seat a nudge or a garage belongs to. A client-sent `from` is overwritten
+      // rather than trusted — see `RelayedFrame` in the protocol.
       case 'intent':
       case 'resync':
       case 'ready': {
-        if (this.hostId !== null && msg.sender.id !== this.hostId) this.sendTo(this.hostId, p);
+        if (this.hostId !== null && msg.sender.id !== this.hostId) {
+          this.sendTo(this.hostId, { ...p, from: msg.sender.id });
+        }
+        return;
+      }
+      // host → server. The host may take a driver off its grid, but only the
+      // room can actually remove one: it owns the seat table, and a client that
+      // could evict another client could empty a room. `onPlayerLeave` runs
+      // with reason `kick`, which frees the seat and re-greets everyone.
+      case 'kick': {
+        if (msg.sender.id !== this.hostId) return;
+        // Nobody may kick the host, and a player who is not here needs no
+        // evicting — the SDK's own `kick` is not a no-op for either.
+        if (p.playerId === this.hostId || !this.players.has(p.playerId)) return;
+        this.kick(p.playerId, KICKED_REASON);
         return;
       }
       // HOST → everyone. `sender.id !== hostId` is the ONE piece of real
@@ -213,6 +236,13 @@ export default class RaceRoom extends GameRoom<RoomProtocol> {
       }
     }
     this.log.info('Player left', { playerId: player.id, reason });
+    // A leave changes the grid, so everybody still in the room gets the new
+    // seat table — that is how a lobby's grid shrinks when somebody walks out,
+    // or when the host takes somebody off it (MP-06). Not mid-race: the grid is
+    // set once the lights are out, and a runner who drops is handed to the AI
+    // (MP-08) rather than re-seated. And not for a hostless room, which is a
+    // lobby waiting for its next host.
+    if (!this.raceLive && this.hostId !== null) this.broadcast(this.welcome(this.hostId));
     // A free seat is a free seat again — until the host says `start`.
     this.unlock();
     if (this.playerCount === 0 && this.clock.has(PRESENCE_TIMER)) this.clock.clear(PRESENCE_TIMER);

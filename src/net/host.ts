@@ -197,8 +197,23 @@ export class RaceHost {
    * run backwards from it. Returns it, for callers that need to show it.
    */
   scheduleStart(countdownAt: number = this.clock() + COUNTDOWN_MS): number {
-    this.countdownAt = countdownAt;
+    this.armStart(countdownAt);
     this.send({ type: 'start', countdownAt: Math.round(countdownAt) });
+    return countdownAt;
+  }
+
+  /**
+   * Arm the lights for an instant the wire has ALREADY told everyone about.
+   *
+   * The lobby (MP-06) sends `start` and then hands the race to the screen that
+   * builds the simulation — and building a ten-marble world from a seed is not
+   * free. So the countdown is far enough out that both ends are ready before it
+   * lands, and this is how the host joins a countdown it already published
+   * without sending a second `start` (two `start` frames would move the gate on
+   * a guest that had already counted to the first one).
+   */
+  armStart(countdownAt: number): number {
+    this.countdownAt = countdownAt;
     return countdownAt;
   }
 
@@ -212,14 +227,19 @@ export class RaceHost {
    * because an intent carries no seat of its own and the room is the only thing
    * that knows which player sent it.
    *
+   * Two ways of saying who: `sender.id`, which the room sees on the way in, and
+   * `from`, the stamp the room writes on the way out (the SDK hands a client the
+   * payload alone, so the lobby reads `from`). Either is enough; neither is
+   * trusted beyond looking the id up in the seat table.
+   *
    * Two kinds matter: an intent, applied at the next step, and a resync,
    * answered with the world. Anything else is not a guest message and is
    * ignored: the room drops those for us, but a host does not take a client's
    * word for anything.
    */
-  accept(msg: RaceProtocol & { sender?: { id?: string } }): void {
+  accept(msg: RaceProtocol & { sender?: { id?: string }; from?: string }): void {
     if (msg.type === 'intent') {
-      const seat = this.seatOfPlayer(msg.sender?.id);
+      const seat = this.seatOfPlayer(msg.sender?.id ?? msg.from);
       if (seat === null) return; // not on the grid
       this.applyIntent(seat, msg);
       return;

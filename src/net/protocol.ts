@@ -236,10 +236,55 @@ export interface LobbyMsg {
   settings?: RaceSettings;
 }
 
-/** guest → server → host. One seat's ready flag. */
-export interface ReadyMsg {
+/**
+ * One driver's garage: the name on the timing tower, the livery on the marble,
+ * the tune under it and the face in the portrait slot.
+ *
+ * Sent by the guest in `ready` — the lobby's one guest→host frame — and filed
+ * by the host into `lobby`, which is the message every seat reads. The host
+ * does not ask for it twice: a guest re-sends it whenever it changes.
+ */
+export interface SeatGarage {
+  name: string;
+  /** `#rrggbb`, painted straight into a canvas fill and a style. */
+  color: string;
+  stats: MarbleStats;
+  portrait: number;
+}
+
+/**
+ * Who sent a guest frame — stamped by the ROOM as it relays, never by the guest.
+ *
+ * A guest frame (`intent`, `resync`, `ready`) carries no seat of its own: the
+ * seat table is the room's business, and the room is the only party that knows
+ * which socket a frame came from. So it writes `from` on the way through and
+ * OVERWRITES any a client tried to send — a guest cannot forge another seat's
+ * nudges, or file another driver's garage. The SDK hands a client the payload
+ * alone, with no sender and no envelope, so the stamp has to ride inside it.
+ *
+ * The server side of the same fact is `msg.sender.id` (see `RaceHost.accept`).
+ */
+export interface RelayedFrame {
+  /** RUN player id of the guest that sent this frame. Written by the room. */
+  from?: string;
+}
+
+/** guest → server → host. One seat's ready flag, and the seat's garage. */
+export interface ReadyMsg extends RelayedFrame {
   type: 'ready';
   ready: boolean;
+  /**
+   * This seat's garage, on join and whenever the driver changes it. Absent
+   * leaves the seat exactly as the host last filed it — a plain ready toggle.
+   */
+  garage?: SeatGarage;
+}
+
+/** host → server. Take a driver off the grid. The ROOM owns the eviction. */
+export interface KickMsg {
+  type: 'kick';
+  /** RUN player id of the driver to remove. */
+  playerId: string;
 }
 
 /**
@@ -493,14 +538,14 @@ export interface SnapshotMsg {
  * (right). Nothing stronger exists, so |v| > 1 is a forged frame, not a
  * strong push.
  */
-export interface NudgeIntentMsg {
+export interface NudgeIntentMsg extends RelayedFrame {
   type: 'intent';
   kind: 'nudge';
   v: number;
 }
 
 /** guest → server → HOST ONLY. Deploy one carried item. */
-export interface ItemIntentMsg {
+export interface ItemIntentMsg extends RelayedFrame {
   type: 'intent';
   kind: 'item';
   item: ItemType;
@@ -509,7 +554,7 @@ export interface ItemIntentMsg {
 export type IntentMsg = NudgeIntentMsg | ItemIntentMsg;
 
 /** guest → server → host. Sent when a guest detects a `seq` gap. */
-export interface ResyncMsg {
+export interface ResyncMsg extends RelayedFrame {
   type: 'resync';
 }
 
@@ -566,6 +611,7 @@ export type RaceProtocol =
   | IntentMsg
   | ResyncMsg
   | ResultsMsg
+  | KickMsg
   | PeerStatusMsg
   | RejectMsg;
 
@@ -581,6 +627,7 @@ export const RACE_MESSAGE_TYPES = [
   'intent',
   'resync',
   'results',
+  'kick',
   'peerStatus',
   'reject',
 ] as const;
@@ -975,6 +1022,32 @@ export function readRaceSettings(value: unknown): RaceSettings | null {
   return { circuit, ...(s.laps !== undefined ? { laps: s.laps as number } : {}) };
 }
 
+/** Validate the relay stamp: present-or-absent, and a non-empty string when present. */
+function validateFrom(msg: { from?: unknown }): ProtocolError | null {
+  if (msg.from === undefined) return null;
+  if (typeof msg.from !== 'string' || msg.from.length === 0) return bad('Relay stamp is not a player id.');
+  return null;
+}
+
+/**
+ * Validate a driver's garage. The tune is range-checked but NOT summed against
+ * `STAT_BUDGET` — same call as `validateSeat`: the budget is a garage rule for
+ * building a marble, and refusing a whole room over it would strand everyone.
+ */
+export function validateGarage(value: unknown): ProtocolError | null {
+  if (!value || typeof value !== 'object') return bad('Garage is not an object.');
+  const g = value as Record<string, unknown>;
+  if (!isText(g.name, MAX_NAME_LENGTH)) return bad('Garage name is missing or too long.');
+  if (typeof g.color !== 'string' || !HEX_COLOR.test(g.color)) return bad('Garage livery is not a #rrggbb colour.');
+  if (!g.stats || typeof g.stats !== 'object') return bad('Garage has no stats.');
+  const stats = g.stats as Record<string, unknown>;
+  for (const key of ['weight', 'speed', 'bounce']) {
+    if (!isInt(stats[key], STAT_MIN, STAT_MAX)) return forged(`Garage stat ${key} is not ${STAT_MIN}..${STAT_MAX}.`);
+  }
+  if (!isInt(g.portrait, 0, 4095)) return forged('Garage portrait index is out of range.');
+  return null;
+}
+
 /**
  * Validate one grid seat. Stats are range-checked (1..10) but NOT summed
  * against `STAT_BUDGET`: the budget is a garage rule for building a marble,
@@ -1292,8 +1365,18 @@ export function validateMessage(msg: unknown, opts: ValidateOptions = {}): Proto
       if (msg.settings !== undefined && !readRaceSettings(msg.settings)) return bad('Lobby settings are malformed.');
       return null;
     }
-    case 'ready':
-      return typeof msg.ready === 'boolean' ? null : bad('Ready is not a boolean.');
+    case 'ready': {
+      if (typeof msg.ready !== 'boolean') return bad('Ready is not a boolean.');
+      if (msg.garage !== undefined) {
+        const err = validateGarage(msg.garage);
+        if (err) return err;
+      }
+      return validateFrom(msg);
+    }
+    case 'kick':
+      // Host-only by ROUTING, not by shape: the room drops a kick from anyone
+      // but the host. All the wire can insist on is that it names a driver.
+      return typeof msg.playerId === 'string' && msg.playerId.length > 0 ? null : bad('Kick names no driver.');
     case 'start':
       return isNumber(msg.countdownAt) ? null : bad('Start has no countdown time.');
     case 'state':
@@ -1302,10 +1385,12 @@ export function validateMessage(msg: unknown, opts: ValidateOptions = {}): Proto
       return validateEvents(msg);
     case 'snapshot':
       return validateSnapshotChunk(msg);
-    case 'intent':
-      return validateIntent(msg);
+    case 'intent': {
+      const err = validateIntent(msg);
+      return err ?? validateFrom(msg);
+    }
     case 'resync':
-      return null;
+      return validateFrom(msg);
     case 'results':
       return validateResults(msg);
     case 'peerStatus': {
