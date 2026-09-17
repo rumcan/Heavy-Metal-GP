@@ -1,0 +1,103 @@
+/* MB-02 — the Workshop (the Track Editor shell). Imported by src/components/TrackEditor.tsx. */
+
+.editor-shell { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100dvh; overflow: hidden; }
+.editor-seed { font: 8px var(--mono); letter-spacing: .8px; color: #6f7f8e; }
+.editor-seed b { color: #a7b6c4; font-weight: 500; }
+.editor-main { display: grid; grid-template-columns: 252px minmax(0, 1fr) 138px; min-height: 0; }
+
+/* ---------- the palette ---------- */
+.editor-tools { display: flex; flex-direction: column; gap: 13px; padding: 14px 13px; background: #10151c; border-right: 1px solid var(--line); overflow-y: auto; min-height: 0; }
+.editor-tools-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.editor-drawer-close { display: none; }
+.editor-palette { display: flex; flex-direction: column; gap: 15px; }
+.palette-group { display: flex; flex-direction: column; gap: 7px; }
+.palette-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding-bottom: 5px; border-bottom: 1px solid #202833; }
+.palette-heading .eyebrow { font-size: 9px; letter-spacing: 1.5px; color: #c3cdd7; }
+.palette-heading small { font-size: 8px; color: #5f6d7c; text-align: right; line-height: 1.2; }
+.palette-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.palette-tile { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 7px 3px 6px; background: #141b24; border: 1px solid #242e3a; border-radius: 4px; color: #a8b6c3; transition: border-color .16s, background .16s, color .16s; }
+.palette-tile:hover { background: #18212c; border-color: #3b4c5f; color: #e6edf3; }
+.palette-tile.armed { background: #d63e2e1a; border-color: var(--accent); color: #fff; }
+.palette-art { display: grid; place-items: center; width: 100%; height: 26px; }
+.palette-art img { max-width: 100%; max-height: 26px; object-fit: contain; }
+.palette-art-fallback { width: 22px; height: 13px; background: #2b3644; border-radius: 2px; }
+.palette-label { font-size: 8px; line-height: 1.2; letter-spacing: .3px; text-align: center; }
+.palette-note { margin: 0; font-size: 9px; line-height: 1.6; color: #66737f; }
+
+/* ---------- properties ---------- */
+.editor-inspector { display: flex; flex-direction: column; gap: 9px; padding-top: 12px; border-top: 1px solid #202833; max-height: 420px; overflow-y: auto; }
+.editor-inspector .eyebrow { font-size: 9px; letter-spacing: 1.4px; color: #c3cdd7; }
+.prop-panel { display: flex; flex-direction: column; gap: 7px; }
+.prop-head { display: flex; align-items: baseline; justify-content: space-between; padding: 6px 8px; background: #131a23; border: 1px solid #242e3a; border-radius: 4px; color: #e6edf3; font: 9px var(--mono); letter-spacing: .6px; }
+.prop-head strong { color: var(--accent); }
+.prop-head span { color: #8ea2b5; }
+.prop-field { display: grid; grid-template-columns: 86px minmax(0, 1fr); align-items: center; gap: 8px; }
+.prop-field span { font: 9px var(--mono); letter-spacing: .3px; color: #93a3b3; }
+.prop-field input, .prop-field select { width: 100%; padding: 4px 6px; background: #0b1016; border: 1px solid #2b3644; border-radius: 3px; color: #eef1f3; font: 11px var(--mono); }
+.prop-field input:focus, .prop-field select:focus { border-color: var(--accent); outline: none; }
+.prop-group { padding: 8px; background: #0e131a; border: 1px dashed #2b3644; border-radius: 4px; }
+.prop-empty { margin: 0; font-size: 9px; line-height: 1.6; color: #66737f; }
+.prop-field select { text-transform: capitalize; }
+
+/* ---------- the stage ---------- */
+.editor-stage { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: #080c12; }
+.editor-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; padding: 9px 14px; background: #0e131a; border-bottom: 1px solid var(--line); }
+.editor-editbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 7px 14px; background: #0b1016; border-bottom: 1px solid var(--line); }
+.editbar-sep { width: 1px; height: 20px; background: var(--line); margin: 0 4px; }
+.editor-field { display: flex; align-items: center; gap: 9px; }
+.editor-field .eyebrow { font-size: 8px; letter-spacing: 1.3px; white-space: nowrap; }
+.editor-name input { width: 190px; padding: 5px 8px; background: #0b1016; border: 1px solid #2b3644; border-radius: 3px; color: #eef1f3; font-size: 12px; }
+.editor-name input:focus { border-color: var(--accent); outline: none; }
+.editor-theme select { padding: 5px 6px; background: #0b1016; border: 1px solid #2b3644; border-radius: 3px; color: #cdd8e2; font: 10px var(--mono); letter-spacing: .5px; text-transform: uppercase; }
+.editor-toggles, .editor-zoom, .editor-jumps { display: flex; align-items: center; gap: 6px; }
+.editor-toggle { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; background: #131a23; border: 1px solid #2b3644; border-radius: 3px; color: #93a3b3; font: 9px var(--mono); letter-spacing: .3px; }
+.editor-toggle:hover { color: #e6edf3; }
+.editor-toggle.on { background: #d63e2e1f; border-color: var(--accent); color: #fff; }
+.editor-zoom-level { min-width: 40px; text-align: center; font: 9px var(--mono); color: #b9c7d4; }
+.editor-error { margin: 0; padding: 8px 14px; background: #3a1414; color: #ffd9d4; font-size: 11px; }
+.editor-canvas-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.editor-canvas { display: block; width: 100%; height: 100%; background: #0a1a33; cursor: grab; touch-action: none; }
+.editor-canvas.is-panning { cursor: grabbing; }
+.editor-loading { position: absolute; inset: 0; margin: 0; display: grid; place-items: center; color: #93a3b3; font: 10px var(--mono); letter-spacing: 1.6px; text-transform: uppercase; }
+.editor-help { position: absolute; left: 64px; bottom: 10px; display: flex; gap: 15px; pointer-events: none; color: #8395a6; font: 7px var(--mono); letter-spacing: .5px; text-shadow: 0 1px 3px #000; }
+.editor-status { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 7px 14px; background: #0e131a; border-top: 1px solid var(--line); }
+.editor-chip { font: 9px var(--mono); letter-spacing: .3px; color: #b3c2cf; white-space: nowrap; }
+.editor-chip.is-muted { color: #63707d; }
+.editor-chip.is-armed { color: var(--accent); }
+
+/* ---------- the course map ---------- */
+.editor-map { display: flex; flex-direction: column; gap: 8px; min-height: 0; padding: 12px 10px; background: #0e131a; border-left: 1px solid var(--line); }
+.editor-map-head { display: flex; align-items: center; justify-content: space-between; font: 7px var(--mono); letter-spacing: .8px; color: #8ea2b5; }
+.editor-map-svg { flex: 1; width: 100%; min-height: 120px; cursor: ns-resize; touch-action: none; }
+.editor-map-foot { display: flex; align-items: center; gap: 4px; font: 7px var(--mono); color: #8ea2b5; }
+.editor-map-foot b { margin-left: auto; color: #cdd8e2; font-weight: 500; }
+.editor-map-hint, .editor-map-empty { margin: 0; font-size: 8px; line-height: 1.5; color: #5f6d7c; }
+
+/* ---------- tablet ---------- */
+@media (max-width: 1100px) {
+  .editor-main { grid-template-columns: 226px minmax(0, 1fr) 108px; }
+  .palette-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ---------- phone: the palette becomes a bottom drawer ---------- */
+@media (max-width: 760px) {
+  .editor-main { grid-template-columns: minmax(0, 1fr) 80px; }
+  .editor-tools { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; max-height: 62dvh; padding-bottom: calc(14px + env(safe-area-inset-bottom)); background: #10151cf5; border-top: 1px solid var(--line); border-right: 0; box-shadow: 0 -12px 30px #0008; transform: translateY(105%); transition: transform .25s ease; }
+  .editor-shell[data-drawer='open'] .editor-tools { transform: none; }
+  .palette-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .editor-drawer-close { display: inline-flex; }
+  .editor-toolbar { gap: 6px 12px; padding: 8px 10px; }
+  .editor-name input { width: 132px; }
+  .editor-help { display: none; }
+  .editor-status { gap: 5px 12px; padding: 6px 10px; }
+  .editor-map-hint { display: none; }
+  .editor-map-foot { flex-wrap: wrap; gap: 3px; }
+  .editor-map-foot b { margin-left: 0; width: 100%; }
+}
+
+@media (max-width: 650px) {
+  .editor-main { grid-template-columns: minmax(0, 1fr) 68px; }
+  .editor-map { padding: 9px 6px; }
+  .editor-field .eyebrow { display: none; }
+  .editor-status .editor-chip:nth-child(2) { display: none; }
+}

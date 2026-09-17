@@ -39,10 +39,11 @@ import type { RacerAccount, RacePayout } from './game/economy';
 import { normalizeInventory } from './game/types';
 import type { Inventory, ItemType } from './game/types';
 import PitShop from './components/PitShop';
-import { RIVALS, PLAYER_PORTRAIT_COUNT, DRIVER_NAMES, preRaceBanter } from './game/characters';
+import { RIVALS, PLAYER_PORTRAIT_COUNT, preRaceBanter } from './game/characters';
 import type { Line } from './game/characters';
 import LoadingScreen from './components/LoadingScreen';
 import StoryMode from './components/story/StoryMode';
+import TrackEditor from './components/TrackEditor';
 import { loadStory } from './game/story/state';
 
 /**
@@ -74,7 +75,7 @@ function makeRivals(seed: number): MarbleInfo[] {
   }));
 }
 
-type Phase = 'menu' | 'retune' | 'hub' | 'race' | 'quick' | 'story' | 'lobby' | 'online';
+type Phase = 'menu' | 'retune' | 'hub' | 'race' | 'quick' | 'story' | 'lobby' | 'online' | 'editor';
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>('menu');
@@ -241,7 +242,7 @@ export default function App() {
   const garage = useMemo<SeatGarage>(
     // MP-09: the kit goes with the garage — an online race spends what this
     // driver bought, not what the host happens to be carrying.
-    () => ({ name: room?.players.find((p) => p.id === room.playerId)?.username || DRIVER_NAMES[portrait] || 'Driver', color, stats, portrait, inventory: account.inventory }),
+    () => ({ name: room?.players.find((p) => p.id === room.playerId)?.username || 'You', color, stats, portrait, inventory: account.inventory }),
     [room, color, stats, portrait, account.inventory],
   );
 
@@ -380,8 +381,7 @@ export default function App() {
     const raceId = onlineRaceId(room?.roomCode ?? 'race', online.countdownAt);
     const paid = settleOnlineRace(accountRef.current, raceId, mine);
     // What you came home with is what you have: spent is spent, picked is kept.
-    // House-rule power-ups were the host's to hand out: your own kit is untouched.
-    publishAccount(kit && !online.settings.items ? { ...paid.account, inventory: normalizeInventory(kit) } : paid.account);
+    publishAccount(kit ? { ...paid.account, inventory: normalizeInventory(kit) } : paid.account);
     setPayout(paid.payout);
   }, [online, publishAccount, room]);
 
@@ -499,6 +499,7 @@ export default function App() {
         portrait={portrait}
         onPortrait={setPortrait}
         onStartStory={() => setPhase('story')}
+        onWorkshop={() => setPhase('editor')}
         storyInProgress={storyInProgress}
         mpBusy={mpBusy}
         mpError={mpError}
@@ -513,6 +514,18 @@ export default function App() {
         onCancelSearch={cancelSearch}
       />
     );
+  }
+
+  // The Workshop (MB-02): the track editor, opening on a copy of the circuit the garage is showing.
+  if (phase === 'editor') {
+    const gp = CALENDAR[circuitIndex];
+    return <TrackEditor
+      seed={seed}
+      profile={gp.profile}
+      name={gp.name}
+      driver={quickRoster[0]}
+      onExit={() => setPhase('menu')}
+    />;
   }
 
   // Online lobby (MP-06): the room the host opened, seen from either end.
