@@ -259,6 +259,29 @@ versioned, JSON-safe `TrackDef` — so a procedural circuit becomes data a playe
 - `Game` accepts a def through `GameOptions.def`; a malformed one never throws mid-race — the race falls
   back to the procedural circuit and `Game.trackDefError` says why.
 
+## The Workshop (Map Builder, MB-02)
+
+**Workshop** in the garage header opens the track editor on a copy of the circuit the garage is showing —
+for the default seed, Marblehurst — recorded as a `TrackDef` and rebuilt on every change. This ticket is
+the shell a player builds inside; placing, moving and rotating pieces comes with MB-03, and a test drive
+with MB-04.
+
+- The canvas is the race's own renderer drawing the race's own track (`render()` over a `Game` built from
+  the current def), so nothing about the look is a second implementation. The editor never steps the
+  simulation — `Game` exists there to be drawn.
+- Camera: drag or scroll to pan, pinch or ⌘/ctrl + scroll to zoom (or the toolbar's +/− and `0`, as in a
+  race), with `Home`/`End` jumping to the ends. The camera is clamped to the pipe's sides and the
+  circuit's ends, so a drag cannot lose the track.
+- A 25-unit snap grid (toggleable; the lattice steps up to 100, 500 … units as you pull out) and a height
+  ruler down the left edge, which also marks START and FINISH and the camera's own height.
+- The course map on the right is the race minimap's data — sectors, rail surfaces, the finish — drawn as a
+  scrollbar: drag it to move the camera, and the red window is what the canvas is showing.
+- The piece palette groups the fifteen pieces a `TrackDef` can store, each tile showing the sprite the race
+  draws it with; arming a tile is the shell's whole canvas interaction for now.
+- An edit rebuilds the circuit and drops the game's baked static chunks (`clearStaticChunks`), so no frame
+  is ever drawn from an out-of-date bake.
+- On a phone the palette collapses into a bottom drawer, and the header carries a Workshop button.
+
 ## Physics And Recovery
 
 `src/game/physics.ts` contains the shared 120 Hz step, high-resolution marble
@@ -337,6 +360,13 @@ snapshot handing over the whole world, a twenty-frame blackout costing exactly
 one resync, late/duplicate/out-of-order/garbage frames, every event kind, a
 forged body index being ignored rather than crashed on, and the optimistic
 lean being bounded and corrected.
+
+`tests/editor-ui.test.ts` covers the editor shell (MB-02): the camera's maths
+(clamping, anchor-preserving zoom, the 25-unit lattice at every zoom), the
+palette's groups and art, and the shell painted to static markup — canvas,
+name and theme, readouts, and a course map with the camera window in it. It
+also scans the editor's sources for the rules the epic sets: a shell that never
+steps the simulation, no `localStorage`, no `Math.random()`.
 
 `tests/trackdef.test.ts` covers the track definition format (MB-01): 28
 recordings across the six circuits and the default profile rebuild body for
