@@ -119,9 +119,6 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
   const [open, setOpen] = useState(true);
   /** Guests: the host's open flag, from the last `lobby`. */
   const [lobbyOpen, setLobbyOpen] = useState(true);
-  /** MP-07: when a quick race's lights go out (wall clock ms), once armed. */
-  const [autoAt, setAutoAt] = useState<number | null>(null);
-  const [remaining, setRemaining] = useState(0);
 
   const isHost = welcome ? welcome.hostId === room.playerId : room.isCreator;
   const seats = (isHost ? grid ?? welcome?.seats : lobbySeats ?? welcome?.seats) ?? [];
