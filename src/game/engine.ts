@@ -1,5 +1,6 @@
 import Matter from 'matter-js';
 import { generateTrack, meta, Track, CAT_MARBLE, CAT_WALL, CAT_SENSOR, CAT_LOOP_UP, CAT_LOOP_CLOSE, W } from './track';
+import { TrackDefError, buildTrackFromDef } from './trackdef';
 import { ItemType, MarbleInfo, MARBLE_RADIUS, statsToPhysics, mulberry32, TrackProfile, emptyInventory, normalizeInventory, ITEM_TYPES, ITEM_INFO, MAX_ITEM_STACK } from './types';
 import type { Inventory } from './types';
 import { gridSlots } from './season';
@@ -15,6 +16,12 @@ export interface GameOptions {
   profile?: TrackProfile;
   gridOrder?: number[]; // marble ids, P1 first
   track?: Track;
+  /**
+   * MB-01. A `TrackDef` (a saved, shared or editor-made circuit) to race on instead of the procedural track.
+   * Validated on the way in: a malformed def never throws in here — the race falls back to `generateTrack` and
+   * the readable reason lands on `Game.trackDefError`. `undefined`/`null` mean "no def at all".
+   */
+  def?: unknown;
   recovery?: boolean;
   effects?: boolean;
   aiItems?: boolean;
@@ -126,6 +133,8 @@ export class Game {
   private pendingBreaks: { body: Matter.Body; marble: Marble; v: { x: number; y: number } }[] = [];
   onEvent?: (msg: string, color?: string) => void;
   onInventoryChange?: (inventory: Inventory) => void;
+  /** Why `GameOptions.def` was refused, in the player's words, or null when there was nothing to refuse. */
+  trackDefError: string | null = null;
   private poppingPegs = new Set<Matter.Body>();
   private staticBins = new Map<number, Matter.Body[]>();
   private globalBodies: Matter.Body[] = [];
@@ -147,7 +156,7 @@ export class Game {
     this.story = opts.story;
     const storyWeights = opts.story?.weights;
     const profile = opts.profile && storyWeights ? { ...opts.profile, weights: { ...opts.profile.weights, ...storyWeights } } : opts.profile;
-    this.track = opts.track ?? generateTrack(seed, profile);
+    this.track = opts.track ?? this.trackFor(seed, profile, opts.def);
     this.recoveryEnabled = opts.recovery !== false;
     this.effectsEnabled = opts.effects !== false;
     this.aiItemsEnabled = opts.aiItems !== false;
@@ -221,6 +230,21 @@ export class Game {
 
     Events.on(this.engine, 'collisionStart', (e) => this.onCollisionStart(e));
     Events.on(this.engine, 'collisionActive', (e) => this.onCollisionActive(e));
+  }
+
+  /**
+   * MB-01. The circuit this race runs on: an explicit track wins, then a validated `TrackDef`, then the
+   * procedural generator. A def is untrusted input (share codes, saved tracks, the network), so it is validated
+   * here and a rejection is reported rather than thrown: a bad circuit must never take a race down with it.
+   */
+  private trackFor(seed: number, profile: TrackProfile | undefined, def: unknown): Track {
+    if (def === undefined || def === null) return generateTrack(seed, profile);
+    try {
+      return buildTrackFromDef(def);
+    } catch (error) {
+      this.trackDefError = error instanceof TrackDefError ? error.message : `Track definition rejected: ${String(error)}`;
+      return generateTrack(seed, profile);
+    }
   }
 
   marbleOf(body: Matter.Body): Marble | undefined {
