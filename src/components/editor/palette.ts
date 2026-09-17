@@ -70,7 +70,6 @@ export const PALETTE: PaletteGroup[] = [
     note: 'Breakables and blockers',
     tiles: [
       { t: 'breakable', label: 'SMASH crate', sprite: 'crate-tall', hint: 'Breaks under a heavy enough marble.' },
-      { t: 'block', label: 'Block', sprite: 'tile-metal', hint: 'A small solid blocker.' },
     ],
   },
 ];

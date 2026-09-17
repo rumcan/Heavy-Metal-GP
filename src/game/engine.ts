@@ -29,6 +29,8 @@ export interface GameOptions {
   inventory?: Partial<Inventory>;
   /** Online house rules: these items never run out for anyone (the count shown stays full). */
   unlimitedItems?: ItemType[];
+  /** Online: seats the host took off the grid. They sit off-track and never race or rank. */
+  benched?: number[];
   /** STORY HOOKS (ST-07), additive and optional. Unset: the engine behaves exactly as before. */
   story?: StoryHooks;
   /**
@@ -199,6 +201,12 @@ export class Game {
 
   /** Items that never run out this race (online house rules). */
   private readonly unlimitedItems: Set<ItemType>;
+  /** Seats that are not racing (online, taken off the grid by the host). */
+  readonly benched = new Set<number>();
+
+  private byIdOrNull(id: number): Marble | null {
+    return this.marbles.find((m) => m.info.id === id) ?? null;
+  }
 
   constructor(seed: number, roster: MarbleInfo[], opts: GameOptions = {}) {
     this.unlimitedItems = new Set(opts.unlimitedItems ?? []);
@@ -285,6 +293,16 @@ export class Game {
       this.marbles.map((m) => m.body),
     );
     this.player = this.marbles.find((m) => m.info.isPlayer) ?? this.marbles[0];
+    for (const id of opts.benched ?? []) {
+      const m = this.byIdOrNull(id);
+      if (!m || m === this.player) continue;
+      this.benched.add(id);
+      // "Finished" without a place: every loop that skips a finished marble skips it,
+      // and it is never in finishOrder, so it never ranks.
+      m.finishedAt = 0;
+      this.park(m);
+      Body.setPosition(m.body, { x: -5000, y: -5000 });
+    }
     if (!this.player) throw new Error('A race needs at least one marble.');
     this.streaming = this.track.bodies.length > 350;
     if (this.streaming) {

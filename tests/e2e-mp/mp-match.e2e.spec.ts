@@ -19,22 +19,22 @@ async function open(): Promise<MpSuite> {
 }
 after(async () => void (await Promise.resolve(suite?.close())));
 
-test('MP-10 match: two players who press Quick race race each other, with no code', { skip: skip || false, timeout: 240_000 }, async () => {
+test('MP-10 match: Auto Match Making puts the second player in the first player’s lobby, with no code', { skip: skip || false, timeout: 240_000 }, async () => {
   const mp = await open();
   const first = await mp.player('first');
   const second = await mp.player('second');
 
-  // Together, not in turn: a search that only starts when the other has finished
-  // is not two players pressing a button, it is one player waiting for another.
-  await Promise.all([first.quickRace(), second.quickRace()]);
+  // The first searcher opens the lobby and hosts it; the second lands in it.
+  await first.quickRace();
+  await second.quickRace();
 
   const codeA = await first.roomCode();
   const codeB = await second.roomCode();
   assert.equal(codeA, codeB, 'both screens are in the same room');
   assert.equal(await first.drivers(), 2, 'and it is the two of them on the grid');
 
-  // A quick race has no Ready and no Start: it lights itself — twenty seconds
-  // after the second driver arrives, and then the six-second countdown.
+  // Nobody presses Ready; the host (the first searcher) starts the race.
+  await first.startRace();
   await first.race(90_000);
   await second.race(90_000);
   await first.waitForGate(60_000);

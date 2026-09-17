@@ -16,17 +16,15 @@
 // the lights go out and `RaceSession` takes over.
 // ══════════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowRight, ArrowUpRight, Check, Copy } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Check, Copy, Lock, LockOpen } from 'lucide-react';
 import type { RaceRoom } from '../net/transport';
 import {
   canStart,
   circuitIndexOf,
   dressGrid,
   fileGarage,
-  MIN_HUMANS_TO_START,
   rosterOf,
   seatOfPlayer,
-  seededCircuit,
   setReady,
   startBlockedReason,
 } from '../net/lobby';
@@ -68,10 +66,9 @@ interface Props {
   /** The room's message sink. The lobby listens until the race takes over. */
   link: RaceLink;
   /**
-   * MP-07: a QUICK RACE — nobody typed a code, so nobody has to press Start.
-   * Every driver is ready the moment they sit down, the host picks the circuit
-   * from the room's seed, and the lights go out on a timer: twenty seconds once
-   * two drivers are in, immediately once the grid is six deep.
+   * AUTO MATCH MAKING lobby. Every driver is ready the moment they sit down (no
+   * Ready button). The first driver is host: they set the circuit and power-ups,
+   * can close the lobby to newcomers, and start the race when they like.
    */
   autoStart?: boolean;
   /** MP-08: drivers the room is holding a seat for. */
@@ -87,14 +84,16 @@ interface Props {
   onError: (message: string | null) => void;
 }
 
-/**
- * How long a quick race waits with two or more drivers before it drops the
- * lights. Long enough for a third and fourth to arrive, short enough that
- * "quick" is not a lie.
- */
-export const AUTO_START_MS = 20_000;
-/** Six humans and there is nobody left to wait for. */
-export const AUTO_START_FULL_GRID = 6;
+
+/** The host's full rules, with defaults left out so an untouched lobby sends what it always did. */
+function buildSettings(circuit: number, items: Partial<Record<ItemType, number>> | null, benched: readonly number[], aiItems: boolean): RaceSettings {
+  return {
+    circuit,
+    ...(items ? { items } : {}),
+    ...(benched.length ? { benched: [...benched] } : {}),
+    ...(aiItems ? {} : { aiItems: false }),
+  };
+}
 
 /** Charges a host can set per power-up: none, a few, or unlimited. */
 const HOUSE_STEPS = [0, 1, 2, 3, 5, UNLIMITED_ITEM];
@@ -113,13 +112,20 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
   const [circuitTab, setCircuitTab] = useState<'calendar' | 'custom'>('calendar');
   const [customCode, setCustomCode] = useState<string | null>(null);
   const [customName, setCustomName] = useState<string | null>(null);
+  /** Host only: AI seats taken off the grid, and whether AI may use power-ups. */
+  const [benched, setBenched] = useState<number[]>([]);
+  const [aiItems, setAiItems] = useState(true);
+  /** Host only: whether new drivers may still join. */
+  const [open, setOpen] = useState(true);
+  /** Guests: the host's open flag, from the last `lobby`. */
+  const [lobbyOpen, setLobbyOpen] = useState(true);
   /** MP-07: when a quick race's lights go out (wall clock ms), once armed. */
   const [autoAt, setAutoAt] = useState<number | null>(null);
   const [remaining, setRemaining] = useState(0);
 
   const isHost = welcome ? welcome.hostId === room.playerId : room.isCreator;
   const seats = (isHost ? grid ?? welcome?.seats : lobbySeats ?? welcome?.seats) ?? [];
-  const settings: RaceSettings = isHost ? { circuit: circuitIndex, ...(items ? { items } : {}) } : lobbySettings ?? welcome?.settings ?? { circuit: circuitIndex };
+  const settings: RaceSettings = isHost ? buildSettings(circuitIndex, items, benched, aiItems) : lobbySettings ?? welcome?.settings ?? { circuit: circuitIndex };
   const circuit = isHost ? circuitIndex : circuitIndexOf(settings);
   const gp = CALENDAR[circuit] ?? CALENDAR[0];
   const localSeat = seatOfPlayer(seats, room.playerId) ?? 0;
@@ -173,12 +179,12 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
   const filed = useRef(new Map<string, SeatGarage>());
   const readies = useRef(new Map<string, boolean>());
   // Everything the message handler needs, without re-subscribing on every render.
-  const latest = useRef({ welcome, grid, lobbySeats, isHost, circuit: circuitIndex, items });
-  latest.current = { welcome, grid, lobbySeats, isHost, circuit: circuitIndex, items };
+  const latest = useRef({ welcome, grid, lobbySeats, isHost, circuit: circuitIndex, items, open, benched, aiItems });
+  latest.current = { welcome, grid, lobbySeats, isHost, circuit: circuitIndex, items, open, benched, aiItems };
   /** The host's full rules for a circuit: the circuit plus any power-up house rules. */
   const hostSettings = (circuitId: number): RaceSettings => {
-    const rules = latest.current.items;
-    const base: RaceSettings = { circuit: circuitId, ...(rules ? { items: rules } : {}) };
+    const l = latest.current;
+    const base = buildSettings(circuitId, l.items, l.benched, l.aiItems);
     if (customCode) (base as unknown as { customCode: string }).customCode = customCode;
     return base;
   };
@@ -189,7 +195,7 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
     for (const [id, filed_] of filed.current) next = fileGarage(next, id, filed_);
     for (const [id, ready] of readies.current) next = setReady(next, id, ready);
     if (!autoStart) return next;
-    // A quick race has no Ready button: you asked to race, so you are ready.
+    // Auto Match Making has no Ready button: you asked to race, so you are ready.
     for (const seat of next) if (!seat.isAI) next = setReady(next, seat.playerId, true);
     return next;
   }, [autoStart, garage, room.playerId]);
@@ -204,10 +210,26 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
     publish(latest.current.grid ?? seats, circuitIndex);
   };
 
+  /** Host only: take an AI driver off the grid, or put it back. */
+  const toggleBench = (slot: number) => {
+    if (!isHost) return;
+    const next = benched.includes(slot) ? benched.filter((s) => s !== slot) : [...benched, slot];
+    setBenched(next);
+    latest.current.benched = next;
+    publish(latest.current.grid ?? seats, circuitIndex);
+  };
+  /** Host only: AI drivers may (or may not) use power-ups. */
+  const changeAiItems = (next: boolean) => {
+    if (!isHost) return;
+    setAiItems(next);
+    latest.current.aiItems = next;
+    publish(latest.current.grid ?? seats, circuitIndex);
+  };
+
   /** Host only: keep the grid and tell everybody what it looks like. */
   const publish = useCallback((next: Seat[], circuitId: number) => {
     setGrid(next);
-    link.send({ type: 'lobby', seats: next, settings: hostSettings(circuitId) });
+    link.send({ type: 'lobby', seats: next, settings: hostSettings(circuitId), open: latest.current.open });
   }, [link]);
 
   /** Host picks a custom track — encode to share code (5 KB, fits frame) and publish. */
@@ -242,11 +264,7 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
         const mine = msg.hostId === room.playerId;
         setWelcome(msg);
         if (mine) {
-          // A quick race's circuit is the room's, chosen by its seed: nobody
-          // typed a code, so nobody picked a track by hand.
-          const circuit = autoStart ? seededCircuit(msg.seed, CALENDAR.length) : latest.current.circuit;
-          if (autoStart && circuit !== latest.current.circuit) onCircuit(circuit);
-          publish(dress(msg.seats, msg.seed), circuit);
+          publish(dress(msg.seats, msg.seed), latest.current.circuit);
         }
         // My garage reaches the host in the only frame a guest owns. There is
         // no ack: the host files it and the next `lobby` shows it.
@@ -260,13 +278,13 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
           const code = (msg.settings as unknown as { customCode?: string })?.customCode;
           if (typeof code === 'string') {
             setCustomCode(code);
-            // Try to resolve name from local tracks (host's own list) for display
               setCircuitTab('custom');
           } else if (!isHost) {
             setCustomCode(null);
             setCustomName(null);
           }
         }
+        setLobbyOpen(msg.open !== false);
         // The host answers a re-greeting with the grid (MP-08) — which is the
         // last thing a returning driver was waiting for.
         joinLive(msg.seats);
@@ -311,7 +329,7 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
       default:
         return;
     }
-  }, [autoStart, dress, garage, joinLive, link, lobbySettings, onCircuit, onError, onStart, publish, room.playerId]);
+  }, [dress, garage, joinLive, link, lobbySettings, onError, onStart, publish, room.playerId]);
 
   const handleLeft = useCallback((playerId: string) => {
     // The host walking out of a lobby is the end of the lobby: no host, no
@@ -351,36 +369,6 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // MP-07: the quick race's own clock. Two drivers and the lights are armed;
-  // a sixth driver and there is nobody left to wait for.
-  const hostStartRef = useRef<() => void>(() => {});
-  useEffect(() => {
-    if (!autoStart || !isHost) return;
-    const humans = seats.filter((s) => !s.isAI).length;
-    if (humans >= AUTO_START_FULL_GRID) {
-      hostStartRef.current();
-      return;
-    }
-    if (humans < MIN_HUMANS_TO_START) {
-      setAutoAt(null);
-      return;
-    }
-    // Arm once: a driver joining later must not push the lights out again.
-    setAutoAt((at) => at ?? Date.now() + AUTO_START_MS);
-  }, [autoStart, isHost, seats]);
-
-  useEffect(() => {
-    if (autoAt === null) return;
-    const tick = () => {
-      const left = autoAt - Date.now();
-      if (left <= 0) hostStartRef.current();
-      else setRemaining(Math.ceil(left / 1000));
-    };
-    tick();
-    const timer = window.setInterval(tick, 250);
-    return () => window.clearInterval(timer);
-  }, [autoAt]);
-
   // One Start, however many ways there are to fire it: a button, a full grid,
   // a countdown that ran out — and a second `start` would move the lights on a
   // screen that had already counted to the first.
@@ -410,7 +398,16 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
     link.send({ type: 'ready', ready: next });
   };
 
-  hostStartRef.current = hostStart;
+  /** Host only: stop (or allow again) new drivers joining. */
+  const toggleOpen = () => {
+    if (!isHost) return;
+    const next = !open;
+    setOpen(next);
+    latest.current.open = next;
+    publish(latest.current.grid ?? seats, circuitIndex);
+  };
+  const isOpen = isHost ? open : lobbyOpen;
+  const humans = seats.filter((s) => !s.isAI).length;
 
   const copyCode = async () => {
     try {
@@ -423,20 +420,22 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
     }
   };
 
-  // MP-07: a quick race counts itself down, and says so.
-  const quickNote = autoStart
+  // Auto Match Making: say plainly what is happening and what to do next.
+  const autoNote = autoStart
     ? isHost
-      ? autoAt === null
-        ? 'Waiting for another driver — the lights go out the moment somebody joins you.'
-        : `Race starts in ${remaining}s — the grid keeps filling until then.`
-      : 'Quick race: the lights go out by themselves once the grid is set.'
+      ? humans < 2
+        ? isOpen
+          ? 'You are the host. Waiting for drivers — anyone using Auto Match Making lands in your lobby. Set the circuit and power-ups meanwhile.'
+          : 'Lobby closed. Open it again to let drivers join.'
+        : `${humans} drivers in. ${isOpen ? 'More can still join — ' : 'Lobby closed — '}start the race when you are ready.`
+      : `You joined an auto match. The host sets the circuit and power-ups and starts the race.${isOpen ? '' : ' The lobby is closed to new drivers.'}`
     : null;
 
   return <div className="app-shell lobby-page fit-shell">
     <header className="app-header">
       <Brand />
       <div className="header-tools">
-        <span className="eyebrow">{autoStart ? 'QUICK RACE' : isHost ? 'HOSTING' : 'JOINED'} <span className="muted">/ {seats.filter((s) => !s.isAI).length} DRIVERS</span></span>
+        <span className="eyebrow">{autoStart ? 'AUTO MATCH' : isHost ? 'HOSTING' : 'JOINED'} <span className="muted">/ {seats.filter((s) => !s.isAI).length} DRIVERS</span></span>
         <button className="text-button" onClick={onLeave}>Leave <ArrowUpRight size={15} /></button>
       </div>
     </header>
@@ -444,17 +443,22 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
     <main className="fit-main lobby-fit">
       {/* The room code, big and first: HexMatch's lobby pattern, sized to be read across a room. */}
       <section className="lobby-code-card" aria-labelledby="lobby-code-title">
-        <span className="eyebrow">{isHost ? 'YOUR ROOM CODE' : 'ROOM CODE'}{autoStart ? ' · QUICK RACE' : ''}</span>
-        <h2 id="lobby-code-title">{isHost && !autoStart ? 'Invite your rivals' : 'You are in'}</h2>
+        <span className="eyebrow">{isHost ? 'YOUR ROOM CODE' : 'ROOM CODE'}{autoStart ? ' · AUTO MATCH MAKING' : ''}</span>
+        <h2 id="lobby-code-title">{autoStart ? (isHost ? 'Your lobby is live — you are the host' : 'Match found — you are in') : isHost ? 'Invite your rivals' : 'You are in'}</h2>
         <div className="lobby-code">
           <b aria-label={`Room code ${(room.roomCode || '').split('').join(' ')}`}>{room.roomCode || '······'}</b>
           <button className="button-secondary" onClick={() => void copyCode()} aria-label="Copy the room code">
             {copied ? <><Check size={16} />Copied</> : <><Copy size={16} />Copy</>}
           </button>
         </div>
-        <p className="lobby-code-note">{isHost && !autoStart
-          ? 'Share this code. Friends press Online → Join with code.'
-          : 'Friends can still join with this code until the race starts.'}</p>
+        <p className="lobby-code-note">{!isOpen
+          ? 'Lobby closed: nobody new can join.'
+          : autoStart
+            ? 'Drivers using Auto Match Making join here automatically. Friends can also join with this code.'
+            : isHost
+              ? 'Share this code. Friends press Online → Join with code.'
+              : 'Friends can still join with this code until the race starts.'}</p>
+        {autoNote && <p className={`lobby-auto-status${isOpen ? '' : ' is-closed'}`} role="status"><span className="live-dot" aria-hidden />{autoNote}</p>}
       </section>
       <section className="fit-pane lobby-circuit" aria-labelledby="lobby-circuit-title">
         <div className="section-topline">
@@ -550,6 +554,13 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
           })}</ul>
           : <p className="lobby-note">Everybody races the power-ups they bought or picked up, and spends them for real.</p>}
         {rules && <p className="lobby-note">Every driver starts with these, AI included. House-rule charges never touch anyone's own kit.</p>}
+        <div className="lobby-ai-items">
+          <span>AI drivers use power-ups</span>
+          <div className="mode-switch" role="group" aria-label="AI power-ups">
+            <button className={settings.aiItems !== false ? 'selected' : ''} aria-pressed={settings.aiItems !== false} disabled={!isHost} onClick={() => changeAiItems(true)}>On</button>
+            <button className={settings.aiItems === false ? 'selected' : ''} aria-pressed={settings.aiItems === false} disabled={!isHost} onClick={() => changeAiItems(false)}>Off</button>
+          </div>
+        </div>
       </section>
 
       <section className="fit-pane lobby-grid-pane" aria-labelledby="lobby-grid-title">
@@ -564,15 +575,20 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
             myPlayerId={room.playerId}
             isHost={isHost}
             onKick={(playerId) => link.send({ type: 'kick', playerId })}
+            benched={settings.benched ?? []}
+            onToggleAI={toggleBench}
             peers={peers}
           />}
       </section>
     </main>
 
     <footer className="fit-actions">
-      <p>{error ?? quickNote ?? blocked ?? (isHost ? 'Everybody is ready — drop the lights.' : 'Ready when you are. The race starts the moment your host drops the lights.')}</p>
+      <p>{error ?? (autoStart ? (isHost ? 'Start the race whenever you like.' : 'Waiting for the host to start.') : null) ?? blocked ?? (isHost ? 'Everybody is ready — drop the lights.' : 'Ready when you are. The race starts the moment your host drops the lights.')}</p>
       {!autoStart && <button className="button-secondary" onClick={toggleReady} aria-pressed={amReady} disabled={!seats.length}>
         {amReady ? 'Not ready' : 'Ready'} <Check size={16} />
+      </button>}
+      {isHost && <button className="button-secondary" onClick={toggleOpen} aria-pressed={!open} title={open ? 'Stop new drivers joining this lobby' : 'Let new drivers join again'}>
+        {open ? <><Lock size={16} />Close lobby</> : <><LockOpen size={16} />Open lobby</>}
       </button>}
       {isHost && <button className="button-primary launch-button" disabled={!!blocked || seats.length === 0} onClick={hostStart}>
         Start the race <ArrowRight size={19} />

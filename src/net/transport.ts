@@ -95,7 +95,36 @@ function realtime(): MultiplayerApi {
  * client regenerates its circuit from (MP-04); this layer only opens the room.
  */
 export function createRoom(): Promise<RaceRoom> {
-  return realtime().createRoom<RaceProtocol>(ROOM_TYPE);
+  // Tagged so Auto Match Making never drops strangers into a friends' room.
+  return realtime().createRoom<RaceProtocol>(ROOM_TYPE, { criteria: { ...HOSTED_CRITERIA } });
+}
+
+/** Criteria of a room opened with Host game (never auto-matched). */
+export const HOSTED_CRITERIA: Record<string, string | number> = { mode: 'hosted' };
+/** Criteria of an Auto Match Making lobby. */
+export const AUTO_MATCH_CRITERIA: Record<string, string | number> = { mode: 'auto' };
+
+/** True when a join was refused because that lobby can't take anyone else right now. */
+export function isLobbyUnavailable(err: unknown): boolean {
+  const message = err instanceof Error ? err.message.toLowerCase() : String(err ?? '').toLowerCase();
+  return message.includes('closed this lobby') || message.includes('already under way') || message.includes('is full') || message.includes('locked');
+}
+
+/**
+ * AUTO MATCH MAKING: drop into an open auto lobby, or open one. Whoever opens it
+ * is its first player and so its host — they set the circuit and power-ups and
+ * start the race while others keep joining.
+ *
+ * If the lobby we land on refuses us (closed by its host, full, or racing), a
+ * fresh lobby is opened instead of retrying the same one.
+ */
+export async function autoMatch(): Promise<RaceRoom> {
+  try {
+    return await realtime().joinOrCreateRoom<RaceProtocol>(ROOM_TYPE, { criteria: { ...AUTO_MATCH_CRITERIA } });
+  } catch (err) {
+    if (!isLobbyUnavailable(err)) throw err;
+    return realtime().createRoom<RaceProtocol>(ROOM_TYPE, { criteria: { ...AUTO_MATCH_CRITERIA } });
+  }
 }
 
 /** Join by code. The code is normalized (trim, uppercase) before sending. */

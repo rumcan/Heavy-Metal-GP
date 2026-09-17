@@ -162,6 +162,8 @@ button, a, input { outline-offset: 5px; }
 .timing-gap { margin-left: auto; font-size: 7px; color: #7c8d9f; white-space: nowrap; }
 .timing-tower li.timing-player { background: #d63e2e15; border-left: 2px solid var(--accent); padding-left: 7px; }
 .timing-player .timing-name, .timing-player .timing-rank { color: var(--accent); }
+.timing-player .timing-name, .timing-human .timing-name { font-size: 11px; font-weight: 800; }
+.timing-human .timing-name { color: #fff; }
 .timing-footer { padding: 10px; display: flex; justify-content: space-between; font-size: 6px; color: #9cafc1; }
 .timing-footer > span { color: #637689; font-size: 6px; }
 .race-sector { position: absolute; top: 24px; left: 50%; transform: translateX(-50%); display: flex; gap: 9px; align-items: center; font-family: var(--mono); font-size: 8px; white-space: nowrap; text-shadow: 0 2px 5px #000; }

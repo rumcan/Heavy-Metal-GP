@@ -17,6 +17,7 @@ import type { GameRoomProps, LeaveReason, Logger, PlatformServices, Player, Room
 import RaceRoom, {
   HOST_LEFT_REASON,
   KICKED_REASON,
+  LOBBY_CLOSED_REASON,
   MAX_HUMAN_SEATS,
   PRESENCE_POLL_MS,
   RACE_IN_PROGRESS_REASON,
@@ -636,4 +637,18 @@ test('MP-03 presence: the poll runs on the room\'s own clock, and stops when the
   await leave(h, 'p1');
   assert.equal(h.clock.has('presence-poll'), false);
   assert.equal(PRESENCE_POLL_MS, 1_000);
+});
+
+test('Auto Match Making: the host closes the lobby, newcomers are refused until it reopens', async () => {
+  const h = setup();
+  await h.protocol.handleCreate();
+  await join(h, 'p1');
+  await join(h, 'p2');
+  // A guest cannot close the host's lobby.
+  await send(h, 'p2', { type: 'lobby', seats: seats(), open: false });
+  await join(h, 'p3');
+  await send(h, 'p1', { type: 'lobby', seats: seats(), open: false });
+  assert.equal(await joinRefused(h, 'p4'), LOBBY_CLOSED_REASON);
+  await send(h, 'p1', { type: 'lobby', seats: seats(), open: true });
+  await join(h, 'p4');
 });

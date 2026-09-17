@@ -1,6 +1,7 @@
 import * as storage from '../game/storage';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
+import { nudgeOf } from '../game/controls';
 import { ArrowLeft, ArrowRight, Pause, Play, Flag, ChevronRight, FastForward, Timer, Gauge, Coins, Snowflake, ZoomIn, ZoomOut, Volume2, VolumeX } from 'lucide-react';
 import { raceAudio } from '../game/audio';
 import { Game } from '../game/engine';
@@ -195,6 +196,24 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
     let height = 0;
     let raf = 0;
     let last = performance.now();
+    /** When the online session was last advanced (by a frame or by the background heartbeat). */
+    let simAt = last;
+    const advanceSession = (at: number) => {
+      const session = sessionRef.current;
+      if (!session) return;
+      session.setNudge(nudgeOf(controls.current));
+      // Uncapped up to a quarter second: a host on a slow machine must not run the race in slow motion for everyone.
+      session.update(Math.min(Math.max(0, at - simAt), 250));
+      simAt = at;
+    };
+    // A browser stops animation frames for a hidden or covered window. The host IS the race,
+    // so a timer keeps the simulation (and the stream to everyone else) going until frames resume.
+    const heartbeat = window.setInterval(() => {
+      const at = performance.now();
+      if (!sessionRef.current || doneRef.current || at - simAt < 100) return;
+      advanceSession(at);
+      if (sessionRef.current.results) finish();
+    }, 50);
     let accumulator = 0;
     let hudTimer = 0;
     let formationElapsed = 0;
@@ -239,7 +258,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       if (down && (event.code === 'Equal' || event.code === 'NumpadAdd')) { setZoom(zoomRef.current * 1.2); return; }
       if (down && (event.code === 'Minus' || event.code === 'NumpadSubtract')) { setZoom(zoomRef.current / 1.2); return; }
       if (down && (event.code === 'Digit0' || event.code === 'Numpad0')) { setZoom(1); return; }
-      if (down) raceAudio.unlock();
+      if (down && !event.repeat) raceAudio.unlock();
       if (event.code === 'KeyM' && down && !event.repeat) { toggleMute(); return; }
       // Online there is no pause: the race clock is not this tab's, and a host
       // that stopped stepping would take the whole grid with it.
@@ -303,7 +322,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
         // Neither has a formation lap of its own: the lights belong to the
         // host's clock, and the gate opens on the instant the lobby published.
         if (sessionRef.current) {
-          sessionRef.current.update(dt);
+          advanceSession(now);
           if (sessionRef.current.results) finish();
         } else {
         formationElapsed += dt;
@@ -313,7 +332,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
           lights = nextLights;
           if (formationElapsed >= lightsOutAt) { lights = -1; game.openGate(); }
         }
-        game.nudge = controls.current.touch || Number(controls.current.right) - Number(controls.current.left);
+        game.nudge = nudgeOf(controls.current);
         accumulator += dt * (game.player.finishedAt !== null ? fastRef.current : 1);
         while (accumulator >= PHYSICS_STEP) { game.step(PHYSICS_STEP); accumulator -= PHYSICS_STEP; }
         if (game.allFinished()) { finishHold += dt; if (finishHold > 750) finish(); }
@@ -368,7 +387,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
           mx: p.x, my: p.y,
           progress: Math.max(0, Math.min(1, (m.body.position.y - game.track.startY) / (game.track.finishY - game.track.startY))),
           state: status, frozen: m.frozen, finishedCount: game.finishOrder.length,
-          field: game.gateOpen ? ranking.map((r) => ({ id: r.marble.info.id, rank: r.rank, time: r.time, x: r.marble.body.position.x, y: r.marble.body.position.y })) : gridOrder.map((id, i) => ({ id, rank: i + 1, time: null, x: game.marbles.find((m) => m.info.id === id)!.body.position.x, y: 116 })),
+          field: game.gateOpen ? ranking.map((r) => ({ id: r.marble.info.id, rank: r.rank, time: r.time, x: r.marble.body.position.x, y: r.marble.body.position.y })) : gridOrder.filter((id) => !game.benched.has(id)).map((id, i) => ({ id, rank: i + 1, time: null, x: game.marbles.find((m) => m.info.id === id)!.body.position.x, y: 116 })),
           following: following.info.isPlayer ? 'You' : following.info.name,
           viewTop: camera.y - height / 2 / camera.scale, viewBottom: camera.y + height / 2 / camera.scale,
         });
@@ -377,7 +396,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
     };
     raf = requestAnimationFrame(loop);
     return () => {
-      cancelAnimationFrame(raf); clearTimeout(toastTimer); observer.disconnect();
+      cancelAnimationFrame(raf); window.clearInterval(heartbeat); clearTimeout(toastTimer); observer.disconnect();
       window.removeEventListener('pointerdown', unlockAudio);
       window.removeEventListener('keydown', keyDown); window.removeEventListener('keyup', keyUp);
       canvas.removeEventListener('wheel', wheel); canvas.removeEventListener('pointerdown', pointerDown); canvas.removeEventListener('pointermove', pointerMove);
@@ -454,7 +473,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       <aside className="timing-tower" aria-label={preStart ? 'Starting grid' : 'Live classification'}><div className="timing-heading"><i className="live-dot" />{preStart ? 'STARTING GRID' : 'LIVE CLASSIFICATION'}</div><ol>{hud.field.map((r) => {
         const m = byId(r.id);
         const leading = hud.field[0];
-        return <li key={r.id} className={m.isPlayer ? 'timing-player' : ''}><span className="timing-rank">{r.rank}</span><i style={{ background: teamOf(r.id).color }} /><span className="timing-name">{m.isPlayer ? 'YOU' : m.name.toUpperCase()}</span><span className="timing-gap">{preStart ? teamOf(r.id).short : r.time !== null ? <Flag size={11} /> : leading.time !== null ? 'RACING' : r.rank === 1 ? 'LEADER' : `+${Math.max(0, (leading.y - r.y) / 100).toFixed(1)}m`}</span></li>;
+        return <li key={r.id} className={`${m.isPlayer ? 'timing-player' : ''} ${m.isHuman && !m.isPlayer ? 'timing-human' : ''}`}><span className="timing-rank">{r.rank}</span><i style={{ background: teamOf(r.id).color }} /><span className="timing-name">{m.isPlayer ? 'YOU' : m.name.toUpperCase()}</span><span className="timing-gap">{preStart ? teamOf(r.id).short : r.time !== null ? <Flag size={11} /> : leading.time !== null ? 'RACING' : r.rank === 1 ? 'LEADER' : `+${Math.max(0, (leading.y - r.y) / 100).toFixed(1)}m`}</span></li>;
       })}</ol><div className="timing-footer">{hud.finishedCount} / 10 FINISHED <span>{championship ? 'CHAMPIONSHIP' : 'QUICK RACE'}</span></div></aside>
       <div className="zoom-controls" role="group" aria-label="Zoom"><button className="icon-button" onClick={() => setZoom(zoom * 1.25)} disabled={zoom >= ZOOM_MAX} aria-label="Zoom in"><ZoomIn size={16} /></button><button className="zoom-level" onClick={() => setZoom(1)} aria-label="Reset zoom">{Math.round(zoom * 100)}%</button><button className="icon-button" onClick={() => setZoom(zoom / 1.25)} disabled={zoom <= ZOOM_MIN} aria-label="Zoom out"><ZoomOut size={16} /></button></div>
       <div className="race-sector"><span>SECTOR {String(hud.sectorIndex + 1).padStart(2, '0')}</span><b>{hud.sector.toUpperCase()}</b></div>
@@ -469,7 +488,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       <div className="speed-readout"><div className="readout-caption"><Gauge size={13} /><span>SPEED</span></div><div><strong>{Math.round(hud.speed)}</strong><span>cm/s</span></div><div className="speed-meter"><span style={{ width: `${Math.min(100, hud.speed / hud.cap * 100)}%` }} /></div></div>
       <div className={`marble-state ${hud.frozen ? 'is-frozen' : ''}`}><span className="readout-caption">MARBLE STATUS</span><strong>{hud.frozen && <Snowflake size={14} />}{hud.state}</strong><span className="peg-readout"><i className="orange-peg" />{hud.pegs} orange pegs</span></div>
       <div className="race-wallet"><Coins size={16} /><strong>{credits.toLocaleString()}</strong><span>CR</span></div>
-      <div className="race-controls"><div className="nudge-controls"><span>FIND YOUR LINE</span><div><button className="nudge-button" aria-label="Nudge left" {...nudgeButton(-1)} disabled={hud.finished || preStart || paused}><ArrowLeft size={18} /><kbd>A</kbd></button><button className="nudge-button" aria-label="Nudge right" {...nudgeButton(1)} disabled={hud.finished || preStart || paused}><ArrowRight size={18} /><kbd>D</kbd></button></div></div></div>
+      <div className="race-controls"><div className="nudge-controls"><span>FIND YOUR LINE</span><div><button className="nudge-button" aria-label="Nudge left" {...nudgeButton(-1)} disabled={hud.finished || preStart || paused}><ArrowLeft size={18} /><kbd>←</kbd></button><button className="nudge-button" aria-label="Nudge right" {...nudgeButton(1)} disabled={hud.finished || preStart || paused}><ArrowRight size={18} /><kbd>→</kbd></button></div></div></div>
       </div><InventoryToolbar unlimited={online?.settings.items} inventory={hud.inventory} remaining={hud.remaining} selected={selected} blocked={paused || hud.finished || preStart || hud.frozen || !!results} coolingDown={hud.coolingDown} onUse={deploy} />
     </footer>
     {paused && !results && <Dialog titleId="pause-title" onClose={() => { setConfirmExit(false); setPause(false); }} className="pause-dialog"><span className="eyebrow"><Timer size={15} /> {confirmExit ? 'RACE CONTROL' : 'TIME OUT'}</span><h2 id="pause-title">{confirmExit ? 'Leaving the grid?' : 'A quick pit stop.'}</h2><p className="dialog-intro">{confirmExit ? 'This heat will not be scored or paid. Used items stay spent; unused items and pickups stay in your inventory. Previous results are safe.' : 'The clock, every marble, and all item timers are paused. Your next move can wait.'}</p><div className="pause-actions"><button className="button-primary" onClick={() => { setConfirmExit(false); setPause(false); }}><Play size={17} />Back to the race</button><button className="button-secondary" onClick={confirmExit ? onExit : () => setConfirmExit(true)}>{confirmExit ? 'Leave heat' : 'Return to paddock'}<ChevronRight size={16} /></button></div></Dialog>}

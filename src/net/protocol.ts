@@ -53,7 +53,7 @@ export type { SoundEvent };
  * lobby/ready/start, 20 Hz packed `state`, `events`, chunked `snapshot`,
  * `intent`, `resync`, `results`, presence and the hard refusal on mismatch.
  */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2; // 2: kit frames, AI power-ups switch, benched AI seats
 
 /**
  * Realtime WS frame cap in bytes. Mirrors the SDK's `MAX_BROADCAST_BYTES`
@@ -150,6 +150,9 @@ export const VERSION_MISMATCH_MESSAGE = 'This game has been updated — reload t
  */
 export const HOST_LEFT_REASON = 'The host left the race.';
 
+/** Sent to a newcomer after the host closed the lobby. */
+export const LOBBY_CLOSED_REASON = 'The host closed this lobby to new drivers.';
+
 // ══════════════════════════════════════════════════════════════════════════
 // Lobby: seats, settings, welcome
 // ══════════════════════════════════════════════════════════════════════════
@@ -226,6 +229,10 @@ export interface RaceSettings {
    * decoded.
    */
   customCode?: string;
+  /** False: AI drivers never use power-ups. Absent reads as true. */
+  aiItems?: boolean;
+  /** AI seats the host took off the grid: they do not race. Human seats are never benched. */
+  benched?: number[];
 }
 
 /** An item the host set to "unlimited". */
@@ -268,6 +275,8 @@ export interface LobbyMsg {
   type: 'lobby';
   seats: Seat[];
   settings?: RaceSettings;
+  /** False once the host closed the lobby to new drivers. Absent reads as open. */
+  open?: boolean;
 }
 
 /**
@@ -666,7 +675,18 @@ export type RaceProtocol =
   | HelloMsg
   | KickMsg
   | PeerStatusMsg
-  | RejectMsg;
+  | RejectMsg
+  | KitMsg;
+
+/**
+ * host → everyone: what the human drivers are carrying, after a pickup or a
+ * spend. Small on purpose — a whole snapshot for a kit change froze guests
+ * while it was reassembled, and with house-rule items that was constant.
+ */
+export interface KitMsg {
+  type: 'kit';
+  kits: { slot: number; inventory: Inventory }[];
+}
 
 /** Every `type` tag in the union — the discriminator the room switches on. */
 export const RACE_MESSAGE_TYPES = [
@@ -684,6 +704,7 @@ export const RACE_MESSAGE_TYPES = [
   'kick',
   'peerStatus',
   'reject',
+  'kit',
 ] as const;
 
 export type RaceMessageType = RaceProtocol['type'];
@@ -1098,11 +1119,20 @@ export function readRaceSettings(value: unknown): RaceSettings | null {
     // Base64url shape check — the full deflate validation is `decodeShareCode`.
     if (!/^[A-Za-z0-9_-]+$/.test(s.customCode.slice(2))) return null;
   }
+  if (s.aiItems !== undefined && typeof s.aiItems !== 'boolean') return null;
+  let benched: number[] | undefined;
+  if (s.benched !== undefined) {
+    if (!Array.isArray(s.benched) || s.benched.length > MARBLE_COUNT) return null;
+    if (!s.benched.every((slot) => isInt(slot, 0, MARBLE_COUNT - 1))) return null;
+    benched = [...new Set(s.benched as number[])];
+  }
   return {
     circuit,
     ...(s.laps !== undefined ? { laps: s.laps as number } : {}),
     ...(items ? { items } : {}),
     ...(typeof s.customCode === 'string' ? { customCode: s.customCode } : {}),
+    ...(s.aiItems !== undefined ? { aiItems: s.aiItems as boolean } : {}),
+    ...(benched ? { benched } : {}),
   };
 }
 
@@ -1451,6 +1481,14 @@ export function validateMessage(msg: unknown, opts: ValidateOptions = {}): Proto
       // half-read: two seats racing different circuits is the desync the
       // version check exists to prevent.
       if (msg.settings !== undefined && !readRaceSettings(msg.settings)) return bad('Lobby settings are malformed.');
+      if (msg.open !== undefined && typeof msg.open !== 'boolean') return bad('Lobby open flag is not a boolean.');
+      return null;
+    }
+    case 'kit': {
+      if (!Array.isArray(msg.kits) || msg.kits.length > MARBLE_COUNT) return bad('Kit list is malformed.');
+      for (const kit of msg.kits) {
+        if (!kit || !isInt(kit.slot, 0, MARBLE_COUNT - 1) || readInventory(kit.inventory) === null) return bad('Kit entry is malformed.');
+      }
       return null;
     }
     case 'ready': {

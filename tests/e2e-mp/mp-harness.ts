@@ -164,7 +164,7 @@ export class Player {
 
   /**
    * The online panel: Host / Join / Quick live here, and nowhere else —
-   * "Quick race" is ALSO a race-mode toggle on the garage tab, so matching it
+   * "Quick race" is a race-mode toggle on the garage tab, so matching it
    * unscoped is a strict-mode violation waiting for a browser to find it.
    */
   private get online(): Locator {
@@ -186,7 +186,7 @@ export class Player {
 
   async quickRace(): Promise<void> {
     await this.openOnline();
-    await this.online.getByRole('button', { name: /quick race/i }).click();
+    await this.online.getByRole('button', { name: /auto match making/i }).click();
     await this.lobby();
   }
 
