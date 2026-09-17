@@ -65,7 +65,7 @@ export default function SetupScreen(props: Props) {
         <button onClick={onContinueSeason ?? (() => setMode('season'))}>Championship</button>
         <button onClick={() => setDialog('rules')}>How to play</button>
       </nav>
-      <div className="header-tools"><button className="icon-button mobile-only" onClick={() => setDialog('rules')} aria-label="How to play"><CircleHelp size={17} /></button><button className="text-button lab-link" onClick={() => setDialog('lab')}><FlaskConical size={16} /><span>Physics lab</span></button><WalletButton credits={account.credits} onClick={onShop} /></div>
+      <div className="header-tools"><button className="icon-button mobile-only" onClick={() => setDialog('rules')} aria-label="How to play"><CircleHelp size={17} /></button>{import.meta.env.DEV && <button className="text-button lab-link" onClick={() => setDialog('lab')}><FlaskConical size={16} /><span>Physics lab</span></button>}<WalletButton credits={account.credits} onClick={onShop} /></div>
     </header>
 
     <main className="fit-main garage-fit">
@@ -114,7 +114,7 @@ export default function SetupScreen(props: Props) {
         </>}
     </footer>
     <nav className="pane-tabs" aria-label="Garage sections">{PANES.map(([id, label]) => <button key={id} className={pane === id ? 'selected' : ''} aria-pressed={pane === id} onClick={() => setPane(id)}>{label}</button>)}</nav>
-    {dialog === 'lab' && <PhysicsLab onClose={() => setDialog(null)} />}
+    {import.meta.env.DEV && dialog === 'lab' && <PhysicsLab onClose={() => setDialog(null)} />}
     {dialog === 'rules' && <RulesDialog onClose={() => setDialog(null)} />}
   </div>;
 }
