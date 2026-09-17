@@ -207,42 +207,47 @@ export default function StoryScene({
       onPointerLeave={pressCancel}
     >
       <div className="story-cast">
-        {speakers.map((who) => {
+        {speakers.map((who, slotIndex) => {
           const cast = CAST[who];
           const isActive = who === line?.who;
           const mood = isActive ? line!.mood : cast.defaultMood;
           const plate = castPlateColor(who);
-          const facing = castFacing(who, mood);
+          // Speakers alternate left/right of centre and always look inward, so a two-hander reads as a conversation.
+          const side = speakers.length === 1 ? 'center' : slotIndex % 2 === 0 ? 'left' : 'right';
+          const lookTowards = side === 'right' ? 'left' : 'right';
+          const mirrored = side !== 'center' && castFacing(who, mood) !== lookTowards;
           return <div
             key={who}
-            className={`story-speaker ${isActive ? 'is-active' : ''} ${still ? '' : facing === 'left' ? 'is-facing-left' : 'is-facing-right'}`}
+            className={`story-speaker is-${side} ${isActive ? 'is-active' : ''} ${still ? 'is-still' : ''}`}
             style={{ '--plate': plate } as CSSProperties}
           >
-            <span className={`kit-portrait ring-${castRing(who)}`} style={{ '--speaker': plate } as CSSProperties}>
+            <span className={`kit-portrait ring-${castRing(who)} ${mirrored ? 'is-mirrored' : ''}`} style={{ '--speaker': plate } as CSSProperties}>
               <img src={castPortrait(who, mood)} alt={castName(who)} draggable={false} />
             </span>
             <span className="story-nameplate" style={{ '--plate': plate } as CSSProperties}>
               <strong>{castName(who)}</strong>
               <span>{cast.role}</span>
             </span>
+            {isActive && <div className="scene-bubble">
+              <p className={`story-text ${direction ? 'is-direction' : ''}`} aria-live="polite">
+                {typing ? text.slice(0, shown) : text}
+                {!typing && !options.length && <span className="story-caret"> ▸</span>}
+              </p>
+            </div>}
           </div>;
         })}
       </div>
       {prop && <div className="story-prop" key={prop}><img src={storyProp(prop)} alt="" draggable={false} /></div>}
     </div>
 
-    <div className="story-panel">
-      <p className={`story-text ${direction ? 'is-direction' : ''}`} aria-live="polite">
-        {typing ? text.slice(0, shown) : text}
-        {!typing && !options.length && <span className="story-caret"> ▸</span>}
-      </p>
-      {scene.choice && !typing && <div className="story-choices" role="group" aria-label={scene.choice.prompt}>
+    {scene.choice && !typing && <div className="story-panel">
+      <div className="story-choices" role="group" aria-label={scene.choice.prompt}>
         <p className="story-choice-prompt">{scene.choice.prompt}</p>
         {options.map((option, i) => <button key={option.set} type="button" className="story-choice" onClick={() => pick(option)}>
           {option.label}<kbd>{i + 1}</kbd>
         </button>)}
-      </div>}
-    </div>
+      </div>
+    </div>}
     <div className="story-hint">{typing ? 'Hold to speed up' : options.length ? 'Choose your line' : 'Tap or press Space'}</div>
   </div>;
 }

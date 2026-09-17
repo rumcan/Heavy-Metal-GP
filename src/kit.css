@@ -211,3 +211,8 @@ button:disabled.button-primary, button:disabled.button-secondary { background: #
 .rules-hazards strong { font-size: 11px; }
 .rules-hazards p { font-size: 9px; line-height: 1.6; color: #859bb0; margin: 3px 0 0; }
 @media (max-width: 640px) { .rules-hazards { grid-template-columns: repeat(2, 1fr); } }
+
+/* dev-only skip race control (RaceScreen, import.meta.env.DEV) */
+.dev-skip-race { display: flex; align-items: center; gap: 2px; padding: 2px 6px; margin-right: 6px; border: 1px dashed #e0b44a; border-radius: 4px; }
+.dev-skip-race span { font: 8px var(--mono); letter-spacing: 1.2px; color: #e0b44a; margin-right: 4px; }
+.dev-skip-race .text-button { font-size: 10px; padding: 3px 5px; }
