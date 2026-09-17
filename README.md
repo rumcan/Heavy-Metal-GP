@@ -57,8 +57,18 @@ validating relay** (`src/rooms/RaceRoom.ts`): it mints the seed, names the host,
 keeps the seat table (player → grid slot), relays host state to everyone and
 guest intents to the host only, drops a guest-forged frame or one the protocol
 refuses, locks the room once the lights go out, and ends the race for everyone
-when the host leaves mid-heat. It never simulates — host-authoritative
-simulation, guest rendering and the lobby UI land in MP-04…MP-06.
+when the host leaves mid-heat. It never simulates.
+
+**The host simulates** (`src/net/host.ts`): one browser runs the Matter.js
+`Game` for all ten marbles and publishes `state` at 20 Hz, an `events` batch
+whenever something happened, a chunked snapshot on join/resync and the
+`results` once. Guests never step physics — guest rendering and the lobby UI
+land in MP-05…MP-06. The host applies a guest's intents at the next step,
+pacing nudges to 30 a second and holding items to the same `canUseItem` rule
+its own hands obey, and it owns the race clock: the lights go out at a
+wall-clock instant every tab was told about in advance. `Game` itself now takes
+N human seats (`humanInput`), so the AI keeps its hands off a guest who has
+joined but not touched a control, and offline play is unchanged.
 
 The **race protocol** (`src/net/protocol.ts`) is the wire both ends speak:
 `welcome`/`lobby`/`ready`/`start`, a 20 Hz `state` frame (ten marbles packed
@@ -159,6 +169,11 @@ Run physics and championship tests only with
 
 Run browser tests with `node --import tsx --test tests/browser.test.ts`.
 
+The simulation's import tree is deliberately free of the SDK — `season.ts`
+hands its device cache to `storage.ts` at boot (`bindStorage`) rather than
+importing it, because the SDK builds its API object at module scope and reads
+`window` doing it. That is what lets a node test construct a `Game` at all.
+
 The build automatically runs type checking and the regression suites. A small
 PostCSS configuration provides this build gate without changing the supplied
 npm scripts or Vite configuration. It does not transform CSS or run tests when
@@ -187,6 +202,15 @@ minted from the room id, guest-forged state is dropped while the host's is
 broadcast, intents reach the host and nobody else, the seventh player is
 refused, `start` locks the door, the host leaving mid-race ends the race for
 everyone, and a dropped socket is announced with its reconnect window.
+`tests/host.test.ts` runs a whole race through the host on a clock the test
+moves by hand: the gate opens on the countdown and not before, the lights ride
+out in the frames, publishing holds 20 Hz, every frame the host emits survives
+`validateMessage`, guest intents steer their marble while the AI leaves human
+seats alone, nudges are pacing-limited and items held to `canUseItem`, a
+snapshot reassembles into the world, and — the acceptance — a guest replaying
+the frame stream (it has the seed, so it has the track, so it can tell a
+scoring peg from a dud) classifies the race exactly as the host's `results`
+frame does. It also times the publishing against a frame budget.
 
 Story coverage: `tests/story-schema.test.ts` enforces the script/art contract — every scene
 id in the outline exists, every speaker resolves to a portrait mood that was drawn, every
