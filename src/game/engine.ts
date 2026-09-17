@@ -377,6 +377,17 @@ export class Game {
     this.loadedBodies = wanted;
   }
 
+  /**
+   * Destroy a track body BY INDEX — what a guest does with the host's
+   * `destroyed` list (and with a `peg` or `crate` event). The guest has no
+   * physics of its own, but it must keep the same bookkeeping as the host or
+   * the two screens disagree about which pegs are still standing.
+   */
+  destroyBody(index: number): void {
+    const body = this.track.bodies[index];
+    if (body) this.removeTrackBody(body);
+  }
+
   private removeTrackBody(body: Matter.Body) {
     meta(body).destroyed = true;
     Composite.remove(this.world, body);
@@ -666,6 +677,41 @@ export class Game {
     m.body.frictionAir = 0.045;
     m.trail = [];
     this.effects.push({ type: 'ring', x: m.body.position.x, y: m.body.position.y, ttl: 30, maxTtl: 30, color: m.info.color });
+  }
+
+  /**
+   * Move a finished marble off the track: a sensor parked by the finish line,
+   * out of everyone's way. The host does this from `step`; a GUEST does it from
+   * the `finish` event, because it never steps — and both ends must park in the
+   * same place or the two screens disagree about where the finishers are.
+   */
+  park(m: Marble): void {
+    if (m.body.isSensor) return;
+    Composite.remove(this.world, m.body);
+    m.body.isSensor = true;
+    Body.setPosition(m.body, { x: 80 + (m.info.id % 10) * 80, y: this.track.finishY + 75 });
+    Body.setVelocity(m.body, { x: 0, y: 0 });
+    Body.setAngularVelocity(m.body, 0);
+  }
+
+  /**
+   * Age the effects (and the screen shake) by `dt` ms. `step` calls this; a
+   * GUEST calls it from its own loop, because it never steps physics but still
+   * has to retire the rings and sparks it drew from the host's `events`.
+   */
+  ageEffects(dt: number): void {
+    const s = dt / TICK;
+    for (const e of this.effects) {
+      e.ttl -= s;
+      if (e.particles)
+        for (const p of e.particles) {
+          p.x += p.vx * s;
+          p.y += p.vy * s;
+          p.vy += 0.15 * s;
+        }
+    }
+    this.effects = this.effects.filter((e) => e.ttl > 0);
+    if (this.shake > 0) this.shake = Math.max(0, this.shake - s);
   }
 
   private updateRecovery(m: Marble, dt: number) {
@@ -1106,31 +1152,14 @@ export class Game {
       }
     }
 
-    // effects
-    for (const e of this.effects) {
-      e.ttl -= s;
-      if (e.particles)
-        for (const p of e.particles) {
-          p.x += p.vx * s;
-          p.y += p.vy * s;
-          p.vy += 0.15 * s;
-        }
-    }
-    this.effects = this.effects.filter((e) => e.ttl > 0);
-    if (this.shake > 0) this.shake = Math.max(0, this.shake - s);
+    this.ageEffects(dt);
 
     this.supports.clear();
     Engine.update(this.engine, dt);
 
     for (const m of this.marbles) {
       if (m.finishedAt !== null) {
-        if (!m.body.isSensor) {
-          Composite.remove(this.world, m.body);
-          m.body.isSensor = true;
-          Body.setPosition(m.body, { x: 80 + (m.info.id % 10) * 80, y: this.track.finishY + 75 });
-          Body.setVelocity(m.body, { x: 0, y: 0 });
-          Body.setAngularVelocity(m.body, 0);
-        }
+        this.park(m);
         continue;
       }
       if (m.frozen) continue;

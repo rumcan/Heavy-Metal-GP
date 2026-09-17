@@ -59,11 +59,26 @@ guest intents to the host only, drops a guest-forged frame or one the protocol
 refuses, locks the room once the lights go out, and ends the race for everyone
 when the host leaves mid-heat. It never simulates.
 
+**Guests render** (`src/net/guest.ts`): the guest builds the identical circuit
+from the seed, then only ever MOVES bodies — no `Engine.update` anywhere. State
+frames land in a 100 ms interpolation buffer and the picture is played out on
+the guest's own clock, which is allowed to run 25 % fast to absorb a hole but
+never snaps the buffer in one frame. Events change what there is to see (a
+popped peg, a broken wall, a slick, a freeze, a finish) and are held until the
+picture reaches the frame they belong to, so they are drawn in step with the
+state they describe. The host says every batch twice: a state frame is
+absolute, so one the network eats heals itself, but an events frame is the
+only copy of "that peg popped", so each publish repeats the one before it and
+the guest ignores a sequence it has already drawn. The local marble leans the moment a key goes down and the
+next frame corrects it — a render-only lie the simulation never sees. A frame
+or two may go missing (every frame carries every marble, so the buffer steps
+over the hole); a bigger hole costs one `resync` and the world comes back
+whole.
+
 **The host simulates** (`src/net/host.ts`): one browser runs the Matter.js
 `Game` for all ten marbles and publishes `state` at 20 Hz, an `events` batch
 whenever something happened, a chunked snapshot on join/resync and the
-`results` once. Guests never step physics — guest rendering and the lobby UI
-land in MP-05…MP-06. The host applies a guest's intents at the next step,
+`results` once. Guests never step physics — the lobby UI lands in MP-06. The host applies a guest's intents at the next step,
 pacing nudges to 30 a second and holding items to the same `canUseItem` rule
 its own hands obey, and it owns the race clock: the lights go out at a
 wall-clock instant every tab was told about in advance. `Game` itself now takes
@@ -211,6 +226,14 @@ snapshot reassembles into the world, and — the acceptance — a guest replayin
 the frame stream (it has the seed, so it has the track, so it can tell a
 scoring peg from a dud) classifies the race exactly as the host's `results`
 frame does. It also times the publishing against a frame budget.
+`tests/guest.test.ts` stands a host and a guest either side of a fake network —
+a queue with a delivery time and a seeded coin for loss — and plays a whole
+race across 150 ms and 2 % loss: the picture never teleports, the guest asks
+for at most one resync, and its world agrees with the host's. It also covers a
+snapshot handing over the whole world, a twenty-frame blackout costing exactly
+one resync, late/duplicate/out-of-order/garbage frames, every event kind, a
+forged body index being ignored rather than crashed on, and the optimistic
+lean being bounded and corrected.
 
 Story coverage: `tests/story-schema.test.ts` enforces the script/art contract — every scene
 id in the outline exists, every speaker resolves to a portrait mood that was drawn, every

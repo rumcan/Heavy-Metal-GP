@@ -88,7 +88,29 @@ function harness(overrides: Partial<RaceHostOptions> = {}): Harness {
       now += ms;
     },
     now: () => now,
-    events: () => frames.flatMap((f) => (f.type === 'events' ? f.list : [])),
+    events: () => {
+      // The host publishes every batch twice on purpose (see `RaceHost.publish`),
+      // so a stream read back has to ignore the second copy. Chunks of one batch
+      // share a sequence number, so the dedupe is per-sequence, not per-frame.
+      const out: RaceEvent[] = [];
+      const seen = new Set<number>();
+      let current = -1;
+      let repeat = false;
+      for (const f of frames) {
+        // A publish is a state frame followed by its event frames, so the
+        // second copy — which carries the PREVIOUS sequence number — is
+        // recognised by arriving in a later publish than the first.
+        if (f.type === 'state') current = -1;
+        if (f.type !== 'events') continue;
+        if (f.seq !== current) {
+          current = f.seq;
+          repeat = seen.has(current);
+          seen.add(current);
+        }
+        if (!repeat) out.push(...f.list);
+      }
+      return out;
+    },
     states: () => frames.filter((f): f is Extract<RaceProtocol, { type: 'state' }> => f.type === 'state'),
   };
 }
@@ -321,6 +343,11 @@ test('MP-04 host: a full race completes, and a guest replaying the stream classi
   const home = new Set<number>();
   let lastSeq = -1;
   let gaps = 0;
+  // The host says every batch twice, so the replay ignores the second copy:
+  // chunks of one batch share a sequence number, the repeat does not.
+  const seenEvents = new Set<number>();
+  let eventSeq = -1;
+  let repeat = false;
 
   for (const frame of h.frames) {
     if (frame.type === 'state') {
@@ -328,8 +355,15 @@ test('MP-04 host: a full race completes, and a guest replaying the stream classi
       lastSeq = frame.seq;
       const marbles: MarbleState[] = unpackState(frame.marbles);
       assert.equal(marbles.length, MARBLE_COUNT);
+      eventSeq = -1; // a new publish: its event frames may repeat the last one's
     }
     if (frame.type !== 'events') continue;
+    if (frame.seq !== eventSeq) {
+      eventSeq = frame.seq;
+      repeat = seenEvents.has(eventSeq);
+      seenEvents.add(eventSeq);
+    }
+    if (repeat) continue;
     for (const event of frame.list) {
       if (event.kind === 'finish' && !home.has(event.seat)) {
         home.add(event.seat);

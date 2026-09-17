@@ -132,6 +132,7 @@ export class RaceHost {
   private readonly send: (msg: RaceProtocol) => void;
   private readonly clock: () => number;
   private readonly budgets = new Map<number, NudgeBudget>();
+  private readonly seats: Seat[];
   private seq = SEQ_START;
   private accumulator = 0;
   private lastPublishAt: number;
@@ -140,12 +141,15 @@ export class RaceHost {
   private snapshotId = 0;
   private finishHold = 0;
   private classified: ResultsMsg | null = null;
+  /** The events sent with the last publish — sent again with the next one. */
+  private previousEvents: { seq: number; list: RaceEvent[] } | null = null;
 
   constructor(opts: RaceHostOptions) {
     if (!opts.seats.length) throw new Error('A race needs a grid.');
     this.send = opts.send;
     this.clock = opts.now ?? (() => Date.now());
     const seats = [...opts.seats].sort((a, b) => a.slot - b.slot);
+    this.seats = seats;
     const humanSeats = seats.filter((s) => !s.isAI).map((s) => s.slot);
     const roster: MarbleInfo[] = seats.map((seat) => ({
       // One numbering, three jobs: the seat's slot, the marble's id, and the
@@ -201,6 +205,34 @@ export class RaceHost {
   /** The instant the gate opens, or null when no start has been scheduled. */
   get countdown(): number | null {
     return this.countdownAt;
+  }
+
+  /**
+   * A message from a guest, exactly as the room relayed it — sender and all,
+   * because an intent carries no seat of its own and the room is the only thing
+   * that knows which player sent it.
+   *
+   * Two kinds matter: an intent, applied at the next step, and a resync,
+   * answered with the world. Anything else is not a guest message and is
+   * ignored: the room drops those for us, but a host does not take a client's
+   * word for anything.
+   */
+  accept(msg: RaceProtocol & { sender?: { id?: string } }): void {
+    if (msg.type === 'intent') {
+      const seat = this.seatOfPlayer(msg.sender?.id);
+      if (seat === null) return; // not on the grid
+      this.applyIntent(seat, msg);
+      return;
+    }
+    if (msg.type === 'resync') {
+      this.sendSnapshot();
+    }
+  }
+
+  /** The seat a RUN player is sitting in, or null when they are not on the grid. */
+  seatOfPlayer(playerId: string | undefined): number | null {
+    if (!playerId) return null;
+    return this.seats.find((seat) => seat.playerId === playerId)?.slot ?? null;
   }
 
   /**
@@ -329,13 +361,31 @@ export class RaceHost {
     }
   }
 
-  /** Publish one state frame and whatever events have happened since the last one. */
+  /**
+   * Publish one state frame and whatever events have happened since the last
+   * one — and the previous frame's events again.
+   *
+   * A state frame is absolute, so one the network eats heals itself: the next
+   * one carries every marble. An events frame is not. It is the only copy of
+   * "that peg popped" or "that marble is home", and if it is lost the guest
+   * never learns it — a wrong peg count is a wrong payout (MP-09). Rather than
+   * an acknowledgement round trip, the host says everything twice: every
+   * publish repeats the one before it, and the guest ignores a sequence it has
+   * already drawn. Two per-cent loss becomes invisible for the cost of a few
+   * dozen bytes.
+   */
   private publish(): void {
     this.seq = nextSeq(this.seq);
     this.send({ type: 'state', seq: this.seq, t: Math.round(this.game.time), marbles: packState(this.game.marbleStates()) });
     const events = this.drainEvents();
-    for (let i = 0; i < events.length; i += MAX_EVENTS_PER_FRAME) {
-      this.send({ type: 'events', seq: this.seq, list: events.slice(i, i + MAX_EVENTS_PER_FRAME) });
+    if (this.previousEvents) this.sendEvents(this.previousEvents);
+    if (events.length) this.sendEvents({ seq: this.seq, list: events });
+    this.previousEvents = events.length ? { seq: this.seq, list: events } : null;
+  }
+
+  private sendEvents(frame: { seq: number; list: RaceEvent[] }): void {
+    for (let i = 0; i < frame.list.length; i += MAX_EVENTS_PER_FRAME) {
+      this.send({ type: 'events', seq: frame.seq, list: frame.list.slice(i, i + MAX_EVENTS_PER_FRAME) });
     }
   }
 
