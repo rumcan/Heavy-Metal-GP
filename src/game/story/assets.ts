@@ -6,7 +6,18 @@
  * only from story code.
  */
 
-const files = import.meta.glob<string>('../../assets/story/**/*.webp', { eager: true, import: 'default' });
+// Vite resolves `import.meta.glob` at build time. Node (the test runner) has no such function, and the story
+// schema tests import this module for its NAME TABLES only, so the lookup degrades to an empty map there and
+// `url()` — which only ever runs in the browser — is what throws if an asset is missing.
+// Vite rewrites the literal `import.meta.glob(...)` call into an object of every matching file; there is no
+// runtime implementation, so the same expression is `undefined` under the node test runner. The call has to
+// stay literal for the transform to see it, hence the try/catch: node falls back to the name tables only.
+let files: Record<string, string> = {};
+try {
+  files = import.meta.glob('../../assets/story/**/*.webp', { eager: true, import: 'default' });
+} catch {
+  files = {};
+}
 
 function url(folder: string, name: string): string {
   const hit = files[`../../assets/story/${folder}/${name}.webp`];

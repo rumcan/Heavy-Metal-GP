@@ -10,6 +10,7 @@ export const STORAGE_KEYS = [
   'heavy-metal-gp:muted',
   'mrr-account-v1',
   'mrr-season-v1',
+  'heavy-metal-gp:story',
 ] as const;
 
 const cache = new Map<string, string>();

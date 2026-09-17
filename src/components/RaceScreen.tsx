@@ -18,6 +18,8 @@ import InventoryToolbar from './InventoryToolbar';
 import RaceMinimap from './RaceMinimap';
 import RaceResults from './RaceResults';
 import type { RaceAction } from './RaceResults';
+import StoryRaceOverlay from './story/StoryRace';
+import type { StoryRaceProps } from './story/StoryRace';
 export type { RaceAction } from './RaceResults';
 
 interface Props {
@@ -28,6 +30,8 @@ interface Props {
   onInventoryChange: (inventory: Inventory) => void;
   payout: RacePayout | null;
   onShop: () => void;
+  /** Story mode only (ST-03/ST-07): mid-race beats, objective chips and chapter engine hooks. */
+  story?: StoryRaceProps;
 }
 const ZOOM_KEY = 'heavy-metal-gp:zoom';
 const ZOOM_MIN = 0.35;
@@ -45,7 +49,7 @@ interface Hud {
   viewTop: number; viewBottom: number;
 }
 
-export default function RaceScreen({ seed, roster, profile, gridOrder, title, subtitle, onExit, onFinished, actions, championship = false, inventory, credits, onInventoryChange, payout, onShop }: Props) {
+export default function RaceScreen({ seed, roster, profile, gridOrder, title, subtitle, onExit, onFinished, actions, championship = false, inventory, credits, onInventoryChange, payout, onShop, story }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef<Game | null>(null);
   const controls = useRef({ left: false, right: false, touch: 0 });
@@ -99,7 +103,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
-    const game = new Game(seed, roster, { profile, gridOrder, inventory: initialInventory.current });
+    const game = new Game(seed, roster, { profile, gridOrder, inventory: initialInventory.current, story: story?.hooks });
     game.onInventoryChange = (items) => inventoryCallback.current(items);
     setMapTrack(game.track);
     gameRef.current = game;
@@ -307,6 +311,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
       <div className="race-sector"><span>SECTOR {String(hud.sectorIndex + 1).padStart(2, '0')}</span><b>{hud.sector.toUpperCase()}</b></div>
       {(preStart || showGo) && <div className={`start-sequence ${showGo ? 'lights-out' : ''}`}><div className="start-light-bank">{Array.from({ length: 5 }, (_, i) => <div key={i} className={`start-light-pair ${hud.lights > i ? 'lit' : ''}`}><i /><i /></div>)}</div><span>{showGo ? 'LIGHTS OUT. FULL SEND.' : hud.lights === 5 ? 'HOLD YOUR LINE.' : 'THE GRID IS SET.'}</span></div>}
       {toast && <div key={toast.message} className="race-toast" role="status" style={{ '--toast-color': toast.color } as CSSProperties}><span />{toast.message}</div>}
+      {story && <StoryRaceOverlay story={story} sectorIndex={hud.sectorIndex} live={!results} />}
       {hud.finished && !results && <div className="finish-follow"><Flag size={20} /><div><strong>P{hud.rank} secured.{championship ? ` +${pointsFor(hud.rank)} points.` : ''}</strong><span>Following {hud.following}. {roster.length - hud.finishedCount} marbles still racing.</span></div><button className={`button-secondary ${fast > 1 ? 'fast-active' : ''}`} onClick={() => { const next = fast === 1 ? 2 : fast === 2 ? 4 : 1; fastRef.current = next; setFast(next); }} aria-label={`Replay speed ${fast}x, click to change`}><FastForward size={16} />{fast === 1 ? 'Fast forward' : `${fast}x speed`}</button></div>}
       <div className="race-progress"><span style={{ width: `${hud.progress * 100}%` }} /></div>
     </div>

@@ -13,6 +13,7 @@ import PitShop from './components/PitShop';
 import { RIVALS, PLAYER_PORTRAIT_COUNT, preRaceBanter } from './game/characters';
 import type { Line } from './game/characters';
 import LoadingScreen from './components/LoadingScreen';
+import StoryMode from './components/story/StoryMode';
 
 const PORTRAIT_KEY = 'heavy-metal-gp:portrait';
 function loadPortrait(): number {
@@ -34,7 +35,7 @@ function makeRivals(seed: number): MarbleInfo[] {
   }));
 }
 
-type Phase = 'menu' | 'retune' | 'hub' | 'race' | 'quick';
+type Phase = 'menu' | 'retune' | 'hub' | 'race' | 'quick' | 'story';
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>('menu');
@@ -165,6 +166,20 @@ export default function App() {
         onShop={openShop}
         portrait={portrait}
         onPortrait={setPortrait}
+        onStartStory={() => setPhase('story')}
+      />
+    );
+  }
+
+  // Story mode owns its own save, season and flow (ST-08); it only shares the wallet.
+  if (phase === 'story') {
+    return withShop(
+      <StoryMode
+        driver={{ name: 'Sprocket', color, portrait, stats }}
+        account={account}
+        onAccount={publishAccount}
+        onShop={openShop}
+        onExit={() => setPhase('menu')}
       />
     );
   }

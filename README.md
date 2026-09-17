@@ -15,6 +15,36 @@ Peggle-inspired sectors, and a six-event championship.
 - The fastest heat of a completed Grand Prix earns one bonus point.
 - Your season saves locally as soon as a heat finishes. No account or server is needed.
 
+## Story mode
+
+*Down We Go*: six chapters of three heats each, raced over the same six Grands Prix as the
+championship — but with a fixed grid, a script, and objectives that steer it.
+
+- Garage → **Story** button → the story hub. Cleared chapters can be replayed from chapter
+  select; a replay never writes to the save.
+- The story keeps its own save (`heavy-metal-gp:story`) and its own championship season.
+  The garage championship save and the story never touch each other. Credits are shared
+  with the wallet, and every chapter banks one cosmetic unlock (livery or portrait) on the
+  story save.
+- Flow per chapter: act banner (acts I–III) and the chapter plaque slam in, then intro
+  scenes; per heat, pre-race dialogue → loading screen → race → post-race dialogue;
+  then the chapter outro. Chapter 6 closes in one of three endings by final championship
+  position: P1 champion, P2–3 bittersweet, anything else heartbreak.
+- Dialogue advances on tap or Space/Enter, fast-forwards while held, skips on Esc, and can
+  run itself with the Auto toggle. `prefers-reduced-motion` drops the slide-ins and the
+  typewriter.
+- Chapter objectives appear as chips in the race HUD and as mid-race speech bubbles. Failing
+  one never blocks the chapter — it only changes which lines you get. Chapters 4–6 also
+  script hazards (oil slicks, tremors, extra wrecking balls) and AI grudges through the
+  additive `GameOptions.story` hook seam in the engine.
+- Everything in a run derives from the story save's seed: same seed, same grid, circuits and
+  scripted events. Story code never calls `Math.random()`.
+- Scene preview for writing and checks: `npm run dev`, then `/?story=<sceneId>` (or
+  `/?story=list`) mounts any scene full screen. Dev builds only; the bundler drops it from
+  published games.
+- All story art lives in `src/assets/story/` and is reached through the typed helpers in
+  `src/game/story/assets.ts`.
+
 ## Multiplayer (in progress)
 
 The transport layer is in. `src/net/transport.ts` is the **only** client module
@@ -128,6 +158,16 @@ module may import the SDK's realtime API (and one server module the room
 server), that the room registration and the transport agree on the room type,
 criteria and capacity, and the room-code, matchmaking-expiry and access-denied
 helpers.
+
+Story coverage: `tests/story-schema.test.ts` enforces the script/art contract — every scene
+id in the outline exists, every speaker resolves to a portrait mood that was drawn, every
+background and prop exists, The Hood stays faceless until the chapter 5 reveal, and each
+ending has its base, flag variants and season-2 teaser. `tests/story-engine.test.ts` walks
+scripted all-win, all-loss, mixed and all-DNF seasons to their expected endings and checks
+save→reload restores chapter, flags and seen scenes. `tests/story-modifiers.test.ts` checks
+that a race with `GameOptions.story` unset is identical to today's engine, that the chapter
+counters, sabotage events and AI targeting fire as scripted, and that chapter weight merges
+stay deterministic.
 
 Browser coverage checks desktop/mobile layouts, real control interactions, pause,
 result contrast, long-race completion, season persistence, setup locking,
