@@ -116,6 +116,41 @@
 .spinning { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ---------- MB-06 My tracks ---------- */
+.my-tracks-panel { display: flex; flex-direction: column; gap: 9px; padding: 12px 10px; background: #0e141d; border: 1px solid #1e2936; border-radius: 6px; }
+.my-tracks-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.my-tracks-head .eyebrow { font-size: 9px; letter-spacing: 1.4px; color: #c3cdd7; }
+.my-tracks-head .eyebrow b { color: var(--accent); }
+.my-tracks-count { font: 8px var(--mono); letter-spacing: .4px; color: #8ea2b5; }
+.my-tracks-actions { display: flex; flex-direction: column; gap: 8px; }
+.my-tracks-save { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; font: 9px var(--mono); letter-spacing: .3px; width: 100%; justify-content: center; }
+.my-tracks-filter { width: 100%; padding: 5px 8px; background: #0b1016; border: 1px solid #2b3644; border-radius: 3px; color: #eef1f3; font: 10px var(--mono); }
+.my-tracks-filter::placeholder { color: #5f6d7c; }
+.my-tracks-filter:focus { border-color: var(--accent); outline: none; }
+.my-tracks-list { display: flex; flex-direction: column; gap: 8px; max-height: 380px; overflow-y: auto; padding-right: 2px; }
+.my-track-row { display: flex; gap: 8px; padding: 8px; background: #0b1016; border: 1px solid #1e2936; border-radius: 5px; align-items: flex-start; }
+.my-track-row.is-active { border-color: var(--accent); background: #1a1410; }
+.track-thumb { flex-shrink: 0; border: 1px solid #1e2936; border-radius: 4px; background: #0a0f14; cursor: pointer; }
+.track-thumb:hover { border-color: #2a3a5a; }
+.my-track-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.my-track-name { background: none; border: none; padding: 0; text-align: left; font: 11px/1.2 var(--sans); font-weight: 600; color: #e6edf3; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.my-track-name:hover { color: var(--accent); }
+.my-track-rename { display: flex; gap: 4px; align-items: center; }
+.my-track-rename input { flex: 1; min-width: 0; padding: 3px 6px; background: #0e141d; border: 1px solid #2b3644; border-radius: 3px; color: #eef1f3; font: 10px var(--mono); }
+.my-track-meta { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.my-track-stat { display: inline-flex; align-items: center; gap: 3px; font: 8px var(--mono); letter-spacing: .2px; color: #8ea2b5; }
+.my-track-length { font: 8px var(--mono); color: #5f6d7c; }
+.my-track-ops { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
+.my-track-badge { display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; border-radius: 3px; font: 8px var(--mono); letter-spacing: .3px; }
+.my-track-badge.is-pass { background: #0f2a1a; border: 1px solid #1a5a2e; color: #7ddf90; }
+.my-track-badge.is-fail { background: #2a1414; border: 1px solid #5a1a1a; color: #ffb4ac; }
+.my-track-badge.is-pending { background: #131a23; border: 1px solid #242e3a; color: #8ea2b5; }
+.my-tracks-foot { border-top: 1px solid #1e2936; padding-top: 8px; }
+.my-tracks-hint { font: 8px var(--mono); line-height: 1.5; color: #5f6d7c; }
+.my-tracks-draft { border-top: 1px solid #1e2936; padding-top: 8px; font-size: 9px; color: #8ea2b5; }
+.my-tracks-draft summary { cursor: pointer; color: #a8b6c3; }
+.my-tracks-draft-body { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; }
+
 /* ---------- the course map ---------- */
 .editor-map { display: flex; flex-direction: column; gap: 8px; min-height: 0; padding: 12px 10px; background: #0e131a; border-left: 1px solid var(--line); }
 .editor-map-head { display: flex; align-items: center; justify-content: space-between; font: 7px var(--mono); letter-spacing: .8px; color: #8ea2b5; }

@@ -64,7 +64,9 @@ import TestDrive from './editor/TestDrive';
 import ValidationPanel from './editor/ValidationPanel';
 import { validateTrackAsync } from './editor/validate';
 import type { ValidationResult } from './editor/validate';
-import * as storage from '../game/storage';
+import MyTracksPanel from './editor/MyTracksPanel';
+import { loadTracksSync, loadTracks, loadDraftSync, saveDraft, createTrack, updateTrack, deleteTrack as deleteSavedTrack, duplicateTrack as duplicateSavedTrack, renameTrack as renameSavedTrack } from '../game/tracks';
+import type { SavedTrack } from '../game/tracks';
 import '../editor.css';
 
 interface Props {
@@ -126,7 +128,14 @@ function ensureHeight(def: TrackDef): TrackDef {
 }
 
 export default function TrackEditor({ seed, profile, name, driver, onExit }: Props) {
-  const [circuit, setCircuit] = useState<Circuit>(() => ({ def: generateTrackDef(seed, profile, name), build: 0 }));
+  const [circuit, setCircuit] = useState<Circuit>(() => {
+    const draft = loadDraftSync();
+    if (draft) return { def: draft, build: 0 };
+    return { def: generateTrackDef(seed, profile, name), build: 0 };
+  });
+  // MB-06: My tracks + open draft persistence
+  const [savedTracks, setSavedTracks] = useState<SavedTrack[]>(() => loadTracksSync());
+  const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
   const [stage, setStage] = useState<Game | null>(null);
   const [grid, setGrid] = useState(true);
   const [ruler, setRuler] = useState(true);
@@ -185,6 +194,39 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
   useEffect(() => {
     setSelected((prev) => prev.filter((i) => i >= 0 && i < circuit.def.pieces.length));
   }, [circuit.def.pieces.length]);
+
+  // MB-06: hydrate My tracks from cloud (device cache is sync, cloud is async)
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const cloud = await loadTracks();
+      if (!cancelled && cloud.length !== savedTracks.length) setSavedTracks(cloud);
+    })();
+    return () => { cancelled = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // MB-06: autosave open draft every 10 s and on page hide / before unload + on exit
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      try { saveDraft(circuit.def); } catch { /* ignore */ }
+    }, 10_000);
+    const onHide = () => { try { saveDraft(circuit.def); } catch { /* ignore */ } };
+    window.addEventListener('pagehide', onHide);
+    window.addEventListener('beforeunload', onHide);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') onHide(); });
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener('pagehide', onHide);
+      window.removeEventListener('beforeunload', onHide);
+      document.removeEventListener('visibilitychange', onHide as EventListener);
+    };
+  }, [circuit.def]);
+
+  // Also persist draft immediately on every circuit change (debounced via autosave interval would be enough,
+  // but immediate write keeps "reload restores open draft" instant for tests)
+  useEffect(() => {
+    try { saveDraft(circuit.def); } catch { /* ignore */ }
+  }, [circuit.def]);
 
   const pushHistory = useCallback(() => {
     history.push(circuit.def);
@@ -418,15 +460,10 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
     }
   }, [rig]);
 
-  const DRAFTS_KEY = 'heavy-metal-gp:editor-drafts';
-
   const handleSaveDraft = useCallback(() => {
     try {
-      const raw = storage.getItem(DRAFTS_KEY);
-      const arr: TrackDef[] = raw ? (JSON.parse(raw) as TrackDef[]) : [];
-      const next = [...arr.filter((d) => d.name !== circuit.def.name), cloneDef(circuit.def)];
-      storage.setItem(DRAFTS_KEY, JSON.stringify(next.slice(-20)));
-      setDraftMsg(`Draft “${circuit.def.name}” saved (${next.length} total). Drafts always save — validation not required.`);
+      saveDraft(circuit.def);
+      setDraftMsg(`Draft “${circuit.def.name}” saved. Drafts always save — validation not required.`);
       setTimeout(() => setDraftMsg(null), 3500);
     } catch {
       setDraftMsg('Draft saved (storage unavailable).');
@@ -454,6 +491,83 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
     }
     setTimeout(() => setShareMsg(null), 4500);
   }, [circuit.def, validation, validating]);
+
+  // MB-06: My tracks — save current, load, rename, duplicate, delete + exit autosave
+  const handleSaveCurrent = useCallback(() => {
+    if (activeTrackId) {
+      const res = updateTrack(activeTrackId, circuit.def);
+      if ('error' in res) {
+        setDraftMsg(res.error);
+        setTimeout(() => setDraftMsg(null), 3500);
+        return;
+      }
+      setSavedTracks(loadTracksSync());
+      setDraftMsg(`Updated “${circuit.def.name}” in My tracks.`);
+      setTimeout(() => setDraftMsg(null), 3000);
+    } else {
+      const res = createTrack(circuit.def);
+      if ('error' in res) {
+        setDraftMsg(res.error);
+        setTimeout(() => setDraftMsg(null), 3500);
+        return;
+      }
+      setSavedTracks(loadTracksSync());
+      setActiveTrackId((res as SavedTrack).id);
+      setDraftMsg(`Saved “${circuit.def.name}” to My tracks.`);
+      setTimeout(() => setDraftMsg(null), 3000);
+    }
+  }, [circuit.def, activeTrackId]);
+
+  const handleLoadTrack = useCallback((id: string) => {
+    const tracks = loadTracksSync();
+    const found = tracks.find((t) => t.id === id);
+    if (!found) return;
+    // autosave current draft before switching
+    try { saveDraft(circuit.def); } catch { /* ignore */ }
+    history.push(circuit.def);
+    setCircuit({ def: cloneDef(found.def), build: 0 });
+    setActiveTrackId(id);
+    setSelected([]);
+    setValidation(null);
+    bumpHistory();
+  }, [circuit.def, history, bumpHistory]);
+
+  const handleRenameTrack = useCallback((id: string, name: string): string | null => {
+    const res = renameSavedTrack(id, name);
+    if ('error' in res) return res.error;
+    setSavedTracks(loadTracksSync());
+    // if renaming the active track, also update circuit name
+    if (id === activeTrackId) {
+      setCircuit((cur) => ({ def: { ...cur.def, name: name.trim().slice(0, MAX_NAME) }, build: cur.build }));
+    }
+    return null;
+  }, [activeTrackId]);
+
+  const handleDuplicateTrack = useCallback((id: string) => {
+    const res = duplicateSavedTrack(id);
+    if ('error' in res) {
+      setDraftMsg((res as { error: string }).error);
+      setTimeout(() => setDraftMsg(null), 3000);
+      return;
+    }
+    setSavedTracks(loadTracksSync());
+    setDraftMsg(`Duplicated “${(res as SavedTrack).def.name}”.`);
+    setTimeout(() => setDraftMsg(null), 3000);
+  }, []);
+
+  const handleDeleteTrack = useCallback((id: string) => {
+    const ok = deleteSavedTrack(id);
+    if (!ok) return;
+    setSavedTracks(loadTracksSync());
+    if (id === activeTrackId) setActiveTrackId(null);
+    setDraftMsg('Track deleted.');
+    setTimeout(() => setDraftMsg(null), 2500);
+  }, [activeTrackId]);
+
+  const handleExit = useCallback(() => {
+    try { saveDraft(circuit.def); } catch { /* ignore */ }
+    onExit();
+  }, [circuit.def, onExit]);
 
   // Keyboard: delete, duplicate, undo/redo, nudge, mirror, escape clears selection / disarms
   useEffect(() => {
@@ -544,7 +658,7 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
       <header className="app-header">
         <Brand />
         <nav className="main-nav" aria-label="Main navigation">
-          <button onClick={onExit}>Garage</button>
+          <button onClick={handleExit}>Garage</button>
           <button className="active" aria-current="page">Workshop</button>
           <button onClick={() => setRules(true)}>How to play</button>
         </nav>
@@ -553,7 +667,7 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
           <button className="icon-button mobile-only" onClick={() => setRules(true)} aria-label="How to play">
             <CircleHelp size={17} />
           </button>
-          <button className="icon-button mobile-only" onClick={onExit} aria-label="Back to the garage">
+          <button className="icon-button mobile-only" onClick={handleExit} aria-label="Back to the garage">
             <ArrowLeft size={17} />
           </button>
         </div>
@@ -576,6 +690,16 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
             MB-03: click a palette piece then the canvas to place. Drag pieces or their handles to edit. Shift+click / drag a box to multi-select.
           </p>
           <ValidationPanel result={validation} validating={validating} onJump={handleValidationJump} onValidate={handleValidate} />
+          <MyTracksPanel
+            tracks={savedTracks}
+            activeId={activeTrackId}
+            currentDef={circuit.def}
+            onLoad={handleLoadTrack}
+            onRename={handleRenameTrack}
+            onDuplicate={handleDuplicateTrack}
+            onDelete={handleDeleteTrack}
+            onSaveCurrent={handleSaveCurrent}
+          />
           <div className="editor-savebar" role="toolbar" aria-label="Save and share">
             <button className="button-secondary" onClick={handleSaveDraft} title="Save as draft — always allowed, even with errors">
               <Save size={13} /> Save draft
