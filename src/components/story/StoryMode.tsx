@@ -121,7 +121,9 @@ export default function StoryMode({ driver, account, onAccount, onShop, onExit }
   const chapter = stage.kind === 'hub' ? state.chapter : stage.chapter;
   const def = chapterDef(chapter);
   const roster = useMemo(() => storyRoster(state.driver), [state.driver]);
-  const beats = useMemo(() => storyBeats(chapter, state.flags), [chapter, state.flags]);
+  // Mid-race bubbles play in the first race of a chapter only; they used to repeat in every race.
+  const beatHeat = stage.kind === 'race' ? stage.heat : 1;
+  const beats = useMemo(() => (beatHeat > 1 ? [] : storyBeats(chapter, state.flags)), [chapter, state.flags, beatHeat]);
   const objectives = useMemo(
     () => liveObjectiveChips(def, chapterObjectives(state, chapter), liveCounters),
     [def, state, chapter, liveCounters],
