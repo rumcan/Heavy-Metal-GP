@@ -50,6 +50,7 @@ interface Props {
   spawnAt?: Point | null;
   pickingSpawn?: boolean;
   onPickSpawn?: (world: Point) => void;
+  validation?: import('./validate').ValidationResult | null;
 }
 
 const STATUS_MS = 90;
@@ -57,7 +58,7 @@ const DRAG_SLOP = 3;
 const HANDLE_SCREEN = 10;
 
 export default function EditorCanvas(props: Props) {
-  const { game, rig, grid, ruler, onStatus, armed, track, bodyToPiece, selected, onPlace, onSelect, onClear, onMoveSelected, onHandleChange, startTransaction, endTransaction, spawnAt, pickingSpawn, onPickSpawn } = props;
+  const { game, rig, grid, ruler, onStatus, armed, track, bodyToPiece, selected, onPlace, onSelect, onClear, onMoveSelected, onHandleChange, startTransaction, endTransaction, spawnAt, pickingSpawn, onPickSpawn, validation } = props;
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const gameRef = useRef(game);
@@ -78,6 +79,7 @@ export default function EditorCanvas(props: Props) {
   const spawnAtRef = useRef(spawnAt);
   const pickingSpawnRef = useRef(pickingSpawn);
   const onPickSpawnRef = useRef(onPickSpawn);
+  const validationRef = useRef(validation);
   gameRef.current = game;
   gridRef.current = grid;
   rulerRef.current = ruler;
@@ -96,6 +98,7 @@ export default function EditorCanvas(props: Props) {
   spawnAtRef.current = spawnAt;
   pickingSpawnRef.current = pickingSpawn;
   onPickSpawnRef.current = onPickSpawn;
+  validationRef.current = validation;
 
   // Def access for transact moves: we need to keep the transaction helpers stable.
   // They are passed from TrackEditor and already capture def via closure.
@@ -800,6 +803,56 @@ export default function EditorCanvas(props: Props) {
       }
     };
 
+    const drawValidation = (ctx: CanvasRenderingContext2D, overlay: OverlayView) => {
+      const res = validationRef.current;
+      if (!res || !res.issues.length) return;
+      const cam = overlay.camera;
+      const toScreen = (w: Point): Point => ({ x: (w.x - cam.x) * cam.scale + overlay.width / 2, y: (w.y - cam.y) * cam.scale + overlay.height / 2 });
+      for (const iss of res.issues) {
+        if (!iss.pos) continue;
+        const s = toScreen(iss.pos);
+        // cull off-screen by a margin
+        if (s.x < -40 || s.x > overlay.width + 40 || s.y < -40 || s.y > overlay.height + 40) continue;
+        const isError = iss.severity === 'error';
+        ctx.save();
+        ctx.strokeStyle = isError ? '#ef4444' : '#f59e0b';
+        ctx.fillStyle = isError ? 'rgba(239,68,68,0.22)' : 'rgba(245,158,11,0.18)';
+        ctx.lineWidth = isError ? 2 : 1.6;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, isError ? 12 : 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        // inner dot
+        ctx.fillStyle = isError ? '#ef4444' : '#f59e0b';
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+        // exclamation
+        ctx.fillStyle = '#fff';
+        ctx.font = isError ? '10px system-ui' : '9px system-ui';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('!', s.x, s.y - 20);
+        ctx.restore();
+      }
+      // also highlight headless stuck spots separately as trap markers
+      if (res.headless.stuckSpots.length) {
+        for (const spot of res.headless.stuckSpots) {
+          const s = toScreen(spot);
+          if (s.x < -40 || s.x > overlay.width + 40 || s.y < -40 || s.y > overlay.height + 40) continue;
+          ctx.save();
+          ctx.strokeStyle = 'rgba(214,62,46,0.9)';
+          ctx.fillStyle = 'rgba(214,62,46,0.18)';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([3, 3]);
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, 16, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+    };
+
     const loop = (now: number) => {
       raf = requestAnimationFrame(loop);
       const stage = gameRef.current;
@@ -833,6 +886,7 @@ export default function EditorCanvas(props: Props) {
       drawBox(ctx, overlayView);
       drawGhost(ctx, overlayView);
       drawSpawn(ctx, overlayView);
+      drawValidation(ctx, overlayView);
 
       if (now - lastStatus > STATUS_MS) {
         lastStatus = now;

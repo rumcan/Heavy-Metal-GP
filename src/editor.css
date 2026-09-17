@@ -77,6 +77,45 @@
 .testdrive-chip { font: 9px var(--mono); letter-spacing: .3px; color: #b3c2cf; background: #131a23; border: 1px solid #2b3644; padding: 4px 8px; border-radius: 3px; white-space: nowrap; }
 .testdrive-help { margin: 0; padding: 6px 14px; font: 7px var(--mono); letter-spacing: .5px; color: #8ea2b5; text-align: center; background: #0b1016; border-top: 1px solid var(--line); }
 
+/* ---------- MB-05 validation ---------- */
+.validation-panel { display: flex; flex-direction: column; gap: 9px; padding: 12px 10px; background: #0e141d; border: 1px solid #1e2936; border-radius: 6px; }
+.validation-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.validation-head .eyebrow { font-size: 9px; letter-spacing: 1.4px; color: #c3cdd7; }
+.validation-head .eyebrow b { color: var(--accent); }
+.validation-run { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; font: 9px var(--mono); letter-spacing: .3px; }
+.validation-loading { display: flex; align-items: center; gap: 7px; font: 9px var(--mono); color: #8ea2b5; padding: 6px 0; }
+.validation-summary { display: flex; align-items: center; gap: 7px; padding: 8px 10px; border-radius: 4px; font: 9px var(--mono); letter-spacing: .3px; }
+.validation-summary.is-pass { background: #0f2a1a; border: 1px solid #1a5a2e; color: #7ddf90; }
+.validation-summary.is-fail { background: #2a1414; border: 1px solid #5a1a1a; color: #ffb4ac; }
+.validation-summary strong { letter-spacing: .8px; }
+.validation-stats { display: flex; flex-wrap: wrap; gap: 6px; }
+.validation-stat { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px; background: #131a23; border: 1px solid #242e3a; border-radius: 3px; font: 8px var(--mono); letter-spacing: .3px; color: #b3c2cf; white-space: nowrap; }
+.validation-issues { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; }
+.validation-issue { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 4px; font-size: 10px; line-height: 1.4; }
+.validation-issue.is-error { background: #2a1414; border: 1px solid #5a1a1a; color: #ffd9d4; }
+.validation-issue.is-warning { background: #2a210e; border: 1px solid #4a3a10; color: #ffde9c; }
+.validation-issue-icon { display: grid; place-items: center; }
+.validation-issue-msg { flex: 1; min-width: 120px; }
+.validation-jump { display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; background: #0b1016; border: 1px solid #2b3644; border-radius: 3px; color: #8ec8ff; font: 8px var(--mono); cursor: pointer; }
+.validation-jump:hover { border-color: #8ec8ff; color: #fff; }
+.validation-piece { font: 8px var(--mono); color: #8ea2b5; }
+.validation-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font: 8px var(--mono); }
+.validation-chip { padding: 3px 7px; border-radius: 3px; border: 1px solid #242e3a; background: #131a23; color: #93a3b3; }
+.validation-chip.is-pass { border-color: #1a5a2e; color: #7ddf90; background: #0f2a1a; }
+.validation-chip.is-fail { border-color: #5a1a1a; color: #ffb4ac; background: #2a1414; }
+.validation-hint { color: #8ea2b5; display: inline-flex; align-items: center; gap: 3px; }
+.validation-details { font-size: 9px; color: #8ea2b5; border-top: 1px solid #1e2936; padding-top: 8px; }
+.validation-details summary { cursor: pointer; color: #a8b6c3; }
+.validation-details-body { display: flex; flex-direction: column; gap: 4px; padding: 6px 0; color: #66737f; font: 8px var(--mono); line-height: 1.5; }
+.editor-savebar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 0 2px; border-top: 1px solid #1e2936; margin-top: 4px; }
+.editor-savebar .button-primary.is-disabled { opacity: .45; pointer-events: auto; cursor: not-allowed; }
+.editor-save-msg { font: 8px var(--mono); padding: 3px 7px; border-radius: 3px; max-width: 100%; word-break: break-word; }
+.editor-save-msg.is-draft { background: #0f2a1a; border: 1px solid #1a5a2e; color: #7ddf90; }
+.editor-save-msg.is-share { background: #141a2a; border: 1px solid #2a3a5a; color: #8ec8ff; }
+.editor-save-hint { font: 8px var(--mono); color: #5f6d7c; }
+.spinning { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
 /* ---------- the course map ---------- */
 .editor-map { display: flex; flex-direction: column; gap: 8px; min-height: 0; padding: 12px 10px; background: #0e131a; border-left: 1px solid var(--line); }
 .editor-map-head { display: flex; align-items: center; justify-content: space-between; font: 7px var(--mono); letter-spacing: .8px; color: #8ea2b5; }

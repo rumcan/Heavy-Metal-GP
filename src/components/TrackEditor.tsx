@@ -15,6 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowUpToLine,
+  Check,
   CircleHelp,
   Copy,
   Crosshair,
@@ -26,6 +27,8 @@ import {
   Redo2,
   Ruler,
   ScanSearch,
+  Save,
+  Share2,
   Target,
   Trash2,
   Undo2,
@@ -42,7 +45,7 @@ import type { EditorStatus } from './editor/EditorCanvas';
 import EditorMap from './editor/EditorMap';
 import PiecePalette from './editor/PiecePalette';
 import PropertiesPanel from './editor/PropertiesPanel';
-import { SNAP, formatUnits, formatZoom, newRig, rigCenter, rigFit, rigZoom } from './editor/camera';
+import { SNAP, clampCamera, formatUnits, formatZoom, newRig, rigCenter, rigFit, rigZoom } from './editor/camera';
 import type { CameraRig, Point } from './editor/camera';
 import { tileFor } from './editor/palette';
 import type { PieceType } from './editor/palette';
@@ -58,6 +61,10 @@ import { clearStaticChunks } from '../game/render';
 import { THEME_IDS } from '../game/types';
 import type { MarbleInfo, ThemeId, TrackProfile } from '../game/types';
 import TestDrive from './editor/TestDrive';
+import ValidationPanel from './editor/ValidationPanel';
+import { validateTrackAsync } from './editor/validate';
+import type { ValidationResult } from './editor/validate';
+import * as storage from '../game/storage';
 import '../editor.css';
 
 interface Props {
@@ -133,6 +140,11 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
   const [ghost, setGhost] = useState(false);
   const [spawnAt, setSpawnAt] = useState<Point | null>(null);
   const [pickSpawn, setPickSpawn] = useState(false);
+  // MB-05: validation + share/draft gating
+  const [validation, setValidation] = useState<ValidationResult | null>(null);
+  const [validating, setValidating] = useState(false);
+  const [draftMsg, setDraftMsg] = useState<string | null>(null);
+  const [shareMsg, setShareMsg] = useState<string | null>(null);
   const rigRef = useRef<CameraRig | null>(null);
   if (!rigRef.current) rigRef.current = newRig();
   const rig = rigRef.current;
@@ -384,6 +396,65 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
   const enterTest = useCallback(() => setTesting(true), []);
   const exitTest = useCallback(() => setTesting(false), []);
 
+  // MB-05: validation, draft saving and share gating
+  const handleValidate = useCallback(async () => {
+    setValidating(true);
+    setDraftMsg(null);
+    setShareMsg(null);
+    try {
+      const result = await validateTrackAsync(circuit.def);
+      setValidation(result);
+    } finally {
+      setValidating(false);
+    }
+  }, [circuit.def]);
+
+  const handleValidationJump = useCallback((pos: Point) => {
+    rigCenter(rig, pos.y);
+    try {
+      rig.camera = clampCamera({ ...rig.camera, x: pos.x }, rig.width, rig.height, rig.trackHeight);
+    } catch {
+      // fallback: only y jump
+    }
+  }, [rig]);
+
+  const DRAFTS_KEY = 'heavy-metal-gp:editor-drafts';
+
+  const handleSaveDraft = useCallback(() => {
+    try {
+      const raw = storage.getItem(DRAFTS_KEY);
+      const arr: TrackDef[] = raw ? (JSON.parse(raw) as TrackDef[]) : [];
+      const next = [...arr.filter((d) => d.name !== circuit.def.name), cloneDef(circuit.def)];
+      storage.setItem(DRAFTS_KEY, JSON.stringify(next.slice(-20)));
+      setDraftMsg(`Draft “${circuit.def.name}” saved (${next.length} total). Drafts always save — validation not required.`);
+      setTimeout(() => setDraftMsg(null), 3500);
+    } catch {
+      setDraftMsg('Draft saved (storage unavailable).');
+    }
+  }, [circuit.def]);
+
+  const handleShare = useCallback(async () => {
+    let result = validation;
+    if (!result || validating) {
+      setValidating(true);
+      result = await validateTrackAsync(circuit.def);
+      setValidation(result);
+      setValidating(false);
+    }
+    if (!result.canShare) {
+      setShareMsg(result.issues.filter((i) => i.severity === 'error').map((i) => i.message).slice(0, 2).join(' — ') || 'Fix errors before sharing. Need ≥9/10 finishers and no hard errors.');
+      return;
+    }
+    const code = btoa(unescape(encodeURIComponent(JSON.stringify(circuit.def))));
+    try {
+      await navigator.clipboard.writeText(code);
+      setShareMsg(`Share code copied (${code.slice(0, 24)}…${code.slice(-12)}). Paste to race online.`);
+    } catch {
+      setShareMsg(`Share code: ${code.slice(0, 80)}…`);
+    }
+    setTimeout(() => setShareMsg(null), 4500);
+  }, [circuit.def, validation, validating]);
+
   // Keyboard: delete, duplicate, undo/redo, nudge, mirror, escape clears selection / disarms
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -504,6 +575,23 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
           <p className="palette-note" style={{ marginTop: 8 }}>
             MB-03: click a palette piece then the canvas to place. Drag pieces or their handles to edit. Shift+click / drag a box to multi-select.
           </p>
+          <ValidationPanel result={validation} validating={validating} onJump={handleValidationJump} onValidate={handleValidate} />
+          <div className="editor-savebar" role="toolbar" aria-label="Save and share">
+            <button className="button-secondary" onClick={handleSaveDraft} title="Save as draft — always allowed, even with errors">
+              <Save size={13} /> Save draft
+            </button>
+            <button
+              className={`button-primary ${validation?.canShare ? '' : 'is-disabled'}`}
+              onClick={handleShare}
+              aria-disabled={!validation?.canShare}
+              title={validation?.canShare ? 'Copy share code — track passed validation (≥9/10, no hard errors)' : 'Share requires validation pass (≥9/10 finishers, no hard errors) — run Validate first'}
+            >
+              <Share2 size={13} /> Share
+            </button>
+            {draftMsg && <span className="editor-save-msg is-draft"><Check size={11} />{draftMsg}</span>}
+            {shareMsg && <span className="editor-save-msg is-share">{shareMsg}</span>}
+            {!validation && !shareMsg && <span className="editor-save-hint">Validate to share · drafts always save</span>}
+          </div>
         </section>
 
         <section className="editor-stage">
@@ -654,6 +742,7 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
                 spawnAt={spawnAt}
                 pickingSpawn={pickSpawn}
                 onPickSpawn={handlePickSpawn}
+                validation={validation}
               />
 
               <footer className="editor-status">
