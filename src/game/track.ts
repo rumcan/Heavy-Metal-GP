@@ -1,5 +1,5 @@
 import Matter from 'matter-js';
-import { massForWeight, mulberry32, TrackProfile, TrackTheme, ITEM_TYPES, CIRCUIT_LENGTH_MULTIPLIER } from './types';
+import { massForWeight, mulberry32, TrackProfile, TrackTheme, ITEM_TYPES, CIRCUIT_LENGTH_MULTIPLIER, TRACK_THEMES } from './types';
 import type { ItemType } from './types';
 import { rampSurface } from './physics';
 import type { RampSurface } from './physics';
@@ -116,7 +116,7 @@ const SENSOR_OPTS = {
   collisionFilter: { category: CAT_SENSOR, mask: CAT_MARBLE, group: 0 },
 };
 
-class Builder {
+export class Builder {
   bodies: Matter.Body[] = [];
   spinners: Matter.Body[] = [];
   itemBoxes: Matter.Body[] = [];
@@ -127,13 +127,32 @@ class Builder {
   flip = false;
   rng: () => number;
 
+  /**
+   * Track-def recording seam (MB-01, `src/game/trackdef.ts`). The start grid, the gate and the finish stub are
+   * never part of a `TrackDef` — `buildTrackFromDef` synthesises them for every track — so the generator opens
+   * the window around the middle sectors only. A plain `Builder` ignores both calls; a recording subclass uses
+   * them to capture exactly the pieces a def has to describe.
+   */
+  beginDefinition() {}
+  endDefinition() {}
+
+  /** The icon a glowing peg drops. A method so a def recorder can capture the rolled value and replay it. */
+  rollItem(): ItemType {
+    return ITEM_TYPES[Math.floor(this.rng() * ITEM_TYPES.length)];
+  }
+
+  /** Start angle of a swing for a wrecking ball; captured by defs for the same reason as `rollItem`. */
+  rollPhase(): number {
+    return this.rng() * Math.PI * 2;
+  }
+
   /** Peggle-style peg: lights up when hit and pops away shortly after. */
-  ppeg(x: number, y: number, color: PegColor, r = 10) {
+  ppeg(x: number, y: number, color: PegColor, r = 10, item?: ItemType) {
     if (color === 'green') r = Math.max(r, 13);
     const b = Bodies.circle(this.X(x), y, r, { ...STATIC_OPTS, label: 'ppeg', restitution: 0.4 });
     b.restitution = 0.42;
     b.friction = 0;
-    b.plugin = { kind: 'ppeg', radius: r, pegColor: color, hit: false, hitAt: 0, itemDrop: color === 'green' ? ITEM_TYPES[Math.floor(this.rng() * ITEM_TYPES.length)] : undefined } as Meta;
+    b.plugin = { kind: 'ppeg', radius: r, pegColor: color, hit: false, hitAt: 0, itemDrop: color === 'green' ? (item ?? this.rollItem()) : undefined } as Meta;
     this.bodies.push(b);
     this.pegCount.total++;
     if (color === 'orange') this.pegCount.orange++;
@@ -255,12 +274,18 @@ class Builder {
     return b;
   }
 
-  spinner(cx: number, cy: number, len: number, speed: number) {
+  spinner(cx: number, cy: number, len: number, speed: number, angle?: number) {
     const blade = Bodies.rectangle(this.X(cx), cy, len, 14, { ...STATIC_OPTS, label: 'spinner', chamfer: { radius: 6 } });
+    if (angle !== undefined) Body.setAngle(blade, angle);
     blade.plugin = { kind: 'spinner', spin: speed, radius: len / 2 } as Meta;
     this.bodies.push(blade);
     this.spinners.push(blade);
     return blade;
+  }
+
+  /** Start angle of every spinner. One place, drawn from this builder's RNG, so defs can record the result. */
+  randomiseSpinners() {
+    this.spinners.forEach((s) => Body.setAngle(s, this.rng() * Math.PI));
   }
 
   /** Curved ramp: a quadratic bezier (p0 -> control -> p1) laid as short ramp pieces. Keep it monotonic in y to avoid valleys. */
@@ -331,8 +356,7 @@ class Builder {
   }
 
   /** Wrecking ball on a chain, swinging about a pivot. Moved kinematically by the engine each step. */
-  wrecker(px: number, py: number, chain: number, amp: number, speed: number) {
-    const phase = this.rng() * Math.PI * 2;
+  wrecker(px: number, py: number, chain: number, amp: number, speed: number, phase = this.rollPhase()) {
     const pivot = { x: this.X(px), y: py };
     const angle = amp * Math.sin(phase);
     const b = Bodies.circle(pivot.x + Math.sin(angle) * chain, pivot.y + Math.cos(angle) * chain, 24, { ...STATIC_OPTS, label: 'wrecker', restitution: 0.6 });
@@ -355,8 +379,12 @@ type Seg = (b: Builder, y: number) => number;
 
 export const GATE_TOP = 130;
 export const GRID_N = 10;
+/** Vertical space the start grid, gate and funnel occupy (`segStart`'s height). */
+export const START_H = 440;
+/** Vertical space the finish line and catch pit occupy (`segFinish`'s height). */
+export const FINISH_H = 300;
 
-const segStart: Seg = (b, y) => {
+export const segStart: Seg = (b, y) => {
   // starting blocks: individual pockets so every marble sits still on one horizontal line
   const spacing = (W - 120) / (GRID_N - 1);
   for (let i = 0; i < GRID_N - 1; i++) {
@@ -372,7 +400,7 @@ const segStart: Seg = (b, y) => {
   b.ramp(0, y + 200, W / 2 - 70, y + 320);
   b.ramp(W, y + 200, W / 2 + 70, y + 320);
   b.ppeg(W / 2, y + 400, 'green', 14);
-  return 440;
+  return START_H;
 };
 
 const segPeggle: Seg = (b, y) => {
@@ -570,7 +598,7 @@ const segCurveDrop: Seg = (b, y) => {
   return 660;
 };
 
-const segFinish: Seg = (b, y) => {
+export const segFinish: Seg = (b, y) => {
   b.flip = false;
   const fin = Bodies.rectangle(W / 2, y + 40, W, 14, { ...SENSOR_OPTS, label: 'finish' });
   fin.plugin = { kind: 'finish' } as Meta;
@@ -579,7 +607,7 @@ const segFinish: Seg = (b, y) => {
   b.ramp(0, y + 200, W / 2 - 40, y + 250);
   b.ramp(W, y + 200, W / 2 + 40, y + 250);
   b.wall(W / 2, y + 262, 120, 24);
-  return 300;
+  return FINISH_H;
 };
 
 const POOL: { seg: Seg; name: string; weight: number }[] = [
@@ -600,11 +628,19 @@ const POOL: { seg: Seg; name: string; weight: number }[] = [
 export const DEFAULT_PROFILE: TrackProfile = {
   segments: 11 * CIRCUIT_LENGTH_MULTIPLIER,
   weights: {},
-  theme: { bg1: '#0b0e12', bg2: '#10161d', track: '#131b24', pipe: '#354454', pipeEdge: '#556778' },
+  theme: TRACK_THEMES.default,
 };
 
 export function generateTrack(seed: number, profile: TrackProfile = DEFAULT_PROFILE): Track {
-  const b = new Builder(seed);
+  return assembleTrack(new Builder(seed), seed, profile);
+}
+
+/**
+ * Picks the sectors, builds every body into `b` and describes the circuit. Split out of `generateTrack` so the
+ * track-def recorder (`src/game/trackdef.ts`, MB-01) can drive the same generator and capture the very calls
+ * that made today's procedural circuits — that is what makes a generated circuit editable as a starting point.
+ */
+export function assembleTrack(b: Builder, seed: number, profile: TrackProfile): Track {
   const segments: SegmentInfo[] = [];
   const segmentCount = Math.max(3, Math.min(72, Math.floor(profile.segments)));
   let y = 0;
@@ -650,12 +686,15 @@ export function generateTrack(seed: number, profile: TrackProfile = DEFAULT_PROF
   ensure('Peggle Board', Math.max(1, Math.floor(segmentCount / 5)));
   ensure('Loop', Math.max(1, Math.floor(segmentCount / 8)));
 
+  // Everything between these two calls is a piece a TrackDef stores (see `Builder.beginDefinition`).
+  b.beginDefinition();
   for (const c of chosen) {
     const h = c.seg(b, y);
     if (!['Peggle Board', 'Peg Field', 'Loop', 'Curve Drop'].includes(c.name)) b.scatterPegs(y, h);
     segments.push({ name: c.name, y, h });
     y += h;
   }
+  b.endDefinition();
 
   const finishY = y + 40;
   const hFin = segFinish(b, y);
@@ -670,8 +709,8 @@ export function generateTrack(seed: number, profile: TrackProfile = DEFAULT_PROF
   // top cap
   b.wall(W / 2, -30, W, 20);
 
-  // make sure spinners have angle 0 initially
-  b.spinners.forEach((s) => Body.setAngle(s, b.rng() * Math.PI));
+  // spinners start at a rolled angle so two heats on one seed do not run identically
+  b.randomiseSpinners();
 
   return {
     seed,

@@ -191,6 +191,64 @@ export interface TrackProfile {
   theme: TrackTheme;
 }
 
+/**
+ * Every track skin the game draws, by id. `TrackDef` (MB-01) names a theme instead of embedding one, and the
+ * calendar, story mode and quick race all resolve their `TrackProfile.theme` through here, so the palette of a
+ * circuit is identical whichever way the circuit was generated.
+ */
+export const TRACK_THEMES = {
+  default: { bg1: '#0b0e12', bg2: '#10161d', track: '#131b24', pipe: '#354454', pipeEdge: '#556778' },
+  classic: { bg1: '#0b0f14', bg2: '#101820', track: '#141e28', pipe: '#354657', pipeEdge: '#62778c' },
+  street: { bg1: '#140f1e', bg2: '#22162e', track: '#1c1530', pipe: '#5b4b7a', pipeEdge: '#2a1f3d' },
+  silver: { bg1: '#0f1416', bg2: '#1a2226', track: '#151d21', pipe: '#52606d', pipeEdge: '#1f2a30' },
+  forest: { bg1: '#07140f', bg2: '#0d2418', track: '#0b1e14', pipe: '#2f6b4f', pipeEdge: '#123324' },
+  sakura: { bg1: '#1a0f16', bg2: '#2a1522', track: '#22131d', pipe: '#7a4b5e', pipeEdge: '#3a1f2d' },
+  night: { bg1: '#05070f', bg2: '#0c1226', track: '#0a1022', pipe: '#3a4f8a', pipeEdge: '#182349' },
+} as const satisfies Record<string, TrackTheme>;
+
+export type ThemeId = keyof typeof TRACK_THEMES;
+
+export const THEME_IDS = Object.keys(TRACK_THEMES) as ThemeId[];
+
+export function themeFor(id: ThemeId): TrackTheme {
+  return TRACK_THEMES[id];
+}
+
+function themeDistance(a: TrackTheme, b: TrackTheme): number {
+  const channels: (keyof TrackTheme)[] = ['bg1', 'bg2', 'track', 'pipe', 'pipeEdge'];
+  let sum = 0;
+  for (const key of channels) {
+    const [ar, ag, ab] = hexChannels(a[key]);
+    const [br, bg, bb] = hexChannels(b[key]);
+    sum += (ar - br) ** 2 + (ag - bg) ** 2 + (ab - bb) ** 2;
+  }
+  return sum;
+}
+
+function hexChannels(hex: string): [number, number, number] {
+  const n = parseInt(hex.replace('#', ''), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/**
+ * The id that draws `theme`: an exact match when the palette is one of the registered skins, otherwise the
+ * nearest registered skin. Deterministic (ties resolve on `THEME_IDS` order) so a custom profile always
+ * records the same id.
+ */
+export function themeIdFor(theme: TrackTheme): ThemeId {
+  let best = THEME_IDS[0];
+  let bestDistance = Infinity;
+  for (const id of THEME_IDS) {
+    const distance = themeDistance(TRACK_THEMES[id], theme);
+    if (distance === 0) return id;
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = id;
+    }
+  }
+  return best;
+}
+
 export interface GrandPrix {
   id: number;
   name: string;

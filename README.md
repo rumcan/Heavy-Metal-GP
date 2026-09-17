@@ -240,6 +240,25 @@ and completion percentage. Its collapse button works on desktop and mobile.
 Only nearby course geometry is loaded into the physics solver, while the
 renderer and minimap retain the full map.
 
+## Track Definitions (Map Builder, MB-01)
+
+Every circuit is a list of `Builder` calls, and `src/game/trackdef.ts` can now record that list as a
+versioned, JSON-safe `TrackDef` — so a procedural circuit becomes data a player can edit, save and share
+(the rest of the map-builder epic builds on this).
+
+- `generateTrackDef(seed, profile)` records a circuit; `buildTrackFromDef(def)` rebuilds it;
+  `validateTrackDef(value)` is the untrusted-input boundary (share codes, saves, the network) and answers
+  with a readable reason instead of throwing.
+- The rebuild is exact — body count, kinds, positions, angles, vertices, ramp surfaces, peg colours,
+  dropped items, wrecking-ball phases, spinner angles, decor and the sectors all compare equal, and two
+  engines running the same heat step for step over 12,625 ticks stay on identical coordinates. A def is
+  therefore a recording of the builder calls (`flip` mirrors a piece about the centre line) rather than a
+  translation of them, which is what keeps procedural output untouched.
+- Start grid, gate and the finish stub are never stored: the loader always synthesises them, so every
+  track starts and ends the same way and a def only describes what a player designs.
+- `Game` accepts a def through `GameOptions.def`; a malformed one never throws mid-race — the race falls
+  back to the procedural circuit and `Game.trackDefError` says why.
+
 ## Physics And Recovery
 
 `src/game/physics.ts` contains the shared 120 Hz step, high-resolution marble
@@ -318,6 +337,13 @@ snapshot handing over the whole world, a twenty-frame blackout costing exactly
 one resync, late/duplicate/out-of-order/garbage frames, every event kind, a
 forged body index being ignored rather than crashed on, and the optimistic
 lean being bounded and corrected.
+
+`tests/trackdef.test.ts` covers the track definition format (MB-01): 28
+recordings across the six circuits and the default profile rebuild body for
+body, a full heat on a def-built circuit races the procedural one step for step
+to the same classification and times, malformed defs are refused with a
+readable reason and fall back safely inside `Game`, and defs survive JSON —
+including a hand-written circuit with no recorded phases.
 
 Story coverage: `tests/story-schema.test.ts` enforces the script/art contract — every scene
 id in the outline exists, every speaker resolves to a portrait mood that was drawn, every

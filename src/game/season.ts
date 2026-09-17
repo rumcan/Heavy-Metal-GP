@@ -1,16 +1,7 @@
 import * as storage from './storage';
-import { GrandPrix, HeatResult, MarbleInfo, POINTS, FASTEST_BONUS, HEATS_PER_GP, TEAMS, Team, TrackProfile, CIRCUIT_LENGTH_MULTIPLIER } from './types';
+import { GrandPrix, HeatResult, MarbleInfo, POINTS, FASTEST_BONUS, HEATS_PER_GP, TEAMS, Team, TrackProfile, CIRCUIT_LENGTH_MULTIPLIER, TRACK_THEMES, ThemeId } from './types';
 
-const themes = {
-  classic: { bg1: '#0b0f14', bg2: '#101820', track: '#141e28', pipe: '#354657', pipeEdge: '#62778c' },
-  street: { bg1: '#140f1e', bg2: '#22162e', track: '#1c1530', pipe: '#5b4b7a', pipeEdge: '#2a1f3d' },
-  silver: { bg1: '#0f1416', bg2: '#1a2226', track: '#151d21', pipe: '#52606d', pipeEdge: '#1f2a30' },
-  forest: { bg1: '#07140f', bg2: '#0d2418', track: '#0b1e14', pipe: '#2f6b4f', pipeEdge: '#123324' },
-  sakura: { bg1: '#1a0f16', bg2: '#2a1522', track: '#22131d', pipe: '#7a4b5e', pipeEdge: '#3a1f2d' },
-  night: { bg1: '#05070f', bg2: '#0c1226', track: '#0a1022', pipe: '#3a4f8a', pipeEdge: '#182349' },
-};
-
-const P = (segments: number, weights: Record<string, number>, theme: keyof typeof themes): TrackProfile => ({ segments: segments * CIRCUIT_LENGTH_MULTIPLIER, weights, theme: themes[theme] });
+const P = (segments: number, weights: Record<string, number>, theme: ThemeId): TrackProfile => ({ segments: segments * CIRCUIT_LENGTH_MULTIPLIER, weights, theme: TRACK_THEMES[theme] });
 
 export const CALENDAR: GrandPrix[] = [
   { id: 0, name: 'Marblehurst Grand Prix', short: 'MARBLEHURST', location: 'Marblehurst Park', flag: '🇬🇧', desc: 'The season opener. A balanced circuit with a bit of everything.', profile: P(10, {}, 'classic') },
