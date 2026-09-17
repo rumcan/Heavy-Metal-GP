@@ -43,6 +43,7 @@ import { RIVALS, PLAYER_PORTRAIT_COUNT, DRIVER_NAMES, preRaceBanter } from './ga
 import type { Line } from './game/characters';
 import LoadingScreen from './components/LoadingScreen';
 import StoryMode from './components/story/StoryMode';
+import TrackEditor from './components/TrackEditor';
 import { loadStory } from './game/story/state';
 
 /**
@@ -74,7 +75,7 @@ function makeRivals(seed: number): MarbleInfo[] {
   }));
 }
 
-type Phase = 'menu' | 'retune' | 'hub' | 'race' | 'quick' | 'story' | 'lobby' | 'online';
+type Phase = 'menu' | 'retune' | 'hub' | 'race' | 'quick' | 'story' | 'lobby' | 'online' | 'editor';
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>('menu');
@@ -499,6 +500,7 @@ export default function App() {
         portrait={portrait}
         onPortrait={setPortrait}
         onStartStory={() => setPhase('story')}
+        onWorkshop={() => setPhase('editor')}
         storyInProgress={storyInProgress}
         mpBusy={mpBusy}
         mpError={mpError}
@@ -513,6 +515,18 @@ export default function App() {
         onCancelSearch={cancelSearch}
       />
     );
+  }
+
+  // The Workshop (MB-02): the track editor, opening on a copy of the circuit the garage is showing.
+  if (phase === 'editor') {
+    const gp = CALENDAR[circuitIndex];
+    return <TrackEditor
+      seed={seed}
+      profile={gp.profile}
+      name={gp.name}
+      driver={quickRoster[0]}
+      onExit={() => setPhase('menu')}
+    />;
   }
 
   // Online lobby (MP-06): the room the host opened, seen from either end.

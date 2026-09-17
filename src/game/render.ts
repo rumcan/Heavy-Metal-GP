@@ -1281,6 +1281,17 @@ interface StaticChunk { canvas: HTMLCanvasElement; used: number }
 const chunkCaches = new WeakMap<Game, Map<string, StaticChunk>>();
 const MAX_CHUNKS = 5;
 
+/**
+ * MB-02. Forgets a game's baked static chunks, so the next frame repaints them from the circuit it now holds.
+ *
+ * The editor is the only caller: it rebuilds a `Track` as the player edits, and a chunk baked from the previous
+ * circuit would otherwise be drawn as-is. The race never needs this — its circuit is built once, and the chunks
+ * are re-baked on their own whenever the camera's resolution changes.
+ */
+export function clearStaticChunks(game: Game): void {
+  chunkCaches.delete(game);
+}
+
 function bakeChunk(game: Game, index: number, res: number): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.width = Math.ceil(STATIC_W * res);

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { BookOpen, ArrowRight, ArrowUpRight, RotateCcw, Shuffle, Flag, Trophy, FlaskConical, CircleHelp, Gauge, Weight, MoveUp, LockKeyhole, ChevronRight, ChevronLeft, Radio } from 'lucide-react';
+import { BookOpen, ArrowRight, ArrowUpRight, RotateCcw, Shuffle, Flag, Trophy, FlaskConical, CircleHelp, Gauge, Weight, MoveUp, LockKeyhole, ChevronRight, ChevronLeft, Radio, Hammer } from 'lucide-react';
 import { adjustStat, statsToPhysics, STAT_BUDGET, PLAYER_COLORS, teamOf } from '../game/types';
 import { DRIVER_NAMES, PLAYER_PORTRAIT_COUNT, RIVALS, characterOf } from '../game/characters';
 import Portrait from './Portrait';
@@ -53,6 +53,8 @@ interface Props {
   rejoin?: { roomCode: string } | null;
   onRejoin?: () => void;
   onDismissRejoin?: () => void;
+  /** MB-02: the Workshop (track editor) — reachable from the header, beside Garage and Championship. */
+  onWorkshop?: () => void;
 }
 
 const PANES = [['circuit', 'Circuit'], ['driver', 'Driver'], ['grid', 'Grid']] as const;
@@ -68,6 +70,7 @@ export default function SetupScreen(props: Props) {
   const { stats, onStats, color, onColor, rivals, onRerollRivals, seed, onNewSeed, onStart, onStartSeason, onContinueSeason, seasonMode, onBackToSeason, circuitIndex, onCircuit } = props;
   const { account, onShop, portrait, onPortrait, onStartStory, storyInProgress } = props;
   const { mpBusy = false, mpError = null, onHostGame, onJoinGame, onQuickGame, searching = false, windows = 0, onCancelSearch, rejoin = null, onRejoin, onDismissRejoin } = props;
+  const { onWorkshop } = props;
   const [pane, setPane] = useState<'circuit' | 'driver' | 'grid'>('driver');
   const [mode, setMode] = useState<'season' | 'quick' | 'online'>('season');
   const [dialog, setDialog] = useState<'rules' | 'lab' | null>(null);
@@ -81,9 +84,10 @@ export default function SetupScreen(props: Props) {
       <nav className="main-nav" aria-label="Main navigation">
         <button className="active" aria-current="page">Garage</button>
         <button onClick={onContinueSeason ?? (() => setMode('season'))}>Championship</button>
+        {onWorkshop && <button onClick={onWorkshop}>Workshop</button>}
         <button onClick={() => setDialog('rules')}>How to play</button>
       </nav>
-      <div className="header-tools"><button className="icon-button mobile-only" onClick={() => setDialog('rules')} aria-label="How to play"><CircleHelp size={17} /></button>{import.meta.env.DEV && <button className="text-button lab-link" onClick={() => setDialog('lab')}><FlaskConical size={16} /><span>Physics lab</span></button>}<WalletButton credits={account.credits} onClick={onShop} /></div>
+      <div className="header-tools">{onWorkshop && <button className="icon-button mobile-only" onClick={onWorkshop} aria-label="Workshop" title="Workshop — build your own circuit"><Hammer size={17} /></button>}<button className="icon-button mobile-only" onClick={() => setDialog('rules')} aria-label="How to play"><CircleHelp size={17} /></button>{import.meta.env.DEV && <button className="text-button lab-link" onClick={() => setDialog('lab')}><FlaskConical size={16} /><span>Physics lab</span></button>}<WalletButton credits={account.credits} onClick={onShop} /></div>
     </header>
 
     <main className="fit-main garage-fit">
