@@ -14,6 +14,7 @@ import { RIVALS, PLAYER_PORTRAIT_COUNT, preRaceBanter } from './game/characters'
 import type { Line } from './game/characters';
 import LoadingScreen from './components/LoadingScreen';
 import StoryMode from './components/story/StoryMode';
+import { loadStory } from './game/story/state';
 
 const PORTRAIT_KEY = 'heavy-metal-gp:portrait';
 function loadPortrait(): number {
@@ -89,6 +90,13 @@ export default function App() {
   useEffect(() => saveSeason(season), [season]);
 
   const rivals = useMemo(() => makeRivals(rivalSeed), [rivalSeed]);
+  // A story counts as "to continue" once it has progress and the finale has not been played out yet.
+  // Re-read whenever the garage is shown, so leaving story mode updates the button.
+  const storyInProgress = useMemo(() => {
+    if (phase !== 'menu') return false;
+    const saved = loadStory();
+    return !!saved && saved.finishedAt === null && (saved.chapter > 1 || saved.heat > 0 || saved.seenScenes.length > 0);
+  }, [phase]);
   const quickRoster = useMemo<MarbleInfo[]>(() => [{ id: 0, name: 'You', color, stats, isPlayer: true, character: portrait }, ...rivals], [rivals, color, stats, portrait]);
   const quickGrid = useMemo(() => quickRoster.map((m) => m.id), [quickRoster]);
   const newSeed = useCallback(() => setSeed(Math.floor(Math.random() * 0xffffffff)), []);
@@ -167,6 +175,7 @@ export default function App() {
         portrait={portrait}
         onPortrait={setPortrait}
         onStartStory={() => setPhase('story')}
+        storyInProgress={storyInProgress}
       />
     );
   }
