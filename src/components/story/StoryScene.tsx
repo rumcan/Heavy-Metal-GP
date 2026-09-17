@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
 import { FastForward, SkipForward } from 'lucide-react';
 import { raceAudio } from '../../game/audio';
@@ -172,6 +172,29 @@ export default function StoryScene({
     return undefined;
   }, [index, lines]);
   const direction = text.startsWith('(');
+  // Three or more speakers wrap into rows in speaking order; two face each other left/right of centre.
+  const group = speakers.length > 2;
+  const castRef = useRef<HTMLDivElement>(null);
+
+  // Point the bubble's tail at the active speaker, wherever layout or wrapping put them.
+  useLayoutEffect(() => {
+    const cast = castRef.current;
+    if (!cast) return;
+    const place = () => {
+      const bubble = cast.querySelector<HTMLElement>('.scene-bubble');
+      const portrait = cast.querySelector<HTMLElement>('.story-speaker.is-active .kit-portrait');
+      if (!bubble || !portrait) return;
+      const b = bubble.getBoundingClientRect();
+      const p = portrait.getBoundingClientRect();
+      const x = Math.max(24, Math.min(b.width - 24, p.left + p.width / 2 - b.left));
+      bubble.style.setProperty('--tail', `${x}px`);
+    };
+    place();
+    const frame = requestAnimationFrame(place);
+    const settle = window.setTimeout(place, 400); // after the slide-in animation
+    window.addEventListener('resize', place);
+    return () => { cancelAnimationFrame(frame); window.clearTimeout(settle); window.removeEventListener('resize', place); };
+  }, [index, line?.who, speakers.length]);
 
   return <div className="story-scene" data-scene={scene.id}>
     <div className="story-bg"><img key={scene.id} src={background} alt="" draggable={false} /></div>
@@ -206,16 +229,16 @@ export default function StoryScene({
       onPointerCancel={pressCancel}
       onPointerLeave={pressCancel}
     >
-      <div className="story-cast">
+      <div ref={castRef} className={`story-cast ${group ? 'is-group' : ''}`} style={{ '--cast-count': speakers.length } as CSSProperties}>
         {speakers.map((who, slotIndex) => {
           const cast = CAST[who];
           const isActive = who === line?.who;
           const mood = isActive ? line!.mood : cast.defaultMood;
           const plate = castPlateColor(who);
           // Speakers alternate left/right of centre and always look inward, so a two-hander reads as a conversation.
-          const side = speakers.length === 1 ? 'center' : slotIndex % 2 === 0 ? 'left' : 'right';
+          const side = group ? 'grouped' : speakers.length === 1 ? 'center' : slotIndex % 2 === 0 ? 'left' : 'right';
           const lookTowards = side === 'right' ? 'left' : 'right';
-          const mirrored = side !== 'center' && castFacing(who, mood) !== lookTowards;
+          const mirrored = (side === 'left' || side === 'right') && castFacing(who, mood) !== lookTowards;
           return <div
             key={who}
             className={`story-speaker is-${side} ${isActive ? 'is-active' : ''} ${still ? 'is-still' : ''}`}

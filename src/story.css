@@ -87,14 +87,29 @@
 .scene-bubble .story-text { font-size: clamp(15px, 1.4vw, 19px); line-height: 1.45; color: #eef4fb; min-height: 0; }
 .story-speaker.is-still .scene-bubble { animation: none; }
 @keyframes scene-bubble-in { from { opacity: 0; margin-top: -6px; } }
+/* Three or more speakers: wrap into rows in speaking order, sized to fit, bubble below the whole group. */
+.story-cast.is-group {
+  inset: 0 0 auto 0; flex-wrap: wrap; align-content: flex-start; gap: 8px 18px;
+  max-width: 1120px; margin: 0 auto; padding: clamp(14px, 4vh, 48px) 12px 0;
+}
+.story-cast.is-group .story-speaker { position: static; order: 0; animation: none; transition: opacity .22s ease; }
+/* no transform/filter transition: while one runs the speaker would trap the absolutely placed bubble */
+.story-cast.is-group .story-speaker.is-active { transform: none; filter: none; }
+.story-cast.is-group .kit-portrait { --size: clamp(84px, min(26vh, calc((100vw - 60px) / var(--cast-count) - 18px)), 220px); }
+/* the portraits fill the top in group scenes, so the prop moves to the lower right */
+.story-cast.is-group + .story-prop { top: auto; bottom: 20%; left: auto; right: clamp(14px, 5vw, 78px); margin: 0; }
+.story-cast.is-group .scene-bubble { top: calc(100% + 20px); left: 50%; transform: translateX(-50%); width: min(560px, calc(100% - 24px)); }
+
 @media (max-width: 640px) {
-  .story-cast { padding-top: 16px; gap: 18px; }
-  /* a transform would trap the fixed bubble inside the speaker */
-  .story-speaker.is-active.is-left, .story-speaker.is-active.is-right, .story-speaker.is-active.is-center { transform: none; animation: none; filter: none; }
-  .scene-bubble, .story-speaker.is-left .scene-bubble, .story-speaker.is-right .scene-bubble { position: fixed; top: calc(132px + clamp(140px, min(40vh, 28vw), 360px)); bottom: auto; left: 12px; right: 12px; width: auto; transform: none; }
-  .story-speaker.is-left .scene-bubble { --tail: 28%; }
-  .story-speaker.is-right .scene-bubble { --tail: 72%; }
-  .story-speaker.is-center .scene-bubble { --tail: 50%; }
+  /* Phones: the cast sits at the top at its natural height; the bubble spans the width right below it. */
+  .story-cast, .story-cast.is-group { inset: 0 0 auto 0; padding: 16px 12px 0; gap: 8px 14px; }
+  .story-cast.is-group .kit-portrait { --size: clamp(76px, calc((100vw - 52px) / min(var(--cast-count), 3) - 14px), 120px); }
+  .story-speaker, .story-cast.is-group .story-speaker { position: static; transition: opacity .22s ease; }
+  /* transforms, filters and animations would make the active speaker the bubble's containing block */
+  .story-speaker.is-active.is-left, .story-speaker.is-active.is-right, .story-speaker.is-active.is-center, .story-speaker.is-active.is-grouped { transform: none; animation: none; filter: none; }
+  .scene-bubble, .story-speaker.is-left .scene-bubble, .story-speaker.is-right .scene-bubble, .story-cast.is-group .scene-bubble {
+    position: absolute; top: calc(100% + 20px); bottom: auto; left: 12px; right: 12px; width: auto; transform: none;
+  }
 }
 
 .story-nameplate {
@@ -343,8 +358,7 @@
 /* ---------------------------------------------------------------- small screens + reduced motion */
 
 @media (max-width: 720px) {
-  .story-cast { bottom: 0; gap: 8px; }
-  .story-prop { right: 10px; bottom: 46%; width: 84px; }
+  .story-prop { top: auto; bottom: 16%; left: auto; right: 12px; margin: 0; width: 84px; }
   .story-panel { padding: 12px 14px 14px; }
   .story-text { min-height: 4.4em; }
   .story-bubble { bottom: 96px; max-width: 74vw; }
