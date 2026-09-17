@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createAccount, purchaseItem, settleRace, parseAccount, prizeFor, RACE_PRIZES } from '../src/game/economy';
+import { createAccount, purchaseItem, settleRace, settleOnlineRace, onlineRaceId, ONLINE_PAYOUT_SCALE, parseAccount, prizeFor, RACE_PRIZES } from '../src/game/economy';
 import { emptyInventory, ITEM_INFO, ITEM_TYPES, MAX_ITEM_STACK, normalizeInventory } from '../src/game/types';
 
 test('Economy: a purchase subtracts its exact price and adds one persistent charge', () => {
@@ -64,4 +64,47 @@ test('Economy: fast consecutive purchases never overspend or reset an inventory'
   assert.equal(account.inventory.jump, Math.floor(400 / ITEM_INFO.jump.price));
   assert.equal(account.credits, 400 % ITEM_INFO.jump.price);
   assert.ok(account.credits >= 0);
+});
+// ── MP-09 ─────────────────────────────────────────────────────────────────
+// An online race has no banker: every screen pays itself, out of the host's
+// classification, for the seat it was driving. What has to be identical on both
+// ends is therefore not the wallet but the RACE.
+
+test('MP-09 economy: an online race is one race, by one id, on every screen', () => {
+  // `countdownAt` is the instant the lobby published — the race's identity on
+  // the wire — so both screens settle under the same id without talking about
+  // money, and neither can pay the same race twice.
+  assert.equal(onlineRaceId('ABC123', 1_700_000_000_000), 'online:ABC123:1700000000000');
+  assert.equal(onlineRaceId('ABC123', 1_700_000_000_000), onlineRaceId('ABC123', 1_700_000_000_000), 'same race, same id');
+  assert.notEqual(onlineRaceId('ABC123', 1_700_000_000_000), onlineRaceId('ABC123', 1_700_000_060_000), 'the next heat is a different race');
+  assert.notEqual(onlineRaceId('ABC123', 1_700_000_000_000), onlineRaceId('XYZ999', 1_700_000_000_000), 'and so is another room’s');
+});
+
+test('MP-09 economy: an online heat pays the online share, once, and the panel adds up', () => {
+  const me = { id: 3, rank: 2, time: 50_000, pegs: 3 };
+  const first = settleOnlineRace(createAccount(), onlineRaceId('ABC123', 42), me);
+  // A championship P2 with three pegs is 365; online is that, scaled.
+  const full = settleRace(createAccount(), 'champ:1:1:1', me);
+  assert.equal(first.payout.total, Math.round(350 * ONLINE_PAYOUT_SCALE) + Math.round(15 * ONLINE_PAYOUT_SCALE));
+  assert.ok(first.payout.total < full.payout.total, 'an online heat pays less than a championship round');
+  // The results panel shows the two halves and a total: they have to agree, or
+  // it is showing arithmetic nobody believes.
+  assert.equal(first.payout.placement + first.payout.pegBonus, first.payout.total);
+  assert.equal(first.account.credits, 400 + first.payout.total);
+
+  // Once. A rejoin, a republish, a second `results` frame — none of them pays
+  // the same race again.
+  const again = settleOnlineRace(first.account, onlineRaceId('ABC123', 42), me);
+  assert.strictEqual(again.account, first.account);
+  assert.equal(again.payout.alreadyPaid, true);
+  assert.equal(again.account.credits, first.account.credits);
+});
+
+test('MP-09 economy: a driver who did not finish an online race is paid nothing', () => {
+  // And a race that never reached a classification (the host left) never calls
+  // this at all — so the only way to be paid is to have finished.
+  const dnf = settleOnlineRace(createAccount(), onlineRaceId('ABC123', 9), { id: 1, rank: 4, time: null, pegs: 7 });
+  assert.equal(dnf.payout.total, 0);
+  assert.equal(dnf.account.credits, 400);
+  assert.equal(dnf.account.finishes, 0);
 });

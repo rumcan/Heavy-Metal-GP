@@ -25,6 +25,7 @@ import { generateTrack } from '../game/track';
 import type { Track } from '../game/track';
 import type { SoundEvent as CueName } from '../game/cues';
 import type { SoundEvent, SoundType } from '../game/audio';
+import { emptyInventory } from '../game/types';
 import type { Inventory, ItemType, MarbleInfo, TrackProfile } from '../game/types';
 import { RaceHost } from './host';
 import type { RaceHostOptions } from './host';
@@ -229,6 +230,17 @@ export class RaceSession {
       return;
     }
     this.guest?.accept(msg);
+  }
+
+  /**
+   * MP-09: the kit in the local driver's hands.
+   *
+   * Offline that is the wallet's business; online it is the host's marble — the
+   * one thing that must survive the round trip is "what am I holding", because
+   * a spend that never reaches the toolbar is a spend the player cannot see.
+   */
+  get kit(): Inventory {
+    return { ...(this.game.marbles.find((m) => m.info.id === this.localSeat)?.inventory ?? emptyInventory()) };
   }
 
   /** MP-08: seats the AI has taken from a driver who dropped — host's book. */

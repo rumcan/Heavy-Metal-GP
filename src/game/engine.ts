@@ -1,6 +1,6 @@
 import Matter from 'matter-js';
 import { generateTrack, meta, Track, CAT_MARBLE, CAT_WALL, CAT_SENSOR, CAT_LOOP_UP, CAT_LOOP_CLOSE, W } from './track';
-import { ItemType, MarbleInfo, MARBLE_RADIUS, statsToPhysics, mulberry32, TrackProfile, emptyInventory, normalizeInventory, ITEM_TYPES, ITEM_INFO, MAX_ITEM_STACK } from './types';
+import { ItemType, MarbleInfo, MARBLE_RADIUS, statsToPhysics, mulberry32, TrackProfile, normalizeInventory, ITEM_TYPES, ITEM_INFO, MAX_ITEM_STACK } from './types';
 import type { Inventory } from './types';
 import { gridSlots } from './grid';
 import { assistRolling, BASE_TICK, createMarble, downhill } from './physics';
@@ -221,7 +221,9 @@ export class Game {
         restitution: ph.restitution,
         frictionAir: ph.frictionAir,
         maxSpeed: ph.maxSpeed,
-        inventory: info.isPlayer ? normalizeInventory(opts.inventory) : emptyInventory(),
+        // MP-09: the local player's kit, or the kit this seat came to the grid
+        // with online — every human seat spends its own items.
+        inventory: info.isPlayer ? normalizeInventory(opts.inventory) : normalizeInventory(info.inventory),
         itemCooldownUntil: 0,
         aeroUntil: 0,
         jumpUntil: 0,

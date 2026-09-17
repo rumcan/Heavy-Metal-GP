@@ -382,6 +382,43 @@ test('MP-08 host: a rival nobody dropped is nobody the host touches', () => {
   assert.ok(h.host.game.humanInput.has(1), 'the guest still has their marble');
 });
 
+test('MP-09 host: a human’s kit changing republishes the world, once', () => {
+  // A guest's items live on the host's marble, so a pickup is invisible to them
+  // until the host says so. Pickups are rare, so this is one snapshot per change
+  // — not a stream — and it is the only way a guest's toolbar can tell the truth
+  // about what they are holding.
+  const h = harness();
+  start(h);
+  for (let i = 0; i < 20; i++) h.tick();
+  h.frames.length = 0;
+
+  h.host.game.marbles[1].inventory.rocket = 2; // the guest picked something up
+  h.tick();
+  const first = h.frames.filter((f) => f.type === 'snapshot').length;
+  assert.ok(first > 0, 'a changed kit is republished');
+
+  // And only on the change: the next sixty frames of carrying it are silent.
+  h.frames.length = 0;
+  for (let i = 0; i < 60; i++) h.tick();
+  assert.equal(h.frames.filter((f) => f.type === 'snapshot').length, 0, 'carrying is not changing');
+
+  h.host.game.marbles[1].inventory.rocket = 3;
+  h.tick();
+  assert.ok(h.frames.some((f) => f.type === 'snapshot'), 'but another change is published again');
+});
+
+test('MP-09 host: an AI marble’s pickups do not republish anything', () => {
+  // Nine machines picking up boxes is nine snapshots a second if the host is not
+  // careful — and a guest's toolbar only ever shows its OWN kit.
+  const h = harness();
+  start(h);
+  for (let i = 0; i < 20; i++) h.tick();
+  h.frames.length = 0;
+  for (let slot = 2; slot < MARBLE_COUNT; slot++) h.host.game.marbles[slot].inventory.rocket = 1;
+  h.tick();
+  assert.equal(h.frames.filter((f) => f.type === 'snapshot').length, 0);
+});
+
 test('MP-04 host: a snapshot carries the whole world and reassembles', () => {
   const h = harness();
   start(h);

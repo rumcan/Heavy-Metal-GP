@@ -317,6 +317,26 @@ test('MP-08 session: the host answers the room’s re-greeting with the grid it 
   assert.ok(p.guestFrames.some((f) => f.type === 'resync'), 'and the returning page asks for it');
 });
 
+test('MP-09 session: what a driver is carrying is the same on both screens', () => {
+  // The kit lives on the host's marble; a guest sees it because the host
+  // republishes the world when it changes. A toolbar that says three when the
+  // marble holds one is a lie the player pays for.
+  const p = pair();
+  for (let i = 0; i < 60; i++) p.tick();
+  assert.deepEqual(p.guest.kit, p.host.game.marbles[1].inventory, 'the guest sees its own kit');
+
+  p.host.game.marbles[1].inventory.rocket = 3;
+  for (let i = 0; i < 60; i++) p.tick();
+  assert.equal(p.guest.kit.rocket, 3, 'and it is told when it changes');
+  assert.deepEqual(p.guest.kit, p.host.game.marbles[1].inventory);
+
+  // And the host's own seat is its own business, not the wire's.
+  p.host.game.marbles[0].inventory.jump = 1;
+  for (let i = 0; i < 60; i++) p.tick();
+  assert.deepEqual(p.host.kit, p.host.game.marbles[0].inventory);
+  assert.equal(p.guest.kit.jump, 0, 'the guest does not borrow the host’s kit');
+});
+
 test('MP-06 session: the screen holds one grid, numbered the same way on both ends', () => {
   const p = pair();
   const seats = grid();

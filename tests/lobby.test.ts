@@ -25,6 +25,7 @@ import {
   seededCircuit,
   startBlockedReason,
 } from '../src/net/lobby';
+import { emptyInventory } from '../src/game/types';
 import type { Seat } from '../src/net/protocol';
 import { MARBLE_COUNT } from '../src/net/protocol';
 
@@ -124,6 +125,26 @@ test('MP-06 lobby: the roster is the grid, numbered by slot', () => {
   assert.equal(seatOfPlayer(grid, 'player-1'), 1);
   assert.equal(seatOfPlayer(grid, 'player-7'), null, 'not on the grid');
   assert.equal(seatOfPlayer(grid, undefined), null);
+});
+
+test('MP-09 lobby: a driver’s kit is filed with its garage, and rides on its marble', () => {
+  // An online race spends what each driver BOUGHT. The kit travels the same way
+  // the livery and the tune do — inside `ready` — and what the host puts on the
+  // grid is what that seat came with, not a copy of the host's.
+  const seats = dressGrid(roomGrid(), SEED);
+  const mine = { name: 'Sprocket', color: '#22d3ee', stats: { weight: 6, speed: 5, bounce: 4 }, portrait: 2, inventory: { ...emptyInventory(), rocket: 2 } };
+  const filed = fileGarage(seats, 'player-1', mine);
+  assert.deepEqual(filed.find((s) => s.playerId === 'player-1')?.inventory?.rocket, 2, 'filed against its own seat');
+  assert.equal(filed.find((s) => s.playerId === 'player-2')?.inventory, undefined, 'and nobody else gets one');
+  // A guest that says nothing about a kit keeps whatever the host already had.
+  const kept = fileGarage(filed, 'player-1', { name: 'Sprocket', color: '#22d3ee', stats: mine.stats, portrait: 2 });
+  assert.deepEqual(kept.find((s) => s.playerId === 'player-1')?.inventory?.rocket, 2);
+  // The AI carries nothing it did not pick up: a kit is a person's.
+  for (const seat of filed) if (seat.isAI) assert.equal(seat.inventory, undefined);
+
+  // And it reaches the marble the simulation spends from.
+  const roster = rosterOf(filed, 1);
+  assert.equal(roster.find((m) => m.id === 1)?.inventory?.rocket, 2);
 });
 
 test('MP-07 lobby: a quick race runs the circuit the seed picked, not Math.random', () => {

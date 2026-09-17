@@ -174,13 +174,28 @@ a race is entered and cleared when it is left *through a door this client
 controls*, which is exactly why a crash or a closed tab leaves it standing for up
 to ten minutes.
 
-Still to come in the epic: **MP-09** results and payouts — an online race pays
-nothing yet, and online items wait for that ticket too — and **MP-10** the
-two-browser E2E harness (the acceptance for the reconnect work above is a
-Playwright test: a guest goes offline for ten seconds and takes the same marble
-back). Online nudge-vs-simulation parity is also still hand-checked: the guest
-leans locally and sends the intent, but the host's picture of that lean has not
-been played side by side with the offline game.
+**Money and kit are every screen's own business** (MP-09). There is no host
+banker: a host that could pay its guests could also simply not pay them. The host
+publishes `results` once, and every client settles ITSELF — its own seat out of
+that classification, at `ONLINE_PAYOUT_SCALE` (60 %: an online heat costs nothing
+to enter and is the easiest race in the game to repeat) — under a race id built
+from the room code and the published countdown instant, so the same race can
+never be collected twice. A driver who did not finish is paid nothing, and a race
+that never reached a classification (the host left, the results never came) calls
+nothing at all. Kits work the same way: each driver's items travel with their
+garage in `ready` (counts clamped by the wire), the host puts them on that seat's
+marble, and a human's kit changing republishes the world — one snapshot per
+change — so a guest's toolbar is never lying about what they are holding. Come
+home with what you came home with: spent is spent, picked is kept. **Race again**
+returns the whole room to the lobby with its seats intact, and the host may pick
+another circuit before dropping the lights.
+
+Still to come in the epic: **MP-10**, the two-browser E2E harness — the
+acceptance for the reconnect work above is a Playwright test (a guest goes
+offline for ten seconds and takes the same marble back), and this repository has
+no browser in it yet. Online nudge-vs-simulation parity is also still
+hand-checked: the guest leans locally and sends the intent, but the host's
+picture of that lean has not been played side by side with the offline game.
 
 Two notes for a browser that is not on the dev machine (a tunnel, a sandbox
 preview, a phone on the LAN): the sidecar origin the plugin injects is

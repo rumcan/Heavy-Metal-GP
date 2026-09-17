@@ -32,6 +32,7 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(here, '..');
 
+import { ITEM_TYPES, MAX_ITEM_STACK } from '../src/game/types';
 import {
   BYTES_PER_MARBLE,
   FRAME_CAP_BYTES,
@@ -479,6 +480,34 @@ test('MP-02 validation: presence and refusal', () => {
   assert.match(HOST_LEFT_REASON, /host/i);
 });
 
+test('MP-09 validation: a seat may carry the kit its driver bought, and no more', () => {
+  const seat = (inventory?: unknown) => ({
+    type: 'lobby',
+    seats: Array.from({ length: MARBLE_COUNT }, (_, slot) => ({
+      slot, playerId: slot === 0 ? 'player-host' : '', name: slot === 0 ? 'Host' : 'AI',
+      color: '#d63e2e', stats: { weight: 5, speed: 5, bounce: 5 }, portrait: 0, isAI: slot !== 0,
+      ...(slot === 0 && inventory !== undefined ? { inventory } : {}),
+    })),
+    settings: { circuit: 0 },
+  });
+  assert.equal(check(seat()), null, 'a grid with no kit is still a grid');
+  assert.equal(check(seat(kit({ rocket: 3 }))), null);
+  // Nine is the stack ceiling: an inventory is not a wallet a client tops up on
+  // the way through the room.
+  assert.equal(check(seat(kit({ rocket: MAX_ITEM_STACK + 1 })))?.code, 'forged');
+  assert.equal(check(seat(kit({ rocket: 1.5 })))?.code, 'forged');
+  // A partial kit is not a kit: the game's eight items are all present or it is
+  // somebody else's save file.
+  assert.equal(check(seat({ rocket: 1 }))?.code, 'forged');
+});
+
+/** A whole kit, optionally over-stocked: eight item types, every one of them. */
+function kit(over: Partial<Record<string, number>> = {}): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const item of ITEM_TYPES) out[item] = 0;
+  return { ...out, ...over };
+}
+
 test('MP-06 validation: a guest files its garage in the only frame it owns', () => {
   const garage = { name: 'Sprocket', color: '#d63e2e', stats: { weight: 6, speed: 5, bounce: 4 }, portrait: 3 };
   assert.equal(check({ type: 'ready', ready: true }), null, 'a plain ready toggle needs no garage');
@@ -491,6 +520,15 @@ test('MP-06 validation: a guest files its garage in the only frame it owns', () 
   assert.equal(check({ type: 'ready', ready: true, garage: { ...garage, stats: { weight: 11, speed: 5, bounce: 5 } } })?.code, 'forged');
   assert.equal(check({ type: 'ready', ready: true, garage: { ...garage, portrait: -1 } })?.code, 'forged');
   assert.equal(check({ type: 'ready', ready: true, garage: null })?.code, 'malformed');
+
+  // MP-09: a driver's KIT rides along with their garage, and it is the one thing
+  // on the wire worth lying about — so a count the game cannot hold is forged,
+  // not rounded.
+  assert.equal(check({ type: 'ready', ready: true, garage: { ...garage, inventory: kit() } }), null);
+  assert.equal(check({ type: 'ready', ready: true, garage: { ...garage, inventory: kit({ rocket: 2 }) } }), null);
+  assert.equal(check({ type: 'ready', ready: true, garage: { ...garage, inventory: kit({ rocket: MAX_ITEM_STACK + 1 }) } })?.code, 'forged');
+  assert.equal(check({ type: 'ready', ready: true, garage: { ...garage, inventory: kit({ rocket: -1 }) } })?.code, 'forged');
+  assert.equal(check({ type: 'ready', ready: true, garage: { ...garage, inventory: kit({ rocket: 'two' as unknown as number }) } })?.code, 'forged');
 });
 
 test('MP-06 validation: the room stamps the sender, and nobody else may', () => {

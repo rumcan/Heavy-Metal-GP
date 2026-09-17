@@ -28,7 +28,13 @@ export type { RaceAction } from './RaceResults';
 interface Props {
   seed: number; roster: MarbleInfo[]; profile: TrackProfile; gridOrder: number[];
   title: string; subtitle: string; championship?: boolean;
-  onExit: () => void; onFinished: (results: HeatResult[]) => void; actions: RaceAction[];
+  onExit: () => void;
+  /**
+   * The classification, plus (online) the kit the local driver came home with —
+   * the wallet is settled from both (MP-09).
+   */
+  onFinished: (results: HeatResult[], kit?: Inventory) => void;
+  actions: RaceAction[];
   inventory: Inventory; credits: number;
   onInventoryChange: (inventory: Inventory) => void;
   payout: RacePayout | null;
@@ -269,7 +275,9 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
         if (!rows) return; // the host has not published it yet
         doneRef.current = true;
         setResults(rows);
-        finishedCallback.current(rows);
+        // MP-09: online, what this driver is holding lives on the host's marble,
+        // so it is handed back with the result — that is what settles the kit.
+        finishedCallback.current(rows, sessionRef.current.kit);
         return;
       }
       doneRef.current = true;

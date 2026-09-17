@@ -26,6 +26,7 @@ import { Matchmaker } from './net/matchmake';
 import type { RaceProtocol } from './net/transport';
 import type { RaceLink } from './net/session';
 import { HOST_LEFT_REASON } from './net/protocol';
+import type { WelcomeMsg } from './net/protocol';
 import { foldPeer, graceLeft, peerOf, type PeerPresence } from './net/presence';
 import { PeerStrip } from './components/PeerNotices';
 import HostLeftOverlay from './components/PeerNotices';
@@ -33,8 +34,9 @@ import { circuitIndexOf, gridOrderOf, rosterOf } from './net/lobby';
 import type { SeatGarage } from './net/lobby';
 import { MarbleInfo, MarbleStats, AI_COLORS, randomStats, mulberry32, PLAYER_COLORS, HeatResult, HEATS_PER_GP } from './game/types';
 import { SeasonState, newSeason, recordHeat, gridOrder, gpSeed, CALENDAR, saveSeason, loadSeason } from './game/season';
-import { loadAccount, saveAccount, purchaseItem, settleRace } from './game/economy';
+import { loadAccount, saveAccount, purchaseItem, onlineRaceId, settleOnlineRace, settleRace } from './game/economy';
 import type { RacerAccount, RacePayout } from './game/economy';
+import { normalizeInventory } from './game/types';
 import type { Inventory, ItemType } from './game/types';
 import PitShop from './components/PitShop';
 import { RIVALS, PLAYER_PORTRAIT_COUNT, preRaceBanter } from './game/characters';
@@ -107,6 +109,12 @@ export default function App() {
   const [peers, setPeers] = useState<PeerPresence[]>([]);
   /** The host's player id, from the room's own welcome. */
   const [hostId, setHostId] = useState<string | null>(null);
+  /**
+   * MP-09: the room's greeting, kept across a race. "Race again" returns to the
+   * lobby, and a room only greets on a join — without this the lobby would come
+   * back empty and wait for a hello that nobody is going to send.
+   */
+  const [greeting, setGreeting] = useState<WelcomeMsg | null>(null);
   /** Set when the host is gone for good: the race is over for everybody. */
   const [hostLeft, setHostLeft] = useState<string | null>(null);
   /** A wall clock that only runs while somebody is missing, for the countdown. */
@@ -132,6 +140,7 @@ export default function App() {
     }
     if (msg.type === 'welcome') {
       setHostId(msg.hostId);
+      setGreeting(msg);
       link.onMessage?.(msg);
       return;
     }
@@ -198,8 +207,10 @@ export default function App() {
 
   /** This driver's garage: the tune from the garage panes, plus the livery. */
   const garage = useMemo<SeatGarage>(
-    () => ({ name: room?.players.find((p) => p.id === room.playerId)?.username || 'You', color, stats, portrait }),
-    [room, color, stats, portrait],
+    // MP-09: the kit goes with the garage — an online race spends what this
+    // driver bought, not what the host happens to be carrying.
+    () => ({ name: room?.players.find((p) => p.id === room.playerId)?.username || 'You', color, stats, portrait, inventory: account.inventory }),
+    [room, color, stats, portrait, account.inventory],
   );
 
   /** Why a room did not open, in words a player can act on. */
@@ -276,10 +287,22 @@ export default function App() {
     setQuick(false);
     setPeers([]);
     setHostId(null);
+    setGreeting(null);
     setHostLeft(null);
     setMpError(null);
     setPhase('menu');
   }, []);
+
+  /**
+   * MP-09: back to the lobby with the same room and the same seats — the host
+   * may pick another circuit and drop the lights again.
+   */
+  const raceAgain = useCallback(() => {
+    setOnline(null);
+    setPayout(null);
+    setPhase('lobby');
+  }, []);
+
 
   /** MP-08: back into the race a dropped tab left (same code, same seat). */
   const rejoinRace = useCallback(() => {
@@ -321,6 +344,26 @@ export default function App() {
   const inventoryChanged = useCallback((inventory: Inventory) => {
     publishAccount({ ...accountRef.current, inventory: { ...inventory } });
   }, [publishAccount]);
+  /**
+   * MP-09: an online race pays ITSELF, on every screen.
+   *
+   * There is no host banker: a host that could pay its guests could also simply
+   * not pay them. So each client settles its own seat out of the host's
+   * classification, at the online scale, and writes back the kit it came home
+   * with. A race that never reached a classification — the host left, the
+   * results never came — pays nothing at all.
+   */
+  const settleOnline = useCallback((rows: HeatResult[], kit?: Inventory) => {
+    if (!online) return;
+    const mine = rows.find((row) => row.id === online.localSeat);
+    if (!mine) return;
+    const raceId = onlineRaceId(room?.roomCode ?? 'race', online.countdownAt);
+    const paid = settleOnlineRace(accountRef.current, raceId, mine);
+    // What you came home with is what you have: spent is spent, picked is kept.
+    publishAccount(kit ? { ...paid.account, inventory: normalizeInventory(kit) } : paid.account);
+    setPayout(paid.payout);
+  }, [online, publishAccount, room]);
+
   const awardWinnings = (results: HeatResult[]) => {
     const result = results.find((r) => r.id === 0);
     if (!result) return;
@@ -455,6 +498,8 @@ export default function App() {
         onStart={startOnlineRace}
         link={link}
         autoStart={quick}
+        peers={peers}
+        greeting={greeting}
         error={mpError}
         onError={setMpError}
       />,
@@ -541,13 +586,17 @@ export default function App() {
         title={gp.name}
         subtitle={`ONLINE / ${online.isHost ? 'HOSTING' : 'JOINED'} / ${drivers} DRIVERS`}
         onExit={leaveRoom}
-        // MP-09 pays an online race out; until then there is nothing to settle.
-        onFinished={() => {}}
-        actions={[{ label: 'Back to the garage', onClick: leaveRoom, primary: true }]}
+        // MP-09: an online race settles this screen's own seat, at the online
+        // scale, and writes back the kit it came home with.
+        onFinished={settleOnline}
+        actions={[
+          { label: 'Race again', onClick: raceAgain, primary: true },
+          { label: 'Back to the garage', onClick: leaveRoom },
+        ]}
         inventory={account.inventory}
         credits={account.credits}
         onInventoryChange={inventoryChanged}
-        payout={null}
+        payout={payout}
         onShop={openShop}
         online={onlineView}
       />,

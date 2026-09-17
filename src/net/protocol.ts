@@ -184,6 +184,15 @@ export interface Seat {
   isAI: boolean;
   /** Lobby ready flag (MP-06). Absent reads as not ready. */
   ready?: boolean;
+  /**
+   * What this driver is CARRYING (MP-09). Absent reads as empty.
+   *
+   * An online race spends each driver's own kit, not the host's: a guest files
+   * it through `ready`, the host puts it on the marble, and the pickups and the
+   * spends belong to the seat. Counts are clamped by the wire — a guest who
+   * says nine rockets when it owns none gets what it owns.
+   */
+  inventory?: Inventory;
 }
 
 /** What the race is: which circuit, and how many times around it. */
@@ -250,6 +259,8 @@ export interface SeatGarage {
   color: string;
   stats: MarbleStats;
   portrait: number;
+  /** MP-09: this driver's own items, filed against their seat. */
+  inventory?: Inventory;
 }
 
 /**
@@ -1045,6 +1056,9 @@ export function validateGarage(value: unknown): ProtocolError | null {
     if (!isInt(stats[key], STAT_MIN, STAT_MAX)) return forged(`Garage stat ${key} is not ${STAT_MIN}..${STAT_MAX}.`);
   }
   if (!isInt(g.portrait, 0, 4095)) return forged('Garage portrait index is out of range.');
+  // A kit is counts, and counts have a ceiling: an inventory is not a wallet a
+  // client may top up on the way through the wire.
+  if (g.inventory !== undefined && readInventory(g.inventory) === null) return forged('Garage inventory is not an inventory.');
   return null;
 }
 
@@ -1068,6 +1082,7 @@ export function validateSeat(value: unknown): ProtocolError | null {
   if (!isInt(s.portrait, 0, 4095)) return forged('Seat portrait index is out of range.');
   if (typeof s.isAI !== 'boolean') return bad('Seat isAI flag is not a boolean.');
   if (s.ready !== undefined && typeof s.ready !== 'boolean') return bad('Seat ready flag is not a boolean.');
+  if (s.inventory !== undefined && readInventory(s.inventory) === null) return forged('Seat inventory is not an inventory.');
   if (s.isAI && s.playerId !== '') return forged('An AI seat must not claim a player id.');
   if (!s.isAI && s.playerId === '') return forged('A human seat must carry its player id.');
   return null;

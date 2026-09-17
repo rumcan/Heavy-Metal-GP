@@ -69,6 +69,13 @@ interface Props {
   autoStart?: boolean;
   /** MP-08: drivers the room is holding a seat for. */
   peers?: readonly PeerPresence[];
+  /**
+   * MP-09: the room's last greeting, remembered by App across a race so that
+   * "Race again" can put the same drivers back in the same lobby. A room only
+   * says hello on a join — it has no way to re-greet a screen that left for a
+   * race and came back.
+   */
+  greeting?: WelcomeMsg | null;
   error: string | null;
   onError: (message: string | null) => void;
 }
@@ -82,8 +89,8 @@ export const AUTO_START_MS = 20_000;
 /** Six humans and there is nobody left to wait for. */
 export const AUTO_START_FULL_GRID = 6;
 
-export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onLeave, onStart, link, autoStart = false, peers, error, onError }: Props) {
-  const [welcome, setWelcome] = useState<WelcomeMsg | null>(null);
+export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onLeave, onStart, link, autoStart = false, peers, greeting = null, error, onError }: Props) {
+  const [welcome, setWelcome] = useState<WelcomeMsg | null>(greeting);
   /** The host's own copy of the grid (guests read the host's out of `lobby`). */
   const [grid, setGrid] = useState<Seat[] | null>(null);
   const [lobbySeats, setLobbySeats] = useState<Seat[] | null>(null);
@@ -118,6 +125,8 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
    */
   const live = useRef(false);
   const joined = useRef(false);
+  /** MP-09: this lobby has announced itself once (see the effect below). */
+  const announced = useRef(false);
   const joinLive = useCallback((known: Seat[] | null) => {
     const base = latest.current.welcome;
     if (joined.current || !live.current || !base) return;
@@ -251,6 +260,21 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
       if (link.onPlayerLeft === handleLeft) link.onPlayerLeft = null;
     };
   }, [link, handle, handleLeft]);
+
+  /**
+   * MP-09: coming BACK from a race. The room has not said anything — nobody
+   * joined, nobody left — so the seat table this screen already had is the one
+   * it reuses, and it re-announces itself: the host republishes the grid (it may
+   * have picked another circuit), a guest re-files its garage.
+   */
+  useEffect(() => {
+    if (!greeting || announced.current) return;
+    announced.current = true;
+    if (greeting.hostId === room.playerId) publish(dress(greeting.seats, greeting.seed), latest.current.circuit);
+    else link.send({ type: 'ready', ready: false, garage });
+    // One announcement, on the way in — the frames below are the room's to send.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // MP-07: the quick race's own clock. Two drivers and the lights are armed;
   // a sixth driver and there is nobody left to wait for.

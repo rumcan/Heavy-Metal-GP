@@ -77,7 +77,16 @@ export function dressGrid(seats: readonly Seat[], seed: number): Seat[] {
 export function fileGarage(seats: readonly Seat[], playerId: string, garage: SeatGarage): Seat[] {
   return inSlotOrder(seats).map((seat) =>
     seat.playerId === playerId && !seat.isAI
-      ? { ...seat, name: garage.name, color: garage.color, stats: { ...garage.stats }, portrait: garage.portrait }
+      ? {
+          ...seat,
+          name: garage.name,
+          color: garage.color,
+          stats: { ...garage.stats },
+          portrait: garage.portrait,
+          // The kit travels with the garage (MP-09): what a driver bought is
+          // what that marble carries, and nothing here invents an item.
+          inventory: garage.inventory ? { ...garage.inventory } : seat.inventory,
+        }
       : seat,
   );
 }
@@ -119,6 +128,7 @@ export function rosterOf(seats: readonly Seat[], localSeat: number): MarbleInfo[
     stats: seat.stats,
     isPlayer: seat.slot === localSeat,
     character: seat.portrait,
+    inventory: seat.inventory,
   }));
 }
 

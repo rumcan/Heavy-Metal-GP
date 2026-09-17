@@ -31,6 +31,7 @@ import { HEAT_TIME_LIMIT, PHYSICS_STEP } from '../game/physics';
 import type { MarbleInfo, TrackProfile } from '../game/types';
 import type { Track } from '../game/track';
 import { generateTrack } from '../game/track';
+import { ITEM_TYPES } from '../game/types';
 import {
   MARBLE_COUNT,
   MAX_EVENTS_PER_FRAME,
@@ -147,6 +148,15 @@ export class RaceHost {
   private classified: ResultsMsg | null = null;
   /** The events sent with the last publish — sent again with the next one. */
   private previousEvents: { seq: number; list: RaceEvent[] } | null = null;
+  /**
+   * MP-09: what each human marble was carrying at the last snapshot.
+   *
+   * A guest's kit lives on the HOST's marble, not in the guest's account, so a
+   * pickup or a spend is invisible to them until the world is republished — and
+   * a toolbar that lies about what you are holding is worse than one that is a
+   * frame late.
+   */
+  private kitAt = '';
   /** MP-08: rivals the room says have lost their socket, and when. */
   private peers: PeerPresence[] = [];
   /** MP-08: seats already handed to the AI, so a return is a hand-back. */
@@ -155,6 +165,7 @@ export class RaceHost {
   constructor(opts: RaceHostOptions) {
     if (!opts.seats.length) throw new Error('A race needs a grid.');
     this.settings = opts.settings;
+    this.kitAt = '';
     this.send = opts.send;
     this.clock = opts.now ?? (() => Date.now());
     const seats = [...opts.seats].sort((a, b) => a.slot - b.slot);
@@ -170,6 +181,8 @@ export class RaceHost {
       stats: seat.stats,
       isPlayer: seat.slot === opts.localSeat,
       character: seat.portrait,
+      // MP-09: each human seat races on the kit it brought.
+      inventory: seat.inventory,
     }));
     this.game = new Game(opts.seed, roster, {
       track: opts.track ?? generateTrack(opts.seed, opts.profile),
@@ -181,6 +194,8 @@ export class RaceHost {
       gridOrder: opts.gridOrder ?? seats.map((s) => s.slot),
     });
     this.game.start();
+    // The kit as the grid was built — the baseline a change is measured from.
+    this.kitAt = this.kitNow();
     this.lastPublishAt = this.clock();
   }
 
@@ -381,11 +396,36 @@ export class RaceHost {
     // seconds of sim — it would fall further behind every frame. Drop the debt.
     if (steps === MAX_STEPS_PER_FRAME) this.accumulator = 0;
 
+    // A human's kit changed, so the world it belongs to is republished: a
+    // pickup is one snapshot, not a stream.
+    if (this.kitChanged()) {
+      this.kitAt = this.kitNow();
+      this.sendSnapshot();
+    }
+
     if (now - this.lastPublishAt >= STATE_INTERVAL_MS) {
       this.lastPublishAt = now;
       this.publish();
     }
     this.checkFinish(dt);
+  }
+
+  /**
+   * What the human seats are carrying, flattened — the only part of a kit the
+   * host needs to watch for a change.
+   */
+  private kitNow(): string {
+    return this.seats
+      .filter((seat) => !seat.isAI)
+      .map((seat) => {
+        const kit = this.marble(seat.slot)?.inventory;
+        return kit ? ITEM_TYPES.map((item) => kit[item] ?? 0).join(',') : '';
+      })
+      .join('|');
+  }
+
+  private kitChanged(): boolean {
+    return this.kitNow() !== this.kitAt;
   }
 
   /** The whole world, for a joiner or a resync. Chunked across as many frames as it needs. */
