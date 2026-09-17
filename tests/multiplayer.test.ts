@@ -107,8 +107,11 @@ test('MP-01 isolation: the seam is real, so the scan above cannot pass vacuously
   assert.match(seam, /RundotGameAPI\s*\.\s*realtime/, 'transport.ts must read the realtime API off the SDK singleton');
   assert.ok(seam.includes('createRoom') && seam.includes('joinRoomByCode') && seam.includes('matchmakeRoom'));
   assert.ok(files.length > 20, `expected a populated src/ tree, scanned ${files.length} files`);
-  // The dev harness of MP-01 goes through the wrappers like any other caller.
-  assert.equal(imports('src/components/MpDebugPanel.tsx', 'mp-client'), false);
+  // The lobby (MP-06) goes through the wrappers like any other caller: the
+  // realtime API has one door, and the UI is not it.
+  assert.equal(imports('src/components/OnlineLobby.tsx', 'mp-client'), false);
+  assert.equal(imports('src/components/OnlinePanel.tsx', 'mp-client'), false);
+  assert.equal(imports('src/components/RaceScreen.tsx', 'mp-client'), false);
 });
 
 // ══════════════════════════════════════════════════════════════════════════

@@ -78,7 +78,7 @@ whole.
 **The host simulates** (`src/net/host.ts`): one browser runs the Matter.js
 `Game` for all ten marbles and publishes `state` at 20 Hz, an `events` batch
 whenever something happened, a chunked snapshot on join/resync and the
-`results` once. Guests never step physics — the lobby UI lands in MP-06. The host applies a guest's intents at the next step,
+`results` once. Guests never step physics. The host applies a guest's intents at the next step,
 pacing nudges to 30 a second and holding items to the same `canUseItem` rule
 its own hands obey, and it owns the race clock: the lights go out at a
 wall-clock instant every tab was told about in advance. `Game` itself now takes
@@ -98,20 +98,45 @@ the reload message rather than a silent desync. The module is pure — no SDK, n
 DOM, no Matter.js — so the room bundle can import it and relay with the same
 code the client validates with.
 
+**The lobby ships in MP-06.** The garage's bottom bar has an **Online** mode
+next to Championship and Quick race: **Host game**, **Join with code** (the
+six-character code your host is showing) and **Quick race**, which waits for
+MP-07's matchmaking. The lobby (`src/components/OnlineLobby.tsx`) shows the code
+big enough to read across a room, with a copy button; the ten-slot grid (drivers
+with a portrait, livery and tune, the rest marked AI, and a kick button for the
+host); and, for the host, the circuit pick and the Start button, which lights up
+when two drivers are in and everybody is ready. Start arms the lights six
+seconds out — long enough for both browsers to build a ten-marble world from the
+seed — and `RaceScreen` runs the race through a `RaceSession`
+(`src/net/session.ts`), which is either the host's simulation or the guest's
+picture of it. The same screen, the same HUD, one prop's difference.
+
+The room owns who sits where; the host owns what the grid looks like. A guest's
+garage (tune, livery, portrait) reaches the host inside `ready` — the one frame
+a guest owns — and the room STAMPS that frame with `from`, because the SDK hands
+a client the payload alone, with no sender. A guest cannot forge another seat's
+nudges or file another driver's garage.
+
 To try it locally, `npm run dev`, then open **two tabs** (a second window or an
 incognito window is the cleanest way to be two players — each tab mints its own
 dev identity, and no sign-in is involved) at:
 
 ```
-http://localhost:5173/?mpdebug=1
+http://localhost:5173/
 ```
 
-That URL adds a small dev-only debug panel — **Host race**, **Join** with a
-six-character code, **Quick race** — which is the throwaway harness for this
-ticket; the real lobby replaces it. Vite also starts the room sidecar on port
-`9001` from `rundot/realtime.config.json`: that is what makes host and join
-meet, and it only exists on `npm run dev` (a built or previewed page mocks rooms
-instead, and `src/net/transport.ts` detects that state and says so).
+In the garage, pick **Online** → **Host game**; the lobby shows a code. In the
+other tab, **Online** → type the code → **Join with code**. Both drivers press
+**Ready**, the host presses **Start the race**, and both screens count down to
+the same instant. Vite also starts the room sidecar on port `9001` from
+`rundot/realtime.config.json`: that is what makes host and join meet, and it
+only exists on `npm run dev` (a built or previewed page mocks rooms instead, and
+`src/net/transport.ts` detects that state and says so).
+
+Still to come in the epic: **MP-07** quick match, **MP-08** presence,
+reconnect and the rejoin offer (the active-match memo is already written when a
+race is entered and cleared when it is left), and **MP-09** results and payouts
+— an online race pays nothing yet, and online items wait for that ticket too.
 
 Two notes for a browser that is not on the dev machine (a tunnel, a sandbox
 preview, a phone on the LAN): the sidecar origin the plugin injects is

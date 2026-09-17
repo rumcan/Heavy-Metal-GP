@@ -82,6 +82,21 @@ export interface SessionResult {
   pegs: number;
 }
 
+/**
+ * The room, as the race screen sees it.
+ *
+ * One object, handed to the screen by whoever owns the socket (App): intents go
+ * out through `send`, and frames come in through `onMessage`. The screen sets
+ * `onMessage` while it has a session to feed and clears it when it does not, so
+ * a room subscribed once can serve a lobby, then a race, then the next race.
+ */
+export interface RaceLink {
+  send(msg: RaceProtocol): void;
+  onMessage: ((msg: RaceProtocol) => void) | null;
+  /** Set by the screen that cares who walked out (the lobby); null otherwise. */
+  onPlayerLeft: ((playerId: string) => void) | null;
+}
+
 export interface SessionOptions {
   /** The seed both ends rebuild the circuit from. Minted by the room. */
   seed: number;

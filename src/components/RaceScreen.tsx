@@ -4,6 +4,9 @@ import type { CSSProperties } from 'react';
 import { ArrowLeft, ArrowRight, Pause, Play, Flag, ChevronRight, FastForward, Timer, Gauge, Coins, Snowflake, ZoomIn, ZoomOut, Volume2, VolumeX } from 'lucide-react';
 import { raceAudio } from '../game/audio';
 import { Game } from '../game/engine';
+import { RaceSession } from '../net/session';
+import type { RaceLink } from '../net/session';
+import type { RaceSettings, Seat } from '../net/protocol';
 import { render } from '../game/render';
 import { W } from '../game/track';
 import type { Track } from '../game/track';
@@ -32,6 +35,28 @@ interface Props {
   onShop: () => void;
   /** Story mode only (ST-03/ST-07): mid-race beats, objective chips and chapter engine hooks. */
   story?: StoryRaceProps;
+  /**
+   * MP-06: an ONLINE race. When this is set the screen does not own the world —
+   * a `RaceSession` does, and it is either the simulation (host) or the picture
+   * of one (guest). Everything else on this screen is unchanged: it still reads
+   * a `Game`, it just no longer steps it.
+   */
+  online?: OnlineRace;
+}
+
+/** What an online race needs that an offline one does not. */
+export interface OnlineRace {
+  /** The grid, in slot order — the host's grid, or the guest's copy of it. */
+  seats: Seat[];
+  settings: RaceSettings;
+  /** Which marble is mine. */
+  localSeat: number;
+  /** True when this screen is the one that simulates. */
+  isHost: boolean;
+  /** The wall-clock instant the gate opens, published by the lobby. */
+  countdownAt: number;
+  /** The room: where intents go, and where frames come from. */
+  link: RaceLink;
 }
 const ZOOM_KEY = 'heavy-metal-gp:zoom';
 const ZOOM_MIN = 0.35;
@@ -49,9 +74,15 @@ interface Hud {
   viewTop: number; viewBottom: number;
 }
 
-export default function RaceScreen({ seed, roster, profile, gridOrder, title, subtitle, onExit, onFinished, actions, championship = false, inventory, credits, onInventoryChange, payout, onShop, story }: Props) {
+export default function RaceScreen({ seed, roster, profile, gridOrder, title, subtitle, onExit, onFinished, actions, championship = false, inventory, credits, onInventoryChange, payout, onShop, story, online }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef<Game | null>(null);
+  /** MP-06: the online session, when there is one. The host's simulation or the guest's picture. */
+  const sessionRef = useRef<RaceSession | null>(null);
+  const onlineRef = useRef(online);
+  onlineRef.current = online;
+  /** Which marble is mine — the seat, online; the player, offline. */
+  const playerId = roster.find((m) => m.isPlayer)?.id ?? 0;
   const controls = useRef({ left: false, right: false, touch: 0 });
   const pausedRef = useRef(false);
   const fastRef = useRef(1);
@@ -78,7 +109,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
   const selectedRef = useRef<ItemType>(ITEM_TYPES.find((item) => inventory[item] > 0) ?? 'rocket');
   const [selected, setSelected] = useState<ItemType>(selectedRef.current);
   const [hud, setHud] = useState<Hud>({
-    rank: gridOrder.indexOf(0) + 1, time: 0, inventory: { ...initialInventory.current }, remaining: emptyInventory(), coolingDown: false, speed: 0, cap: 100, lights: 0,
+    rank: Math.max(0, gridOrder.indexOf(playerId)) + 1, time: 0, inventory: { ...initialInventory.current }, remaining: emptyInventory(), coolingDown: false, speed: 0, cap: 100, lights: 0,
     finished: false, playerTime: null, pegs: 0, sector: 'Starting grid', sectorIndex: 0,
     progress: 0, state: 'ON THE GRID', frozen: false, finishedCount: 0, following: 'You',
     field: gridOrder.map((id, i) => ({ id, rank: i + 1, time: null, x: 60 + i * 86, y: 116 })),
@@ -86,6 +117,15 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
   });
   const finishedCallback = useRef(onFinished);
   finishedCallback.current = onFinished;
+  /**
+   * Deploy an item. Offline the game spends it; online the HOST spends it — a
+   * guest's button is a request, and the state frames are the answer.
+   */
+  const useItem = useCallback((item: ItemType) => {
+    const session = sessionRef.current;
+    if (session) session.useItem(item);
+    else gameRef.current?.usePlayerItem(item);
+  }, []);
   const setPause = useCallback((value: boolean) => {
     pausedRef.current = value;
     controls.current = { left: false, right: false, touch: 0 };
@@ -103,10 +143,32 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
-    const game = new Game(seed, roster, { profile, gridOrder, inventory: initialInventory.current, story: story?.hooks });
-    game.onInventoryChange = (items) => inventoryCallback.current(items);
+    // MP-06: online, the session owns the world and the screen only draws it.
+    // Offline, the screen builds its own Game, exactly as it always has.
+    const link = onlineRef.current?.link ?? null;
+    const session = onlineRef.current
+      ? new RaceSession({
+          seed,
+          seats: onlineRef.current.seats,
+          settings: onlineRef.current.settings,
+          profile,
+          localSeat: onlineRef.current.localSeat,
+          isHost: onlineRef.current.isHost,
+          countdownAt: onlineRef.current.countdownAt,
+          send: (msg) => link?.send(msg),
+        })
+      : null;
+    sessionRef.current = session;
+    const game = session ? session.game : new Game(seed, roster, { profile, gridOrder, inventory: initialInventory.current, story: story?.hooks });
+    // Online, this screen does not own the wallet: the race inventory is the
+    // host's book until MP-09 puts each driver's own items on the grid, and a
+    // pickup here must not empty the account it was bought with.
+    if (!session) game.onInventoryChange = (items) => inventoryCallback.current(items);
     setMapTrack(game.track);
     gameRef.current = game;
+    // Frames from the room go to whichever screen is live. The room is
+    // subscribed once (in App); this is the screen raising its hand.
+    if (link) link.onMessage = (msg) => sessionRef.current?.accept(msg);
     doneRef.current = false;
     let toastTimer: ReturnType<typeof setTimeout> | undefined;
     game.onEvent = (message, color = '#d63e2e') => {
@@ -165,8 +227,14 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
       if (down && (event.code === 'Digit0' || event.code === 'Numpad0')) { setZoom(1); return; }
       if (down) raceAudio.unlock();
       if (event.code === 'KeyM' && down && !event.repeat) { toggleMute(); return; }
-      if (event.code === 'KeyP' && down && !event.repeat) { setPause(!pausedRef.current); return; }
-      if (event.code === 'Escape' && down && !event.repeat) { if (!pausedRef.current) setPause(true); return; }
+      // Online there is no pause: the race clock is not this tab's, and a host
+      // that stopped stepping would take the whole grid with it.
+      if (event.code === 'KeyP' && down && !event.repeat) { if (!onlineRef.current) setPause(!pausedRef.current); return; }
+      if (event.code === 'Escape' && down && !event.repeat) {
+        if (onlineRef.current) { leaveRace(); return; }
+        if (!pausedRef.current) setPause(true);
+        return;
+      }
       if (pausedRef.current) return;
       if (event.code === 'ArrowLeft' || event.code === 'KeyA') controls.current.left = down;
       if (event.code === 'ArrowRight' || event.code === 'KeyD') controls.current.right = down;
@@ -176,13 +244,13 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
         const item = ITEM_TYPES[Number(numberKey[1]) - 1];
         selectedRef.current = item;
         setSelected(item);
-        game.usePlayerItem(item);
+        useItem(item);
       }
-      if (event.code === 'Space' && down && !event.repeat) game.usePlayerItem(selectedRef.current);
+      if (event.code === 'Space' && down && !event.repeat) useItem(selectedRef.current);
     };
     const keyDown = (e: KeyboardEvent) => onKey(e, true);
     const keyUp = (e: KeyboardEvent) => onKey(e, false);
-    const blur = () => { controls.current = { left: false, right: false, touch: 0 }; if (!doneRef.current) setPause(true); };
+    const blur = () => { controls.current = { left: false, right: false, touch: 0 }; if (!doneRef.current && !onlineRef.current) setPause(true); };
     const hidden = () => { if (document.hidden) blur(); };
     const unlockAudio = () => raceAudio.unlock();
     unlockAudio();
@@ -194,6 +262,16 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
 
     const finish = () => {
       if (doneRef.current) return;
+      // Online, the classification is the host's: one race, one result, and
+      // every screen shows the same rows in the same order.
+      const rows = sessionRef.current?.results ?? null;
+      if (sessionRef.current) {
+        if (!rows) return; // the host has not published it yet
+        doneRef.current = true;
+        setResults(rows);
+        finishedCallback.current(rows);
+        return;
+      }
       doneRef.current = true;
       const classification = game.classify().map((r) => ({ id: r.marble.info.id, rank: r.rank, time: r.time, pegs: r.marble.pegs }));
       setResults(classification);
@@ -204,6 +282,14 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
       const dt = Math.max(0, Math.min(now - last, 50));
       last = now;
       if (!pausedRef.current && !doneRef.current) {
+        // MP-06: online, the session does the work — the host steps the world
+        // and publishes it, the guest plays out the frames it has been sent.
+        // Neither has a formation lap of its own: the lights belong to the
+        // host's clock, and the gate opens on the instant the lobby published.
+        if (sessionRef.current) {
+          sessionRef.current.update(dt);
+          if (sessionRef.current.results) finish();
+        } else {
         formationElapsed += dt;
         if (!game.gateOpen) {
           const nextLights = Math.min(5, Math.floor(formationElapsed / 650));
@@ -216,7 +302,10 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
         while (accumulator >= PHYSICS_STEP) { game.step(PHYSICS_STEP); accumulator -= PHYSICS_STEP; }
         if (game.allFinished()) { finishHold += dt; if (finishHold > 750) finish(); }
         else if (game.raceTime() >= HEAT_TIME_LIMIT) finish();
+        }
       }
+      // The light bank: 0..5 while the lights count, -1 the moment they are out.
+      if (sessionRef.current) lights = sessionRef.current.lightStage;
       const ranking = game.ranking();
       const following = game.player.finishedAt === null ? game.player : ranking.find((r) => !r.finished)?.marble ?? game.player;
       const p = following.body.position;
@@ -237,10 +326,10 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
         camera.y += (p.y + 115 - camera.y) * (1 - Math.exp(-dt / 150));
         camera.y = halfHeight * 2 >= game.track.height ? game.track.height / 2 : Math.max(halfHeight - 15, Math.min(game.track.height - halfHeight + 15, camera.y));
         render(ctx, game, camera, width, height, pausedRef.current || doneRef.current ? game.time : now, { shake: !reduceMotion, minimap: false });
-        if (game.sounds.length) {
+        const cues = sessionRef.current ? sessionRef.current.drainCues() : game.sounds.splice(0);
+        if (cues.length) {
           const listener = { x: camera.x, y: camera.y, halfHeight: height / 2 / camera.scale };
-          for (const cue of game.sounds) raceAudio.play(cue, listener);
-          game.sounds.length = 0;
+          for (const cue of cues) raceAudio.play(cue, listener);
         }
       }
 
@@ -276,9 +365,12 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
       canvas.removeEventListener('wheel', wheel); canvas.removeEventListener('pointerdown', pointerDown); canvas.removeEventListener('pointermove', pointerMove);
       canvas.removeEventListener('pointerup', pointerUp); canvas.removeEventListener('pointercancel', pointerUp);
       window.removeEventListener('blur', blur); document.removeEventListener('visibilitychange', hidden);
-      game.destroy(); gameRef.current = null;
+      if (link) link.onMessage = null;
+      if (session) session.dispose(); else game.destroy();
+      sessionRef.current = null;
+      gameRef.current = null;
     };
-  }, [seed, roster, profile, gridOrder, setPause, setZoom, toggleMute]);
+  }, [seed, roster, profile, gridOrder, setPause, setZoom, toggleMute, online, useItem]);
 
   const byId = (id: number) => roster.find((m) => m.id === id)!;
   const preStart = hud.lights >= 0;
@@ -289,7 +381,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
    */
   const devSkipRace = (place: number | 'dnf') => {
     const game = gameRef.current;
-    if (!import.meta.env.DEV || !game || doneRef.current) return;
+    if (!import.meta.env.DEV || !game || doneRef.current || sessionRef.current) return;
     doneRef.current = true;
     const order = game.classify().map((r) => r.marble).filter((m) => m !== game.player);
     order.splice(place === 'dnf' ? order.length : Math.max(0, Math.min(place - 1, order.length)), 0, game.player);
@@ -301,12 +393,24 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
     finishedCallback.current(classification);
   };
 
-  const requestExit = () => { setPause(true); setConfirmExit(true); };
+  /**
+   * Online there is no pause to ask under: the race is happening without this
+   * tab's permission, so leaving is the only honest way out of it.
+   */
+  const leaveRace = () => {
+    if (onlineRef.current) {
+      onExit();
+      return;
+    }
+    setPause(true);
+    setConfirmExit(true);
+  };
+  const requestExit = leaveRace;
   const deploy = (item: ItemType) => {
     if (pausedRef.current || doneRef.current) return;
     selectedRef.current = item;
     setSelected(item);
-    gameRef.current?.usePlayerItem(item);
+    useItem(item);
   };
   const nudgeButton = (direction: number) => ({
     onPointerDown: (event: React.PointerEvent<HTMLButtonElement>) => { event.currentTarget.setPointerCapture(event.pointerId); if (!pausedRef.current) controls.current.touch = direction; },
@@ -316,7 +420,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
   });
 
   return <div className="race-shell">
-    <header className="race-topbar"><Brand compact /><div className="race-event"><span>{subtitle}</span><h1>{title}</h1></div><div className="race-clock"><span>RACE TIME</span><strong>{formatTime(hud.time)}</strong></div><div className="race-top-actions">{import.meta.env.DEV && !results && <div className="dev-skip-race" title="Dev only: finish this heat instantly with you in the chosen place"><span>SKIP</span>{([1, 3, 8, 'dnf'] as const).map((place) => <button key={place} className="text-button" onClick={() => devSkipRace(place)}>{place === 'dnf' ? 'DNF' : `P${place}`}</button>)}</div>}<button className="icon-button" onClick={toggleMute} aria-label={muted ? 'Unmute sound (M)' : 'Mute sound (M)'} aria-pressed={muted} title={muted ? 'Sound off (M)' : 'Sound on (M)'}>{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button><button className="icon-button" onClick={() => setPause(true)} aria-label="Pause race" disabled={!!results}><Pause size={18} /></button><button className="text-button" onClick={requestExit} disabled={!!results}>Exit <ArrowUpRightIcon /></button></div></header>
+    <header className="race-topbar"><Brand compact /><div className="race-event"><span>{subtitle}</span><h1>{title}</h1></div><div className="race-clock"><span>RACE TIME</span><strong>{formatTime(hud.time)}</strong></div><div className="race-top-actions">{import.meta.env.DEV && !results && <div className="dev-skip-race" title="Dev only: finish this heat instantly with you in the chosen place"><span>SKIP</span>{([1, 3, 8, 'dnf'] as const).map((place) => <button key={place} className="text-button" onClick={() => devSkipRace(place)}>{place === 'dnf' ? 'DNF' : `P${place}`}</button>)}</div>}<button className="icon-button" onClick={toggleMute} aria-label={muted ? 'Unmute sound (M)' : 'Mute sound (M)'} aria-pressed={muted} title={muted ? 'Sound off (M)' : 'Sound on (M)'}>{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button><button className="icon-button" onClick={() => setPause(true)} aria-label="Pause race" disabled={!!results || !!online} title={online ? 'An online race cannot be paused' : 'Pause race'}><Pause size={18} /></button><button className="text-button" onClick={requestExit} disabled={!!results}>{online ? 'Leave race' : 'Exit'} <ArrowUpRightIcon /></button></div></header>
     <div className="race-stage">
       <canvas ref={canvasRef} className="race-canvas" aria-label="2D marble race. Arrow keys nudge. Keys 1 to 8 deploy power-ups; plus and minus zoom; Space repeats the last item. P pauses." />
       {mapTrack && <RaceMinimap track={mapTrack} racers={hud.field} roster={roster} viewTop={hud.viewTop} viewBottom={hud.viewBottom} progress={hud.progress} />}

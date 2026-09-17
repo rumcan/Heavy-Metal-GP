@@ -4,6 +4,23 @@ import type { ReactNode } from 'react';
 import SetupScreen from './components/SetupScreen';
 import RaceScreen, { RaceAction } from './components/RaceScreen';
 import ChampionshipScreen from './components/ChampionshipScreen';
+import OnlineLobby from './components/OnlineLobby';
+import type { OnlineRaceStart } from './components/OnlineLobby';
+import type { OnlineRace } from './components/RaceScreen';
+import {
+  createRoom,
+  isAccessDenied,
+  isOfflineMockRealtime,
+  joinRoomByCode,
+  NO_ROOM_SERVER_MESSAGE,
+  promptLogin,
+  writeActiveMatch,
+  type RaceRoom,
+} from './net/transport';
+import type { RaceProtocol } from './net/transport';
+import type { RaceLink } from './net/session';
+import { circuitIndexOf, gridOrderOf, rosterOf } from './net/lobby';
+import type { SeatGarage } from './net/lobby';
 import { MarbleInfo, MarbleStats, AI_COLORS, randomStats, mulberry32, PLAYER_COLORS, HeatResult, HEATS_PER_GP } from './game/types';
 import { SeasonState, newSeason, recordHeat, gridOrder, gpSeed, CALENDAR, saveSeason, loadSeason } from './game/season';
 import { loadAccount, saveAccount, purchaseItem, settleRace } from './game/economy';
@@ -35,7 +52,7 @@ function makeRivals(seed: number): MarbleInfo[] {
   }));
 }
 
-type Phase = 'menu' | 'retune' | 'hub' | 'race' | 'quick' | 'story';
+type Phase = 'menu' | 'retune' | 'hub' | 'race' | 'quick' | 'story' | 'lobby' | 'online';
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>('menu');
@@ -54,6 +71,85 @@ export default function App() {
   const [shopOpen, setShopOpen] = useState(false);
   const [raceId, setRaceId] = useState('');
   const [payout, setPayout] = useState<RacePayout | null>(null);
+
+  // ---- online (MP-06) -----------------------------------------------------
+  // The room lives here, not in a screen: a lobby, a race and the next race are
+  // three screens on one socket, and the socket has to outlive all of them.
+  const [room, setRoom] = useState<RaceRoom | null>(null);
+  const [online, setOnline] = useState<OnlineRaceStart | null>(null);
+  const [mpBusy, setMpBusy] = useState(false);
+  const [mpError, setMpError] = useState<string | null>(null);
+  /**
+   * The room, as the screens see it: intents go out through `send`, frames come
+   * in through `onMessage`/`onPlayerLeft`, and whichever screen is live is the
+   * one that has registered itself. The room is subscribed ONCE, below.
+   */
+  const link = useMemo<RaceLink>(() => ({ send: (msg: RaceProtocol) => room?.send(msg), onMessage: null, onPlayerLeft: null }), [room]);
+
+  useEffect(() => {
+    if (!room) return;
+    room.on({
+      onMessage: (msg) => link.onMessage?.(msg),
+      onPlayerLeft: (id) => link.onPlayerLeft?.(id),
+      onError: (message) => setMpError(message),
+      onDisconnect: () => setMpError('Lost the room — trying to get back in.'),
+      onReconnected: () => setMpError(null),
+    });
+    // Unmounting (leaving the lobby, closing the tab) drops the room rather
+    // than leaving a live socket — and a live seat — behind.
+    return () => { room.leave(); void writeActiveMatch(null); };
+  }, [room, link]);
+
+  /** This driver's garage: the tune from the garage panes, plus the livery. */
+  const garage = useMemo<SeatGarage>(
+    () => ({ name: room?.players.find((p) => p.id === room.playerId)?.username || 'You', color, stats, portrait }),
+    [room, color, stats, portrait],
+  );
+
+  const openRoom = useCallback(async (action: () => Promise<RaceRoom>) => {
+    if (isOfflineMockRealtime()) { setMpError(NO_ROOM_SERVER_MESSAGE); return; }
+    setMpBusy(true);
+    setMpError(null);
+    try {
+      const next = await action();
+      // The rejoin memo (MP-08): a drop is precisely the case that CANNOT clear
+      // it, which is what lets a return offer the same race back.
+      void writeActiveMatch({ roomCode: next.roomCode, at: Date.now() });
+      setRoom(next);
+      setPhase('lobby');
+    } catch (err) {
+      if (isAccessDenied(err)) {
+        // Anonymous: the platform's login sheet, and the AI is still there to race.
+        const { success } = await promptLogin();
+        setMpError(success ? 'Signed in — press Host or Join again.' : 'Multiplayer needs a signed-in RUN.world account.');
+      } else {
+        setMpError(err instanceof Error ? err.message : String(err));
+      }
+    } finally {
+      setMpBusy(false);
+    }
+  }, []);
+
+  const leaveRoom = useCallback(() => {
+    setRoom(null);
+    setOnline(null);
+    setMpError(null);
+    setPhase('menu');
+  }, []);
+
+  const startOnlineRace = useCallback((race: OnlineRaceStart) => {
+    setOnline(race);
+    setPayout(null);
+    setRaceKey((k) => k + 1);
+    setPhase('online');
+  }, []);
+
+  const onlineView = useMemo<OnlineRace | null>(
+    () => (online ? { seats: online.seats, settings: online.settings, localSeat: online.localSeat, isHost: online.isHost, countdownAt: online.countdownAt, link } : null),
+    [online, link],
+  );
+  const onlineRoster = useMemo(() => (online ? rosterOf(online.seats, online.localSeat) : []), [online]);
+  const onlineGrid = useMemo(() => (online ? gridOrderOf(online.seats) : []), [online]);
 
   const publishAccount = useCallback((next: RacerAccount) => {
     accountRef.current = next;
@@ -167,7 +263,29 @@ export default function App() {
         portrait={portrait}
         onPortrait={setPortrait}
         onStartStory={() => setPhase('story')}
+        mpBusy={mpBusy}
+        mpError={mpError}
+        onHostGame={() => void openRoom(createRoom)}
+        onJoinGame={(code) => void openRoom(() => joinRoomByCode(code))}
+        onQuickGame={() => setMpError('Quick race lands with MP-07 — host or join by code for now.')}
       />
+    );
+  }
+
+  // Online lobby (MP-06): the room the host opened, seen from either end.
+  if (phase === 'lobby' && room) {
+    return withShop(
+      <OnlineLobby
+        room={room}
+        garage={garage}
+        circuitIndex={circuitIndex}
+        onCircuit={setCircuitIndex}
+        onLeave={leaveRoom}
+        onStart={startOnlineRace}
+        link={link}
+        error={mpError}
+        onError={setMpError}
+      />,
     );
   }
 
@@ -233,6 +351,34 @@ export default function App() {
         payout={payout}
         onShop={openShop}
       />
+    );
+  }
+
+  // online race (MP-06): the same screen, driven by a `RaceSession` instead of
+  // its own `Game`. The host simulates and publishes; a guest draws the frames.
+  if (phase === 'online' && online && onlineView) {
+    const gp = CALENDAR[circuitIndexOf(online.settings)] ?? CALENDAR[0];
+    const drivers = online.seats.filter((s) => !s.isAI).length;
+    return withShop(
+      <RaceScreen
+        key={raceKey}
+        seed={online.seed}
+        roster={onlineRoster}
+        profile={gp.profile}
+        gridOrder={onlineGrid}
+        title={gp.name}
+        subtitle={`ONLINE / ${online.isHost ? 'HOSTING' : 'JOINED'} / ${drivers} DRIVERS`}
+        onExit={leaveRoom}
+        // MP-09 pays an online race out; until then there is nothing to settle.
+        onFinished={() => {}}
+        actions={[{ label: 'Back to the garage', onClick: leaveRoom, primary: true }]}
+        inventory={account.inventory}
+        credits={account.credits}
+        onInventoryChange={inventoryChanged}
+        payout={null}
+        onShop={openShop}
+        online={onlineView}
+      />,
     );
   }
 
