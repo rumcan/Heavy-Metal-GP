@@ -382,11 +382,8 @@ test('MP-08 host: a rival nobody dropped is nobody the host touches', () => {
   assert.ok(h.host.game.humanInput.has(1), 'the guest still has their marble');
 });
 
-test('MP-09 host: a human’s kit changing republishes the world, once', () => {
-  // A guest's items live on the host's marble, so a pickup is invisible to them
-  // until the host says so. Pickups are rare, so this is one snapshot per change
-  // — not a stream — and it is the only way a guest's toolbar can tell the truth
-  // about what they are holding.
+test('MP-09 host: a human’s kit changing sends a small kit frame, once — not a whole snapshot', () => {
+  // A snapshot per pickup froze guests while it was reassembled (playtest lag), so a kit change is its own tiny frame.
   const h = harness();
   start(h);
   for (let i = 0; i < 20; i++) h.tick();
@@ -394,17 +391,51 @@ test('MP-09 host: a human’s kit changing republishes the world, once', () => {
 
   h.host.game.marbles[1].inventory.rocket = 2; // the guest picked something up
   h.tick();
-  const first = h.frames.filter((f) => f.type === 'snapshot').length;
-  assert.ok(first > 0, 'a changed kit is republished');
+  const kits = h.frames.filter((f) => f.type === 'kit');
+  assert.equal(kits.length, 1, 'a changed kit is published');
+  assert.equal(h.frames.filter((f) => f.type === 'snapshot').length, 0, 'and no snapshot is sent for it');
+  const kit = kits[0] as { kits: { slot: number; inventory: { rocket: number } }[] };
+  assert.equal(kit.kits.find((k) => k.slot === 1)?.inventory.rocket, 2);
+  assert.ok(kit.kits.every((k) => k.slot < 2), 'only human seats');
 
-  // And only on the change: the next sixty frames of carrying it are silent.
   h.frames.length = 0;
   for (let i = 0; i < 60; i++) h.tick();
-  assert.equal(h.frames.filter((f) => f.type === 'snapshot').length, 0, 'carrying is not changing');
+  assert.equal(h.frames.filter((f) => f.type === 'kit').length, 0, 'carrying is not changing');
 
   h.host.game.marbles[1].inventory.rocket = 3;
   h.tick();
-  assert.ok(h.frames.some((f) => f.type === 'snapshot'), 'but another change is published again');
+  assert.ok(h.frames.some((f) => f.type === 'kit'), 'but another change is published again');
+});
+
+test('Playtest host: AI power-ups off means no AI ever spends an item', () => {
+  const h = harness({ settings: { circuit: 0, items: { rocket: -1, shock: -1, freeze: -1 }, aiItems: false } });
+  start(h);
+  for (let i = 0; i < 60 * 25; i++) h.tick();
+  for (const m of h.host.game.marbles.filter((m) => m.info.id >= 2)) {
+    assert.equal(m.inventory.rocket, 9, `${m.info.name} kept its rockets`);
+    assert.equal(m.itemCooldownUntil, 0, `${m.info.name} never used an item`);
+  }
+});
+
+test('Playtest host: AI power-ups on (the default) still lets AI use items', () => {
+  const h = harness({ settings: { circuit: 0, items: { rocket: 3 } } });
+  start(h);
+  for (let i = 0; i < 60 * 25; i++) h.tick();
+  assert.ok(h.host.game.marbles.filter((m) => m.info.id >= 2).some((m) => m.itemCooldownUntil > 0), 'some AI used a power-up');
+});
+
+test('Playtest host: an AI taken off the grid never races, ranks or appears in the results', () => {
+  const h = harness({ settings: { circuit: 0, benched: [2, 3, 0] } });
+  // Seat 0 is a human: it can never be benched.
+  assert.deepEqual([...h.host.game.benched].sort(), [2, 3]);
+  start(h);
+  for (let i = 0; i < 60 * 10; i++) h.tick();
+  const ids = h.host.game.ranking().map((r) => r.marble.info.id);
+  assert.ok(!ids.includes(2) && !ids.includes(3), 'benched seats do not rank');
+  assert.equal(ids.length, MARBLE_COUNT - 2);
+  for (const m of h.host.game.marbles.filter((m) => m.info.id === 2 || m.info.id === 3)) {
+    assert.ok(m.body.position.y < 0, 'benched marbles sit off the track');
+  }
 });
 
 test('MP-09 host: an AI marble’s pickups do not republish anything', () => {

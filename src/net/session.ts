@@ -33,7 +33,7 @@ import { RaceGuest } from './guest';
 import type { RaceGuestOptions } from './guest';
 import type { RaceProtocol, RaceSettings, ResultsMsg, Seat } from './protocol';
 import { MARBLE_COUNT } from './protocol';
-import { gridOrderOf, inSlotOrder, rosterOf } from './lobby';
+import { benchedSlots, gridOrderOf, inSlotOrder, rosterOf } from './lobby';
 import type { PeerPresence } from './presence';
 
 /**
@@ -185,6 +185,7 @@ export class RaceSession {
         localSeat: opts.localSeat,
         send: opts.send,
         now: opts.now,
+        benched: benchedSlots(opts.seats, opts.settings),
       };
       this.guest = new RaceGuest(guestOpts);
       this.host = null;

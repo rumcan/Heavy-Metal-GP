@@ -31,7 +31,8 @@ import { HEAT_TIME_LIMIT, PHYSICS_STEP } from '../game/physics';
 import type { Inventory, ItemType, MarbleInfo, TrackProfile } from '../game/types';
 import type { Track } from '../game/track';
 import { generateTrack } from '../game/track';
-import { ITEM_TYPES, MAX_ITEM_STACK, normalizeInventory } from '../game/types';
+import { ITEM_TYPES, MAX_ITEM_STACK, emptyInventory, normalizeInventory } from '../game/types';
+import { benchedSlots } from './lobby';
 import {
   MARBLE_COUNT,
   MAX_EVENTS_PER_FRAME,
@@ -212,7 +213,8 @@ export class RaceHost {
       // Wire events cost a queue and a drain; nobody collects them unless a
       // host is publishing them.
       wireEvents: true,
-      aiItems: opts.aiItems,
+      aiItems: opts.aiItems ?? opts.settings?.aiItems !== false,
+      benched: benchedSlots(seats, opts.settings),
       ...(house ? { inventory: { ...house.inventory }, unlimitedItems: house.unlimited } : {}),
       gridOrder: opts.gridOrder ?? seats.map((s) => s.slot),
     });
@@ -434,7 +436,10 @@ export class RaceHost {
     // pickup is one snapshot, not a stream.
     if (this.kitChanged()) {
       this.kitAt = this.kitNow();
-      this.sendSnapshot();
+      this.send({
+        type: 'kit',
+        kits: this.seats.filter((seat) => !seat.isAI).map((seat) => ({ slot: seat.slot, inventory: { ...(this.marble(seat.slot)?.inventory ?? emptyInventory()) } })),
+      });
     }
 
     if (now - this.lastPublishAt >= STATE_INTERVAL_MS) {

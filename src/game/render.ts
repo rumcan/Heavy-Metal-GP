@@ -848,7 +848,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
   const sorted = [...game.marbles].sort((a, b) => Number(a.info.isPlayer) - Number(b.info.isPlayer));
   for (const m of sorted) {
     const p = m.body.position;
-    if (p.y < viewTop || p.y > viewBottom) continue;
+    if (p.y < viewTop || p.y > viewBottom || game.benched.has(m.info.id)) continue;
     drawMarble(ctx, game, m, t);
   }
 

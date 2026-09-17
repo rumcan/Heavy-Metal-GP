@@ -211,3 +211,18 @@ test('MP-08 lobby: a race a returning player was in is offered back', () => {
   const without = renderToStaticMarkup(createElement(OnlinePanel, { busy: false, error: null, onHost() {}, onJoin() {}, onQuick() {} }));
   assert.doesNotMatch(without, /You were in a race/, 'no memo, no offer');
 });
+
+test('Playtest lobby: the host can take AI off the grid; a guest cannot', () => {
+  const seats = grid();
+  const hostHtml = renderToStaticMarkup(createElement(LobbyGrid, { seats, roster: rosterOf(seats, 0), myPlayerId: HOST, isHost: true, onKick() {}, onToggleAI() {}, benched: [4] }));
+  assert.match(hostHtml, /Remove .* from the grid/);
+  assert.match(hostHtml, /Put .* back on the grid/);
+  assert.match(hostHtml, /OFF THE GRID/);
+  const guestHtml = renderToStaticMarkup(createElement(LobbyGrid, { seats, roster: rosterOf(seats, 1), myPlayerId: GUEST, isHost: false, benched: [4] }));
+  assert.doesNotMatch(guestHtml, /Remove .* from the grid/);
+  assert.match(guestHtml, /OFF THE GRID/, 'but everyone sees who is off');
+});
+
+test('Playtest lobby: an AI power-ups switch is on the lobby', () => {
+  assert.match(lobby(HOST), /AI drivers use power-ups/);
+});

@@ -189,6 +189,8 @@ const VALID: RaceProtocol[] = [
   // taking a driver off the grid.
   { type: 'ready', ready: true, garage: { name: 'Sprocket', color: '#22d3ee', stats: { weight: 7, speed: 4, bounce: 4 }, portrait: 2 }, from: 'player-guest' },
   { type: 'kick', playerId: 'player-guest' },
+  { type: 'kit', kits: [{ slot: 1, inventory: { rocket: 2, jump: 0, oil: 0, shock: 0, anvil: 0, aero: 0, freeze: 0, ghost: 0 } }] },
+  { type: 'lobby', seats: SEATS, settings: { circuit: 0, aiItems: false, benched: [4, 5] }, open: false },
   // MP-10: a client asking the room where it is sitting. The greeting sent at
   // join time arrives before the page has subscribed to anything, so the page
   // asks for another one.
@@ -761,4 +763,12 @@ test('MP-02 grid: the protocol\'s ten marbles are the track\'s ten grid slots', 
   const track = generateTrack(12345, { segments: 33, weights: {}, theme: THEME });
   assert.ok(track.bodies.length > 100, 'a real circuit has bodies to index');
   assert.ok(track.bodies.length < MAX_BODY_INDEX, `${track.bodies.length} bodies vs index cap ${MAX_BODY_INDEX}`);
+});
+
+test('Playtest validation: AI settings and kit frames are checked', () => {
+  assert.equal(check({ type: 'lobby', seats: SEATS, settings: { circuit: 0, aiItems: 'no' } })?.code, 'malformed');
+  assert.equal(check({ type: 'lobby', seats: SEATS, settings: { circuit: 0, benched: [99] } })?.code, 'malformed');
+  assert.equal(check({ type: 'lobby', seats: SEATS, settings: { circuit: 0, benched: 'all' } })?.code, 'malformed');
+  assert.notEqual(check({ type: 'kit', kits: [{ slot: 42, inventory: {} }] }), null);
+  assert.notEqual(check({ type: 'kit', kits: 'lots' }), null);
 });

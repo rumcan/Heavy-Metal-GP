@@ -138,6 +138,12 @@ export function gridOrderOf(seats: readonly Seat[]): number[] {
   return inSlotOrder(seats).map((s) => s.slot);
 }
 
+/** AI seats taken off the grid for this race. A human sitting in a benched slot always races. */
+export function benchedSlots(seats: readonly Seat[], settings: RaceSettings | undefined): number[] {
+  const wanted = new Set(settings?.benched ?? []);
+  return inSlotOrder(seats).filter((seat) => seat.isAI && wanted.has(seat.slot)).map((seat) => seat.slot);
+}
+
 /** The circuit the lobby is showing, as a calendar index. A whole `TrackDef` reads as the first. */
 export function circuitIndexOf(settings: RaceSettings | undefined): number {
   if (!settings) return 0;

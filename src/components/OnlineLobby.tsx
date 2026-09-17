@@ -82,6 +82,16 @@ interface Props {
 }
 
 
+/** The host's full rules, with defaults left out so an untouched lobby sends what it always did. */
+function buildSettings(circuit: number, items: Partial<Record<ItemType, number>> | null, benched: readonly number[], aiItems: boolean): RaceSettings {
+  return {
+    circuit,
+    ...(items ? { items } : {}),
+    ...(benched.length ? { benched: [...benched] } : {}),
+    ...(aiItems ? {} : { aiItems: false }),
+  };
+}
+
 /** Charges a host can set per power-up: none, a few, or unlimited. */
 const HOUSE_STEPS = [0, 1, 2, 3, 5, UNLIMITED_ITEM];
 
@@ -94,6 +104,9 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
   const [copied, setCopied] = useState(false);
   /** Host only: house rules for power-ups (null = everyone brings their own kit). */
   const [items, setItems] = useState<Partial<Record<ItemType, number>> | null>(null);
+  /** Host only: AI seats taken off the grid, and whether AI may use power-ups. */
+  const [benched, setBenched] = useState<number[]>([]);
+  const [aiItems, setAiItems] = useState(true);
   /** Host only: whether new drivers may still join. */
   const [open, setOpen] = useState(true);
   /** Guests: the host's open flag, from the last `lobby`. */
@@ -101,7 +114,7 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
 
   const isHost = welcome ? welcome.hostId === room.playerId : room.isCreator;
   const seats = (isHost ? grid ?? welcome?.seats : lobbySeats ?? welcome?.seats) ?? [];
-  const settings: RaceSettings = isHost ? { circuit: circuitIndex, ...(items ? { items } : {}) } : lobbySettings ?? welcome?.settings ?? { circuit: circuitIndex };
+  const settings: RaceSettings = isHost ? buildSettings(circuitIndex, items, benched, aiItems) : lobbySettings ?? welcome?.settings ?? { circuit: circuitIndex };
   const circuit = isHost ? circuitIndex : circuitIndexOf(settings);
   const gp = CALENDAR[circuit] ?? CALENDAR[0];
   const localSeat = seatOfPlayer(seats, room.playerId) ?? 0;
@@ -155,12 +168,12 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
   const filed = useRef(new Map<string, SeatGarage>());
   const readies = useRef(new Map<string, boolean>());
   // Everything the message handler needs, without re-subscribing on every render.
-  const latest = useRef({ welcome, grid, lobbySeats, isHost, circuit: circuitIndex, items, open });
-  latest.current = { welcome, grid, lobbySeats, isHost, circuit: circuitIndex, items, open };
+  const latest = useRef({ welcome, grid, lobbySeats, isHost, circuit: circuitIndex, items, open, benched, aiItems });
+  latest.current = { welcome, grid, lobbySeats, isHost, circuit: circuitIndex, items, open, benched, aiItems };
   /** The host's full rules for a circuit: the circuit plus any power-up house rules. */
   const hostSettings = (circuitId: number): RaceSettings => {
-    const rules = latest.current.items;
-    return { circuit: circuitId, ...(rules ? { items: rules } : {}) };
+    const l = latest.current;
+    return buildSettings(circuitId, l.items, l.benched, l.aiItems);
   };
 
   /** The host's grid: the room's seat table, dressed, with every garage filed. */
@@ -181,6 +194,22 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
     if (!isHost) return;
     setItems(next);
     latest.current.items = next;
+    publish(latest.current.grid ?? seats, circuitIndex);
+  };
+
+  /** Host only: take an AI driver off the grid, or put it back. */
+  const toggleBench = (slot: number) => {
+    if (!isHost) return;
+    const next = benched.includes(slot) ? benched.filter((s) => s !== slot) : [...benched, slot];
+    setBenched(next);
+    latest.current.benched = next;
+    publish(latest.current.grid ?? seats, circuitIndex);
+  };
+  /** Host only: AI drivers may (or may not) use power-ups. */
+  const changeAiItems = (next: boolean) => {
+    if (!isHost) return;
+    setAiItems(next);
+    latest.current.aiItems = next;
     publish(latest.current.grid ?? seats, circuitIndex);
   };
 
@@ -435,6 +464,13 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
           })}</ul>
           : <p className="lobby-note">Everybody races the power-ups they bought or picked up, and spends them for real.</p>}
         {rules && <p className="lobby-note">Every driver starts with these, AI included. House-rule charges never touch anyone's own kit.</p>}
+        <div className="lobby-ai-items">
+          <span>AI drivers use power-ups</span>
+          <div className="mode-switch" role="group" aria-label="AI power-ups">
+            <button className={settings.aiItems !== false ? 'selected' : ''} aria-pressed={settings.aiItems !== false} disabled={!isHost} onClick={() => changeAiItems(true)}>On</button>
+            <button className={settings.aiItems === false ? 'selected' : ''} aria-pressed={settings.aiItems === false} disabled={!isHost} onClick={() => changeAiItems(false)}>Off</button>
+          </div>
+        </div>
       </section>
 
       <section className="fit-pane lobby-grid-pane" aria-labelledby="lobby-grid-title">
@@ -449,6 +485,8 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
             myPlayerId={room.playerId}
             isHost={isHost}
             onKick={(playerId) => link.send({ type: 'kick', playerId })}
+            benched={settings.benched ?? []}
+            onToggleAI={toggleBench}
             peers={peers}
           />}
       </section>

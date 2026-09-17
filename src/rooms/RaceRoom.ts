@@ -245,6 +245,7 @@ export default class RaceRoom extends GameRoom<RoomProtocol> {
         return;
       case 'state':
       case 'events':
+      case 'kit':
       case 'snapshot':
       case 'results': {
         if (msg.sender.id !== this.hostId) return;

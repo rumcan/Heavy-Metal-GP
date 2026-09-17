@@ -87,6 +87,8 @@ export interface RaceGuestOptions {
   send: (msg: RaceProtocol) => void;
   now?: () => number;
   interpDelayMs?: number;
+  /** AI seats not racing (see `benchedSlots`). */
+  benched?: number[];
 }
 
 interface Frame {
@@ -144,12 +146,13 @@ export class RaceGuest {
       color: seat.color,
       stats: seat.stats,
       isPlayer: seat.slot === opts.localSeat,
+      isHuman: !seat.isAI,
       character: seat.portrait,
     }));
     // A real `Game`, built from the same seed — but it is never stepped. The
     // marbles are bodies to be moved, the track is geometry to be drawn, and
     // `Engine.update` is the one thing that never happens.
-    this.game = new Game(opts.seed, roster, { track: opts.track, effects: true, wireEvents: false });
+    this.game = new Game(opts.seed, roster, { track: opts.track, effects: true, wireEvents: false, benched: opts.benched });
   }
 
   /** The marble I am, for the camera and the HUD. */
@@ -218,6 +221,12 @@ export class RaceGuest {
         return;
       case 'results':
         return this.acceptResults(msg);
+      case 'kit':
+        for (const kit of msg.kits) {
+          const m = this.game.marbles.find((marble) => marble.info.id === kit.slot);
+          if (m) m.inventory = { ...kit.inventory };
+        }
+        return;
       default:
         return; // lobby, ready, intent, peerStatus and reject are not for the renderer
     }
@@ -464,7 +473,7 @@ export class RaceGuest {
     const marbles = this.game.marbles;
     snap.marbles.forEach((state, i) => {
       const m = marbles[i];
-      if (!m) return;
+      if (!m || this.game.benched.has(m.info.id)) return;
       Body.setPosition(m.body, { x: state.x, y: state.y });
       Body.setAngle(m.body, state.a);
       Body.setVelocity(m.body, { x: state.vx, y: state.vy });
