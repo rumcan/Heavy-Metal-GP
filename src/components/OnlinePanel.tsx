@@ -5,8 +5,7 @@
 //
 //   HOST GAME       opens a room, becomes the host, shows a six-character code
 //   JOIN WITH CODE  the code your host is showing
-//   QUICK RACE      matchmaking — MP-07's ticket, so the button says so rather
-//                   than failing quietly when it is pressed
+//   AUTO MATCH MAKING  join an open auto lobby, or open one and host it
 //
 // Every multiplayer call goes through `src/net/transport.ts` — the SDK's
 // realtime API has exactly one door in this app, and this panel is not it.
@@ -48,7 +47,7 @@ interface Props {
 /** Shown under a code that is not six characters yet. */
 export const CODE_HINT = 'Enter the six-character code your host is showing.';
 
-export default function OnlinePanel({ busy, error, onHost, onJoin, onQuick, searching = false, windows = 0, onCancelSearch, rejoin = null, onRejoin, onDismissRejoin }: Props) {
+export default function OnlinePanel({ busy, error, onHost, onJoin, onQuick, searching = false, onCancelSearch, rejoin = null, onRejoin, onDismissRejoin }: Props) {
   const [code, setCode] = useState('');
   const [hint, setHint] = useState<string | null>(null);
   // No room server means host and join can never meet: the SDK's offline mock
@@ -104,16 +103,16 @@ export default function OnlinePanel({ busy, error, onHost, onJoin, onQuick, sear
         className="button-secondary"
         disabled={searching || busy || offline}
         onClick={onQuick}
-        title="Pair with any driver looking for a race"
+        title="Join an open lobby, or open one and host it"
       >
-        <Users size={15} />Quick race
+        <Users size={15} />Auto Match Making
       </button>
     </div>
     {searching && <div className="online-search">
       <span className="live-dot" aria-hidden />
       {/* One SDK request is one window; the loop keeps asking, so "still
           looking" is honest — nothing about this state is a failure. */}
-      <span>Looking for a race{windows > 0 ? ` — still looking after ${windows} attempt${windows === 1 ? '' : 's'}` : '…'}</span>
+      <span><strong>Auto Match Making…</strong> Looking for an open lobby. If there isn't one, you'll get your own and be its host.</span>
       <button className="text-button" onClick={onCancelSearch}><X size={14} />Cancel</button>
     </div>}
     {(hint ?? error) && <p className="online-note online-note-warn">{hint ?? error}</p>}

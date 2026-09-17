@@ -329,17 +329,26 @@ function drawMarble(ctx: CanvasRenderingContext2D, game: Game, m: Marble, t: num
 
   // name tag
   ctx.save();
-  ctx.font = `${m.info.isPlayer ? 'bold ' : ''}11px system-ui, sans-serif`;
+  // Humans (online) get a big, bold tag in their livery; AI drivers a small grey one.
+  const human = m.info.isPlayer || m.info.isHuman === true;
+  const size = human ? 15 : 10;
+  ctx.font = `${human ? 'bold ' : ''}${size}px system-ui, sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'bottom';
-  const label = m.info.isPlayer ? 'YOU' : m.info.name;
+  const label = m.info.isPlayer ? 'YOU' : human ? m.info.name.toUpperCase() : m.info.name;
   const tw = ctx.measureText(label).width;
-  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  const boxH = size + 4;
+  ctx.fillStyle = human ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.4)';
   ctx.beginPath();
-  ctx.roundRect(x - tw / 2 - 4, y - r - 20, tw + 8, 14, 4);
+  ctx.roundRect(x - tw / 2 - 5, y - r - 6 - boxH, tw + 10, boxH, 4);
   ctx.fill();
-  ctx.fillStyle = m.info.isPlayer ? '#fff' : '#e2e8f0';
-  ctx.fillText(label, x, y - r - 8);
+  if (human) {
+    ctx.strokeStyle = m.info.color;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+  ctx.fillStyle = human ? '#fff' : '#b8c2cf';
+  ctx.fillText(label, x, y - r - 7);
   const heldItem = game.availableItem(m);
   if (heldItem) {
     ctx.beginPath();

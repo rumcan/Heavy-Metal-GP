@@ -150,6 +150,9 @@ export const VERSION_MISMATCH_MESSAGE = 'This game has been updated — reload t
  */
 export const HOST_LEFT_REASON = 'The host left the race.';
 
+/** Sent to a newcomer after the host closed the lobby. */
+export const LOBBY_CLOSED_REASON = 'The host closed this lobby to new drivers.';
+
 // ══════════════════════════════════════════════════════════════════════════
 // Lobby: seats, settings, welcome
 // ══════════════════════════════════════════════════════════════════════════
@@ -254,6 +257,8 @@ export interface LobbyMsg {
   type: 'lobby';
   seats: Seat[];
   settings?: RaceSettings;
+  /** False once the host closed the lobby to new drivers. Absent reads as open. */
+  open?: boolean;
 }
 
 /**
@@ -1417,6 +1422,7 @@ export function validateMessage(msg: unknown, opts: ValidateOptions = {}): Proto
       // half-read: two seats racing different circuits is the desync the
       // version check exists to prevent.
       if (msg.settings !== undefined && !readRaceSettings(msg.settings)) return bad('Lobby settings are malformed.');
+      if (msg.open !== undefined && typeof msg.open !== 'boolean') return bad('Lobby open flag is not a boolean.');
       return null;
     }
     case 'ready': {

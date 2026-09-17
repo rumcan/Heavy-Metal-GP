@@ -46,6 +46,7 @@ import { GameRoom } from '@series-inc/rundot-game-sdk/mp-server';
 import type { GameMessage, LeaveReason, Player } from '@series-inc/rundot-game-sdk/mp-server';
 import {
   HOST_LEFT_REASON,
+  LOBBY_CLOSED_REASON,
   MARBLE_COUNT,
   PROTOCOL_VERSION,
   defaultRaceSettings,
@@ -62,7 +63,7 @@ export type RoomProtocol = RaceProtocol;
 
 /** Sent when the host is gone — no host, no truth. Lives in the protocol so
  *  the client can recognise it without importing the server module. */
-export { HOST_LEFT_REASON };
+export { HOST_LEFT_REASON, LOBBY_CLOSED_REASON };
 
 /** Sent to a player who tries to join a race that is already running. */
 export const RACE_IN_PROGRESS_REASON = 'This race is already under way.';
@@ -119,6 +120,8 @@ export default class RaceRoom extends GameRoom<RoomProtocol> {
   private readonly presence = new Map<string, boolean>();
   /** True from the host's `start` until the room forgets the race. */
   private raceLive = false;
+  /** True while the host has closed the lobby to new drivers. */
+  private lobbyClosed = false;
 
   onCreate() {
     this.seed = roomSeed(this.roomId);
@@ -134,6 +137,7 @@ export default class RaceRoom extends GameRoom<RoomProtocol> {
     // marbles are rolling, and a newcomer would arrive mid-heat with nowhere to
     // go. `reject` throws — everything below is skipped.
     if (this.raceLive && !returning) this.reject({ reason: RACE_IN_PROGRESS_REASON });
+    if (this.lobbyClosed && !returning) this.reject({ reason: LOBBY_CLOSED_REASON });
     if (!returning && this.seats.size >= this.maxHumans()) {
       this.reject({ reason: ROOM_FULL_REASON });
     }
@@ -230,6 +234,15 @@ export default class RaceRoom extends GameRoom<RoomProtocol> {
       // authority this relay keeps: a guest that publishes state is either
       // confused or cheating, and either way the answer is silence.
       case 'lobby':
+        if (msg.sender.id !== this.hostId) return;
+        // The host's "stop letting more join" switch rides on the lobby frame.
+        if (p.open !== undefined && p.open === this.lobbyClosed) {
+          this.lobbyClosed = !p.open;
+          if (this.lobbyClosed) this.lock();
+          else if (!this.raceLive && this.seats.size < this.maxHumans()) this.unlock();
+        }
+        this.broadcast(p);
+        return;
       case 'state':
       case 'events':
       case 'snapshot':
@@ -276,8 +289,8 @@ export default class RaceRoom extends GameRoom<RoomProtocol> {
     // (MP-08) rather than re-seated. And not for a hostless room, which is a
     // lobby waiting for its next host.
     if (!this.raceLive && this.hostId !== null) this.broadcast(this.welcome(this.hostId));
-    // A free seat is a free seat again — until the host says `start`.
-    this.unlock();
+    // A free seat is a free seat again — until the host says `start` or closes the lobby.
+    if (!this.lobbyClosed) this.unlock();
     if (this.playerCount === 0 && this.clock.has(PRESENCE_TIMER)) this.clock.clear(PRESENCE_TIMER);
   }
 

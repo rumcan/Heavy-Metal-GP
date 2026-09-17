@@ -301,3 +301,8 @@ body { min-width: 0; }
   .lobby-code b { font-size: 30px; padding-block: 3px; }
   .lobby-powerup-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* Auto Match Making: what is happening, always visible (the footer note hides on phones). */
+.lobby-auto-status { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; margin: 8px 0 0; padding: 8px 10px; border-left: 3px solid var(--accent); background: #ffffff0a; font-size: 13px; line-height: 1.35; color: #e6edf3; text-align: left; }
+.lobby-auto-status .live-dot { flex: none; }
+.lobby-auto-status.is-closed { border-left-color: #8e9caa; color: #bac7d5; }

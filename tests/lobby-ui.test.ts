@@ -97,23 +97,22 @@ const lobby = (playerId: string) => renderToStaticMarkup(
   createElement(OnlineLobby, { room: fakeRoom(playerId), garage, circuitIndex: 2, onCircuit() {}, onLeave() {}, onStart() {}, link, error: null, onError() {} }),
 );
 
-test('MP-06 lobby: the panel offers host, join and quick race, and asks for six characters', () => {
+test('MP-06 lobby: the panel offers host, join and Auto Match Making, and asks for six characters', () => {
   const html = renderToStaticMarkup(createElement(OnlinePanel, { busy: false, error: null, onHost() {}, onJoin() {}, onQuick() {} }));
   assert.match(html, /Host game/);
   assert.match(html, /Join with code/);
-  assert.match(html, /Quick race/, 'MP-07 wires it; until then it says so');
+  assert.match(html, /Auto Match Making/);
   assert.match(html, /maxlength="6"/i, 'the code field takes six characters, no more');
   assert.match(html, /Room code/);
   // Up to six players per race, and AI drivers fill the rest.
   assert.match(html, /Up to six players per race/);
 });
 
-test('MP-07 lobby: a quick-match search says it is still looking, and can be cancelled', () => {
+test('MP-07 lobby: an Auto Match Making search says what it is doing, and can be cancelled', () => {
   const html = renderToStaticMarkup(createElement(OnlinePanel, { busy: true, error: null, onHost() {}, onJoin() {}, onQuick() {}, searching: true, windows: 2, onCancelSearch() {} }));
-  assert.match(html, /Looking for a race/);
-  // Two windows closed is not a failure — it is two thirty-second windows
-  // nobody else was looking in.
-  assert.match(html, /still looking after 2 attempts/);
+  // Says what is happening: looking for a lobby, or you'll host your own.
+  assert.match(html, /Looking for an open lobby/);
+  assert.match(html, /be its host/);
   assert.match(html, /Cancel/, 'and the search can be given up on');
   // The host and join doors stay shut while a search is in flight: two rooms
   // at once is two seats, and one of them is a ghost.
