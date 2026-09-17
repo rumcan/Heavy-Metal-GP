@@ -501,6 +501,36 @@ test('MP-08 rejoin: a driver who was kicked has no seat to come back to', async 
   assert.equal(await joinRefused(h, 'p2'), RACE_IN_PROGRESS_REASON);
 });
 
+test('MP-10 hello: a client that missed its greeting can ask for another', async () => {
+  // The SDK hands over a room that has ALREADY joined, so the welcome the room
+  // sends on join goes out before the page has subscribed to anything. This is
+  // the fix for that: the client asks, the room answers — the asker, and nobody
+  // else. A lobby that never hears a hello shows a code and no grid, for ever.
+  const h = setup();
+  await h.protocol.handleCreate();
+  await join(h, 'p1');
+  await join(h, 'p2');
+  h.frames.length = 0;
+
+  await send(h, 'p2', { type: 'hello' });
+  // Targeted: the room answers the asker alone. (`sendTo` reaches a client's
+  // `onPrivateMessage`, not its `onMessage` — the client listens for both, and
+  // MP-10's browser suite is what caught the difference.)
+  const forP2 = sentTo(h.frames, 'p2');
+  assert.equal(forP2.length, 1, 'one answer, to the asker');
+  assert.equal(forP2[0].type, 'welcome');
+  const welcome = forP2[0] as WelcomeMsg;
+  assert.ok(welcome.seats.some((s) => s.playerId === 'p2'), 'and it says where they are sitting');
+  assert.equal(welcome.seed, roomSeed('room-1'), 'the same race, not a new one');
+
+  // The host may ask too — a hello is the one frame a client sends that the room
+  // answers out of its own mouth, rather than relaying.
+  h.frames.length = 0;
+  await send(h, 'p1', { type: 'hello' });
+  assert.equal(sentTo(h.frames, 'p1').length, 1, 'the host may ask too');
+  assert.equal(sentTo(h.frames, 'p2').length, 0, 'and the answer is still private');
+});
+
 test('MP-03 host: leaving mid-race ends the race for everyone', async () => {
   const h = setup();
   await h.protocol.handleCreate();

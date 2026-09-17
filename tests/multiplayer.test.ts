@@ -156,8 +156,16 @@ test('MP-01 registration: the e2e rooms file ships the same room with the suite-
   // repo owns instead of one inherited from the shipped file.
   const shipped = readRooms('rundot/realtime.config.json');
   const e2e = readRooms('rundot/realtime.e2e.config.json');
-  assert.deepEqual(e2e, shipped, 'the e2e file must not drift from the shipped room shape');
-  assert.equal(e2e.rooms[0].config?.reconnectTimeout, 30);
+  // …everything except the grace, which is the one number the suite owns: the
+  // shipped 30 seconds is a player's window, and a spec that waits on one is a
+  // spec that takes half a minute per departure.
+  const withoutGrace = (config: RoomsConfig): RoomsConfig => ({
+    rooms: config.rooms.map((r) => ({ ...r, config: { ...r.config, reconnectTimeout: 0 } })),
+  });
+  assert.deepEqual(withoutGrace(e2e), withoutGrace(shipped), 'the e2e file must not drift from the shipped room shape');
+  assert.equal(shipped.rooms[0].config?.reconnectTimeout, 30, 'the shipped grace is a player’s');
+  assert.equal(e2e.rooms[0].config?.reconnectTimeout, 12, 'the suite’s grace is a spec’s');
+  assert.ok(e2e.rooms[0].config?.allowReconnect, 'a dropped seat is still held for the (shorter) window');
 });
 
 test('MP-01 registration: npm run dev wires the local room sidecar', () => {

@@ -611,6 +611,22 @@ export interface PeerStatusMsg {
   username?: string;
 }
 
+/**
+ * client → server: say hello again, and be told where you are sitting (MP-10).
+ *
+ * The SDK hands a client a room that has ALREADY joined — `createRoom` and
+ * `joinRoomByCode` both resolve after the join — so the greeting the room sends
+ * on join goes out before the page has subscribed to anything, and a lobby can
+ * sit there showing a code and no grid for ever. Rather than rely on the socket
+ * buffering a frame nobody was listening for, the client asks: the room answers
+ * this player, and only this player, with a fresh welcome.
+ *
+ * The room's own voice, like `welcome`: never relayed, never broadcast.
+ */
+export interface HelloMsg {
+  type: 'hello';
+}
+
 export type RaceProtocol =
   | WelcomeMsg
   | LobbyMsg
@@ -622,6 +638,7 @@ export type RaceProtocol =
   | IntentMsg
   | ResyncMsg
   | ResultsMsg
+  | HelloMsg
   | KickMsg
   | PeerStatusMsg
   | RejectMsg;
@@ -638,6 +655,7 @@ export const RACE_MESSAGE_TYPES = [
   'intent',
   'resync',
   'results',
+  'hello',
   'kick',
   'peerStatus',
   'reject',
@@ -1388,6 +1406,11 @@ export function validateMessage(msg: unknown, opts: ValidateOptions = {}): Proto
       }
       return validateFrom(msg);
     }
+    // Nothing to forge (MP-10): a hello is a request for the room's own
+    // greeting, and the room answers the SENDER — there is nothing in it to lie
+    // about, and nothing to check.
+    case 'hello':
+      return null;
     case 'kick':
       // Host-only by ROUTING, not by shape: the room drops a kick from anyone
       // but the host. All the wire can insist on is that it names a driver.

@@ -189,6 +189,10 @@ const VALID: RaceProtocol[] = [
   // taking a driver off the grid.
   { type: 'ready', ready: true, garage: { name: 'Sprocket', color: '#22d3ee', stats: { weight: 7, speed: 4, bounce: 4 }, portrait: 2 }, from: 'player-guest' },
   { type: 'kick', playerId: 'player-guest' },
+  // MP-10: a client asking the room where it is sitting. The greeting sent at
+  // join time arrives before the page has subscribed to anything, so the page
+  // asks for another one.
+  { type: 'hello' },
 ];
 
 /** Static and dynamic import specifiers of a source file (comments cannot fake one). */

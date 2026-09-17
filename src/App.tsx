@@ -121,6 +121,18 @@ export default function App() {
   const [now, setNow] = useState(() => Date.now());
   /** MP-08: the race a return can offer back — a rejoin memo, and its room. */
   const [rejoin, setRejoin] = useState<ActiveMatchMemo | null>(null);
+  const leaveRoom = useCallback(() => {
+    setRoom(null);
+    setOnline(null);
+    setQuick(false);
+    setPeers([]);
+    setHostId(null);
+    setGreeting(null);
+    setHostLeft(null);
+    setMpError(null);
+    setPhase('menu');
+  }, []);
+
   /**
    * The room, as the screens see it: intents go out through `send`, frames come
    * in through `onMessage`/`onPlayerLeft`, and whichever screen is live is the
@@ -144,23 +156,42 @@ export default function App() {
       link.onMessage?.(msg);
       return;
     }
-    // Room full, race under way, host gone. The last one ends the race.
-    if (msg.type === 'reject' && msg.reason === HOST_LEFT_REASON) {
-      setHostLeft(msg.reason);
+    // Room full, race under way, host gone, or this driver taken off a grid.
+    // The host leaving ends the race for everybody; being taken off ends it for
+    // this driver, and the room says why — the platform's own `kick` arrives as
+    // a socket that stopped talking, with nothing to show for it.
+    if (msg.type === 'reject') {
+      if (msg.reason === HOST_LEFT_REASON) {
+        setHostLeft(msg.reason);
+        return;
+      }
+      leaveRoom();
+      setMpError(msg.reason);
       return;
     }
     link.onMessage?.(msg);
-  }, [link]);
+  }, [link, leaveRoom]);
 
   useEffect(() => {
     if (!room) return;
     room.on({
       onMessage: onRoomFrame,
+      // TARGETED frames (everything the room says to this player alone: their own
+      // greeting, and every guest frame the room forwards to the host) arrive
+      // here, not on `onMessage` — the SDK keeps the two apart, and a client that
+      // only listens for broadcasts hears none of them. Same handling: a frame is
+      // a frame.
+      onPrivateMessage: onRoomFrame,
       onPlayerLeft: (id) => link.onPlayerLeft?.(id),
       onError: (message) => setMpError(message),
       onDisconnect: () => setMpError('Lost the room — trying to get back in.'),
       onReconnected: () => setMpError(null),
     });
+    // MP-10: the room's greeting was sent when this socket JOINED, which is
+    // before any of this existed — `createRoom` and `joinRoomByCode` both hand
+    // over a room that is already in. So ask for one: the room answers us and
+    // nobody else.
+    room.send({ type: 'hello' });
     // Unmounting (leaving the lobby, closing the tab) drops the room rather
     // than leaving a live socket — and a live seat — behind.
     return () => { room.leave(); void writeActiveMatch(null); };
@@ -280,18 +311,6 @@ export default function App() {
   }, [explain]);
 
   const cancelSearch = useCallback(() => searchRef.current?.cancel(), []);
-
-  const leaveRoom = useCallback(() => {
-    setRoom(null);
-    setOnline(null);
-    setQuick(false);
-    setPeers([]);
-    setHostId(null);
-    setGreeting(null);
-    setHostLeft(null);
-    setMpError(null);
-    setPhase('menu');
-  }, []);
 
   /**
    * MP-09: back to the lobby with the same room and the same seats — the host

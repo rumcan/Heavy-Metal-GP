@@ -268,8 +268,12 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
    * have picked another circuit), a guest re-files its garage.
    */
   useEffect(() => {
-    if (!greeting || announced.current) return;
+    if (announced.current) return;
     announced.current = true;
+    // Always ask the room where we are sitting: coming back from a race, or into
+    // a room we were already in, there is no join to greet us.
+    link.send({ type: 'hello' });
+    if (!greeting) return;
     if (greeting.hostId === room.playerId) publish(dress(greeting.seats, greeting.seed), latest.current.circuit);
     else link.send({ type: 'ready', ready: false, garage });
     // One announcement, on the way in — the frames below are the room's to send.

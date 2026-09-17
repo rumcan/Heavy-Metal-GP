@@ -74,6 +74,8 @@ function loadZoom(): number {
 interface LiveRow { id: number; rank: number; time: number | null; x: number; y: number }
 interface Hud {
   rank: number; time: number; inventory: Inventory; remaining: Record<ItemType, number>; coolingDown: boolean; speed: number; cap: number;
+  /** DEV probe (MP-10): the local marble's position, read by the browser suite. */
+  mx: number; my: number;
   lights: number; finished: boolean; playerTime: number | null; pegs: number;
   sector: string; sectorIndex: number; progress: number; state: string;
   frozen: boolean; field: LiveRow[]; finishedCount: number; following: string;
@@ -115,7 +117,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
   const selectedRef = useRef<ItemType>(ITEM_TYPES.find((item) => inventory[item] > 0) ?? 'rocket');
   const [selected, setSelected] = useState<ItemType>(selectedRef.current);
   const [hud, setHud] = useState<Hud>({
-    rank: Math.max(0, gridOrder.indexOf(playerId)) + 1, time: 0, inventory: { ...initialInventory.current }, remaining: emptyInventory(), coolingDown: false, speed: 0, cap: 100, lights: 0,
+    rank: Math.max(0, gridOrder.indexOf(playerId)) + 1, time: 0, inventory: { ...initialInventory.current }, remaining: emptyInventory(), coolingDown: false, speed: 0, cap: 100, lights: 0, mx: 0, my: 0,
     finished: false, playerTime: null, pegs: 0, sector: 'Starting grid', sectorIndex: 0,
     progress: 0, state: 'ON THE GRID', frozen: false, finishedCount: 0, following: 'You',
     field: gridOrder.map((id, i) => ({ id, rank: i + 1, time: null, x: 60 + i * 86, y: 116 })),
@@ -356,6 +358,8 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
           speed: Math.hypot(velocity.x, velocity.y) * 6, cap: game.speedLimit(m) * 6,
           lights, finished: m.finishedAt !== null, playerTime: m.finishedAt, pegs: m.pegs,
           sector: game.track.segments[section]?.name ?? 'Finish', sectorIndex: Math.max(0, section),
+          // DEV probe (MP-10): where this screen's own marble is, right now.
+          mx: p.x, my: p.y,
           progress: Math.max(0, Math.min(1, (m.body.position.y - game.track.startY) / (game.track.finishY - game.track.startY))),
           state: status, frozen: m.frozen, finishedCount: game.finishOrder.length,
           field: game.gateOpen ? ranking.map((r) => ({ id: r.marble.info.id, rank: r.rank, time: r.time, x: r.marble.body.position.x, y: r.marble.body.position.y })) : gridOrder.map((id, i) => ({ id, rank: i + 1, time: null, x: game.marbles.find((m) => m.info.id === id)!.body.position.x, y: 116 })),
@@ -427,7 +431,16 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
     onLostPointerCapture: () => { controls.current.touch = 0; },
   });
 
-  return <div className="race-shell">
+  // DEV ONLY, and gone from a build (vite strips `import.meta.env.DEV` branches):
+  // the local marble's seat and position, as data attributes. The two-browser
+  // suite (MP-10) drives a real browser against a real room, and "the driver got
+  // the SAME marble back after ten seconds offline" is a fact about a coordinate
+  // — there is no honest way to read it out of a canvas.
+  const mpProbe = import.meta.env.DEV
+    ? { 'data-mp-seat': String(online ? online.localSeat : 0), 'data-mp-x': hud.mx.toFixed(1), 'data-mp-y': hud.my.toFixed(1), 'data-mp-time': String(Math.round(hud.time)) }
+    : {};
+
+  return <div className="race-shell" {...mpProbe}>
     <header className="race-topbar"><Brand compact /><div className="race-event"><span>{subtitle}</span><h1>{title}</h1></div><div className="race-clock"><span>RACE TIME</span><strong>{formatTime(hud.time)}</strong></div><div className="race-top-actions">{import.meta.env.DEV && !results && <div className="dev-skip-race" title="Dev only: finish this heat instantly with you in the chosen place"><span>SKIP</span>{([1, 3, 8, 'dnf'] as const).map((place) => <button key={place} className="text-button" onClick={() => devSkipRace(place)}>{place === 'dnf' ? 'DNF' : `P${place}`}</button>)}</div>}<button className="icon-button" onClick={toggleMute} aria-label={muted ? 'Unmute sound (M)' : 'Mute sound (M)'} aria-pressed={muted} title={muted ? 'Sound off (M)' : 'Sound on (M)'}>{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button><button className="icon-button" onClick={() => setPause(true)} aria-label="Pause race" disabled={!!results || !!online} title={online ? 'An online race cannot be paused' : 'Pause race'}><Pause size={18} /></button><button className="text-button" onClick={requestExit} disabled={!!results}>{online ? 'Leave race' : 'Exit'} <ArrowUpRightIcon /></button></div></header>
     <div className="race-stage">
       <canvas ref={canvasRef} className="race-canvas" aria-label="2D marble race. Arrow keys nudge. Keys 1 to 8 deploy power-ups; plus and minus zoom; Space repeats the last item. P pauses." />

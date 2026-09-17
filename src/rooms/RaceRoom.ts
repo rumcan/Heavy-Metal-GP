@@ -152,6 +152,11 @@ export default class RaceRoom extends GameRoom<RoomProtocol> {
     // the newcomer's socket registers after the hook runs. So the newcomer gets
     // the welcome targeted, and everyone else learns the new seat table from the
     // broadcast. Nobody gets it twice.
+    //
+    // The newcomer's copy is TARGETED, and a targeted frame lands on the
+    // client's `onPrivateMessage`, not its `onMessage` — a page that has not
+    // finished mounting is listening for neither, which is why a client also
+    // asks (`hello`) once it is.
     const greeting = this.welcome(hostId);
     this.broadcast(greeting);
     this.sendTo(player.id, greeting);
@@ -185,6 +190,26 @@ export default class RaceRoom extends GameRoom<RoomProtocol> {
         }
         return;
       }
+      // client → server (MP-10): the greeting sent at join time goes out before
+      // the page has subscribed to anything, because the SDK hands over a room
+      // that has already joined. Answer the asker — and only the asker — with a
+      // fresh one. Not broadcast: nobody else needs to be told twice.
+      case 'hello': {
+        // Why this message exists at all: the greeting in `onPlayerJoin` goes out
+        // BEFORE the newcomer's socket is registered (`createRoom` and
+        // `joinRoomByCode` both hand over a room that has already joined), so the
+        // only copy that reaches them is the targeted one — and a page that has
+        // not finished mounting is not listening for it either. So the client
+        // asks, and the room answers the asker alone.
+        //
+        // Targeted, and private: `sendTo` frames arrive on the client's
+        // `onPrivateMessage`, NOT on `onMessage` (which is broadcast-only). That
+        // split is the whole reason MP-06's lobby could show a code and no grid —
+        // see `src/net/transport.ts`.
+        this.log.info('Hello — greeting the asker', { from: msg.sender.id, hostId: this.hostId });
+        this.sendTo(msg.sender.id, this.welcome(this.hostId ?? msg.sender.id));
+        return;
+      }
       // host → server. The host may take a driver off its grid, but only the
       // room can actually remove one: it owns the seat table, and a client that
       // could evict another client could empty a room. `onPlayerLeave` runs
@@ -194,6 +219,10 @@ export default class RaceRoom extends GameRoom<RoomProtocol> {
         // Nobody may kick the host, and a player who is not here needs no
         // evicting — the SDK's own `kick` is not a no-op for either.
         if (p.playerId === this.hostId || !this.players.has(p.playerId)) return;
+        // Tell them first. The platform's own `kick` reaches a client only as a
+        // socket that stopped talking — no reason, no event, nothing a screen can
+        // explain — so the room says why while it still can.
+        this.sendTo(p.playerId, { type: 'reject', reason: KICKED_REASON });
         this.kick(p.playerId, KICKED_REASON);
         return;
       }
