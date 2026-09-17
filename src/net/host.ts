@@ -41,6 +41,7 @@ import {
 } from './protocol';
 import type {
   IntentMsg,
+  PeerStatusMsg,
   RaceEvent,
   RaceProtocol,
   RaceSettings,
@@ -48,6 +49,7 @@ import type {
   ResultsMsg,
   Seat,
 } from './protocol';
+import { foldPeer, peerOf, takeoverDue, type PeerPresence } from './presence';
 
 /** State frames per second. Twenty is what a marble race needs and what the wire can carry. */
 export const STATE_HZ = 20;
@@ -133,6 +135,8 @@ export class RaceHost {
   private readonly clock: () => number;
   private readonly budgets = new Map<number, NudgeBudget>();
   private readonly seats: Seat[];
+  /** What the host is racing — republished for a driver who rejoins (MP-08). */
+  private readonly settings: RaceSettings | undefined;
   private seq = SEQ_START;
   private accumulator = 0;
   private lastPublishAt: number;
@@ -143,9 +147,14 @@ export class RaceHost {
   private classified: ResultsMsg | null = null;
   /** The events sent with the last publish — sent again with the next one. */
   private previousEvents: { seq: number; list: RaceEvent[] } | null = null;
+  /** MP-08: rivals the room says have lost their socket, and when. */
+  private peers: PeerPresence[] = [];
+  /** MP-08: seats already handed to the AI, so a return is a hand-back. */
+  private readonly released = new Set<number>();
 
   constructor(opts: RaceHostOptions) {
     if (!opts.seats.length) throw new Error('A race needs a grid.');
+    this.settings = opts.settings;
     this.send = opts.send;
     this.clock = opts.now ?? (() => Date.now());
     const seats = [...opts.seats].sort((a, b) => a.slot - b.slot);
@@ -246,7 +255,79 @@ export class RaceHost {
     }
     if (msg.type === 'resync') {
       this.sendSnapshot();
+      return;
     }
+    if (msg.type === 'peerStatus') {
+      this.acceptPeerStatus(msg);
+      return;
+    }
+    if (msg.type === 'welcome') {
+      // MP-08: the room re-greets a driver who came back, and the room's greeting
+      // is only a SEATING PLAN — placeholder seats with placeholder names. The
+      // host is the only end that knows what the grid actually looks like
+      // (liveries, tunes, portraits), so it says so again the moment it hears
+      // somebody arrive.
+      this.publishLobby();
+    }
+  }
+
+  /** The grid as the host knows it, for a driver who has just been seated. */
+  publishLobby(): void {
+    this.send({ type: 'lobby', seats: this.seats, settings: this.settings ?? { circuit: 0 } });
+  }
+
+  /**
+   * MP-08: a rival's socket went, or came back.
+   *
+   * The host is the only end that can ACT on either, because the host is the
+   * only end holding the marble.
+   */
+  private acceptPeerStatus(msg: PeerStatusMsg): void {
+    const before = peerOf(this.peers, msg.playerId);
+    this.peers = foldPeer(this.peers, msg, this.clock());
+    if (msg.status === 'reconnected') {
+      if (!before) return; // nothing was ever taken from them
+      this.reclaim(msg.playerId);
+      // They come back to a race that moved on without them: a nudge is not
+      // enough, they need the world. (They ask too — a reloaded tab has never
+      // seen one — but this answer is cheaper than the round trip.)
+      this.sendSnapshot();
+    }
+  }
+
+  /**
+   * Hand a marble to the AI.
+   *
+   * `humanInput` is what makes a marble a human's: the AI keeps its hands off
+   * any marble in it, and one that is not in it rolls and plays its own items
+   * like every other machine on the grid.
+   */
+  releaseSeat(playerId: string): boolean {
+    const seat = this.seatOfPlayer(playerId);
+    if (seat === null || this.released.has(seat)) return false;
+    this.game.humanInput.delete(seat);
+    this.released.add(seat);
+    return true;
+  }
+
+  /** Hand a marble back to the driver who came back for it. */
+  reclaim(playerId: string): boolean {
+    const seat = this.seatOfPlayer(playerId);
+    // A nudge is dropped on purpose: a marble that has been rolling under the
+    // AI must not inherit a lean from before the drop.
+    if (seat === null || !this.released.delete(seat)) return false;
+    this.game.humanInput.set(seat, { nudge: 0 });
+    return true;
+  }
+
+  /** Seats the AI has taken over — the HUD says whose, MP-09 pays from this. */
+  get aiSeats(): readonly number[] {
+    return [...this.released];
+  }
+
+  /** Rivals currently missing, and how long they have been gone. */
+  get dropped(): readonly PeerPresence[] {
+    return this.peers;
   }
 
   /** The seat a RUN player is sitting in, or null when they are not on the grid. */
@@ -284,6 +365,9 @@ export class RaceHost {
   advance(dtMs: number): void {
     const dt = Math.max(0, dtMs);
     const now = this.clock();
+    // MP-08: a race does not wait on a socket. Three seconds without a driver
+    // and the AI has the marble — the seat is still theirs when they get back.
+    for (const peer of this.peers) if (takeoverDue(peer, now)) this.releaseSeat(peer.playerId);
     if (!this.game.gateOpen) this.runCountdown(now);
 
     this.accumulator += dt;

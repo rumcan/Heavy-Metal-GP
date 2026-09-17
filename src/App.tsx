@@ -13,15 +13,22 @@ import {
   isMatchmakeWindowExpired,
   isOfflineMockRealtime,
   joinRoomByCode,
+  listRejoinableRooms,
   NO_ROOM_SERVER_MESSAGE,
   promptLogin,
   quickMatch,
+  readActiveMatch,
   writeActiveMatch,
+  type ActiveMatchMemo,
   type RaceRoom,
 } from './net/transport';
 import { Matchmaker } from './net/matchmake';
 import type { RaceProtocol } from './net/transport';
 import type { RaceLink } from './net/session';
+import { HOST_LEFT_REASON } from './net/protocol';
+import { foldPeer, graceLeft, peerOf, type PeerPresence } from './net/presence';
+import { PeerStrip } from './components/PeerNotices';
+import HostLeftOverlay from './components/PeerNotices';
 import { circuitIndexOf, gridOrderOf, rosterOf } from './net/lobby';
 import type { SeatGarage } from './net/lobby';
 import { MarbleInfo, MarbleStats, AI_COLORS, randomStats, mulberry32, PLAYER_COLORS, HeatResult, HEATS_PER_GP } from './game/types';
@@ -34,6 +41,15 @@ import { RIVALS, PLAYER_PORTRAIT_COUNT, preRaceBanter } from './game/characters'
 import type { Line } from './game/characters';
 import LoadingScreen from './components/LoadingScreen';
 import StoryMode from './components/story/StoryMode';
+
+/**
+ * How long a rejoin offer stays on the table, in ms.
+ *
+ * The memo is a "you were in a race" note for a tab that closed or a browser
+ * that crashed; it is not a bookmark. Ten minutes is long enough to notice and
+ * short enough that the garage never offers a race that finished an age ago.
+ */
+const REJOIN_OFFER_MS = 10 * 60_000;
 
 const PORTRAIT_KEY = 'heavy-metal-gp:portrait';
 function loadPortrait(): number {
@@ -87,6 +103,16 @@ export default function App() {
   const searchRef = useRef<Matchmaker<RaceRoom> | null>(null);
   /** True when this lobby came from matchmaking rather than a typed code. */
   const [quick, setQuick] = useState(false);
+  /** MP-08: rivals whose socket dropped, held for a window before eviction. */
+  const [peers, setPeers] = useState<PeerPresence[]>([]);
+  /** The host's player id, from the room's own welcome. */
+  const [hostId, setHostId] = useState<string | null>(null);
+  /** Set when the host is gone for good: the race is over for everybody. */
+  const [hostLeft, setHostLeft] = useState<string | null>(null);
+  /** A wall clock that only runs while somebody is missing, for the countdown. */
+  const [now, setNow] = useState(() => Date.now());
+  /** MP-08: the race a return can offer back — a rejoin memo, and its room. */
+  const [rejoin, setRejoin] = useState<ActiveMatchMemo | null>(null);
   /**
    * The room, as the screens see it: intents go out through `send`, frames come
    * in through `onMessage`/`onPlayerLeft`, and whichever screen is live is the
@@ -94,10 +120,33 @@ export default function App() {
    */
   const link = useMemo<RaceLink>(() => ({ send: (msg: RaceProtocol) => room?.send(msg), onMessage: null, onPlayerLeft: null }), [room]);
 
+  /**
+   * MP-08: the room's OWN voice is this app's business, not a screen's — a drop
+   * or a host walking out can land on a lobby or on a race, and either way the
+   * answer is the same. Only race frames go down to the live screen.
+   */
+  const onRoomFrame = useCallback((msg: RaceProtocol) => {
+    if (msg.type === 'peerStatus') {
+      setPeers((list) => foldPeer(list, msg, Date.now()));
+      return;
+    }
+    if (msg.type === 'welcome') {
+      setHostId(msg.hostId);
+      link.onMessage?.(msg);
+      return;
+    }
+    // Room full, race under way, host gone. The last one ends the race.
+    if (msg.type === 'reject' && msg.reason === HOST_LEFT_REASON) {
+      setHostLeft(msg.reason);
+      return;
+    }
+    link.onMessage?.(msg);
+  }, [link]);
+
   useEffect(() => {
     if (!room) return;
     room.on({
-      onMessage: (msg) => link.onMessage?.(msg),
+      onMessage: onRoomFrame,
       onPlayerLeft: (id) => link.onPlayerLeft?.(id),
       onError: (message) => setMpError(message),
       onDisconnect: () => setMpError('Lost the room — trying to get back in.'),
@@ -106,7 +155,46 @@ export default function App() {
     // Unmounting (leaving the lobby, closing the tab) drops the room rather
     // than leaving a live socket — and a live seat — behind.
     return () => { room.leave(); void writeActiveMatch(null); };
-  }, [room, link]);
+  }, [room, link, onRoomFrame]);
+
+  // A countdown is a clock. It runs only while somebody is missing: no drops,
+  // no re-render.
+  useEffect(() => {
+    if (!peers.length) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(timer);
+  }, [peers.length]);
+
+  /**
+   * The host's seat is held for a window; when it runs out the race is over,
+   * whether or not the room gets round to saying so.
+   */
+  const hostDrop = hostId ? peerOf(peers, hostId) : null;
+  const hostGone = hostLeft ?? (hostDrop && graceLeft(hostDrop, now) <= 0 ? 'The host never came back.' : null);
+
+  /**
+   * MP-08: the rejoin offer. The memo is written when a race is entered and
+   * cleared when it is left — including by a crash or a closed tab, which is
+   * precisely the case that must NOT clear it.
+   */
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      const memo = await readActiveMatch();
+      if (!live || !memo) return;
+      // Ten minutes: a race is not a bookmark.
+      if (Date.now() - memo.at > REJOIN_OFFER_MS) { void writeActiveMatch(null); return; }
+      // And only while the room is still there to be rejoined. An EMPTY answer
+      // is not "gone" — it is the platform not answering (signed out, no host
+      // RPC), and clearing the memo for that would throw away the one case it
+      // exists for.
+      const rooms = await listRejoinableRooms();
+      if (!live) return;
+      if (rooms.length && !rooms.some((r) => r.roomCode === memo.roomCode)) { void writeActiveMatch(null); return; }
+      setRejoin(memo);
+    })();
+    return () => { live = false; };
+  }, []);
 
   /** This driver's garage: the tune from the garage panes, plus the livery. */
   const garage = useMemo<SeatGarage>(
@@ -186,8 +274,23 @@ export default function App() {
     setRoom(null);
     setOnline(null);
     setQuick(false);
+    setPeers([]);
+    setHostId(null);
+    setHostLeft(null);
     setMpError(null);
     setPhase('menu');
+  }, []);
+
+  /** MP-08: back into the race a dropped tab left (same code, same seat). */
+  const rejoinRace = useCallback(() => {
+    if (!rejoin) return;
+    setRejoin(null);
+    void openRoom(() => joinRoomByCode(rejoin.roomCode));
+  }, [openRoom, rejoin]);
+
+  const dismissRejoin = useCallback(() => {
+    setRejoin(null);
+    void writeActiveMatch(null);
   }, []);
 
   const startOnlineRace = useCallback((race: OnlineRaceStart) => {
@@ -226,7 +329,16 @@ export default function App() {
     setPayout(paid.payout);
   };
   const openShop = () => setShopOpen(true);
-  const withShop = (screen: ReactNode) => <>{screen}{shopOpen && <PitShop account={account} onBuy={buy} onClose={() => setShopOpen(false)} />}</>;
+  const withShop = (screen: ReactNode) => (
+    <>
+      {screen}
+      {/* MP-08: a drop is not a phase's business — the strip rides over the
+          lobby and the race alike. */}
+      {peers.length > 0 && !hostGone && <PeerStrip peers={peers} hostId={hostId} now={now} />}
+      {hostGone && <HostLeftOverlay message={hostGone} onLeave={leaveRoom} />}
+      {shopOpen && <PitShop account={account} onBuy={buy} onClose={() => setShopOpen(false)} />}
+    </>
+  );
   const launchQuickRace = () => {
     setRaceId(`quick:${crypto.randomUUID()}`);
     setPayout(null);
@@ -321,6 +433,9 @@ export default function App() {
         onHostGame={() => void openRoom(createRoom)}
         onJoinGame={(code) => void openRoom(() => joinRoomByCode(code))}
         onQuickGame={() => void findRace()}
+        rejoin={rejoin}
+        onRejoin={rejoinRace}
+        onDismissRejoin={dismissRejoin}
         searching={search !== null}
         windows={search?.windows ?? 0}
         onCancelSearch={cancelSearch}

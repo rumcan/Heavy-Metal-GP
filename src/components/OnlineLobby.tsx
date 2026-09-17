@@ -31,6 +31,7 @@ import {
   startBlockedReason,
 } from '../net/lobby';
 import { START_ARM_MS } from '../net/session';
+import type { PeerPresence } from '../net/presence';
 import type { RaceLink } from '../net/session';
 import type { RaceProtocol, RaceSettings, Seat, SeatGarage, WelcomeMsg } from '../net/protocol';
 import { CALENDAR } from '../game/season';
@@ -66,6 +67,8 @@ interface Props {
    * two drivers are in, immediately once the grid is six deep.
    */
   autoStart?: boolean;
+  /** MP-08: drivers the room is holding a seat for. */
+  peers?: readonly PeerPresence[];
   error: string | null;
   onError: (message: string | null) => void;
 }
@@ -79,7 +82,7 @@ export const AUTO_START_MS = 20_000;
 /** Six humans and there is nobody left to wait for. */
 export const AUTO_START_FULL_GRID = 6;
 
-export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onLeave, onStart, link, autoStart = false, error, onError }: Props) {
+export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onLeave, onStart, link, autoStart = false, peers, error, onError }: Props) {
   const [welcome, setWelcome] = useState<WelcomeMsg | null>(null);
   /** The host's own copy of the grid (guests read the host's out of `lobby`). */
   const [grid, setGrid] = useState<Seat[] | null>(null);
@@ -99,6 +102,45 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
   const roster = seats.length ? rosterOf(seats, localSeat) : [];
   const blocked = canStart(seats) ? null : startBlockedReason(seats);
   const amReady = seats.find((s) => s.playerId === room.playerId)?.ready === true;
+
+  /**
+   * MP-08: joining a race that is ALREADY RUNNING.
+   *
+   * A page that comes back (a refresh, a reconnect) lands in the lobby, because
+   * that is where a room's welcome puts everybody — but the host's 20 Hz stream
+   * arriving at a lobby can only mean the lights are already out, and there is
+   * no Start left to wait for.
+   *
+   * Two things must be true before it can join: the race must be running (a
+   * `state` frame), and the host must have said what the grid looks like (a
+   * `lobby` frame) — the room's own welcome is only a seating plan, and a driver
+   * deserves to see the liveries it is racing, not placeholders.
+   */
+  const live = useRef(false);
+  const joined = useRef(false);
+  const joinLive = useCallback((known: Seat[] | null) => {
+    const base = latest.current.welcome;
+    if (joined.current || !live.current || !base) return;
+    const grid_ = known ?? latest.current.lobbySeats;
+    if (!grid_) return; // the host has not described the grid yet — wait for it
+    if (latest.current.isHost) {
+      // The host IS the simulation, and a refreshed page has no world to carry
+      // on with. Better an honest exit than a race that has stopped moving.
+      onError('That race is under way — a host cannot rejoin mid-race.');
+      onLeave();
+      return;
+    }
+    joined.current = true;
+    onStart({
+      seed: base.seed,
+      seats: grid_,
+      settings: lobbySettings ?? base.settings,
+      localSeat: seatOfPlayer(grid_, room.playerId) ?? 0,
+      isHost: false,
+      // The lights are out and have been: build the world and get in.
+      countdownAt: Date.now(),
+    });
+  }, [lobbySettings, onError, onLeave, onStart, room.playerId]);
 
   // Garages and ready flags the host has been told about. Refs, not state: they
   // are read when the next grid is built, and the grid itself is what renders.
@@ -145,8 +187,17 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
       case 'lobby': {
         setLobbySeats(msg.seats);
         if (msg.settings) setLobbySettings(msg.settings);
+        // The host answers a re-greeting with the grid (MP-08) — which is the
+        // last thing a returning driver was waiting for.
+        joinLive(msg.seats);
         return;
       }
+      case 'state':
+        // A race is already running, and this screen is in a lobby. See
+        // `joinLive`: the stream is the evidence, the grid is the permission.
+        live.current = true;
+        joinLive(null);
+        return;
       case 'ready': {
         // Guests' ready flags and garages: the host files both, then republishes.
         if (!latest.current.isHost || !msg.from) return;
@@ -180,7 +231,7 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
       default:
         return;
     }
-  }, [autoStart, dress, garage, link, lobbySettings, onCircuit, onError, onStart, publish, room.playerId]);
+  }, [autoStart, dress, garage, joinLive, link, lobbySettings, onCircuit, onError, onStart, publish, room.playerId]);
 
   const handleLeft = useCallback((playerId: string) => {
     // The host walking out of a lobby is the end of the lobby: no host, no
@@ -339,6 +390,7 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
             myPlayerId={room.playerId}
             isHost={isHost}
             onKick={(playerId) => link.send({ type: 'kick', playerId })}
+            peers={peers}
           />}
       </section>
     </main>

@@ -15,6 +15,7 @@ import { UserMinus } from 'lucide-react';
 import type { MarbleInfo } from '../game/types';
 import { RIVALS, characterOf } from '../game/characters';
 import type { Seat } from '../net/protocol';
+import type { PeerPresence } from '../net/presence';
 import Portrait from './Portrait';
 
 interface Props {
@@ -27,20 +28,25 @@ interface Props {
   /** The host may take a driver off the grid; nobody else may. */
   isHost: boolean;
   onKick?: (playerId: string) => void;
+  /** MP-08: drivers whose socket dropped, so their row can say so. */
+  peers?: readonly PeerPresence[];
 }
 
-export default function LobbyGrid({ seats, roster, myPlayerId, isHost, onKick }: Props) {
+export default function LobbyGrid({ seats, roster, myPlayerId, isHost, onKick, peers }: Props) {
   return <ol className="driver-grid lobby-grid">
     {seats.map((seat, index) => {
       const mine = seat.playerId === myPlayerId;
+      // MP-08: a dropped driver keeps their seat — and their row says why the
+      // portrait is not moving, instead of leaving the grid to guess.
+      const dropped = seat.playerId ? peers?.some((peer) => peer.playerId === seat.playerId) ?? false : false;
       const info = roster[index] ?? { id: seat.slot, name: seat.name, color: seat.color, stats: seat.stats, isPlayer: mine, character: seat.portrait };
-      return <li key={seat.slot} className={`${mine ? 'is-player' : ''} ${seat.isAI ? 'is-ai' : ''}`} style={{ '--team': seat.color } as CSSProperties}>
+      return <li key={seat.slot} className={`${mine ? 'is-player' : ''} ${seat.isAI ? 'is-ai' : ''} ${dropped ? 'is-dropped' : ''}`} style={{ '--team': seat.color } as CSSProperties}>
         {seat.isAI
           ? <span className="lobby-ai-badge" aria-hidden>AI</span>
           : <Portrait marble={info} mood={seat.ready ? 'happy' : 'angry'} size={42} alt={seat.name} />}
         <div>
           <strong>{seat.name}</strong>
-          <small>{mine ? 'YOU' : seat.isAI ? 'MACHINE' : seat.ready ? 'READY' : 'NOT READY'}</small>
+          <small>{dropped ? 'RECONNECTING' : mine ? 'YOU' : seat.isAI ? 'MACHINE' : seat.ready ? 'READY' : 'NOT READY'}</small>
           <span>{seat.isAI ? RIVALS[characterOf(info)]?.tag ?? 'AI' : `${seat.stats.weight}/${seat.stats.speed}/${seat.stats.bounce}`}</span>
         </div>
         <i className="lobby-livery" style={{ background: seat.color }} aria-hidden />

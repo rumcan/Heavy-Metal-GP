@@ -47,6 +47,10 @@ interface Props {
   searching?: boolean;
   windows?: number;
   onCancelSearch?: () => void;
+  /** MP-08: the race a returning player can be put back in. */
+  rejoin?: { roomCode: string } | null;
+  onRejoin?: () => void;
+  onDismissRejoin?: () => void;
 }
 
 const PANES = [['circuit', 'Circuit'], ['driver', 'Driver'], ['grid', 'Grid']] as const;
@@ -61,7 +65,7 @@ const COLOR_NAMES = ['Race Red', 'Glacier', 'Coral', 'Tangerine', 'Violet', 'Pea
 export default function SetupScreen(props: Props) {
   const { stats, onStats, color, onColor, rivals, onRerollRivals, seed, onNewSeed, onStart, onStartSeason, onContinueSeason, seasonMode, onBackToSeason, circuitIndex, onCircuit } = props;
   const { account, onShop, portrait, onPortrait, onStartStory } = props;
-  const { mpBusy = false, mpError = null, onHostGame, onJoinGame, onQuickGame, searching = false, windows = 0, onCancelSearch } = props;
+  const { mpBusy = false, mpError = null, onHostGame, onJoinGame, onQuickGame, searching = false, windows = 0, onCancelSearch, rejoin = null, onRejoin, onDismissRejoin } = props;
   const [pane, setPane] = useState<'circuit' | 'driver' | 'grid'>('driver');
   const [mode, setMode] = useState<'season' | 'quick' | 'online'>('season');
   const [dialog, setDialog] = useState<'rules' | 'lab' | null>(null);
@@ -133,6 +137,9 @@ export default function SetupScreen(props: Props) {
                 searching={searching}
                 windows={windows}
                 onCancelSearch={onCancelSearch}
+                rejoin={rejoin}
+                onRejoin={onRejoin}
+                onDismissRejoin={onDismissRejoin}
               />
               : <p className="mode-note">Online needs the RUN.world host — race the AI here.</p>
             : <button className="button-primary launch-button" onClick={mode === 'season' ? onStartSeason : onStart}>{mode === 'season' ? (onContinueSeason ? 'NEW SEASON' : 'START CHAMPIONSHIP') : 'LIGHTS OUT'}<ArrowRight size={20} /></button>}

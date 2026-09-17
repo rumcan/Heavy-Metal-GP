@@ -464,6 +464,43 @@ test('MP-03 lock: `start` closes the door, and a late joiner is told why', async
   assert.equal(h.players.has('p3'), false);
 });
 
+test('MP-08 rejoin: a driver the room is holding a seat for may come back mid-race', async () => {
+  // A refreshed tab (or a socket that dropped and reattached) is the SAME player
+  // asking for the marble that is already rolling for them. Refusing them would
+  // make "refresh" a disqualification.
+  const h = setup();
+  await h.protocol.handleCreate();
+  await join(h, 'p1');
+  await join(h, 'p2');
+  const before = welcomeOf(h.frames, 'p2');
+  const slot = before.seats.find((s) => s.playerId === 'p2')?.slot;
+  assert.ok(slot !== undefined && slot > 0, 'the guest was seated');
+  await send(h, 'p1', { type: 'start', countdownAt: Date.now() + 3000 });
+  h.frames.length = 0;
+
+  const res = await h.protocol.handleJoin({ id: 'p2', username: 'P2' });
+  assert.equal(res.accepted, true, 'a returner is not a late joiner');
+  const after = welcomeOf(h.frames, 'p2');
+  assert.equal(after.seats.find((s) => s.playerId === 'p2')?.slot, slot, 'and it is the SAME seat — the same marble');
+  assert.equal(after.seed, before.seed, 'and the same race');
+
+  // A stranger still gets the door: the grid is set, the marbles are rolling.
+  assert.equal(await joinRefused(h, 'p9'), RACE_IN_PROGRESS_REASON);
+});
+
+test('MP-08 rejoin: a driver who was kicked has no seat to come back to', async () => {
+  // The room owns the seat table, so being taken off the grid is final — the
+  // alternative is a kicked player walking back into the race.
+  const h = setup();
+  await h.protocol.handleCreate();
+  await join(h, 'p1');
+  await join(h, 'p2');
+  await send(h, 'p1', { type: 'kick', playerId: 'p2' });
+  await leave(h, 'p2', 'kick');
+  await send(h, 'p1', { type: 'start', countdownAt: Date.now() + 3000 });
+  assert.equal(await joinRefused(h, 'p2'), RACE_IN_PROGRESS_REASON);
+});
+
 test('MP-03 host: leaving mid-race ends the race for everyone', async () => {
   const h = setup();
   await h.protocol.handleCreate();

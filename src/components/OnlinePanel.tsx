@@ -12,7 +12,7 @@
 // realtime API has exactly one door in this app, and this panel is not it.
 // ══════════════════════════════════════════════════════════════════════════
 import { useState } from 'react';
-import { Globe, LogIn, Radio, Users, X } from 'lucide-react';
+import { Globe, LogIn, Radio, RotateCcw, Users, X } from 'lucide-react';
 import {
   ROOM_CODE_LENGTH,
   isOfflineMockRealtime,
@@ -36,12 +36,19 @@ interface Props {
   windows?: number;
   /** Give up looking (the in-flight request ends when its window does). */
   onCancelSearch?: () => void;
+  /**
+   * MP-08: the race this player was in when the tab closed. The memo survives a
+   * crash on purpose — a drop is the one case that must not clear it.
+   */
+  rejoin?: { roomCode: string } | null;
+  onRejoin?: () => void;
+  onDismissRejoin?: () => void;
 }
 
 /** Shown under a code that is not six characters yet. */
 export const CODE_HINT = 'Enter the six-character code your host is showing.';
 
-export default function OnlinePanel({ busy, error, onHost, onJoin, onQuick, searching = false, windows = 0, onCancelSearch }: Props) {
+export default function OnlinePanel({ busy, error, onHost, onJoin, onQuick, searching = false, windows = 0, onCancelSearch, rejoin = null, onRejoin, onDismissRejoin }: Props) {
   const [code, setCode] = useState('');
   const [hint, setHint] = useState<string | null>(null);
   // No room server means host and join can never meet: the SDK's offline mock
@@ -61,6 +68,14 @@ export default function OnlinePanel({ busy, error, onHost, onJoin, onQuick, sear
   };
 
   return <div className="online-panel">
+    {rejoin && <div className="online-rejoin">
+      <div>
+        <strong>You were in a race</strong>
+        <span className="muted"> / {rejoin.roomCode} — same grid, same seat, if there is one left.</span>
+      </div>
+      <button className="button-secondary" disabled={busy} onClick={onRejoin}><RotateCcw size={14} />Rejoin race</button>
+      <button className="text-button" onClick={onDismissRejoin} aria-label="Forget that race"><X size={14} /></button>
+    </div>}
     {offline
       ? <p className="online-note online-note-warn">{NO_ROOM_SERVER_MESSAGE}</p>
       : <p className="online-note">Six drivers per race — AI fills whatever the humans leave.</p>}

@@ -33,6 +33,7 @@ import type { RaceGuestOptions } from './guest';
 import type { RaceProtocol, RaceSettings, ResultsMsg, Seat } from './protocol';
 import { MARBLE_COUNT } from './protocol';
 import { gridOrderOf, inSlotOrder, rosterOf } from './lobby';
+import type { PeerPresence } from './presence';
 
 /**
  * How far ahead of the lights the host puts `countdownAt` when the lobby drops
@@ -206,16 +207,38 @@ export class RaceSession {
   /**
    * One frame off the wire.
    *
-   * The host only listens to guests (intents and resyncs — and the room has
-   * already dropped a guest's state frames, so there is nothing else to hear).
-   * The guest only listens to the host. Anything else is not a race message.
+   * The host listens to guests (intents and resyncs — and the room has already
+   * dropped a guest's state frames, so there is nothing else to hear) and to the
+   * ROOM's own voice about them (`peerStatus`: who lost their socket, and who
+   * came back for their marble). The guest only listens to the host. Anything
+   * else is not a race message.
    */
   accept(msg: RaceProtocol): void {
     if (this.host) {
-      if (msg.type === 'intent' || msg.type === 'resync' || msg.type === 'ready') this.host.accept(msg);
+      if (
+        msg.type === 'intent' ||
+        msg.type === 'resync' ||
+        msg.type === 'ready' ||
+        msg.type === 'peerStatus' ||
+        // MP-08: the room re-greets a driver who came back, and the host answers
+        // that greeting with the real grid (see `RaceHost.accept`).
+        msg.type === 'welcome'
+      ) {
+        this.host.accept(msg);
+      }
       return;
     }
     this.guest?.accept(msg);
+  }
+
+  /** MP-08: seats the AI has taken from a driver who dropped — host's book. */
+  get aiSeats(): readonly number[] {
+    return this.host?.aiSeats ?? [];
+  }
+
+  /** MP-08: rivals whose socket is gone, and for how long (host's book). */
+  get dropped(): readonly PeerPresence[] {
+    return this.host?.dropped ?? [];
   }
 
   /** Once per rendered frame: `dtMs` of wall time since the last one. */

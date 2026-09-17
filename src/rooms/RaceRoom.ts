@@ -126,11 +126,15 @@ export default class RaceRoom extends GameRoom<RoomProtocol> {
   }
 
   onPlayerJoin(player: Player) {
-    // A race in progress has no seat to offer: the grid is set, the marbles
-    // are rolling, and a newcomer would arrive mid-heat with nowhere to go.
-    // `reject` throws — everything below is skipped.
-    if (this.raceLive) this.reject({ reason: RACE_IN_PROGRESS_REASON });
-    if (!this.seats.has(player.id) && this.seats.size >= this.maxHumans()) {
+    // MP-08: a driver the room is still holding a seat for is not a newcomer —
+    // it is the same player coming back (a refresh, a reconnect), and their
+    // marble is still out there rolling.
+    const returning = this.seats.has(player.id);
+    // A race in progress has no seat to offer anyone else: the grid is set, the
+    // marbles are rolling, and a newcomer would arrive mid-heat with nowhere to
+    // go. `reject` throws — everything below is skipped.
+    if (this.raceLive && !returning) this.reject({ reason: RACE_IN_PROGRESS_REASON });
+    if (!returning && this.seats.size >= this.maxHumans()) {
       this.reject({ reason: ROOM_FULL_REASON });
     }
     // First joiner is the host; a newcomer to a hostless room takes over (the
@@ -143,7 +147,7 @@ export default class RaceRoom extends GameRoom<RoomProtocol> {
     if (!this.clock.has(PRESENCE_TIMER)) {
       this.clock.setInterval(PRESENCE_TIMER, () => this.pollPresence(), PRESENCE_POLL_MS);
     }
-    this.log.info('Player joined', { playerId: player.id, slot: this.seats.get(player.id), hostId });
+    this.log.info(returning ? 'Player rejoined' : 'Player joined', { playerId: player.id, slot: this.seats.get(player.id), hostId });
     // A broadcast inside `onPlayerJoin` only reaches ALREADY-connected members:
     // the newcomer's socket registers after the hook runs. So the newcomer gets
     // the welcome targeted, and everyone else learns the new seat table from the

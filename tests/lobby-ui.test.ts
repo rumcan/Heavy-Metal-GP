@@ -56,6 +56,15 @@ const { dressGrid, fileGarage, rosterOf, setReady } = lobby_ as typeof import('.
 const season = (await server.ssrLoadModule('/src/game/season.ts')) as typeof import('../src/game/season');
 const { CALENDAR } = season;
 const { MARBLE_COUNT } = (await server.ssrLoadModule('/src/net/protocol.ts')) as typeof import('../src/net/protocol');
+// Loaded here, not beside the tests that use them: `after(() => server.close())`
+// runs the moment the file's top-level test body ends, and a module fetched
+// later than that finds the server gone.
+const Notices = await server.ssrLoadModule('/src/components/PeerNotices.tsx');
+const PeerStrip = Notices.PeerStrip;
+const HostLeftOverlay = Notices.default;
+const { foldPeer, AI_TAKEOVER_MS } = (await server.ssrLoadModule('/src/net/presence.ts')) as typeof import('../src/net/presence');
+
+const T0 = 1_700_000_000_000;
 
 const HOST = 'player-host';
 const GUEST = 'player-guest';
@@ -149,4 +158,57 @@ test('MP-06 lobby: the grid is ten seats — drivers with a face and a livery, m
   assert.equal((guestHtml.match(/<li class=/g) ?? []).length, MARBLE_COUNT);
   assert.doesNotMatch(guestHtml, /Take .* off the grid/, 'a guest kicks nobody');
   assert.doesNotMatch(guestHtml, /Take HOST off the grid/);
+});
+
+// ── MP-08 ─────────────────────────────────────────────────────────────────
+// A dropped socket is invisible in a static render unless the screen says it,
+// and the two notices below are the whole of what a player is ever told.
+
+
+test('MP-08 lobby: a driver who drops is named, and the marble is accounted for', () => {
+  // One second in: they are missing, and the seat is being held.
+  const early = foldPeer([], { type: 'peerStatus', playerId: 'player-1', status: 'disconnected', graceMs: 30_000, username: 'Sprocket' }, T0);
+  const html = renderToStaticMarkup(createElement(PeerStrip, { peers: early, hostId: 'player-host', now: T0 + 1_000 }));
+  assert.match(html, /Sprocket lost connection/, 'a notice says WHO, not "a driver"');
+  assert.match(html, /0:29/, 'and counts the seat down');
+
+  // Four seconds in: the AI has the marble. Saying so is the point — a marble
+  // nobody is steering still has to be explained.
+  const late = renderToStaticMarkup(createElement(PeerStrip, { peers: early, hostId: 'player-host', now: T0 + AI_TAKEOVER_MS + 1_000 }));
+  assert.match(late, /the AI has their marble/, 'past three seconds the notice says whose hands it is in');
+
+  // And when they are all back, there is nothing to say.
+  const cleared = renderToStaticMarkup(createElement(PeerStrip, { peers: foldPeer(early, { type: 'peerStatus', playerId: 'player-1', status: 'reconnected' }, T0 + 5_000), hostId: 'player-host', now: T0 + 5_000 }));
+  assert.equal(cleared, '', 'a full grid draws no strip');
+});
+
+test('MP-08 lobby: a host who drops is the one case the strip says out loud', () => {
+  // The host is the simulation. Their drop is not a marble changing hands, it is
+  // a race that has stopped, and the notice must not pretend otherwise.
+  const peers = foldPeer([], { type: 'peerStatus', playerId: 'player-host', status: 'disconnected', graceMs: 30_000, username: 'Host' }, T0);
+  const html = renderToStaticMarkup(createElement(PeerStrip, { peers, hostId: 'player-host', now: T0 + 2_000 }));
+  assert.match(html, /The host lost connection/);
+  assert.match(html, /the race is held for 0:28/, 'and it says the race is waiting, not that the AI took over');
+});
+
+test('MP-08 lobby: the host-left overlay ends the race, and says it pays nothing', () => {
+  const html = renderToStaticMarkup(createElement(HostLeftOverlay, { message: 'The host left the race.', onLeave() {} }));
+  assert.match(html, /The host left the race\./);
+  assert.match(html, /pays nothing/, 'an unfinished race is not a result, and the player is told');
+  assert.match(html, /Back to the garage/, 'with one way out');
+});
+
+test('MP-08 lobby: a race a returning player was in is offered back', () => {
+  const withOffer = renderToStaticMarkup(createElement(OnlinePanel, {
+    busy: false, error: null, onHost() {}, onJoin() {}, onQuick() {}, rejoin: { roomCode: 'ABC123' }, onRejoin() {}, onDismissRejoin() {},
+  }));
+  assert.match(withOffer, /You were in a race/);
+  assert.match(withOffer, /ABC123/, 'and it names the room, so two games in a row are not confused');
+  assert.match(withOffer, /Rejoin race/);
+  // The memo is a "you were in this" note, not a permanent fixture: forgetting
+  // it is one click, and it is gone from the next load.
+  assert.match(withOffer, /Forget that race/);
+
+  const without = renderToStaticMarkup(createElement(OnlinePanel, { busy: false, error: null, onHost() {}, onJoin() {}, onQuick() {} }));
+  assert.doesNotMatch(without, /You were in a race/, 'no memo, no offer');
 });

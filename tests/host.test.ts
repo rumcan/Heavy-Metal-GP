@@ -290,6 +290,98 @@ test('MP-04 host: nudges are limited to 30 a second', () => {
   assert.ok(guest().finishedAt === null || true);
 });
 
+test('MP-08 host: three seconds without a driver and the AI has the marble', () => {
+  // A race must not stop because one socket did. The seat is held for a minute;
+  // the marble is handed over after three seconds, and handed back if they make
+  // it. This is the handover.
+  const h = harness();
+  start(h);
+  assert.ok(h.host.game.humanInput.has(1), 'the guest is driving');
+
+  h.host.accept({ type: 'peerStatus', playerId: 'player-1', status: 'disconnected', graceMs: 60_000, username: 'Guest' });
+  // Not instantly: a tunnel or a hiccup is not a departure.
+  h.advance(2_000);
+  h.tick();
+  assert.ok(h.host.game.humanInput.has(1), 'two seconds is a hiccup, not a dropout');
+  assert.deepEqual(h.host.aiSeats, []);
+
+  h.advance(1_100);
+  h.tick();
+  assert.ok(!h.host.game.humanInput.has(1), 'past three seconds the marble is the AI’s');
+  assert.deepEqual([...h.host.aiSeats], [1], 'and the host says so');
+  // Handing it over twice would be a bug the seat could feel: the second call
+  // has nothing to release.
+  assert.equal(h.host.releaseSeat('player-1'), false, 'a marble already released is not released again');
+});
+
+test('MP-08 host: a driver who comes back gets their own marble back, and the world with it', () => {
+  const h = harness();
+  start(h);
+  h.host.accept({ type: 'peerStatus', playerId: 'player-1', status: 'disconnected', graceMs: 60_000, username: 'Guest' });
+  h.advance(3_100);
+  h.tick();
+  assert.deepEqual([...h.host.aiSeats], [1], 'the AI has it by now');
+
+  const before = h.frames.length;
+  h.host.accept({ type: 'peerStatus', playerId: 'player-1', status: 'reconnected', username: 'Guest' });
+  assert.deepEqual([...h.host.aiSeats], [], 'and gives it back');
+  assert.ok(h.host.game.humanInput.has(1), 'the seat is a human seat again');
+  assert.equal(h.host.game.humanInput.get(1)?.nudge, 0, 'with no lean left over from before the drop');
+  // They come back to a race that moved on: a nudge is not enough, they need the
+  // world, so the host sends one without waiting to be asked.
+  assert.ok(h.frames.slice(before).some((f) => f.type === 'snapshot'), 'a returner is handed the whole world');
+
+  // And the marble still answers them. Two identical harnesses — one nudged, one
+  // coasting — because "did it move right" is only meaningful against what it
+  // would have done on its own: the track is not a straight line.
+  const coasting = harness();
+  start(coasting);
+  coasting.host.accept({ type: 'peerStatus', playerId: 'player-1', status: 'disconnected', graceMs: 60_000, username: 'Guest' });
+  coasting.advance(3_100);
+  coasting.tick();
+  coasting.host.accept({ type: 'peerStatus', playerId: 'player-1', status: 'reconnected', username: 'Guest' });
+
+  for (let i = 0; i < 180; i++) {
+    h.host.applyIntent(1, { type: 'intent', kind: 'nudge', v: 1 });
+    h.tick();
+    coasting.tick();
+  }
+  const driven = h.host.game.marbles[1].body.position.x;
+  const coasted = coasting.host.game.marbles[1].body.position.x;
+  assert.ok(driven > coasted + 5, `the marble came back to hands that steer it (${(driven - coasted).toFixed(1)}px of lean)`);
+});
+
+test('MP-08 host: a driver the room re-greets is shown the real grid, not the seating plan', () => {
+  // The room's welcome is a SEATING PLAN: placeholder seats with placeholder
+  // names, because the room does not know a livery from a tune. A driver who
+  // rejoins mid-race is welcomed by the room and described by the host — the
+  // only end that knows what the grid actually looks like.
+  const h = harness();
+  start(h);
+  h.frames.length = 0;
+  const seatingPlan = grid().map((seat) => ({ ...seat, name: 'PLACEHOLDER', stats: { weight: 5, speed: 5, bounce: 5 } }));
+  h.host.accept({ type: 'welcome', v: 1, seed: SEED, hostId: 'player-0', seats: seatingPlan, settings: { circuit: 0 } });
+
+  const lobbies = h.frames.filter((f): f is Extract<RaceProtocol, { type: 'lobby' }> => f.type === 'lobby');
+  assert.equal(lobbies.length, 1, 'the host answers the greeting once');
+  assert.equal(lobbies[0].seats[1].name, 'Guest', 'and with what it knows, not what the room guessed');
+  assert.deepEqual(lobbies[0].seats[1].stats, grid()[1].stats, 'tune included — a placeholder 5/5/5 is not the car they brought');
+  assert.equal(lobbies[0].settings?.circuit, 0);
+});
+
+test('MP-08 host: a rival nobody dropped is nobody the host touches', () => {
+  // `reconnected` for a player who was never missing must not conjure a marble
+  // or invent a snapshot: the frame is the room's, and it arrives for every
+  // seat, including the ones that never went anywhere.
+  const h = harness();
+  start(h);
+  const before = h.frames.length;
+  h.host.accept({ type: 'peerStatus', playerId: 'player-1', status: 'reconnected' });
+  assert.equal(h.host.reclaim('player-1'), false, 'nothing was taken, so nothing is given back');
+  assert.equal(h.frames.length, before, 'and no snapshot is spent on it');
+  assert.ok(h.host.game.humanInput.has(1), 'the guest still has their marble');
+});
+
 test('MP-04 host: a snapshot carries the whole world and reassembles', () => {
   const h = harness();
   start(h);

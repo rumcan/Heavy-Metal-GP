@@ -49,6 +49,10 @@ interface Pair {
   tick(): void;
   /** Intents the guest has put on the wire. */
   intents: IntentMsg[];
+  /** EVERY frame the guest has put on the wire (resyncs included). */
+  guestFrames: RaceProtocol[];
+  /** EVERY frame the host has put on the wire. */
+  hostFrames: RaceProtocol[];
   sent: number;
 }
 
@@ -60,6 +64,8 @@ function pair(opts: { loss?: number } = {}): Pair {
   const toGuest: { msg: RaceProtocol; due: number }[] = [];
   const toHost: { msg: RaceProtocol; due: number }[] = [];
   const intents: IntentMsg[] = [];
+  const guestFrames: RaceProtocol[] = [];
+  const hostFrames: RaceProtocol[] = [];
   let sent = 0;
   const seats = grid();
   const countdownAt = now + START_ARM_MS;
@@ -79,6 +85,7 @@ function pair(opts: { loss?: number } = {}): Pair {
     isHost: true,
     send: (msg) => {
       sent++;
+      hostFrames.push(msg);
       if (rng() < loss) return;
       toGuest.push({ msg, due: now + LATENCY_MS });
     },
@@ -90,6 +97,7 @@ function pair(opts: { loss?: number } = {}): Pair {
     send: (msg) => {
       sent++;
       if (msg.type === 'intent') intents.push(msg);
+      guestFrames.push(msg);
       if (rng() < loss) return;
       toHost.push({ msg, due: now + LATENCY_MS });
     },
@@ -115,6 +123,8 @@ function pair(opts: { loss?: number } = {}): Pair {
     host,
     guest,
     intents,
+    guestFrames,
+    hostFrames,
     now: () => now,
     get sent() {
       return sent;
@@ -251,6 +261,60 @@ test('MP-06 session: cues cross the wire as names and come out as noise', () => 
   assert.deepEqual(p.guest.drainCues(), []);
   p.host.dispose();
   p.guest.dispose();
+});
+
+test('MP-08 session: the room’s word about a drop reaches the host, and a returner gets their marble back', () => {
+  // The whole point of MP-08 in one test: the room notices (it is the only end
+  // that can), the host acts (it is the only end holding the marble), and the
+  // driver who comes back gets the same marble back.
+  const p = pair();
+  for (let i = 0; i < 200; i++) p.tick();
+  assert.equal(p.host.aiSeats.length, 0);
+  assert.ok(p.host.game.humanInput.has(1), 'the guest is driving its own marble');
+
+  p.host.accept({ type: 'peerStatus', playerId: 'player-1', status: 'disconnected', graceMs: 30_000, username: 'Guest' });
+  assert.equal(p.host.dropped.length, 1, 'the host heard the room');
+  for (let i = 0; i < 200; i++) p.tick(); // 3.3 s of racing without them
+  assert.deepEqual([...p.host.aiSeats], [1], 'three seconds later the AI has it');
+  assert.ok(!p.host.game.humanInput.has(1));
+
+  // Ten seconds gone — the seat is still held, so they are still in the race.
+  p.host.accept({ type: 'peerStatus', playerId: 'player-1', status: 'reconnected', username: 'Guest' });
+  assert.deepEqual([...p.host.aiSeats], [], 'and it is theirs again');
+  assert.ok(p.host.game.humanInput.has(1));
+  assert.equal(p.host.dropped.length, 0, 'with no badge left on them');
+});
+
+test('MP-08 session: a page that comes back asks for the world instead of waiting for it', () => {
+  // A reloaded tab has never seen a frame. The room re-greets it (the seat is
+  // still theirs — the room test covers that), and the guest's answer is to ask
+  // for the world at once rather than racing blind until a gap trips the
+  // resync-on-gap path.
+  const p = pair();
+  for (let i = 0; i < 120; i++) p.tick();
+  p.guestFrames.length = 0;
+  p.guest.accept({ type: 'welcome', v: 1, seed: SEED, hostId: 'player-0', seats: grid(), settings: { circuit: 0 } });
+  assert.ok(
+    p.guestFrames.some((f) => f.type === 'resync'),
+    'a returning page asks for the world the moment the room says hello',
+  );
+});
+
+test('MP-08 session: the host answers the room’s re-greeting with the grid it knows', () => {
+  // A returner is welcomed by the ROOM (a seating plan) and described by the
+  // HOST (the liveries, the tunes, the faces). Both frames have to reach them
+  // or they race a grid of placeholders.
+  const p = pair();
+  for (let i = 0; i < 60; i++) p.tick();
+  p.hostFrames.length = 0;
+  p.host.accept({ type: 'welcome', v: 1, seed: SEED, hostId: 'player-0', seats: grid(), settings: { circuit: 0 } });
+  const lobbies = p.hostFrames.filter((f) => f.type === 'lobby');
+  assert.equal(lobbies.length, 1, 'the host says what the grid looks like, once');
+  // And the returner's own page asks for the world, because a welcome is not a
+  // race — the marbles are already out there.
+  p.guestFrames.length = 0;
+  p.guest.accept({ type: 'welcome', v: 1, seed: SEED, hostId: 'player-0', seats: grid(), settings: { circuit: 0 } });
+  assert.ok(p.guestFrames.some((f) => f.type === 'resync'), 'and the returning page asks for it');
 });
 
 test('MP-06 session: the screen holds one grid, numbered the same way on both ends', () => {

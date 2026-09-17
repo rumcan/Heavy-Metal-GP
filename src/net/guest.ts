@@ -201,6 +201,12 @@ export class RaceGuest {
    */
   accept(msg: RaceProtocol): void {
     switch (msg.type) {
+      // MP-08: a welcome mid-race means this tab is a page that came back — a
+      // refresh, a reconnect — and it has never seen the world. Ask for it
+      // rather than waiting for a gap to notice.
+      case 'welcome':
+        this.requestResync();
+        return;
       case 'start':
         return this.acceptStart(msg);
       case 'state':

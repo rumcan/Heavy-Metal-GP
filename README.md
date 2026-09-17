@@ -125,6 +125,25 @@ circuit from the room's seed (never `Math.random()` — a republished lobby must
 not move the race to another track), and the lights go out twenty seconds after
 the second driver arrives, or the instant a sixth one does.
 
+**A dropped socket is not a dropped driver** (MP-08). The platform holds a seat
+for `reconnectTimeout` and flips `player.connected`, and the ROOM is the only
+end that sees both sides, so it is the room that speaks — one poll a second, and
+the two transitions go out as `peerStatus` with the hold window. What the two
+ends do with that frame is `src/net/presence.ts`, and the rule it exists to
+enforce is: **a race does not wait on a socket.** Three seconds without a driver
+and the AI has the marble (`humanInput` is what makes a marble a human's, so
+releasing one is a `delete`); the SEAT is still theirs until the room gives it
+up, and coming back inside the window hands it back with the world (`resync` →
+snapshot) rather than a shrug. A driver who never comes back is evicted when the
+window closes. A driver whose page REFRESHED is the same player asking for the
+same marble: the room re-greets them mid-race instead of refusing them, the host
+answers that greeting with the real grid (the room's welcome is only a seating
+plan — it does not know a livery from a tune), and their screen joins the race
+already in progress instead of waiting for a Start that already happened. The
+host is the one case with no way back: the host IS the simulation, so a host who
+drops ends the race for everyone — an overlay says so, the grid goes back to the
+garage, and the unfinished race pays nothing.
+
 The room owns who sits where; the host owns what the grid looks like. A guest's
 garage (tune, livery, portrait) reaches the host inside `ready` — the one frame
 a guest owns — and the room STAMPS that frame with `from`, because the SDK hands
@@ -149,11 +168,17 @@ room sidecar on port `9001` from
 only exists on `npm run dev` (a built or previewed page mocks rooms instead, and
 `src/net/transport.ts` detects that state and says so).
 
-Still to come in the epic: **MP-08** presence, reconnect and the rejoin offer
-(the active-match memo is already written when a race is entered and cleared when
-it is left), **MP-09** results and payouts — an online race pays nothing yet, and
-online items wait for that ticket too — and **MP-10** the two-browser E2E
-harness. Online nudge-vs-simulation parity is also still hand-checked: the guest
+**Coming back:** close a tab mid-race and the garage offers it back — **You were
+in a race / ABC123 → Rejoin race**. The memo (`ACTIVE_MATCH_KEY`) is written when
+a race is entered and cleared when it is left *through a door this client
+controls*, which is exactly why a crash or a closed tab leaves it standing for up
+to ten minutes.
+
+Still to come in the epic: **MP-09** results and payouts — an online race pays
+nothing yet, and online items wait for that ticket too — and **MP-10** the
+two-browser E2E harness (the acceptance for the reconnect work above is a
+Playwright test: a guest goes offline for ten seconds and takes the same marble
+back). Online nudge-vs-simulation parity is also still hand-checked: the guest
 leans locally and sends the intent, but the host's picture of that lean has not
 been played side by side with the offline game.
 
