@@ -117,10 +117,11 @@ export function handlesFor(piece: Piece): Handle[] {
       ];
     }
     case 'spinner': {
-      // Blade end to the right; centre is the move handle.
+      // Blade end to the right; centre is the move handle. Speed handle sits above/below centre.
       return [
         { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
         { id: 'len', x: piece.x + piece.len / 2, y: piece.y, cursor: 'ew-resize', label: 'Length' },
+        { id: 'speed', x: piece.x, y: piece.y + piece.speed * 600, cursor: 'ns-resize', label: 'Speed' },
       ];
     }
     case 'breakable':
@@ -293,9 +294,17 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       if (handleId === 'move') return { ...piece, x: withSnap(to.x, sx), y: withSnap(to.y, sx) };
       if (handleId === 'len') {
         const dx = withSnap(to.x, sx) - piece.x;
-        // Length is horizontal span in world units; allow negative by taking absolute.
         const len = Math.max(20, Math.min(W, Math.abs(dx) * 2));
         return { ...piece, len: sx ? snapVal(len) : len };
+      }
+      if (handleId === 'speed') {
+        const dy = to.y - piece.y;
+        // Map vertical offset to speed: 600 world units = 1.0 speed. Clamp like properties panel.
+        const raw = dy / 600;
+        const speed = Math.max(-0.5, Math.min(0.5, raw));
+        // Snap rounds to nearest 0.05 when grid is on (matches panel step *2)
+        const snapped = sx ? Math.round(speed * 20) / 20 : speed;
+        return { ...piece, speed: snapped };
       }
       return piece;
     }
