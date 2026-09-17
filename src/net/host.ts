@@ -201,6 +201,7 @@ export class RaceHost {
       color: seat.color,
       stats: seat.stats,
       isPlayer: seat.slot === opts.localSeat,
+      isHuman: !seat.isAI,
       character: seat.portrait,
       // MP-09: each human seat races on the kit it brought — unless the host set house rules for everyone.
       inventory: house ? normalizeInventory(house.inventory) : seat.inventory,

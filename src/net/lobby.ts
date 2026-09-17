@@ -127,6 +127,7 @@ export function rosterOf(seats: readonly Seat[], localSeat: number): MarbleInfo[
     color: seat.color,
     stats: seat.stats,
     isPlayer: seat.slot === localSeat,
+    isHuman: !seat.isAI,
     character: seat.portrait,
     inventory: seat.inventory,
   }));

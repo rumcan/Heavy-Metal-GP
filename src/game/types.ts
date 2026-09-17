@@ -50,6 +50,8 @@ export interface MarbleInfo {
   color: string;
   stats: MarbleStats;
   isPlayer: boolean;
+  /** Online: a human driver (not AI). Their name tag is drawn bigger so people can tell who is real. */
+  isHuman?: boolean;
   /** Rival sprite index, or the player's chosen portrait. */
   character?: number;
   /**

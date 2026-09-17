@@ -10,19 +10,17 @@ import type { OnlineRace } from './components/RaceScreen';
 import {
   createRoom,
   isAccessDenied,
-  isMatchmakeWindowExpired,
   isOfflineMockRealtime,
   joinRoomByCode,
   listRejoinableRooms,
   NO_ROOM_SERVER_MESSAGE,
   promptLogin,
-  quickMatch,
+  autoMatch,
   readActiveMatch,
   writeActiveMatch,
   type ActiveMatchMemo,
   type RaceRoom,
 } from './net/transport';
-import { Matchmaker } from './net/matchmake';
 import type { RaceProtocol } from './net/transport';
 import type { RaceLink } from './net/session';
 import { HOST_LEFT_REASON } from './net/protocol';
@@ -102,9 +100,9 @@ export default function App() {
   const [online, setOnline] = useState<OnlineRaceStart | null>(null);
   const [mpBusy, setMpBusy] = useState(false);
   const [mpError, setMpError] = useState<string | null>(null);
-  /** MP-07: a quick-match search, and how many windows it has burned through. */
+  /** Auto Match Making: a search in flight. */
   const [search, setSearch] = useState<{ windows: number } | null>(null);
-  const searchRef = useRef<Matchmaker<RaceRoom> | null>(null);
+  const searchRef = useRef<{ cancel: () => void } | null>(null);
   /** True when this lobby came from matchmaking rather than a typed code. */
   const [quick, setQuick] = useState(false);
   /** MP-08: rivals whose socket dropped, held for a window before eviction. */
@@ -251,7 +249,7 @@ export default function App() {
     if (isAccessDenied(err)) {
       // Anonymous: the platform's login sheet, and the AI is still there to race.
       const { success } = await promptLogin();
-      return success ? 'Signed in — press Host, Join or Quick race again.' : 'Multiplayer needs a signed-in RUN.world account.';
+      return success ? 'Signed in — press Host, Join or Auto Match Making again.' : 'Multiplayer needs a signed-in RUN.world account.';
     }
     return err instanceof Error ? err.message : String(err);
   }, []);
@@ -276,35 +274,25 @@ export default function App() {
   }, [explain]);
 
   /**
-   * MP-07: QUICK RACE. One SDK request is one thirty-second window, so the loop
-   * lives here — press the button, be in a race when somebody else presses it.
+   * AUTO MATCH MAKING: join an open auto lobby, or open one and host it. The
+   * platform answers in a moment, so "searching" is a short, explained state.
    */
   const findRace = useCallback(async () => {
     if (isOfflineMockRealtime()) { setMpError(NO_ROOM_SERVER_MESSAGE); return; }
     setMpError(null);
     setMpBusy(true);
     setSearch({ windows: 0 });
-    const matchmaker = new Matchmaker<RaceRoom>({
-      request: () => quickMatch(),
-      isExpired: isMatchmakeWindowExpired,
-      onWindowClosed: (windows) => setSearch({ windows }),
-      // Paired on the way out: nobody is waiting in it, so leave it rather than
-      // hold a seat in a room nobody can see.
-      abandon: (room) => room.leave(),
-    });
-    searchRef.current = matchmaker;
+    const token = { cancelled: false };
+    searchRef.current = { cancel: () => { token.cancelled = true; } };
     try {
-      const next = await matchmaker.find();
-      if (next) {
-        void writeActiveMatch({ roomCode: next.roomCode, at: Date.now() });
-        setQuick(true);
-        setRoom(next);
-        setPhase('lobby');
-      } else {
-        setMpError('Search cancelled — nobody was paired.');
-      }
+      const next = await autoMatch();
+      if (token.cancelled) { next.leave(); setMpError('Auto Match Making cancelled.'); return; }
+      void writeActiveMatch({ roomCode: next.roomCode, at: Date.now() });
+      setQuick(true);
+      setRoom(next);
+      setPhase('lobby');
     } catch (err) {
-      setMpError(await explain(err));
+      if (!token.cancelled) setMpError(await explain(err));
     } finally {
       setMpBusy(false);
       setSearch(null);
