@@ -588,7 +588,8 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
               className={`button-primary editor-testdrive ${testing ? 'is-testing' : ''}`}
               onClick={testing ? exitTest : enterTest}
               aria-pressed={testing}
-              title={testing ? 'Stop test and return to editor (Esc)' : 'Test drive this circuit — Esc returns, camera preserved'}
+              disabled={!!buildError && !testing}
+              title={buildError ? `Cannot test: ${buildError}` : testing ? 'Stop test and return to editor (Esc)' : 'Test drive this circuit — Esc returns, camera preserved'}
             >
               {testing ? <Pause size={14} /> : <Play size={14} />}
               {testing ? 'Stop test' : 'Test drive'}
