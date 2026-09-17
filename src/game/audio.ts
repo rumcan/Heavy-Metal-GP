@@ -7,7 +7,9 @@ import * as storage from './storage';
 
 export type SoundType =
   | 'peg' | 'bump' | 'thud' | 'clack' | 'spring' | 'hoop' | 'clang' | 'crack' | 'smash'
-  | 'pickup' | 'bucket' | 'loop' | 'finish' | 'item' | 'go' | 'light';
+  | 'pickup' | 'bucket' | 'loop' | 'finish' | 'item' | 'go' | 'light'
+  // story mode UI: dialogue tick and chapter/act sting
+  | 'blip' | 'sting';
 
 export interface SoundEvent {
   type: SoundType;
@@ -24,7 +26,7 @@ const MUTE_KEY = 'heavy-metal-gp:muted';
 // Peggle-style rising run: a major scale that keeps climbing while the streak lasts
 const SCALE = [0, 2, 4, 5, 7, 9, 11];
 const STREAK_WINDOW = 1600;
-const MIN_GAP: Partial<Record<SoundType, number>> = { peg: 25, bump: 60, thud: 90, clack: 70, crack: 90, clang: 80, hoop: 80, spring: 120 };
+const MIN_GAP: Partial<Record<SoundType, number>> = { peg: 25, bump: 60, thud: 90, clack: 70, crack: 90, clang: 80, hoop: 80, spring: 120, blip: 26 };
 
 class RaceAudio {
   private ctx: AudioContext | null = null;
@@ -104,6 +106,8 @@ class RaceAudio {
       case 'light': return this.tone(t, 440, 0.16, 'square', 0.22, 0);
       case 'go': return this.tone(t, 880, 0.45, 'square', 0.28, 0);
       case 'finish': return this.finish(t, e.rank ?? 10);
+      case 'blip': return this.tone(t, 1500 + Math.random() * 220, 0.028, 'square', 0.07, 0);
+      case 'sting': return this.sting(t);
     }
   }
 
@@ -239,6 +243,14 @@ class RaceAudio {
     this.arp(t, notes, win ? 0.11 : 0.09, 'square', 0.16, 0);
     this.arp(t, notes.map((n) => n - 12), win ? 0.11 : 0.09, 'triangle', 0.2, 0);
     if (win) this.whoosh(t + notes.length * 0.11, 1.2, 800, 5000, 0.3, 0);
+  }
+
+  /** Story sting: a held minor triad with a low swell, for act banners, chapter plaques and reveals. */
+  private sting(t: number) {
+    this.whoosh(t, 0.5, 300, 2600, 0.24, 0);
+    this.arp(t + 0.04, [45, 52, 57, 60], 0.34, 'sawtooth', 0.1, 0);
+    this.arp(t + 0.04, [33, 40, 45, 48], 0.34, 'triangle', 0.16, 0);
+    this.tone(t + 0.02, 70, 0.7, 'sine', 0.3, 0, 52);
   }
 }
 

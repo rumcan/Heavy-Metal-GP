@@ -6,6 +6,10 @@ import { gridSlots } from './season';
 import { assistRolling, BASE_TICK, createMarble, downhill } from './physics';
 import type { RampSurface } from './physics';
 import type { SoundEvent, SoundType } from './audio';
+// STORY HOOKS (ST-07). Type-only import: `src/game/story/types.ts` pulls in no art and no SDK, and the
+// hooks themselves live in `src/game/story/modifiers.ts`, which the race screen supplies. Nothing in the
+// story folder is imported at runtime by the engine, so a race without story mode is byte-for-byte today's.
+import type { RaceCounter, StoryHooks } from './story/types';
 
 export interface GameOptions {
   profile?: TrackProfile;
@@ -15,6 +19,8 @@ export interface GameOptions {
   effects?: boolean;
   aiItems?: boolean;
   inventory?: Partial<Inventory>;
+  /** STORY HOOKS (ST-07), additive and optional. Unset: the engine behaves exactly as before. */
+  story?: StoryHooks;
 }
 
 const { Engine, Bodies, Body, Composite, Events, Query } = Matter;
@@ -111,6 +117,10 @@ export class Game {
   private recoveryEnabled: boolean;
   private effectsEnabled: boolean;
   private aiItemsEnabled: boolean;
+  /** STORY HOOKS (ST-07). Undefined in every non-story race. */
+  private story?: StoryHooks;
+  private storySectors = new Map<number, number>();
+  private storyOrder: number[] = [];
   private pendingLaunches = new Map<number, Matter.Vector>();
   private lastWallToast = -9999;
   private pendingBreaks: { body: Matter.Body; marble: Marble; v: { x: number; y: number } }[] = [];
@@ -132,7 +142,12 @@ export class Game {
     });
     this.engine.gravity.y = 1;
     this.world = this.engine.world;
-    this.track = opts.track ?? generateTrack(seed, opts.profile);
+    // STORY HOOKS (ST-07): a chapter can add hazards through TrackProfile.weights only — no new pieces, and
+    // only when a profile was supplied. Merging is an override, so it is safe if the caller already merged.
+    this.story = opts.story;
+    const storyWeights = opts.story?.weights;
+    const profile = opts.profile && storyWeights ? { ...opts.profile, weights: { ...opts.profile.weights, ...storyWeights } } : opts.profile;
+    this.track = opts.track ?? generateTrack(seed, profile);
     this.recoveryEnabled = opts.recovery !== false;
     this.effectsEnabled = opts.effects !== false;
     this.aiItemsEnabled = opts.aiItems !== false;
@@ -314,6 +329,7 @@ export class Game {
     switch (md.kind) {
       case 'loopTop':
         if (m.loopStage === 0) this.sfx('loop', m, other.position.x, other.position.y);
+        if (m.loopStage === 0) this.storyCounter('loops', m); // STORY HOOK (ST-07)
         this.setLoopStage(m, 1);
         break;
       case 'loopExit':
@@ -327,6 +343,7 @@ export class Game {
         Body.setVelocity(m.body, { x: dir.x * boosted, y: dir.y * boosted });
         this.effects.push({ type: 'ring', x: other.position.x, y: other.position.y, ttl: 22, maxTtl: 22, color: '#fb923c' });
         this.sfx('hoop', m, other.position.x, other.position.y);
+        this.storyCounter('hoops', m); // STORY HOOK (ST-07)
         break;
       }
       case 'wrecker': {
@@ -363,6 +380,7 @@ export class Game {
           }
           this.shake = 10;
           this.sfx('smash', m, other.position.x, other.position.y);
+          this.storyCounter('crates', m); // STORY HOOK (ST-07)
           this.effects.push({
             type: 'debris',
             x: other.position.x,
@@ -386,6 +404,7 @@ export class Game {
         const vy = Math.min(12.2, 3.5 + 9.5 * m.restitution);
         this.pendingLaunches.set(m.info.id, { x: dir.x * 4.5, y: -vy });
         this.sfx('spring', m, other.position.x, other.position.y);
+        this.storyCounter('pads', m); // STORY HOOK (ST-07)
         this.effects.push({ type: 'ring', x: other.position.x, y: other.position.y - 10, ttl: 20, maxTtl: 20, color: '#34d399' });
         if (m.info.isPlayer) this.onEvent?.(`Boing! Bounce power ${(m.restitution * 100).toFixed(0)}%`, '#34d399');
         break;
@@ -398,6 +417,7 @@ export class Game {
         md.respawnAt = this.time + 7000;
         this.grantItem(m, available[Math.floor(this.rng() * available.length)]);
         this.sfx('pickup', m, other.position.x, other.position.y);
+        this.storyCounter('itemBoxes', m); // STORY HOOK (ST-07)
         this.effects.push({ type: 'ring', x: other.position.x, y: other.position.y, ttl: 18, maxTtl: 18, color: '#facc15' });
         break;
       }
@@ -413,6 +433,7 @@ export class Game {
         this.effects.push({ type: 'debris', x: other.position.x, y: other.position.y, ttl: 22, maxTtl: 22, color: pc, particles: this.makeParticles(other.position.x, other.position.y, 6, 2.5) });
         if (col === 'orange') {
           m.pegs++;
+          this.storyCounter('orangePegs', m); // STORY HOOK (ST-07)
           // orange pegs give a little kick of speed
           const v = Body.getVelocity(m.body);
           const sp = Math.hypot(v.x, v.y) || 1;
@@ -430,6 +451,7 @@ export class Game {
         Body.setPosition(m.body, { x: other.position.x, y: other.position.y + 30 });
         this.pendingLaunches.set(m.info.id, { x: 0, y: 17 });
         this.sfx('bucket', m, other.position.x, other.position.y);
+        this.storyCounter('buckets', m); // STORY HOOK (ST-07)
         m.trail = [];
         this.shake = 6;
         this.effects.push({ type: 'ring', x: other.position.x, y: other.position.y, ttl: 24, maxTtl: 24, color: '#fbbf24' });
@@ -664,9 +686,14 @@ export class Game {
   useItem(m: Marble, item = this.availableItem(m)): boolean {
     if (!item || !this.canUseItem(m, item)) return false;
     const p = m.body.position;
-    const freezeTarget = item === 'freeze' ? this.marbles
+    const freezeCandidates = item === 'freeze' ? this.marbles
       .filter((rival) => rival !== m && rival.finishedAt === null && !rival.frozen && rival.body.position.y > p.y - 20 && Math.hypot(rival.body.position.x - p.x, rival.body.position.y - p.y) < 900)
-      .sort((a, b) => Math.hypot(a.body.position.x - p.x, a.body.position.y - p.y) - Math.hypot(b.body.position.x - p.x, b.body.position.y - p.y))[0] : undefined;
+      : [];
+    // STORY HOOK (ST-07): when a chapter gives this marble a target, its freeze goes for that rival first.
+    const storyFreeze = this.story && item === 'freeze' ? this.storyTarget(m) : undefined;
+    const freezeTarget = (storyFreeze && freezeCandidates.includes(storyFreeze) ? storyFreeze : undefined)
+      ?? freezeCandidates
+        .sort((a, b) => Math.hypot(a.body.position.x - p.x, a.body.position.y - p.y) - Math.hypot(b.body.position.x - p.x, b.body.position.y - p.y))[0];
     if (item === 'freeze' && !freezeTarget) {
       if (m.info.isPlayer) this.onEvent?.('No rival in range / freeze charge kept', '#7dd3fc');
       else m.aiUseAt = this.time + 1500;
@@ -744,6 +771,65 @@ export class Game {
       if (item !== 'freeze') this.onEvent?.(`${ITEM_INFO[item].name} deployed`, ITEM_INFO[item].color);
     }
     return true;
+  }
+
+  // ---------- STORY HOOKS (ST-07) ----------
+  // Additive only. Nothing here runs unless `GameOptions.story` was supplied, so a race without story hooks
+  // simulates exactly as it did before: no RNG is consumed, no body is touched, no ordering changes.
+
+  /** Which sector (track segment) a marble is in — the same lookup the race HUD uses. */
+  private sectorOf(m: Marble): number {
+    const y = m.body.position.y;
+    const segments = this.track.segments;
+    for (let i = 0; i < segments.length; i++) if (y >= segments[i].y && y < segments[i].y + segments[i].h) return i;
+    return y < (segments[0]?.y ?? 0) ? 0 : Math.max(0, segments.length - 1);
+  }
+
+  /** Report a counted event (crate, orange peg, hoop, loop, bucket, pad, item box, overtake) to the hooks. */
+  private storyCounter(counter: RaceCounter, m: Marble, rivalId?: number) {
+    const hooks = this.story;
+    if (!hooks?.onCounter) return;
+    hooks.onCounter({
+      counter, marbleId: m.info.id, player: m.info.isPlayer, sectorIndex: this.sectorOf(m),
+      ...(rivalId === undefined ? {} : { rivalId }),
+    });
+  }
+
+  /** Per-step story pass: sector entry, then overtakes of the player. */
+  private storyStep() {
+    const hooks = this.story!;
+    for (const m of this.marbles) {
+      if (m.finishedAt !== null) continue;
+      const index = this.sectorOf(m);
+      const previous = this.storySectors.get(m.info.id);
+      this.storySectors.set(m.info.id, index);
+      if (previous !== undefined && previous !== index) hooks.onSector?.(this, m, index);
+    }
+    if (!hooks.onCounter) return;
+    const order = this.marbles.filter((m) => m.finishedAt === null)
+      .map((m) => m.info.id)
+      .sort((a, b) => this.byId.get(b)!.body.position.y - this.byId.get(a)!.body.position.y);
+    const previousOrder = this.storyOrder;
+    this.storyOrder = order;
+    if (!previousOrder.length) return;
+    const playerId = this.player.info.id;
+    const now = order.indexOf(playerId);
+    const before = previousOrder.indexOf(playerId);
+    if (now < 0 || before < 0) return;
+    for (const rivalId of order) {
+      if (rivalId === playerId) continue;
+      const wasAhead = previousOrder.indexOf(rivalId);
+      const isBehind = order.indexOf(rivalId);
+      if (wasAhead >= 0 && wasAhead < before && isBehind > now) this.storyCounter('overtakes', this.player, rivalId);
+    }
+  }
+
+  /** The marble a rival's items should prefer, if this chapter says so. */
+  private storyTarget(m: Marble): Marble | undefined {
+    const id = this.story?.aiTarget?.(this, m);
+    if (id === null || id === undefined) return undefined;
+    const target = this.byId.get(id);
+    return target && target !== m && target.finishedAt === null ? target : undefined;
   }
 
   // ---------- main step ----------
@@ -864,10 +950,13 @@ export class Game {
       // AI item usage
       const item = this.availableItem(m);
       if (this.aiItemsEnabled && !m.info.isPlayer && item && this.time > m.aiUseAt) {
+        // STORY HOOK (ST-07): a chapter may give this rival a preferred target. Unset: today's AI, unchanged.
+        const hunted = this.story ? this.storyTarget(m) : undefined;
+        const shockRange = hunted ? 260 : 200;
         // simple smarts: don't waste freeze if nobody ahead, save shock if nobody near
         if (item === 'freeze' && !this.marbles.some((o) => o !== m && o.finishedAt === null && o.body.position.y > b.position.y - 20 && Math.abs(o.body.position.y - b.position.y) < 900)) {
           m.aiUseAt = this.time + 1500;
-        } else if (item === 'shock' && !this.marbles.some((o) => o !== m && Math.hypot(o.body.position.x - b.position.x, o.body.position.y - b.position.y) < 200)) {
+        } else if (item === 'shock' && !this.marbles.some((o) => o !== m && Math.hypot(o.body.position.x - b.position.x, o.body.position.y - b.position.y) < shockRange)) {
           m.aiUseAt = this.time + 700;
         } else this.useItem(m);
       }
@@ -911,6 +1000,7 @@ export class Game {
       this.updateRecovery(m, dt);
     }
     this.pendingLaunches.clear();
+    if (this.story) this.storyStep(); // STORY HOOK (ST-07)
     if (!this.effectsEnabled) this.effects = [];
 
     // apply deferred wall breaks after the solver ran

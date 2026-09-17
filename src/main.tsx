@@ -28,8 +28,24 @@ if (import.meta.env.DEV && new URLSearchParams(window.location.search).has('mpde
   mountMpDebugPanel();
 }
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>
-);
+// ST-03 scene preview: `npm run dev` → `http://localhost:5173/?story=<sceneId>` (or `?story=list`)
+// mounts one dialogue scene full screen so script, portraits, props and choices can be checked without
+// racing into them. Dev-only and opt-in, so the bundler drops it from a published build.
+let preview = false;
+if (import.meta.env.DEV) {
+  const sceneId = new URLSearchParams(window.location.search).get('story');
+  if (sceneId) {
+    const { mountStoryPreview } = await import('./components/story/storyPreview');
+    mountStoryPreview(sceneId);
+    preview = true;
+  }
+}
+
+// The preview owns the whole page; the game itself never boots behind it.
+if (!preview) {
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <App />
+    </StrictMode>
+  );
+}

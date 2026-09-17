@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { ArrowRight, ArrowUpRight, RotateCcw, Shuffle, Flag, Trophy, FlaskConical, CircleHelp, Gauge, Weight, MoveUp, LockKeyhole, ChevronRight, ChevronLeft } from 'lucide-react';
+import { BookOpen, ArrowRight, ArrowUpRight, RotateCcw, Shuffle, Flag, Trophy, FlaskConical, CircleHelp, Gauge, Weight, MoveUp, LockKeyhole, ChevronRight, ChevronLeft } from 'lucide-react';
 import { adjustStat, statsToPhysics, STAT_BUDGET, PLAYER_COLORS, teamOf } from '../game/types';
 import { DRIVER_NAMES, PLAYER_PORTRAIT_COUNT, RIVALS, characterOf } from '../game/characters';
 import Portrait from './Portrait';
@@ -34,6 +34,8 @@ interface Props {
   onShop: () => void;
   portrait: number;
   onPortrait: (index: number) => void;
+  /** Story mode (ST-08). Omitted when the story is not available. */
+  onStartStory?: () => void;
 }
 
 const PANES = [['circuit', 'Circuit'], ['driver', 'Driver'], ['grid', 'Grid']] as const;
@@ -47,7 +49,7 @@ const COLOR_NAMES = ['Race Red', 'Glacier', 'Coral', 'Tangerine', 'Violet', 'Pea
 
 export default function SetupScreen(props: Props) {
   const { stats, onStats, color, onColor, rivals, onRerollRivals, seed, onNewSeed, onStart, onStartSeason, onContinueSeason, seasonMode, onBackToSeason, circuitIndex, onCircuit } = props;
-  const { account, onShop, portrait, onPortrait } = props;
+  const { account, onShop, portrait, onPortrait, onStartStory } = props;
   const [pane, setPane] = useState<'circuit' | 'driver' | 'grid'>('driver');
   const [mode, setMode] = useState<'season' | 'quick'>('season');
   const [dialog, setDialog] = useState<'rules' | 'lab' | null>(null);
@@ -105,6 +107,7 @@ export default function SetupScreen(props: Props) {
       {seasonMode
         ? <><p>Locked for all three heats once the GP begins.</p><button className="button-primary launch-button" onClick={onBackToSeason}><LockKeyhole size={17} /> Save setup <ArrowRight size={19} /></button></>
         : <>
+          {onStartStory && <button className="button-secondary" onClick={onStartStory} title="Story mode: Down We Go"><BookOpen size={15} />Story</button>}
           <div className="mode-switch" aria-label="Race mode"><button aria-pressed={mode === 'season'} className={mode === 'season' ? 'selected' : ''} onClick={() => setMode('season')}><Trophy size={15} />Championship</button><button aria-pressed={mode === 'quick'} className={mode === 'quick' ? 'selected' : ''} onClick={() => setMode('quick')}><Flag size={15} />Quick race</button></div>
           {onContinueSeason && mode === 'season' && <button className="button-secondary" onClick={onContinueSeason}>Continue <ArrowUpRight size={16} /></button>}
           <button className="button-primary launch-button" onClick={mode === 'season' ? onStartSeason : onStart}>{mode === 'season' ? (onContinueSeason ? 'NEW SEASON' : 'START CHAMPIONSHIP') : 'LIGHTS OUT'}<ArrowRight size={20} /></button>
