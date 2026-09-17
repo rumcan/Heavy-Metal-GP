@@ -134,7 +134,9 @@ test('MP-01 registration: rundot/realtime.config.json registers the room the tra
   // humans + AI filling the other seats of a 10-marble grid").
   assert.equal(room.config?.maxPlayers, 6);
   assert.ok(room.config?.allowReconnect, 'a dropped seat must be held for the reconnect window (MP-08)');
-  assert.equal(room.config?.reconnectTimeout, 60);
+  // MP-03 set this to 30: half the grace the room started with. It is the
+  // number `peerStatus.graceMs` prints, so it is the room's copy that counts.
+  assert.equal(room.config?.reconnectTimeout, 30);
 });
 
 test('MP-01 registration: the registered room file exists and default-exports the room class', () => {
@@ -152,7 +154,7 @@ test('MP-01 registration: the e2e rooms file ships the same room with the suite-
   const shipped = readRooms('rundot/realtime.config.json');
   const e2e = readRooms('rundot/realtime.e2e.config.json');
   assert.deepEqual(e2e, shipped, 'the e2e file must not drift from the shipped room shape');
-  assert.equal(e2e.rooms[0].config?.reconnectTimeout, 60);
+  assert.equal(e2e.rooms[0].config?.reconnectTimeout, 30);
 });
 
 test('MP-01 registration: npm run dev wires the local room sidecar', () => {

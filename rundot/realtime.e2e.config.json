@@ -8,7 +8,7 @@
         "maxPlayers": 6,
         "idleTimeout": 300,
         "allowReconnect": true,
-        "reconnectTimeout": 60,
+        "reconnectTimeout": 30,
         "metadata": { "mode": "race" }
       }
     }

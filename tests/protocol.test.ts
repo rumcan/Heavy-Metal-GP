@@ -392,6 +392,13 @@ test('MP-02 validation: a lobby is the whole grid, not half of one', () => {
   assert.equal(check({ type: 'lobby', seats: [] })?.code, 'malformed');
   assert.equal(check({ type: 'lobby', seats: SEATS.slice(0, 6) })?.code, 'malformed', 'six humans still race a ten-marble grid');
   assert.equal(check({ type: 'lobby', seats: SEATS.map((s) => ({ ...s, ready: s.slot % 2 === 0 })) }), null, 'ready flags ride along');
+  // MP-03: the host republishes the rules here — the room greets a joiner with
+  // the defaults because it cannot know what the host picked, and a guest that
+  // built a different circuit would read every body index as another body.
+  assert.equal(check({ type: 'lobby', seats: SEATS, settings: { circuit: CIRCUIT, laps: 3 } }), null);
+  assert.equal(check({ type: 'lobby', seats: SEATS, settings: defaultRaceSettings() }), null);
+  assert.equal(check({ type: 'lobby', seats: SEATS, settings: { circuit: -1 } })?.code, 'malformed', 'present but unreadable is refused');
+  assert.equal(check({ type: 'lobby', seats: SEATS, settings: 'suzuka' })?.code, 'malformed');
 });
 
 test('MP-02 validation: a guest cannot ask the world for more than the game gives', () => {
@@ -629,13 +636,13 @@ test('MP-02 purity: the protocol imports nothing the room bundle may not have', 
   }
   // The two game modules it does import are the pure ones — and nothing else
   // at all, so the room bundle cannot grow by accident.
-  assert.deepEqual([...new Set(imports)].sort(), ['../game/audio', '../game/types']);
+  assert.deepEqual([...new Set(imports)].sort(), ['../game/cues', '../game/types']);
 });
 
 test('MP-02 purity: the two game modules the protocol imports are pure too', () => {
   // Enforced where it matters (the room bundle), checked here so a future edit
   // to `types.ts` or `audio.ts` fails in the suite rather than in a worker.
-  for (const file of ['src/game/types.ts', 'src/game/audio.ts']) {
+  for (const file of ['src/game/types.ts', 'src/game/cues.ts']) {
     const source = readFileSync(join(ROOT, file), 'utf8');
     assert.equal(/from '[^']+'/.test(source), false, `${file} must have no imports of its own`);
   }
@@ -648,10 +655,12 @@ test('MP-02 wiring: the transport and the room both speak this union', () => {
   const transport = readFileSync(join(ROOT, 'src/net/transport.ts'), 'utf8');
   assert.match(transport, /import type \{ RaceProtocol \} from '\.\/protocol'/);
   assert.equal(/export type RaceProtocol = /.test(transport), false, 'the union has one home');
+  // The room may import three things: the server SDK, the shared wire, and the
+  // pure game constants it seats people with. Nothing else belongs in a bundle
+  // that runs in a room worker.
   assert.deepEqual(
-    importSpecifiers('src/rooms/RaceRoom.ts'),
-    ['@series-inc/rundot-game-sdk/mp-server', '../net/protocol'],
-    'the room relays the race protocol and imports nothing else',
+    [...new Set(importSpecifiers('src/rooms/RaceRoom.ts'))].sort(),
+    ['../game/types', '../net/protocol', '@series-inc/rundot-game-sdk/mp-server'],
   );
   // And the isolation rule MP-01 pinned still holds with the new file in
   // place: the protocol is not a back door to the realtime API.

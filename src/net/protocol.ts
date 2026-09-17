@@ -6,7 +6,7 @@
 // sides — including the ROOM BUNDLE — so it must stay free of SDK, DOM and
 // Matter.js imports: `transport.ts` is the only client module that touches the
 // SDK, and the room keeps its `mp-server` import to itself. The two game
-// modules it does import (`../game/types`, `../game/audio`) are pure — no SDK,
+// modules it does import (`../game/types`, `../game/cues`) are pure — no SDK,
 // no DOM, no physics, no module-scope side effects. Keep them that way: a
 // `matter-js` import here would drag the physics engine into the room worker.
 //
@@ -37,8 +37,8 @@
 // ══════════════════════════════════════════════════════════════════════════
 import { ITEM_TYPES, MAX_ITEM_STACK, STAT_MAX, STAT_MIN } from '../game/types';
 import type { Inventory, ItemType, MarbleStats, TrackProfile, TrackTheme } from '../game/types';
-import { SOUND_EVENTS, isSoundEvent } from '../game/audio';
-import type { SoundEvent } from '../game/audio';
+import { SOUND_EVENTS, isSoundEvent } from '../game/cues';
+import type { SoundEvent } from '../game/cues';
 export type { SoundEvent };
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -222,10 +222,18 @@ export interface WelcomeMsg {
  * host → server → everyone. The lobby, whole: the seats (with their ready
  * flags) rather than a patch, because a lobby is a handful of rows and a
  * joiner needs all of them at once.
+ *
+ * `settings` is the HOST's answer to the room's welcome: the room greets a
+ * joiner with the default circuit (it cannot know what the host picked), so
+ * the host republishes the rules its lobby is showing here, and this room
+ * relays it to everyone. It has to travel — a guest building a different
+ * circuit from the host would read every body index as a different body.
+ * Optional: absent reads as the defaults the welcome already carried.
  */
 export interface LobbyMsg {
   type: 'lobby';
   seats: Seat[];
+  settings?: RaceSettings;
 }
 
 /** guest → server → host. One seat's ready flag. */
@@ -364,7 +372,7 @@ export interface FinishEvent {
   rank: number;
 }
 
-/** A sound cue. See `src/game/audio.ts` — the names, not the noise. */
+/** A sound cue. See `src/game/cues.ts` — the names, not the noise. */
 export interface CueEvent {
   kind: 'sound';
   cue: SoundEvent;
@@ -1277,7 +1285,12 @@ export function validateMessage(msg: unknown, opts: ValidateOptions = {}): Proto
       return validateWelcome(msg);
     case 'lobby': {
       const err = validateSeats(msg.seats);
-      return err;
+      if (err) return err;
+      // A settings block that is PRESENT and unreadable is refused rather than
+      // half-read: two seats racing different circuits is the desync the
+      // version check exists to prevent.
+      if (msg.settings !== undefined && !readRaceSettings(msg.settings)) return bad('Lobby settings are malformed.');
+      return null;
     }
     case 'ready':
       return typeof msg.ready === 'boolean' ? null : bad('Ready is not a boolean.');

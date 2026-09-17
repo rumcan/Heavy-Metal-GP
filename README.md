@@ -52,9 +52,13 @@ that talks to RUN.world's realtime API (room create/join by code, quick match,
 room-code helpers, the per-player active-match memo); everything else imports
 its wrappers, and `tests/multiplayer.test.ts` fails the moment another file
 reaches for the SDK's realtime client. The room itself is registered in
-`rundot/realtime.config.json` (`hmgp-race`, six seats) and currently just seats
-players — the relay, host-authoritative simulation, guest rendering and the
-lobby UI land in MP-03…MP-06.
+`rundot/realtime.config.json` (`hmgp-race`, six seats) and is now the **thin
+validating relay** (`src/rooms/RaceRoom.ts`): it mints the seed, names the host,
+keeps the seat table (player → grid slot), relays host state to everyone and
+guest intents to the host only, drops a guest-forged frame or one the protocol
+refuses, locks the room once the lights go out, and ends the race for everyone
+when the host leaves mid-heat. It never simulates — host-authoritative
+simulation, guest rendering and the lobby UI land in MP-04…MP-06.
 
 The **race protocol** (`src/net/protocol.ts`) is the wire both ends speak:
 `welcome`/`lobby`/`ready`/`start`, a 20 Hz `state` frame (ten marbles packed
@@ -90,9 +94,9 @@ preview, a phone on the LAN): the sidecar origin the plugin injects is
 `RUNDOT_DEV_ROOM_URL=https://… npm run dev`. And editing `vite.config.ts` while
 the dev server runs makes Vite restart it, which can lose the race for port 9001
 and exit with `EADDRINUSE`; restart `npm run dev` if that happens. A deliberate
-leave is held for the room's 60-second reconnect grace before the other seat
-sees the player leave — that is the platform's seat hold, and MP-08 is where it
-becomes visible.
+leave is held for the room's 30-second reconnect grace before the other seat
+sees the player leave — that is the platform's seat hold, and the room already
+announces the drop (`peerStatus`) with the countdown attached.
 
 ## Credits And The Pit Shop
 
@@ -177,7 +181,12 @@ that says which, that a version mismatch produces the reload message, that a
 ten-marble `state` frame stays far under 4 KiB, that chunked snapshots
 reassemble (out of order, and after a newer transfer supersedes an older one)
 and are dropped when they do not describe a world, and that the protocol module
-keeps the imports the room bundle can live with.
+keeps the imports the room bundle can live with. `tests/room.test.ts` drives the
+relay through the SDK's own dispatch with a fake room protocol: the seed is
+minted from the room id, guest-forged state is dropped while the host's is
+broadcast, intents reach the host and nobody else, the seventh player is
+refused, `start` locks the door, the host leaving mid-race ends the race for
+everyone, and a dropped socket is announced with its reconnect window.
 
 Story coverage: `tests/story-schema.test.ts` enforces the script/art contract — every scene
 id in the outline exists, every speaker resolves to a portrait mood that was drawn, every
