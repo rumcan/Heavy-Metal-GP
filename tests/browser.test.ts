@@ -33,6 +33,18 @@ before(async () => {
   const address = server.httpServer!.address();
   assert.ok(address && typeof address !== 'string');
   baseUrl = `http://127.0.0.1:${address.port}`;
+  // Off Linux (Windows/macOS dev machines) the bundled Chromium cannot run: use a locally installed Chrome or Edge.
+  // Override with BROWSER_PATH if it lives somewhere else.
+  if (process.platform !== 'linux') {
+    const candidates = [process.env.BROWSER_PATH,
+      'C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'].filter(Boolean) as string[];
+    const { existsSync } = await import('node:fs');
+    const executablePath = candidates.find((path) => existsSync(path));
+    assert.ok(executablePath, 'No local Chrome or Edge found; set BROWSER_PATH.');
+    browser = await playwright.launch({ executablePath, headless: true, args: ['--disable-gpu'] });
+    return;
+  }
   // Use the browser package's bundled Linux libraries in minimal CI images, too.
   libraryDir = await mkdtemp(join(tmpdir(), 'marble-browser-libs-'));
   const archive = await readFile(join(root, 'node_modules/@sparticuz/chromium/bin/al2023.tar.br'));

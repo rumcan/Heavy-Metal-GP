@@ -283,6 +283,24 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
   const byId = (id: number) => roster.find((m) => m.id === id)!;
   const preStart = hud.lights >= 0;
   const showGo = !preStart && hud.time < 1100;
+  /**
+   * DEV ONLY: end the heat immediately with the player at a chosen place, so story branches (win / podium / loss / DNF)
+   * can be tested without racing. Rivals keep their current running order. Stripped from production builds.
+   */
+  const devSkipRace = (place: number | 'dnf') => {
+    const game = gameRef.current;
+    if (!import.meta.env.DEV || !game || doneRef.current) return;
+    doneRef.current = true;
+    const order = game.classify().map((r) => r.marble).filter((m) => m !== game.player);
+    order.splice(place === 'dnf' ? order.length : Math.max(0, Math.min(place - 1, order.length)), 0, game.player);
+    const classification = order.map((m, i) => ({
+      id: m.info.id, rank: i + 1, pegs: m.pegs,
+      time: place === 'dnf' && m === game.player ? null : 95000 + i * 1300,
+    }));
+    setResults(classification);
+    finishedCallback.current(classification);
+  };
+
   const requestExit = () => { setPause(true); setConfirmExit(true); };
   const deploy = (item: ItemType) => {
     if (pausedRef.current || doneRef.current) return;
@@ -298,7 +316,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, title, su
   });
 
   return <div className="race-shell">
-    <header className="race-topbar"><Brand compact /><div className="race-event"><span>{subtitle}</span><h1>{title}</h1></div><div className="race-clock"><span>RACE TIME</span><strong>{formatTime(hud.time)}</strong></div><div className="race-top-actions"><button className="icon-button" onClick={toggleMute} aria-label={muted ? 'Unmute sound (M)' : 'Mute sound (M)'} aria-pressed={muted} title={muted ? 'Sound off (M)' : 'Sound on (M)'}>{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button><button className="icon-button" onClick={() => setPause(true)} aria-label="Pause race" disabled={!!results}><Pause size={18} /></button><button className="text-button" onClick={requestExit} disabled={!!results}>Exit <ArrowUpRightIcon /></button></div></header>
+    <header className="race-topbar"><Brand compact /><div className="race-event"><span>{subtitle}</span><h1>{title}</h1></div><div className="race-clock"><span>RACE TIME</span><strong>{formatTime(hud.time)}</strong></div><div className="race-top-actions">{import.meta.env.DEV && !results && <div className="dev-skip-race" title="Dev only: finish this heat instantly with you in the chosen place"><span>SKIP</span>{([1, 3, 8, 'dnf'] as const).map((place) => <button key={place} className="text-button" onClick={() => devSkipRace(place)}>{place === 'dnf' ? 'DNF' : `P${place}`}</button>)}</div>}<button className="icon-button" onClick={toggleMute} aria-label={muted ? 'Unmute sound (M)' : 'Mute sound (M)'} aria-pressed={muted} title={muted ? 'Sound off (M)' : 'Sound on (M)'}>{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button><button className="icon-button" onClick={() => setPause(true)} aria-label="Pause race" disabled={!!results}><Pause size={18} /></button><button className="text-button" onClick={requestExit} disabled={!!results}>Exit <ArrowUpRightIcon /></button></div></header>
     <div className="race-stage">
       <canvas ref={canvasRef} className="race-canvas" aria-label="2D marble race. Arrow keys nudge. Keys 1 to 8 deploy power-ups; plus and minus zoom; Space repeats the last item. P pauses." />
       {mapTrack && <RaceMinimap track={mapTrack} racers={hud.field} roster={roster} viewTop={hud.viewTop} viewBottom={hud.viewBottom} progress={hud.progress} />}

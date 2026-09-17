@@ -14,12 +14,7 @@ import "./powerups.css";
 import "./layout.css";
 import "./kit.css";
 import App from "./App";
-import { bindStorage, preloadStorage } from "./game/storage";
-
-// The game's saves go through the SDK's device cache; hand it over before the
-// season is read. (`storage.ts` cannot import the SDK itself: the simulation
-// imports the season, and the SDK boots itself at module scope.)
-bindStorage(RundotGameAPI.deviceCache);
+import { preloadStorage } from "./game/storage";
 
 await preloadStorage();
 
