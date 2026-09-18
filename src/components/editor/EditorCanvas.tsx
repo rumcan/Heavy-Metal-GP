@@ -308,7 +308,8 @@ export default function EditorCanvas(props: Props) {
         const curTrack = trackRef.current;
         const b2p = b2pRef.current;
         let hit: number | null = null;
-        if (curTrack && b2p.length) {
+        // While placing, a click always drops a piece, even on top of another one: select mode (E) edits pieces.
+        if (curTrack && b2p.length && !armedRef.current) {
           hit = hitPieceAt(worldRaw, curTrack, b2p);
         }
 

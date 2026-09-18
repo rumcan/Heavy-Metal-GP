@@ -300,3 +300,10 @@
 .theme-variants button { display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; background: #0b1622; border: 1px solid #2b3a4d; border-radius: 999px; color: #b9c3cc; font: 10px var(--mono); }
 .theme-variants button:hover { border-color: #b8794f; }
 .theme-variants button.selected { border-color: var(--accent); color: #fff; }
+
+/* ---------- select tool (E) ---------- */
+.editor-tool-select { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: #0b1016; border: 1px solid #2b3644; border-radius: 4px; color: #b9c3cc; font: 600 12px var(--display); letter-spacing: .6px; text-transform: uppercase; }
+.editor-tool-select:hover { border-color: #b8794f; color: #fff3dc; }
+.editor-tool-select.active { border-color: var(--accent); background: #d63e2e22; color: #fff; box-shadow: 0 0 10px #d63e2e44; }
+.editor-tool-select kbd { padding: 0 5px; border: 1px solid currentColor; border-radius: 3px; font: 10px var(--mono); opacity: .8; }
+.palette-tile[data-tile="curve"] .palette-art img { transform: rotate(-18deg); } /* the wooden rail, tilted: reads as a bend, not a copy of Ramp */

@@ -41,6 +41,7 @@ import {
   RotateCw,
   MoveVertical,
   Eraser,
+  MousePointer2,
 } from 'lucide-react';
 import Brand from './Brand';
 import Dialog from './Dialog';
@@ -378,15 +379,16 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
       const tile = tileFor(armed);
       if (!tile) return;
       const piece = { ...defaultPiece(tile.t, world, grid), ...tile.preset } as Piece;
+      // The new piece is not selected: the tool stays armed so the player can keep placing. Select mode (E) edits.
       commit(
         (def) => {
           def.pieces.push(piece);
           return def;
         },
-        { select: [circuit.def.pieces.length] },
+        { select: [] },
       );
     },
-    [armed, grid, commit, circuit.def.pieces.length],
+    [armed, grid, commit],
   );
 
   const handleSelect = useCallback(
@@ -781,6 +783,12 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
         setArmed(null);
         return;
       }
+      if (e.key.toLowerCase() === 'e' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // Select tool: stop placing (keep whatever is selected).
+        e.preventDefault();
+        setArmed(null);
+        return;
+      }
       if (e.key.toLowerCase() === 'r' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         if (selected.length) {
           e.preventDefault();
@@ -992,6 +1000,14 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
             </button>
             <button className="text-button editor-clear" onClick={() => setConfirmClear(true)} disabled={circuit.def.pieces.length === 0} title="Remove every piece from the track">
               <Eraser size={13} />Clear map
+            </button>
+            <button
+              className={`editor-tool-select ${armed ? '' : 'active'}`}
+              onClick={() => setArmed(null)}
+              aria-pressed={!armed}
+              title="Select tool (E): stop placing pieces, then click a piece to select it or empty space to deselect"
+            >
+              <MousePointer2 size={14} />Select<kbd>E</kbd>
             </button>
             <span className="editor-chip" style={{ marginLeft: 'auto' }}>
               {selected.length ? `${selected.length} SELECTED` : armedTile ? `ARMED · ${armedTile.label.toUpperCase()}` : 'NO PIECE ARMED'}

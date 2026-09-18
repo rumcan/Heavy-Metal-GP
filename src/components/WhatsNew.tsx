@@ -27,7 +27,7 @@ export default function WhatsNew({ onClose, onWorkshop }: Props) {
         <Hammer size={20} />
         <div>
           <strong>The Map Builder is here</strong>
-          <p>Build your own tracks in the Workshop: drag, rotate and resize every piece, set the track length, pick the new Dwarven Forge and Worg Canyon themes, test drive it, then publish it to Community tracks for everyone to upvote and race.</p>
+          <p>Build your own tracks in the Workshop: drag, rotate and resize every piece (press E for the Select tool), set the track length, pick the new Dwarven Forge and Worg Canyon themes, test drive it, then publish it to Community tracks for everyone to upvote and race.</p>
           <button className="button-primary" onClick={onWorkshop}><Wrench size={15} />Take me to the Workshop<ArrowRight size={16} /></button>
         </div>
       </li>
