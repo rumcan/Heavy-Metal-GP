@@ -39,7 +39,9 @@ export function handlesFor(piece: Piece): Handle[] {
     const r = rotateHandlePoint(piece);
     handles.push({ id: 'rot', x: r.x, y: r.y, cursor: 'grab', label: 'Rotate' });
   }
-  return handles;
+  // A flipped piece (common in copies of calendar circuits) stores mirrored coordinates and is drawn at W - x:
+  // put its handles where it is drawn, not where its numbers point.
+  return piece.flip ? handles.map((h) => ({ ...h, x: W - h.x })) : handles;
 }
 
 /** The move handle (the piece's centre) without the rotate handle; `rotate.ts` builds on it. */
@@ -171,6 +173,8 @@ function baseHandles(piece: Piece): Handle[] {
  * new world position of that handle (already snapped if the grid is on).
  */
 export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: number }, snap: boolean): Piece {
+  // Handles of a flipped piece live in world space (see handlesFor); bring the pointer back into its stored space.
+  if (piece.flip) to = { x: W - to.x, y: to.y };
   if (handleId === 'rot') return applyRotateHandle(piece, to, snap);
   const sx = snap;
   switch (piece.t) {
@@ -368,6 +372,8 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
 
 /** Apply a translation delta to a piece (move as a block). */
 export function movePiece(piece: Piece, dx: number, dy: number): Piece {
+  // A flipped piece is drawn mirrored, so moving it right on screen means moving its stored x left.
+  if (piece.flip) dx = -dx;
   switch (piece.t) {
     case 'ramp':
     case 'ice':

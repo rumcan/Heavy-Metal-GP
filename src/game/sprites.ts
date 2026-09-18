@@ -11,9 +11,43 @@ if (typeof Image !== 'undefined') {
   }
 }
 
-export function sprite(name: string): HTMLImageElement | null {
-  const img = images.get(name);
+/**
+ * Art-theme skins (src/assets/game/skins/<skin>/<name>.webp) override base sprites of the same name. `render()`
+ * sets the skin for the track it draws; any name a skin lacks falls back to the base art.
+ */
+const skinFiles = import.meta.glob<string>('../assets/game/skins/*/*.webp', { eager: true, import: 'default' });
+if (typeof Image !== 'undefined') {
+  for (const [path, url] of Object.entries(skinFiles)) {
+    const [skin, file] = path.split('/skins/')[1].split('/');
+    const img = new Image();
+    img.src = url;
+    images.set(`${skin}/${file.slice(0, -'.webp'.length)}`, img);
+  }
+}
+/** Skin sprites that stand in for base names the theme sheets have no separate art for. */
+const SKIN_ALIASES: Record<string, string> = {
+  'balcony-horn': 'balcony-crowd', 'balcony-cannon': 'balcony-crowd', 'goblin-crowd': 'balcony-crowd',
+  'tower-3': 'tower-1', 'tower-4': 'tower-2', 'mine-wall': 'cliff-left', 'mine-edge': 'cliff-left', 'flag-checker': 'flag-race',
+};
+
+let activeSkin: string | null = null;
+/** Draw with an art theme's sprites (null = the default goblin art). */
+export function setSkin(skin: string | null): void { activeSkin = skin; }
+export function currentSkin(): string | null { return activeSkin; }
+
+function loaded(img: HTMLImageElement | undefined): HTMLImageElement | null {
   return img && img.complete && img.naturalWidth > 0 ? img : null;
+}
+
+export function sprite(name: string): HTMLImageElement | null {
+  if (activeSkin) {
+    const own = images.get(`${activeSkin}/${name}`);
+    if (own) return loaded(own);
+    const alias = SKIN_ALIASES[name];
+    const aliased = alias ? images.get(`${activeSkin}/${alias}`) : undefined;
+    if (aliased) return loaded(aliased);
+  }
+  return loaded(images.get(name));
 }
 
 const BALLS: [string, number, number][] = [

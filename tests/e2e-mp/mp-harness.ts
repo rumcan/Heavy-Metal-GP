@@ -149,7 +149,27 @@ export class Player {
     // up yet takes the click and does nothing with it.
     await cta.waitFor({ state: 'attached', timeout: DEFAULT_TIMEOUT });
     await cta.click();
+    await this.dismissWhatsNew();
     await this.onlineTab().waitFor({ timeout: DEFAULT_TIMEOUT });
+  }
+
+  /**
+   * The version pop-up, if this page is opening on one.
+   *
+   * "What's new" is shown once per version, over the garage, and it is a modal:
+   * a click on the Online tab beneath it is a click the overlay swallows. A real
+   * player closes it, so the harness does too — and a fresh browser context has
+   * seen no version yet, which is every context a spec opens.
+   */
+  async dismissWhatsNew(): Promise<void> {
+    const close = this.page.getByRole('button', { name: /let.?s race/i });
+    try {
+      await close.first().waitFor({ state: 'visible', timeout: 4_000 });
+    } catch {
+      return; // no pop-up: an older build, or a page that has already seen it
+    }
+    await close.first().click();
+    await this.page.locator('.whats-new').waitFor({ state: 'detached', timeout: DEFAULT_TIMEOUT });
   }
 
   /** The garage's Online mode tab. */

@@ -29,6 +29,7 @@ export default function PiecePalette({ active, onPick }: Props) {
           title={`${tile.label} — ${tile.hint}`}
           onClick={() => onPick(tile.id)}
           data-coach={`palette-${tile.id}`}
+          data-tile={tile.id}
         >
           <span className="palette-art">
             {src ? <img src={src} alt="" draggable={false} /> : <i className="palette-art-fallback" aria-hidden="true" />}

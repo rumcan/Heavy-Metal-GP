@@ -125,7 +125,8 @@ export function rotatePiece(piece: Piece, rad: number, c: Point): Piece {
 export function rotateSelection(pieces: Piece[], indices: number[], deg: number): Piece[] {
   const picked = indices.filter((i) => pieces[i]);
   if (picked.length === 0 || deg === 0) return pieces;
-  const centres = picked.map((i) => pieceCentre(pieces[i]));
+  // Centres in world space: a flipped piece is drawn at W - x.
+  const centres = picked.map((i) => { const c = pieceCentre(pieces[i]); return pieces[i].flip ? { x: W - c.x, y: c.y } : c; });
   const c = { x: centres.reduce((s, p) => s + p.x, 0) / centres.length, y: centres.reduce((s, p) => s + p.y, 0) / centres.length };
   const rad = (deg * Math.PI) / 180;
   const next = pieces.slice();

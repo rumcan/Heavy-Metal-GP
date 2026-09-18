@@ -1,4 +1,6 @@
 import * as storage from './game/storage';
+import { APP_VERSION, SEEN_VERSION_KEY } from './game/version';
+import WhatsNew from './components/WhatsNew';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import SetupScreen from './components/SetupScreen';
@@ -88,6 +90,9 @@ type Phase = 'menu' | 'retune' | 'hub' | 'race' | 'quick' | 'story' | 'lobby' | 
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>('menu');
+  // What's new: once per version, over the garage after the splash screen.
+  const [whatsNew, setWhatsNew] = useState(() => storage.getItem(SEEN_VERSION_KEY) !== APP_VERSION);
+  const closeWhatsNew = () => { storage.setItem(SEEN_VERSION_KEY, APP_VERSION); setWhatsNew(false); };
   const [loading, setLoading] = useState<Loading | null>({ eyebrow: 'SMALL GOBLINS. BIG BALLS. BIGGER DREAMS.', title: 'WELCOME TO THE GRID', cta: 'Enter the paddock', next: 'menu' });
   const [portrait, setPortrait] = useState(loadPortrait);
   useEffect(() => { try { storage.setItem(PORTRAIT_KEY, String(portrait)); } catch { /* storage unavailable */ } }, [portrait]);
@@ -604,6 +609,7 @@ export default function App() {
         onClose={() => setLadderOpen(false)}
       />}
       {shopOpen && <PitShop account={account} onBuy={buy} onClose={() => setShopOpen(false)} />}
+      {whatsNew && phase === 'menu' && <WhatsNew onClose={closeWhatsNew} onWorkshop={() => { closeWhatsNew(); setPhase('editor'); }} />}
     </>
   );
   const launchQuickRace = () => {

@@ -416,3 +416,25 @@ body { min-width: 0; }
   .publish-body { grid-template-columns: minmax(0, 1fr); }
   .publish-map { display: none; }
 }
+
+/* ---------- what's new ---------- */
+.whats-new { width: 600px; }
+.whats-new h2 { margin: 6px 0 12px; }
+.whats-new-version { margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: var(--accent); color: #fff3dc; font: 700 11px var(--mono); letter-spacing: .5px; }
+.whats-new-list, .whats-new-coming { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.whats-new-feature { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; padding: 10px 12px; background: #0e1a28; border: 1px solid #3b2a20; border-radius: 6px; }
+.whats-new-feature > svg { color: var(--accent); margin-top: 2px; }
+.whats-new-feature strong, .whats-new-coming strong { display: block; font: 700 16px/1.2 var(--display); letter-spacing: .4px; text-transform: uppercase; color: #ede3c7; }
+.whats-new-feature p { margin: 3px 0 0; font-size: 12px; line-height: 1.5; color: #b9c3cc; }
+.whats-new-feature .button-primary { margin-top: 8px; min-height: 34px; padding: 6px 12px; font-size: 13px; }
+.whats-new-subtitle { margin: 14px 0 6px; font: 600 12px var(--display); letter-spacing: 1.2px; text-transform: uppercase; color: #c9c0a6; }
+.whats-new-coming > li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; color: #8d99a8; }
+.whats-new-coming > li > svg { margin-top: 2px; color: #c9c0a6; }
+.whats-new-coming strong { font-size: 14px; }
+.whats-new-coming span { font-size: 12px; }
+.whats-new-coming ol { list-style: none; margin: 6px 0 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 12px; }
+.whats-new-coming ol li { font-size: 12px; color: #ede3c7; }
+.whats-new-coming ol b { display: inline-grid; place-items: center; width: 18px; height: 18px; margin-right: 4px; border-radius: 3px; background: #13253a; color: var(--accent); font: 700 11px var(--mono); }
+.whats-new-coming ol small { display: block; margin-left: 22px; font-size: 10px; line-height: 1.35; color: #7c8a98; }
+.whats-new .pause-actions { margin-top: 14px; }
+@media (max-width: 760px) { .whats-new-coming ol { grid-template-columns: minmax(0, 1fr); } }

@@ -42,7 +42,7 @@ export const PALETTE: PaletteGroup[] = [
     note: 'The pipe itself',
     tiles: [
       { id: 'ramp', t: 'ramp', label: 'Ramp', sprite: 'rail-wood', hint: 'A straight rail. Drag its ends to set the angle.' },
-      { id: 'curve', t: 'curve', label: 'Curve', sprite: 'rail-chevron', hint: 'A quadratic bend between two rails.' },
+      { id: 'curve', t: 'curve', label: 'Curve', sprite: 'rail-wood', hint: 'A quadratic bend between two rails.' },
       { id: 'ice', t: 'ice', label: 'Ice rail', sprite: 'strip-ice', hint: 'Almost frictionless — carry speed, lose control.' },
       { id: 'wall', t: 'wall', label: 'Wall', sprite: 'strip-metal', hint: 'A plain barrier. Rails, ledges and catch walls.' },
     ],
@@ -55,7 +55,7 @@ export const PALETTE: PaletteGroup[] = [
       { id: 'loop', t: 'loop', label: 'Loop', sprite: 'loop-ring', hint: 'A full loop the marble has to carry speed through.' },
       { id: 'hoop', t: 'hoop', label: 'Fire hoop', sprite: 'fire-hoop', hint: 'A hoop that launches a marble at speed.' },
       { id: 'pad', t: 'pad', label: 'Spring sheep', sprite: 'sheep-spring', hint: 'A bouncy launch pad pointed left or right.' },
-      { id: 'boost', t: 'boost', label: 'Boost', sprite: 'strip-red', hint: 'A chevron strip that accelerates whatever crosses it.' },
+      { id: 'boost', t: 'boost', label: 'Boost', sprite: 'rail-chevron', hint: 'A chevron strip that accelerates whatever crosses it.' },
       { id: 'spinner', t: 'spinner', label: 'Spinner', sprite: 'spinner-blade', hint: 'A blade that sweeps marbles aside.' },
       { id: 'wrecker', t: 'wrecker', label: 'Wrecking ball', sprite: 'wrecking-ball', hint: 'A swinging ball on a chain.' },
       { id: 'bucket', t: 'bucket', label: 'Minecart', sprite: 'minecart', hint: 'A cart that shuttles across the track.' },

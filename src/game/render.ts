@@ -1,8 +1,8 @@
 import Matter from 'matter-js';
 import { Game, Marble } from './engine';
 import { meta, W } from './track';
-import { MARBLE_RADIUS, ITEM_INFO } from './types';
-import { ballFor, bodyFrame, drawRail, drawSprite, drawStrip, sprite } from './sprites';
+import { MARBLE_RADIUS, ITEM_INFO, skinFor, themeIdFor } from './types';
+import { ballFor, bodyFrame, currentSkin, drawRail, drawSprite, drawStrip, setSkin, sprite } from './sprites';
 import repeatingBgUrl from '../assets/bg/repeating.webp';
 import mineEntranceUrl from '../assets/bg/mine-entrance.webp';
 import mineUrl from '../assets/bg/mine.webp';
@@ -115,6 +115,20 @@ function vignetteFor(cw: number, ch: number): HTMLCanvasElement {
 function drawBackdrop(ctx: CanvasRenderingContext2D, cam: Camera, cw: number, ch: number, trackHeight: number) {
   ctx.fillStyle = '#0a1a33';
   ctx.fillRect(0, 0, cw, ch);
+  // Art themes bring one seamless tile that repeats all the way down (no sky -> mine descent).
+  const skin = currentSkin();
+  const skinTile = skin ? sprite('backdrop') : null;
+  if (skin && skinTile) {
+    const dpr = ctx.getTransform().a || 1;
+    const tw = Math.max(cw, 600);
+    const th = tw * (skinTile.naturalHeight / skinTile.naturalWidth);
+    const v = cam.y * 0.18;
+    const x = (cw - tw) / 2;
+    const tile = tintedTile(skinTile, `skin:${skin}`, tw * dpr, 'rgba(20,10,6,0.45)');
+    for (let row = Math.floor(v / th); row * th - v < ch; row++) ctx.drawImage(tile, x, row * th - v, tw, th + 1);
+    ctx.drawImage(vignetteFor(cw, ch), 0, 0, cw, ch);
+    return;
+  }
   if (!ready(skyBg)) return;
   const dpr = ctx.getTransform().a || 1;
   const tw = Math.max(cw, 600);
@@ -374,6 +388,8 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
   ctx.clearRect(0, 0, cw, ch);
 
   const theme = game.track.theme;
+  // Art themes swap in their own sprites; everything else draws the goblin art.
+  setSkin(skinFor(themeIdFor(theme)));
   // background
   // Scrolling repeating backdrop under a blue vignette.
   drawBackdrop(ctx, cam, cw, ch, game.track.height);
@@ -391,6 +407,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
   const viewLeft = cam.x - cw / 2 / cam.scale - 100;
   const viewRight = cam.x + cw / 2 / cam.scale + 100;
 
+  drawSkinRockOuter(ctx, viewLeft, viewRight, viewTop, viewBottom);
   drawStaticLayer(ctx, game, viewTop, viewBottom);
   drawTorchGlows(ctx, game, viewTop, viewBottom, t);
 
@@ -721,8 +738,10 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
           ctx.save();
           ctx.translate(b.position.x, b.position.y - (f.maxV - f.minV) / 2);
           ctx.rotate(b.angle);
+          // squash about the base of the art (84% below the pad surface) so the base stays planted and the top bobs
+          ctx.translate(0, h * 0.84);
           ctx.scale(face, squash);
-          ctx.drawImage(sheep, -w * 0.42, -h * 0.16, w, h);
+          ctx.drawImage(sheep, -w * 0.42, -h, w, h);
           ctx.restore();
           break;
         }
@@ -959,7 +978,8 @@ function drawDecor(ctx: CanvasRenderingContext2D, game: Game, viewTop: number, v
 const blurred = new Map<string, HTMLCanvasElement>();
 /** Cheap, portable blur: shrink the sprite hard, darken it, and let the browser smooth it back up when drawn. */
 function blurredSprite(name: string): HTMLCanvasElement | null {
-  const hit = blurred.get(name);
+  const cacheKey = `${currentSkin() ?? 'base'}/${name}`;
+  const hit = blurred.get(cacheKey);
   if (hit) return hit;
   const img = sprite(name);
   if (!img) return null;
@@ -1067,12 +1087,18 @@ function drawSidesStatic(ctx: CanvasRenderingContext2D, game: Game, viewTop: num
       ctx.scale(-1, 1);
     }
     // everything below is authored for the left side (track to the right, x = 0 is the wall)
-    const rw = 300, rh = rw * rock.naturalHeight / rock.naturalWidth;
-    for (let y = Math.floor(viewTop / rh) * rh; y < viewBottom; y += rh) {
-      for (let x = STATIC_X0 - rw; x < -200; x += rw) ctx.drawImage(rock, x, y, rw, rh);
+    if (currentSkin()) {
+      // Art themes: the same plain cliff face continues outwards at the same size and light, so the side reads
+      // as one rock wall rather than a darker, blown-up copy behind the edge.
+      drawSkinRock(ctx, STATIC_X0, viewTop, viewBottom);
+    } else {
+      const rw = 300, rh = rw * rock.naturalHeight / rock.naturalWidth;
+      for (let y = Math.floor(viewTop / rh) * rh; y < viewBottom; y += rh) {
+        for (let x = STATIC_X0 - rw; x < -200; x += rw) ctx.drawImage(rock, x, y, rw, rh);
+      }
+      ctx.fillStyle = 'rgba(6,16,36,0.45)';
+      ctx.fillRect(STATIC_X0, viewTop, -200 - STATIC_X0, viewBottom - viewTop);
     }
-    ctx.fillStyle = 'rgba(6,16,36,0.45)';
-    ctx.fillRect(STATIC_X0, viewTop, -200 - STATIC_X0, viewBottom - viewTop);
     // above ground: cliffs, scaffold towers and balconies; underground: mine walls
     const ug = undergroundY(game);
     ctx.save();
@@ -1120,6 +1146,37 @@ function drawSidesStatic(ctx: CanvasRenderingContext2D, game: Game, viewTop: num
     }
     const torch = sprite('torch');
     if (torch) for (const y of torchRows(seed, side, viewTop, viewBottom)) ctx.drawImage(torch, -8, y - 40, 42, 78);
+    ctx.restore();
+  }
+}
+
+/** Width the side cliffs are drawn at; the edge column and the rock behind it share it so they line up. */
+const CLIFF_W = 300;
+/**
+ * Art themes: plain cliff columns from the wall outwards to `fromX` (left side, x < 0), aligned with the edge
+ * column (drawn at x = -CLIFF_W + 10), so the whole side is one continuous rock face.
+ */
+function drawSkinRock(ctx: CanvasRenderingContext2D, fromX: number, top: number, bottom: number) {
+  const img = sprite('cliff-left');
+  if (!img) return;
+  const h = CLIFF_W * img.naturalHeight / img.naturalWidth;
+  for (let x = -CLIFF_W + 10 - CLIFF_W; x + CLIFF_W > fromX; x -= CLIFF_W - 2) {
+    for (let y = Math.floor(top / h) * h; y < bottom; y += h) ctx.drawImage(img, x, y, CLIFF_W, h + 1);
+  }
+}
+
+/** Beyond the baked static layer (zoomed far out): keep the rock face going instead of flat darkness. */
+function drawSkinRockOuter(ctx: CanvasRenderingContext2D, viewLeft: number, viewRight: number, top: number, bottom: number) {
+  if (!currentSkin()) return;
+  for (const side of [0, 1] as const) {
+    const reach = side === 0 ? -viewLeft : viewRight - W;
+    if (reach <= -STATIC_X0) continue;
+    ctx.save();
+    if (side === 1) { ctx.translate(W, 0); ctx.scale(-1, 1); }
+    ctx.beginPath();
+    ctx.rect(-reach - 10, top, reach + STATIC_X0 + 12, bottom - top);
+    ctx.clip();
+    drawSkinRock(ctx, -reach - CLIFF_W, top, bottom);
     ctx.restore();
   }
 }
@@ -1336,7 +1393,7 @@ function drawStaticLayer(ctx: CanvasRenderingContext2D, game: Game, viewTop: num
   }
   const now = performance.now();
   const get = (index: number) => {
-    const key = `${index}@${res}`;
+    const key = `${currentSkin() ?? 'base'}:${index}@${res}`;
     let chunk = cache!.get(key);
     if (!chunk) {
       chunk = { canvas: bakeChunk(game, index, res), used: now };
