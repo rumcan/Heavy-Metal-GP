@@ -249,6 +249,72 @@ export class Player {
     };
   }
 
+  /**
+   * RK-05/RK-06: this driver's rating FILE, read raw — the number and the race
+   * count, which is what “the race counted once” is a claim about. Same
+   * test-only storage seam as `seedRating`; a page has no other way to show it.
+   */
+  async rankFile(): Promise<{ rating: number; matches: number; wins: number; losses: number } | null> {
+    const raw = await this.page.evaluate(async () => {
+      const api = (window as unknown as { RundotGameAPI?: { appStorage?: { getItem(k: string): Promise<string | null> } } }).RundotGameAPI;
+      return (await api?.appStorage?.getItem('heavy-metal-gp:rank:v1')) ?? null;
+    });
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as { rating?: unknown; matches?: unknown; wins?: unknown; losses?: unknown };
+      if (typeof parsed.rating !== 'number' || typeof parsed.matches !== 'number') return null;
+      return {
+        rating: parsed.rating,
+        matches: parsed.matches,
+        wins: typeof parsed.wins === 'number' ? parsed.wins : 0,
+        losses: typeof parsed.losses === 'number' ? parsed.losses : 0,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * RK-06: the results screen's rating band — the state it is in (settled,
+   * pending, unrated) and, when a race has settled, this driver's own line.
+   */
+  async ratingBand(): Promise<{ state: string; rating: string; delta: string; callouts: string } | null> {
+    const band = this.page.locator('.results-ranking');
+    if (!(await band.count())) return null;
+    return {
+      state: (await band.getAttribute('data-state')) ?? '',
+      rating: (await band.locator('.results-ranking-rating').count()) ? (await band.locator('.results-ranking-rating').innerText()).trim() : '',
+      delta: (await band.locator('.results-ranking-delta').count()) ? (await band.locator('.results-ranking-delta').innerText()).trim() : '',
+      callouts: (await band.locator('.rank-callout').allInnerTexts()).join(' ').trim(),
+    };
+  }
+
+  /**
+   * RK-06: the per-human rating rows of the results table, in the table's own
+   * order. The signed delta is read from the `data-delta` the row carries, so a
+   * changed glyph cannot be mistaken for a changed number.
+   */
+  async resultsDeltas(): Promise<{ name: string; delta: number; tier: string; mine: boolean }[]> {
+    return this.page.locator('.results-table tbody tr').evaluateAll((rows) =>
+      rows.flatMap((row) => {
+        const cell = row.querySelector<HTMLElement>('.rank-delta');
+        if (!cell || cell.dataset.delta === undefined) return [];
+        return [{
+          name: (row.querySelector('.result-driver strong')?.textContent ?? '').replace(/YOU$/, '').trim(),
+          delta: Number(cell.dataset.delta),
+          tier: cell.dataset.tier ?? '',
+          mine: row.classList.contains('player-result'),
+        }];
+      }),
+    );
+  }
+
+  /** RK-06: leave the race from the results screen and land back in the garage. */
+  async backToGarage(): Promise<void> {
+    await this.page.getByRole('button', { name: /back to the garage|back to garage/i }).first().click();
+    await this.onlineTab().waitFor({ timeout: DEFAULT_TIMEOUT });
+  }
+
   /** RK-05: open the ladder from wherever this width keeps the badge. */
   async openLadder(): Promise<Locator> {
     await this.page.locator('.rank-button:visible').first().click();

@@ -698,3 +698,111 @@ test('RK-03 arithmetic: a lone rated driver is not a rated race', async () => {
   assert.equal(runtime.state!.rating, START_RATING);
   assert.deepEqual(b.ladder, []);
 });
+
+// ══════════════════════════════════════════════════════════════════════════
+// RK-06 (#60) — a mid-race leaver in a THREE-human race.
+//
+// RK-03's leaver test is a duel: one seat walks, the other inherits the win.
+// A race is not a duel, and the interesting part of a three-human field is that
+// the leaver's absence has to reach EVERY other seat identically — the room is
+// the only party that sees the departure, and it is the room's own `left` mark
+// that both survivors rate from. The host's summary is not trusted here on
+// purpose: MP-08 hands a dropped marble to the AI, so a host's classification
+// can honestly say the leaver FINISHED (that is the duel test's whole point,
+// restated with a second rival in the field).
+// ══════════════════════════════════════════════════════════════════════════
+
+test('RK-06 room: a mid-race leaver in a three-human race is a DNF for everyone, and one result is filed', async () => {
+  const h = setup();
+  await h.protocol.handleCreate();
+  await join(h, 'p1');
+  await join(h, 'p2');
+  await join(h, 'p3');
+
+  // The board: p1 is the strongest, p2 and p3 start level.
+  await send(h, 'p1', { type: 'playerRating', playerId: 'p1', rating: 1180, games: 20, joinToken: 'tok-1' });
+  await send(h, 'p2', { type: 'playerRating', playerId: 'p2', rating: 1000, games: 20, joinToken: 'tok-2' });
+  await send(h, 'p3', { type: 'playerRating', playerId: 'p3', rating: 1000, games: 20, joinToken: 'tok-3' });
+  await send(h, 'p1', { type: 'lobby', seats: threeHumans(), settings: { circuit: 0 } });
+  await send(h, 'p1', gameSettings);
+  h.frames.length = 0;
+
+  // p3 walks out mid-race, and the host's own classification says p3 finished —
+  // the AI drove the marble home. The room is what makes it a DNF.
+  await leave(h, 'p3', 'disconnect');
+  await send(h, 'p1', {
+    type: 'resultClaim',
+    order: [ratedRow('p1', true), ratedRow('p2', true), ratedRow('p3', true)],
+    durationSec: 41,
+    rated: true,
+  });
+
+  const results = broadcasts(h.frames).filter((m) => m.type === 'result');
+  assert.equal(results.length, 1, 'one race, one result — never one per departure');
+  const result = results[0] as ResultMsg;
+  assert.deepEqual(result.departedIds, ['p3'], 'the room names the seat it saw leave');
+  const p3Row = result.order.find((row) => row.playerId === 'p3');
+  assert.deepEqual(p3Row, { playerId: 'p3', finished: false, left: true }, 'and files the leaver as the DNF they are');
+  assert.equal(result.rated, true, 'a matchmade race with no house rules is rated');
+  assert.equal(result.order.filter((row) => row.left === true).length, 1);
+  assert.deepEqual(
+    result.ratings.map((r) => r.playerId).sort(),
+    ['p1', 'p2', 'p3'],
+    'the board travels WITH the result, so a seat that missed an update still rates from the room’s copy',
+  );
+
+  // Both survivors file from that one result, and the numbers they see for each
+  // other are the same numbers — the race's three rows, rated once each.
+  const b1 = bucket();
+  const b2 = bucket();
+  await seed(b1, { rating: 1180, matches: 20, wins: 12, losses: 8, season: RANK_SEASON });
+  await seed(b2, { rating: 1000, matches: 20, wins: 10, losses: 10, season: RANK_SEASON });
+  const survivors: Record<string, RaceVerdict> = {};
+  for (const [id, io] of [['p1', b1], ['p2', b2]] as const) {
+    const runtime = new RankRuntime({
+      session: { playerId: id, publishRating: () => true, claimResult: () => false },
+      store: createRankStore(io.io),
+      roster: threeHumans(),
+      board: { p1: { rating: 1180, games: 20 }, p2: { rating: 1000, games: 20 }, p3: { rating: 1000, games: 20 } },
+      ratedRoom: true,
+    });
+    const verdict = await runtime.handleResult(result, id);
+    assert.ok(verdict, `${id} folds the room’s result in`);
+    survivors[id] = verdict!;
+  }
+
+  // The survivors: both gain, and both see the leaver exactly the same way.
+  for (const id of ['p1', 'p2'] as const) {
+    const verdict = survivors[id];
+    assert.ok(verdict.rated, `${id} raced a rated race`);
+    assert.ok(verdict.change.delta > 0, `${id} gains — the field below them lost a rival and gained a DNF`);
+    assert.equal(verdict.rivals.length, 2, 'and is shown a row for every other rated seat');
+    const leaver = verdict.rivals.find((r) => r.playerId === 'p3')!;
+    assert.equal(leaver.finished, false, `${id} sees the leaver as a DNF`);
+    assert.equal(leaver.position, 3, 'and last, behind both finishers');
+    assert.ok(leaver.delta < 0, 'paying for the walk-out');
+    assert.equal(leaver.known, true);
+  }
+  // Seat-for-seat agreement: p1's row for p2 IS the row p2 computes for itself.
+  const p2FromP1 = survivors.p1.rivals.find((r) => r.playerId === 'p2')!;
+  assert.equal(p2FromP1.before, survivors.p2.change.before);
+  assert.equal(p2FromP1.after, survivors.p2.change.after);
+  assert.equal(p2FromP1.delta, survivors.p2.change.delta);
+  assert.equal(p2FromP1.position, survivors.p2.change.position);
+  // And the leaver: their own seat files its own DNF locally, off the same board.
+  const b3 = bucket();
+  await seed(b3, { rating: 1000, matches: 20, wins: 10, losses: 10, season: RANK_SEASON });
+  const leaverRuntime = new RankRuntime({
+    session: { playerId: 'p3', publishRating: () => true, claimResult: () => false },
+    store: createRankStore(b3.io),
+    roster: threeHumans(),
+    board: { p1: { rating: 1180, games: 20 }, p2: { rating: 1000, games: 20 } },
+    ratedRoom: true,
+  });
+  const own = await leaverRuntime.fileOwnForfeit(['p1', 'p2']);
+  assert.ok(own);
+  assert.equal(own.forfeit, true);
+  assert.equal(own.change.position, 3, 'the leaver rates themselves last of three');
+  assert.ok(own.change.delta < survivors.p2.change.delta, 'and worse than the survivor they were level with');
+  assert.deepEqual(b3.ladder, [], 'a walk-out writes no ladder line of its own');
+});

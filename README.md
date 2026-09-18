@@ -387,9 +387,22 @@ game · Friendly** and **Join with code · Friendly**. The ladder panel reads
 card — and it degrades in one line when there is no board behind the page
 (`isLadderAvailable`), because an empty table reads as "nobody plays this game".
 
-Still to come in this epic: **RK-06** (the ranked E2E sweep: a matchmade race
-whose seats show matching deltas and a refresh that does not file it twice, plus
-the mid-race-leaver room test in a three-human race).
+**The sweep (RK-06).** `tests/e2e-mp/mp-ranked-race.e2e.spec.ts` is the only
+place a rated race is raced to the flag, because a race takes minutes and the
+dev sidecar's rooms outlive the run that opened them. Two seeded drivers queue,
+the host drops the lights, and when the panel comes up both screens' per-human
+deltas are read BY NAME off the results tables and compared seat for seat: one
+driver gains, the other pays, and the badge that follows the new number is the
+same badge on both screens. Each driver's rating file is then read raw (number
+and race count) and compared with what their own band printed, before and after
+a full page reload — a race that had been filed twice would show up as a moved
+number or a bumped counter, and it does not. The same file carries the ranked
+half of HexMatch's rejoin spec: a guest who walks out of a LIVE rated race keeps
+their row on the survivor's results — a DNF, negative delta — while the seat
+that stayed is credited with the win and moves up. The room-side half of that is
+`tests/rank-runtime.test.ts`'s three-human leaver test: the host's own summary
+says the leaver FINISHED (the AI drove the marble home), and it is the room's
+`left` mark, reaching every survivor identically, that makes them a DNF.
 
 ## Credits And The Pit Shop
 
@@ -557,6 +570,11 @@ pending (no numbers), unrated (with `alone` and `room` told apart) and settled
 (one row per rated human, seat-to-player joined for the table's own numbering,
 promotion only on a band change, a refused write said out loud, a leaver's row a
 forfeit).
+`tests/e2e-mp/mp-ranked-race.e2e.spec.ts` (RK-06) is the slow one, and it earns
+it: two browsers queue, race a full heat to the flag, and the two results screens
+are compared row by row — matching deltas, matching badges, one file that moved
+once and stays put across a reload. It also races the abandonment direction,
+where the survivor is the one whose number moves.
 `tests/rankstore.test.ts` covers where a rating lives (RK-02) by driving the
 real chain — `rankstore` → `transport` → the RUN SDK's own in-memory backends,
 with the browser globals stubbed the way `tests/multiplayer.test.ts` stubs them.
