@@ -241,12 +241,49 @@ driver files their first rated race. `searchBucket` (a rating window as a
 matchmaking criterion, since the pool matches by equality) is here too, for
 RK-04.
 
-Still to come in this epic: **RK-02** (where a rating lives — RUN player
-storage and the leaderboard), **RK-03** (the room's board and the filed
-verdict, so a matchmade race actually moves a number), **RK-04** (rank-bucketed
-quick race), **RK-05** (badges and the ladder panel) and **RK-06**. Nothing
-writes a rating yet — the arithmetic and its file are finished, and no race has
-been wired to them.
+**Where a rating lives (RK-02).** `src/net/rankstore.ts` is the policy around
+the arithmetic: the storage keys, the once-only guard that stops a reload from
+filing one race twice, and the single call site that writes to the public
+ladder. The file is RUN **player storage** (`appStorage`, per-player and
+cloud-backed — no other seat can read or write it), reached through
+`src/net/transport.ts`, which is still the only module that touches the SDK's
+storage and leaderboard: `readPlayerValue`/`writePlayerValue` already existed
+for the rejoin memo, and `isLadderAvailable`, `readLadder` and
+`submitLadderScore` join them. Every one of them resolves rather than throws,
+because a rating read that fails must fall back to a fresh file and a ladder
+submit that fails must not take a results screen down with it.
+
+A filed race is guarded by a key built from the **room's own stamp and the
+field in finishing order** — stable across both seats and across a reload, and
+different for a rematch in the same room. It is written *before* the rating, so
+a crash between the two loses a move rather than duplicating one. Reading the
+file is equally forgiving: a corrupt, half-written or simply-not-ours record
+falls back to a fresh 1000 instead of throwing on a boot path.
+
+Two of HexMatch's decisions are reversed here, on purpose. There is **no
+`localStorage` mirror**: RUN.world blocks web storage and everything persistent
+in this game already goes through the device cache, so no RUN storage means a
+fresh file and an unrated race rather than a rating kept in a bucket the
+shipped game cannot read. And an **anonymous driver is not rated at all** —
+`ratedRacingAllowed()` is false without a signed-in player and a per-player
+bucket, and the rating surfaces show one line (`SIGN_IN_TO_BE_RANKED`) instead
+of a number that would evaporate. A signed-out player still races; it just does
+not count.
+
+The public ladder is a **keep-best** leaderboard (`rundot/leaderboard.config.json`,
+mode `ranked`, bands 100–4000, all-time), so it shows a driver's PEAK rating
+while their private file holds where they are now — the two are supposed to
+differ, and a lower submission comes back `accepted: false` and changes nothing.
+An unreachable board is `null`, and the panel says so in a line rather than
+showing an empty table that looks like nobody plays this game.
+
+Still to come in this epic: **RK-03** (the room's board and the filed verdict,
+so a matchmade race actually moves a number — `src/net/rankstore.ts` is already
+the store it will call, through `fileRoomResult`), **RK-04** (rank-bucketed
+quick race), **RK-05** (badges and the ladder panel, which reads
+`rankStore().loadLadder()`) and **RK-06**. Nothing moves a rating during a race
+yet: the arithmetic, the file and the ladder are finished; the race-end wiring
+is RK-03.
 
 ## Credits And The Pit Shop
 
@@ -379,7 +416,20 @@ nothing for a solo race; round-trips the stored file, clamps a hostile record
 and refuses somebody else's JSON; checks the wire's clamping and its
 fresh-1000 default for a driver the room never heard from; and pins the tier
 table — contiguous bands, the top one open-ended, HexMatch's thresholds.
-`tests/multiplayer.test.ts` covers the transport seam: that exactly one client
+`tests/rankstore.test.ts` covers where a rating lives (RK-02) by driving the
+real chain — `rankstore` → `transport` → the RUN SDK's own in-memory backends,
+with the browser globals stubbed the way `tests/multiplayer.test.ts` stubs them.
+No module mocking: a rating file round-trips through `appStorage`; a corrupt,
+half-written or foreign record falls back to a fresh 1000; a bucket that refuses
+the write loses the number and says so (`stored: false`) without wedging the
+session; an anonymous driver is refused rating and given the sign-in line; a win
+files, writes and publishes, and a loss writes through; one race counts once
+however many times the result arrives, while a rematch is a new key; a race that
+was not rated is a no-op; a leaver's own seat files locally with no ladder write
+and no guard key; an unreachable ladder, and a keep-best refusal, both leave the
+race end intact; and `rundot/leaderboard.config.json` is checked against the
+fields the SDK's own board config requires, so a typo fails here rather than at
+deploy. `tests/multiplayer.test.ts` covers the transport seam: that exactly one client
 module may import the SDK's realtime API (and one server module the room
 server), that the room registration and the transport agree on the room type,
 criteria and capacity, and the room-code, matchmaking-expiry and access-denied
