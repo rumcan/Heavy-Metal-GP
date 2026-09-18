@@ -73,6 +73,22 @@ function replayPiece(b: Builder, piece: Piece): void {
       case 'block':
         b.block(piece.x, piece.y, piece.w, piece.h);
         break;
+      // ---- MB-10A ----
+      case 'barricade':
+        b.barricade(piece.x, piece.y, piece.w, piece.h, piece.tough);
+        break;
+      case 'crumble':
+        b.crumble(piece.x, piece.y, piece.w, piece.h, piece.tough);
+        break;
+      case 'tunnel':
+        b.tunnel(piece.x, piece.y, piece.exit[0], piece.exit[1], piece.edir[0], piece.edir[1], piece.ms, piece.speed, piece.two === true);
+        break;
+      case 'trapdoor':
+        b.trapdoor(piece.x, piece.y, piece.w, piece.hinge, piece.mode, piece.open, piece.closed, piece.phase, piece.kg, piece.hold);
+        break;
+      case 'switch':
+        b.switchLever(piece.x, piece.y, piece.len, piece.angle, piece.side);
+        break;
     }
   } finally {
     b.flip = false;

@@ -5,8 +5,8 @@
  */
 import { PALETTE } from './palette';
 
-const art = import.meta.glob<string>('../../assets/game/*.webp', { eager: true, import: 'default' });
-const artFor = (name: string | null) => (name ? art[`../../assets/game/${name}.webp`] ?? null : null);
+const art = import.meta.glob<string>('../../assets/game/*.{webp,png}', { eager: true, import: 'default' });
+const artFor = (name: string | null) => (name ? art[`../../assets/game/${name}.webp`] ?? art[`../../assets/game/${name}.png`] ?? null : null);
 
 interface Props {
   /** Armed tile id. */

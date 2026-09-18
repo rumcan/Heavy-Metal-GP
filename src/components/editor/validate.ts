@@ -84,7 +84,13 @@ function pieceXs(piece: Piece): number[] {
     case 'itembox':
     case 'wall':
     case 'block':
+    case 'barricade':
+    case 'crumble':
+    case 'trapdoor':
+    case 'switch':
       return [(piece as { x: number }).x];
+    case 'tunnel':
+      return [piece.x, piece.exit[0]];
     case 'wrecker':
       return [piece.pivot[0]];
     case 'bucket':
@@ -105,6 +111,10 @@ function pieceYs(piece: Piece): number[] {
       return [piece.pivot[1] + piece.chain, piece.pivot[1]];
     case 'bucket':
       return [piece.y];
+    case 'tunnel':
+      return [piece.y, piece.exit[1]];
+    case 'switch':
+      return [piece.y - piece.len, piece.y];
     default: {
       const p = piece as { y: number };
       return [p.y];
@@ -237,6 +247,41 @@ function staticChecks(def: TrackDef, track: Track | null): ValidationIssue[] {
           pos: { x: loop.x, y: loop.bottom },
           pieceIndex: idx,
         });
+      }
+    }
+
+    // MB-10A static checks: tunnels and trapdoors have rules of their own.
+    def.pieces.forEach((p, idx) => {
+      if (p.t === 'tunnel') {
+        const [ex, ey] = p.exit;
+        const span = Math.hypot(ex - p.x, ey - p.y);
+        if (span < 150) issues.push({ severity: 'error', message: `Tunnel #${idx}: exit too close to entrance (${Math.round(span)}u < 150)`, pos: { x: p.x, y: p.y }, pieceIndex: idx });
+        if (span > 800) issues.push({ severity: 'warning', message: `Tunnel #${idx}: exit is ${Math.round(span)}u away — long transits can feel like a teleport`, pos: { x: p.x, y: p.y }, pieceIndex: idx });
+        if (ey < 0 || ey > def.height) issues.push({ severity: 'error', message: `Tunnel #${idx}: exit y outside the circuit`, pos: { x: ex, y: ey }, pieceIndex: idx });
+        // Up-exits can't feed themselves: an exit that fires up must not land the marble back at its own door.
+        const dy = p.edir[1];
+        if (dy < 0) {
+          const rise = (p.ms / 1000) * Math.abs(dy) * Math.max(p.speed, 1) * 60;
+          if (p.y - ey < rise * 0.5 && Math.abs(ex - p.x) < 120) {
+            issues.push({ severity: 'warning', message: `Tunnel #${idx}: up-exit lands near its own entrance — marbles may loop forever`, pos: { x: ex, y: ey }, pieceIndex: idx });
+          }
+        }
+      } else if (p.t === 'trapdoor') {
+        if (p.y < START_H - 60) issues.push({ severity: 'error', message: `Trapdoor #${idx} too close to the start gate`, pos: { x: p.x, y: p.y }, pieceIndex: idx });
+      } else if (p.t === 'switch') {
+        const tip = p.y - p.len;
+        if (tip < 0 || p.y > def.height) issues.push({ severity: 'error', message: `Switch #${idx} rises outside the circuit`, pos: { x: p.x, y: tip }, pieceIndex: idx });
+      }
+    });
+
+    // Wrap hurdles should never gate the only way down: a wall + barricade band with nothing
+    // else is a hard block when the marble has no way to break through — flag total blockades.
+    const blockers = def.pieces.filter((p) => p.t === 'barricade' || p.t === 'crumble');
+    for (const b of blockers) {
+      if (b.t !== 'barricade' && b.t !== 'crumble') continue;
+      const nearPipeEdge = b.x - b.w / 2 < 60 || b.x + b.w / 2 > W - 60;
+      if (!nearPipeEdge) {
+        issues.push({ severity: 'warning', message: `${b.t} doesn't span the pipe — headless AI should sneak past; make sure one route stays breakable`, pos: { x: b.x, y: b.y } });
       }
     }
   }

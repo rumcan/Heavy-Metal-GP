@@ -1,5 +1,6 @@
 import Matter from 'matter-js';
-import { generateTrack, meta, Track, CAT_MARBLE, CAT_WALL, CAT_SENSOR, CAT_LOOP_UP, CAT_LOOP_CLOSE, W } from './track';
+import { generateTrack, meta, Track, CAT_MARBLE, CAT_WALL, CAT_SENSOR, CAT_LOOP_UP, CAT_LOOP_CLOSE, CAT_FRAGILE, W } from './track';
+import { elementBodies, updateElements, hingeTimerState } from './elements';
 import { TrackDefError, buildTrackFromDef } from './trackdef';
 import { ItemType, MarbleInfo, MARBLE_RADIUS, statsToPhysics, mulberry32, TrackProfile, normalizeInventory, ITEM_TYPES, ITEM_INFO, MAX_ITEM_STACK } from './types';
 import type { Inventory } from './types';
@@ -110,6 +111,10 @@ export interface Marble {
   recoveryUntil: number;
   recoveries: number;
   nudges: number;
+  /** MB-10: the element currently holding this marble (hidden in a tunnel), or null. */
+  hold: Hold | null;
+  /** MB-10: brief invulnerability after a tunnel exit so the marble isn't instantly re-caught. */
+  tunnelSafeUntil: number;
 }
 
 export interface OilSlick {
@@ -118,6 +123,23 @@ export interface OilSlick {
   r: number;
   ownerId: number;
   expiresAt: number;
+}
+
+/**
+ * MB-10. A marble captured by an element (a cliff tunnel so far): the body is a sensor gliding
+ * — hidden inside the rock — from the capture point to the exit over the transit, so the wire
+ * positions stay continuous for whoever watches (a teleport is never drawn). At `until` it pops
+ * out with its set direction and speed. Guests learn the ride from a `hold` event; the extra
+ * fields are host-side only.
+ */
+export interface Hold {
+  kind: 'tunnel';
+  until: number;
+  /** Clocked at `until - transit`; the glide runs from then on. Host-only on the wire. */
+  transit?: number;
+  from?: { x: number; y: number };
+  body?: Matter.Body;
+  exit?: { x: number; y: number; dir: { x: number; y: number }; speed: number };
 }
 
 export interface Effect {
@@ -193,6 +215,8 @@ export class Game {
   /** Why `GameOptions.def` was refused, in the player's words, or null when there was nothing to refuse. */
   trackDefError: string | null = null;
   private poppingPegs = new Set<Matter.Body>();
+  /** MB-10A: per-marble tunnel-entry counts, so up-exits can't make an infinite loop (cap per hole). */
+  private tunnelVisits = new Map<number, Map<number, number>>();
   private staticBins = new Map<number, Matter.Body[]>();
   private globalBodies: Matter.Body[] = [];
   private loadedBodies = new Map<number, Matter.Body>();
@@ -280,6 +304,8 @@ export class Game {
         recoveryUntil: 0,
         recoveries: 0,
         nudges: 0,
+        hold: null,
+        tunnelSafeUntil: 0,
       };
       this.marbles.push(m);
       this.byId.set(info.id, m);
@@ -484,6 +510,7 @@ export class Game {
         this.marbleHits(mb, a);
       }
       else if (ma && mb) {
+        if (ma.hold || mb.hold) continue; // a hidden marble clacks with nobody
         const sp = Math.hypot(ma.body.velocity.x - mb.body.velocity.x, ma.body.velocity.y - mb.body.velocity.y);
         if (sp > 4) {
           this.sfx('clack', ma.info.isPlayer ? ma : mb, a.position.x, a.position.y);
@@ -506,7 +533,9 @@ export class Game {
 
   private applyMask(m: Marble) {
     const ghost = m.ghostUntil > this.time;
-    m.body.collisionFilter.mask = CAT_WALL | CAT_SENSOR | (ghost ? 0 : CAT_MARBLE) | (m.loopStage === 1 ? CAT_LOOP_CLOSE : CAT_LOOP_UP);
+    // Ghost marbles phase through rivals (CAT_MARBLE) and fragile barricades (CAT_FRAGILE,
+    // MB-10A: a ghost slips through a NO ENTRY sign or a crumbling wall without opening it).
+    m.body.collisionFilter.mask = CAT_WALL | CAT_SENSOR | (ghost ? 0 : CAT_MARBLE | CAT_FRAGILE) | (m.loopStage === 1 ? CAT_LOOP_CLOSE : CAT_LOOP_UP);
   }
 
   private setLoopStage(m: Marble, stage: 0 | 1) {
@@ -589,6 +618,102 @@ export class Game {
           this.lastWallToast = this.time;
           this.onEvent?.(`Too light! Wall at ${Math.round((md.hp / (md.maxHp ?? 1)) * 100)}%`, '#94a3b8');
         }
+        break;
+      }
+      // ---- MB-10A: shortcuts and secrets ----
+      case 'barricade': {
+        // A NO ENTRY barricade: damage is weight × speed like a SMASH crate; Heavy metal one-hits it.
+        const anvil = this.time < m.anvilUntil;
+        const speed = Body.getSpeed(m.body);
+        const dmg = anvil ? (md.hp ?? 1) + 1 : m.body.mass * speed;
+        md.hp = (md.hp ?? 0) - dmg;
+        if (md.hp > 0 && dmg > 0.5) this.sfx('crack', m, other.position.x, other.position.y);
+        this.emit({ kind: 'crate', i: this.indexOf(other), hp: Math.max(0, md.hp), broken: md.hp <= 0 });
+        this.effects.push({
+          type: 'debris', x: other.position.x, y: other.position.y, ttl: 25, maxTtl: 25, color: '#d6a04e',
+          particles: this.makeParticles(other.position.x, other.position.y, 6, 3),
+        });
+        if (md.hp <= 0) {
+          md.hp = 0;
+          const v = Body.getVelocity(m.body);
+          if (!this.pendingBreaks.some((p) => p.body === other)) {
+            this.pendingBreaks.push({ body: other, marble: m, v: { x: v.x * 0.85, y: v.y } });
+          }
+          this.shake = 8;
+          this.sfx('smash', m, other.position.x, other.position.y);
+          this.sfx('cheer', m, other.position.x, other.position.y);
+          this.emit({ kind: 'sound', cue: 'cheer' });
+          this.effects.push({
+            type: 'debris', x: other.position.x, y: other.position.y, ttl: 50, maxTtl: 50, color: '#d6a04e',
+            particles: this.makeParticles(other.position.x, other.position.y, 22, 7),
+          });
+          this.effects.push({ type: 'text', x: other.position.x, y: other.position.y - 30, ttl: 70, maxTtl: 70, color: '#fca5a5', text: 'NO ENTRY!' });
+          if (m.info.isPlayer) this.onEvent?.('Barricade smashed! The tunnel is open', '#fca5a5');
+        } else if (m.info.isPlayer && this.time - this.lastWallToast > 1200 && dmg > 0.5) {
+          this.lastWallToast = this.time;
+          this.onEvent?.(anvil ? 'HEAVY HIT!' : `Barricade at ${Math.round((md.hp / (md.maxHp ?? 1)) * 100)}%`, '#94a3b8');
+        }
+        break;
+      }
+      case 'crumble': {
+        // A crumbling wall: cumulative pack damage, permanent for the race; Heavy metal counts triple.
+        const anvil = this.time < m.anvilUntil;
+        const speed = Body.getSpeed(m.body);
+        const dmg = m.body.mass * speed * (anvil ? 3 : 1);
+        md.hp = (md.hp ?? 0) - dmg;
+        if (md.hp > 0 && dmg > 0.5) this.sfx('crack', m, other.position.x, other.position.y);
+        this.emit({ kind: 'crate', i: this.indexOf(other), hp: Math.max(0, md.hp), broken: md.hp <= 0 });
+        if (dmg > 0.5) this.shake = Math.max(this.shake, 3);
+        if (md.hp <= 0) {
+          md.hp = 0;
+          const v = Body.getVelocity(m.body);
+          if (!this.pendingBreaks.some((p) => p.body === other)) {
+            this.pendingBreaks.push({ body: other, marble: m, v: { x: v.x * 0.9, y: v.y } });
+          }
+          this.shake = 12;
+          this.sfx('smash', m, other.position.x, other.position.y);
+          this.emit({ kind: 'sound', cue: 'rumble' });
+          this.effects.push({
+            type: 'debris', x: other.position.x, y: other.position.y, ttl: 60, maxTtl: 60, color: '#a8a29e',
+            particles: this.makeParticles(other.position.x, other.position.y, 26, 7),
+          });
+          if (m.info.isPlayer) this.onEvent?.('The wall crumbled! Shortcut open', '#d6d3d1');
+        }
+        break;
+      }
+      case 'tunnel': {
+        // A hole in the cliff: swallow the marble for a hidden transit, then pop it out the far hole.
+        if (m.hold || this.time < m.tunnelSafeUntil || !md.exit) break;
+        const visits = this.tunnelVisits.get(m.info.id) ?? new Map<number, number>();
+        this.tunnelVisits.set(m.info.id, visits);
+        const used = visits.get(other.id) ?? 0;
+        if (used >= 3) break; // up-exits must never loop forever
+        visits.set(other.id, used + 1);
+        const transit = md.transit ?? 900;
+        const until = this.time + transit;
+        m.hold = { kind: 'tunnel', until, transit, from: { x: other.position.x, y: other.position.y }, body: other, exit: md.exit };
+        m.body.isSensor = true;
+        Body.setPosition(m.body, { x: other.position.x, y: other.position.y });
+        Body.setVelocity(m.body, { x: 0, y: 0 });
+        Body.setAngularVelocity(m.body, 0);
+        m.trail = [];
+        this.sfx('rumble', m, other.position.x, other.position.y);
+        this.emit({ kind: 'sound', cue: 'rumble', seat: m.info.id });
+        this.emit({ kind: 'hold', seat: m.info.id, until });
+        this.effects.push({ type: 'snow', x: other.position.x, y: other.position.y, ttl: 30, maxTtl: 30, color: '#b8a88f', particles: this.makeParticles(other.position.x, other.position.y, 10, 2) });
+        break;
+      }
+      case 'switchPad': {
+        // Trip lever: flip the paired plate for the NEXT marble.
+        const plate = md.paired !== undefined ? this.track.bodies[md.paired] : undefined;
+        if (!plate || meta(plate).destroyed) break;
+        const ps = meta(plate);
+        ps.side = ps.side === 1 ? 0 : 1;
+        ps.flippedAt = this.time;
+        md.hitAt = this.time;
+        this.sfx('click', m, other.position.x, other.position.y);
+        this.emit({ kind: 'switch', i: this.indexOf(plate), side: ps.side! });
+        this.effects.push({ type: 'ring', x: other.position.x, y: other.position.y, ttl: 14, maxTtl: 14, color: '#fbbf24' });
         break;
       }
       case 'pad': {
@@ -725,7 +850,7 @@ export class Game {
   }
 
   private finishMarble(m: Marble) {
-    if (m.finishedAt !== null || !this.gateOpen) return;
+    if (m.finishedAt !== null || !this.gateOpen || m.hold) return;
     m.finishedAt = this.raceTime();
     this.finishOrder.push(m);
     if (m.info.isPlayer) this.sfx('finish', m, m.body.position.x, m.body.position.y, { rank: this.finishOrder.length });
@@ -750,6 +875,86 @@ export class Game {
     Body.setAngularVelocity(m.body, 0);
   }
 
+  // ---------- MB-10 elements ----------
+
+  /**
+   * Host-authoritative element state. Weight-mode trapdoors watch the pack resting on them and
+   * flip their open state; the state crosses the wire as a `trapdoor` event, and both ends ease
+   * the door in `ageEffects`. Everything else about these elements is either clock-kinematic
+   * (timer trapdoors, switch swing easing) or event-driven (a tunnel capture).
+   */
+  private elementState(dt: number) {
+    for (const door of elementBodies(this.track, 'trapdoor')) {
+      const md = meta(door);
+      if (md.destroyed || !md.motion || md.motion.mode !== 'hinge') continue;
+      if (md.mode === 'timer') {
+        // The clock drives the pose; the creak rides the cable so every client hears the swing.
+        const st = hingeTimerState(md.motion, this.time);
+        const k = md.motion.openAngle !== 0 ? Math.min(1, Math.abs(st.angle / md.motion.openAngle)) : st.angle !== 0 ? 1 : 0;
+        const prev = md.eased ?? 0;
+        if ((prev < 0.5) !== (k < 0.5)) {
+          this.sfx('creak', this.player, door.position.x, door.position.y);
+          this.emit({ kind: 'sound', cue: 'creak' });
+        }
+        md.eased = k;
+        continue;
+      }
+      if (md.openNow) {
+        if (this.time - (md.openedAt ?? 0) >= (md.openMs ?? 1200)) {
+          md.openNow = false;
+          md.restSince = 0;
+          this.sfx('creak', this.player, door.position.x, door.position.y);
+          this.emit({ kind: 'trapdoor', i: this.indexOf(door), open: false });
+          this.emit({ kind: 'sound', cue: 'creak' });
+        }
+        continue;
+      }
+      // the pack weight resting on the closed door: heavy marbles — or a whole pile — open it
+      let mass = 0;
+      let playerResting = false;
+      const motion = md.motion;
+      const top = motion.pivot.y;
+      for (const m of this.marbles) {
+        if (m.finishedAt !== null || m.frozen || m.hold) continue;
+        const p = m.body.position;
+        if (Math.abs(p.x - door.position.x) < motion.len / 2 + 10 && p.y > top - 34 && p.y < top + 12 && Math.abs(m.body.velocity.y) < 2.5) {
+          mass += m.body.mass;
+          if (m.info.isPlayer) playerResting = true;
+        }
+      }
+      if (mass >= (md.weightKg ?? 2.4)) {
+        md.restSince = (md.restSince ?? 0) + dt;
+        if (md.restSince >= (md.holdMs ?? 300)) {
+          md.openNow = true;
+          md.openedAt = this.time;
+          md.restSince = 0;
+          this.sfx('creak', this.player, door.position.x, door.position.y);
+          this.emit({ kind: 'trapdoor', i: this.indexOf(door), open: true });
+          this.emit({ kind: 'sound', cue: 'creak' });
+          if (playerResting) this.onEvent?.('The hatch gives way!', '#fbbf24');
+        }
+      } else md.restSince = 0;
+    }
+  }
+
+  /** Let a held marble go: tunnels pop it out of the exit hole with the set speed. */
+  private releaseHold(m: Marble) {
+    const hold = m.hold;
+    m.hold = null;
+    if (!hold || hold.kind !== 'tunnel' || !hold.exit) return;
+    const exit = hold.exit;
+    m.body.isSensor = false;
+    Body.setPosition(m.body, { x: exit.x, y: exit.y });
+    Body.setVelocity(m.body, { x: exit.dir.x * exit.speed, y: exit.dir.y * exit.speed });
+    Body.setAngularVelocity(m.body, 0);
+    m.tunnelSafeUntil = this.time + 900;
+    m.motionAnchor = { ...m.body.position };
+    m.motionAt = m.depthAt = this.time;
+    m.deepestY = m.body.position.y;
+    this.sfx('rumble', m, exit.x, exit.y);
+    this.effects.push({ type: 'snow', x: exit.x, y: exit.y, ttl: 26, maxTtl: 26, color: '#b8a88f', particles: this.makeParticles(exit.x, exit.y, 8, 2.5) });
+  }
+
   /**
    * Age the effects (and the screen shake) by `dt` ms. `step` calls this; a
    * GUEST calls it from its own loop, because it never steps physics but still
@@ -757,6 +962,10 @@ export class Game {
    */
   ageEffects(dt: number): void {
     const s = dt / TICK;
+    // MB-10: kinematic movers read the race clock and stateful pieces ease toward their synced
+    // state here — the one hook host (via step) and guest (via its own loop) both run, so every
+    // screen draws identical element poses without any per-frame wire traffic.
+    updateElements(this.track, this.time, dt);
     for (const e of this.effects) {
       e.ttl -= s;
       if (e.particles)
@@ -1082,6 +1291,7 @@ export class Game {
     this.time += dt;
     if (!this.gateOpen) return;
     this.syncTrack();
+    this.elementState(dt); // MB-10: host-authoritative stateful elements
 
     // item boxes respawn
     for (const box of this.track.itemBoxes) {
@@ -1125,6 +1335,26 @@ export class Game {
       const b = m.body;
       m.grounded += s;
       if (m.finishedAt !== null) continue;
+
+      // MB-10: a marble hidden inside an element glides from capture to exit — hidden from every
+      // screen (draw + minimap skip it), but the wire positions stay continuous so nobody watches
+      // a teleport. At the end of the ride it's released at the exit with the set velocity.
+      if (m.hold) {
+        if (this.time >= m.hold.until) {
+          this.releaseHold(m);
+        } else {
+          const transit = m.hold.transit ?? 900;
+          const from = m.hold.from ?? m.body.position;
+          const exit = m.hold.exit;
+          if (exit) {
+            const k = Math.max(0, Math.min(1, (this.time - (m.hold.until - transit)) / transit));
+            // ease in-out so the ride reads as a dive-in, coast, pop-out
+            const e = k * k * (3 - 2 * k);
+            Body.setPosition(m.body, { x: from.x + (exit.x - from.x) * e, y: from.y + (exit.y - from.y) * e });
+          }
+          continue;
+        }
+      }
 
       // timers
       if (m.aeroUntil && this.time >= m.aeroUntil) {
@@ -1220,6 +1450,7 @@ export class Game {
         continue;
       }
       if (m.frozen) continue;
+      if (m.hold) continue; // MB-10: hidden in an element — no assist, no finish, no marshal
       const surface = this.supports.get(m.info.id);
       if (surface && !m.inOil && assistRolling(m.body, surface, m.info.stats.speed + (this.time < m.aeroUntil ? 3 : 0), dt)) m.grounded = 0;
       const launch = this.pendingLaunches.get(m.info.id);
@@ -1264,6 +1495,25 @@ export class Game {
 
   allFinished(): boolean {
     return this.marbles.every((m) => m.finishedAt !== null);
+  }
+
+  /** MB-10A: an element's eased 0..1 pose (trapdoor swing, switch plate) for skins and previews. */
+  public ewma(b: Matter.Body): number {
+    const md = meta(b);
+    if (!md) return 0;
+    if (md.kind === 'trapdoor') {
+      if (md.mode === 'weight') return md.eased ?? 0;
+      if (md.motion && md.motion.mode === 'hinge') {
+        const st = hingeTimerState(md.motion, this.time);
+        return md.motion.openAngle !== 0 ? Math.min(1, Math.abs(st.angle / md.motion.openAngle)) : (st.angle !== 0 ? 1 : 0);
+      }
+      return 0;
+    }
+    if (md.kind === 'switch') {
+      const target = (md.side === 1 ? 1 : -1) * (md.swingAngle ?? 0.6);
+      return target !== 0 ? Math.min(1, Math.abs(b.angle / target)) : 0;
+    }
+    return 0;
   }
 
   destroy() {

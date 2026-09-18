@@ -1,5 +1,6 @@
 import Matter from 'matter-js';
 import { Game, Marble } from './engine';
+import { hingeTimerState, hingeIsOpen, trapdoorWarn } from './elements';
 import { meta, W } from './track';
 import { MARBLE_RADIUS, ITEM_INFO, skinFor, themeIdFor } from './types';
 import { ballFor, bodyFrame, currentSkin, drawRail, drawSprite, drawStrip, setSkin, sprite } from './sprites';
@@ -858,6 +859,25 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
       }
       case 'finish':
         break;
+      // ---- MB-10A: shortcuts and secrets ----
+      case 'barricade':
+        drawBarricade(ctx, b, md);
+        break;
+      case 'crumble':
+        drawCrumble(ctx, b, md, game, t);
+        break;
+      case 'tunnel':
+        drawTunnel(ctx, b, md, t);
+        break;
+      case 'trapdoor':
+        drawTrapdoor(ctx, b, md, game, t);
+        break;
+      case 'switch':
+        drawSwitchBlade(ctx, b, md, game, t);
+        break;
+      case 'switchPad':
+        drawSwitchPad(ctx, b, md, game, t);
+        break;
       default:
         break;
     }
@@ -867,6 +887,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
   const sorted = [...game.marbles].sort((a, b) => Number(a.info.isPlayer) - Number(b.info.isPlayer));
   for (const m of sorted) {
     const p = m.body.position;
+    if (m.hold) continue; // hidden inside an element (MB-10 tunnel ride)
     if (p.y < viewTop || p.y > viewBottom || game.benched.has(m.info.id)) continue;
     drawMarble(ctx, game, m, t);
   }
@@ -1261,6 +1282,396 @@ function drawTorchGlows(ctx: CanvasRenderingContext2D, game: Game, viewTop: numb
   ctx.globalAlpha = 1;
 }
 
+// ---------------------------------------------------------------------------
+// MB-10A: shortcuts and secrets. Every piece keeps a plain-vector fallback so
+// the track plays before (and without) the PNG kit art; `sprite()` swaps it in.
+// ---------------------------------------------------------------------------
+
+/** A deterministic 0..1 hash per body + salt, so jitter never flickers per-frame. */
+function bodyJitter(b: Matter.Body, salt: number): number {
+  const x = b.position.x * 12.9898 + b.position.y * 78.233 + salt * 37.719;
+  return Math.abs(Math.sin(x) * 43758.5453) % 1;
+}
+
+/** NO ENTRY planks over a tunnel (or any shortcut). Cracks grow as hp drops. */
+function drawBarricade(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>) {
+  const { min, max } = b.bounds;
+  const w = max.x - min.x, h = max.y - min.y;
+  const ratio = (md.hp ?? 1) / (md.maxHp ?? 1);
+  const img = sprite('barricade');
+  if (img) {
+    ctx.drawImage(img, min.x - w * 0.06, min.y - h * 0.08, w * 1.12, h * 1.16);
+  } else {
+    // planks: three crossed boards over a dark opening
+    ctx.fillStyle = 'rgba(5,8,14,0.85)';
+    ctx.fillRect(min.x, min.y, w, h);
+    const planks = Math.max(2, Math.round(h / 16));
+    for (let i = 0; i < planks; i++) {
+      const py = min.y + (i + 0.5) * h / planks;
+      ctx.fillStyle = i % 2 ? '#8a5a33' : '#a06a3c';
+      ctx.fillRect(min.x - 3, py - h / planks / 2 - 2, w + 6, h / planks - 4);
+      ctx.strokeStyle = 'rgba(40,20,8,0.7)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(min.x - 3, py - h / planks / 2 - 2, w + 6, h / planks - 4);
+    }
+    // diagonal brace
+    ctx.strokeStyle = '#7c4f2a';
+    ctx.lineWidth = Math.min(10, w * 0.09);
+    ctx.beginPath();
+    ctx.moveTo(min.x + 4, max.y - 4 - bodyJitter(b, 2) * 3);
+    ctx.lineTo(max.x - 4, min.y + 4);
+    ctx.stroke();
+  }
+  // cracks by wear — tough 1..10 shows up as how many hits this has already shrugged off
+  if (ratio < 0.999) {
+    const n = Math.ceil((1 - ratio) * 7);
+    ctx.strokeStyle = 'rgba(15,10,6,0.85)';
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i < n; i++) {
+      const sx = min.x + ((i * 41 + 13) % Math.max(10, w - 8)) + 4;
+      const sy = min.y + ((i * 29 + 7) % Math.max(10, h - 8)) + 4;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + 7 + bodyJitter(b, i) * 6, sy + 12);
+      ctx.lineTo(sx + 2, sy + 22);
+      ctx.stroke();
+    }
+  }
+  // the sign
+  const sx = b.position.x, sy = b.position.y;
+  const signW = Math.min(64, w * 0.9), signH = 22;
+  ctx.save();
+  if (img) ctx.scale(0.85, 0.85);
+  ctx.translate(img ? sx * 1.176 + 12 : sx, img ? sy * 1.176 : sy);
+  ctx.fillStyle = '#f3e9cf';
+  ctx.strokeStyle = '#422b14';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.roundRect(-signW / 2, -signH / 2, signW, signH, 4);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#b3261e';
+  ctx.font = 'bold 11px system-ui';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('NO ENTRY', 0, 1);
+  ctx.restore();
+}
+
+/** Weak stone the pack knocks down over the race: bricks, cracks and dust. */
+function drawCrumble(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, game: Game, t: number) {
+  const { min, max } = b.bounds;
+  const w = max.x - min.x, h = max.y - min.y;
+  const ratio = (md.hp ?? 1) / (md.maxHp ?? 1);
+  // shake while the impact is fresh
+  const since = game.time - (md.hitAt ?? -1e9);
+  const shake = since < 300 ? (1 - since / 300) * 2.2 : 0;
+  ctx.save();
+  if (shake > 0) ctx.translate(Math.sin(t / 16) * shake, Math.cos(t / 19) * shake * 0.6);
+  const img = sprite('crumble');
+  const rows = Math.max(2, Math.round(h / 22));
+  const cols = Math.max(1, Math.round(w / 30));
+  const bw = w / cols, bh = h / rows;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const off = r % 2 ? bw / 2 : 0;
+      const bx = min.x + c * bw + off;
+      if (bx > max.x) continue;
+      // bricks fall away as the wall wears: lowest rows go first, then in from the edges
+      const permanent = 1 - ratio;
+      const gone = (r + 1) / rows + bodyJitter(b, r * 7 + c) * 0.35 < permanent * 1.15;
+      if (gone) {
+        // rubble shadow where a brick used to be
+        ctx.fillStyle = 'rgba(10,14,22,0.5)';
+        ctx.fillRect(bx + 1.5, min.y + r * bh + 1.5, bw - 3, bh - 3);
+        continue;
+      }
+      if (img) {
+        const sw = img.naturalWidth / cols, sh = img.naturalHeight / rows;
+        ctx.drawImage(img, c * sw, r * sh, sw, sh, bx, min.y + r * bh, bw, bh);
+      } else {
+        ctx.fillStyle = r % 2 ? '#7d7466' : '#8d8474';
+        ctx.fillRect(bx + 1.5, min.y + r * bh + 1.5, bw - 3, bh - 3);
+        ctx.strokeStyle = 'rgba(30,26,20,0.6)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(bx + 1.5, min.y + r * bh + 1.5, bw - 3, bh - 3);
+      }
+    }
+  }
+  // cracks across the survivors
+  if (ratio < 0.999) {
+    ctx.strokeStyle = 'rgba(20,16,12,0.9)';
+    ctx.lineWidth = 1.6;
+    const n = Math.ceil((1 - ratio) * 8);
+    for (let i = 0; i < n; i++) {
+      const sx = min.x + ((i * 37 + 11) % Math.max(10, w - 10)) + 5;
+      const sy = min.y + ((i * 53 + 17) % Math.max(10, h - 10)) + 5;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + 6, sy + 10);
+      ctx.lineTo(sx - 3 + bodyJitter(b, i) * 8, sy + 20);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+/** Both ends of a cliff burrow: the entrance hole at the sensor, the exit at md.exit, glowing. */
+function drawTunnelHole(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, lit: boolean, t: number, dir?: { x: number; y: number }) {
+  if (lit) {
+    const pulse = 0.65 + 0.35 * Math.sin(t / 420 + x);
+    const gr = r * (1.7 + 0.25 * pulse);
+    ctx.save();
+    ctx.globalAlpha = 0.35 + 0.2 * pulse;
+    ctx.drawImage(colorGlow('#f6bf63'), x - gr, y - gr, gr * 2, gr * 2);
+    ctx.restore();
+  }
+  const img = sprite('tunnel');
+  if (img) {
+    const rot = dir ? Math.atan2(dir.y, dir.x) + Math.PI / 2 : 0;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    const s = r * 3.1;
+    ctx.drawImage(img, -s / 2, -s / 2, s, s);
+    ctx.restore();
+  } else {
+    // rubble ring
+    ctx.fillStyle = '#574a39';
+    ctx.beginPath();
+    ctx.arc(x, y, r * 1.24, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#3a3128';
+    ctx.beginPath();
+    ctx.arc(x, y, r * 1.06, 0, Math.PI * 2);
+    ctx.fill();
+    // black hole
+    const g = ctx.createRadialGradient(x, y, r * 0.1, x, y, r);
+    g.addColorStop(0, '#04060a');
+    g.addColorStop(0.8, '#0a0e16');
+    g.addColorStop(1, '#141a26');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.94, 0, Math.PI * 2);
+    ctx.fill();
+    // a faint wood lintel
+    ctx.fillStyle = '#6e4a2a';
+    ctx.fillRect(x - r * 0.8, y - r * 1.02, r * 1.6, 7);
+  }
+  // drifting chevrons out of the exit so the "short way" is telegraphed
+  if (lit && dir) {
+    const dm = Math.hypot(dir.x, dir.y) || 1;
+    const ph = (t / 500) % 1;
+    for (let i = 0; i < 2; i++) {
+      const k = (ph + i / 2) % 1;
+      ctx.strokeStyle = `rgba(252,211,77,${0.15 + 0.5 * (1 - k)})`;
+      ctx.lineWidth = 2.5;
+      const d = 14 + k * 26;
+      const ax = x + (dir.x / dm) * d, ay = y + (dir.y / dm) * d;
+      const pxv = -(dir.y / dm) * 7, pyv = (dir.x / dm) * 7;
+      ctx.beginPath();
+      ctx.moveTo(ax - (dir.x / dm) * 6 - pxv, ay - (dir.y / dm) * 6 - pyv);
+      ctx.lineTo(ax, ay);
+      ctx.lineTo(ax - (dir.x / dm) * 6 + pxv, ay - (dir.y / dm) * 6 + pyv);
+      ctx.stroke();
+    }
+  }
+}
+
+/** A cliff tunnel: entrance hole where the sensor lives, glowing exit hole where marbles pop out. */
+function drawTunnel(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, t: number) {
+  drawTunnelHole(ctx, b.position.x, b.position.y, 34, false, t);
+  if (md.exit) drawTunnelHole(ctx, md.exit.x, md.exit.y, 34, true, t, md.exit.dir);
+}
+
+/** Hinged hatch drawn about its pivot. Timer mode walks a warning lamp; weight mode shows a scale pan. */
+function drawTrapdoor(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, game: Game, t: number) {
+  const motion = md.motion && md.motion.mode === 'hinge' ? md.motion : null;
+  const pivot = motion?.pivot ?? b.position;
+  const len = motion?.len ?? 120;
+  const dirX = motion?.dirX ?? 1;
+  const thick = 12;
+  ctx.save();
+  ctx.translate(pivot.x, pivot.y);
+  ctx.rotate(b.angle);
+  const img = sprite('trapdoor');
+  if (img) {
+    // hinge sits at art's left edge, door extends dirX
+    if (dirX === 1) ctx.drawImage(img, 0, -thick * 1.2, len, thick * 2.4);
+    else { ctx.scale(-1, 1); ctx.drawImage(img, 0, -thick * 1.2, len, thick * 2.4); ctx.scale(-1, 1); }
+  } else {
+    // grating floor: frame + bars
+    const x0 = dirX === 1 ? 0 : -len;
+    ctx.fillStyle = '#4f5a6a';
+    ctx.strokeStyle = '#20262f';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(x0, -thick / 2, len, thick, 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(20,26,34,0.8)';
+    ctx.lineWidth = 1.5;
+    for (let d = x0 + 10; d < x0 + len - 4; d += 12) {
+      ctx.beginPath();
+      ctx.moveTo(d, -thick / 2 + 2);
+      ctx.lineTo(d, thick / 2 - 2);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+  // hinge
+  ctx.fillStyle = '#20262f';
+  ctx.beginPath();
+  ctx.arc(pivot.x, pivot.y, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#8f9aa8';
+  ctx.beginPath();
+  ctx.arc(pivot.x, pivot.y, 2, 0, Math.PI * 2);
+  ctx.fill();
+  // the tell: a little lamp / scale pan beside the hinge
+  const open01 = game.ewma(b);
+  const lx = pivot.x + dirX * -16, ly = pivot.y - 26;
+  if (md.mode === 'weight') {
+    // scale pan with a dial: swings with the easing, labelled with kg
+    ctx.strokeStyle = '#39424f';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(lx, ly + 10);
+    ctx.lineTo(lx, ly - 3);
+    ctx.stroke();
+    ctx.save();
+    ctx.translate(lx, ly - 3);
+    ctx.rotate(open01 * 0.5 * dirX);
+    ctx.fillStyle = '#c3cdd7';
+    ctx.beginPath();
+    ctx.moveTo(-9, 0);
+    ctx.lineTo(9, 0);
+    ctx.lineTo(6, 6);
+    ctx.lineTo(-6, 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = trapdoorWarn(md, game.time) ? '#f87171' : '#9ae6b4';
+    ctx.font = 'bold 9px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${Math.round((md.weightKg ?? 2.4) * 10) / 10}kg`, lx, ly + 16);
+  } else {
+    // clock lamp: green while open, flashing amber while the swing is close, dim otherwise
+    const st = motion ? hingeTimerState(motion, game.time) : null;
+    const isOpen = motion ? hingeIsOpen(motion, b.angle) : false;
+    const warn = st?.warn ?? false;
+    const glow = isOpen ? '#4ade80' : warn && Math.sin(t / 90) > 0 ? '#facc15' : '#93a1b3';
+    ctx.fillStyle = '#39424f';
+    ctx.fillRect(lx - 3, ly - 2, 7, 14);
+    ctx.drawImage(colorGlow(glow), lx - 12, ly - 22, 26, 26);
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(lx + 0.5, ly - 8, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+/** The flip-paddle in the road: fork blade + pivot + lantern; the blade leans toward the live route. */
+function drawSwitchBlade(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, game: Game, t: number) {
+  const pv = md.pivot ?? b.position;
+  const len = md.plateLen ?? 120;
+  const thick = 12;
+  // the blade as the eased physics pose has it: hinge at pivot, tip leaning to the live route
+  ctx.save();
+  ctx.translate(pv.x, pv.y);
+  ctx.rotate(b.angle);
+  const img = sprite('switchplate');
+  if (img) {
+    ctx.drawImage(img, -thick, -len, len, thick * 2);
+  } else {
+    ctx.fillStyle = '#8f4f2c';
+    ctx.strokeStyle = '#3c2412';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(-thick / 2, -len, thick, len, 4);
+    ctx.fill();
+    ctx.stroke();
+    // route arrow toward the tip
+    ctx.fillStyle = 'rgba(255,240,200,0.8)';
+    ctx.font = 'bold 11px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText((md.side ?? 0) === 1 ? '➜' : '⬅', 0, -len * 0.55);
+  }
+  ctx.restore();
+  // pivot post
+  ctx.fillStyle = '#2b3140';
+  ctx.beginPath();
+  ctx.arc(pv.x, pv.y, 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#5b6472';
+  ctx.beginPath();
+  ctx.arc(pv.x, pv.y, 3, 0, Math.PI * 2);
+  ctx.fill();
+  // lantern at the pivot; flares briefly when the pad flips the route (ghost preview for the next marble)
+  const sway = game.time - (md.flippedAt ?? -1e9);
+  const flicker = sway < 700 ? 1 : 0.55 + 0.45 * Math.sin(t / 260 + pv.x);
+  ctx.save();
+  ctx.globalAlpha = 0.5 + 0.5 * flicker;
+  ctx.drawImage(colorGlow('#ffd97a'), pv.x - 26, pv.y - 46, 52, 52);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#f2c14e';
+  ctx.beginPath();
+  ctx.arc(pv.x, pv.y - 20, 5.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#463512';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.restore();
+  if (sway < 900) {
+    // dashed arc between the two resting leans so the flip reads
+    const target = (md.side ?? 0) === 1 ? (md.swingAngle ?? 0.65) : -(md.swingAngle ?? 0.65);
+    const a0 = Math.min(b.angle, target), a1 = Math.max(b.angle, target);
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 0.5 * (1 - sway / 900));
+    ctx.strokeStyle = '#facc15';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 6]);
+    ctx.beginPath();
+    ctx.arc(pv.x, pv.y, len * 0.55, -Math.PI / 2 + a0, -Math.PI / 2 + a1);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+}
+
+/** The trigger paddle above the fork: a little lever sign that flashes when it trips. */
+function drawSwitchPad(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, game: Game, t: number) {
+  const { x, y } = b.position;
+  const pressed = game.time - (md.hitAt ?? -1e9) < 450;
+  ctx.save();
+  ctx.translate(x, y + (pressed ? 2 : 0));
+  ctx.fillStyle = pressed ? '#caa04e' : '#9fb2c6';
+  ctx.strokeStyle = '#2e3743';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(-15, -7, 30, 12, 4);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#2e3743';
+  ctx.beginPath();
+  ctx.arc(0, 0, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  const glow = pressed ? '#fbbf24' : '#8fb4d9';
+  const pulse = pressed ? 1 : 0.55 + 0.3 * Math.sin(t / 380 + x);
+  ctx.save();
+  ctx.globalAlpha = pulse;
+  ctx.drawImage(colorGlow(glow), x - 16, y - 36, 32, 32);
+  ctx.restore();
+  ctx.fillStyle = glow;
+  ctx.font = 'bold 13px system-ui';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('⇄', x, y - 20);
+}
+
 /** Bodies that never move or change; they are baked into the static layer instead of redrawn every frame. */
 const STATIC_KINDS = new Set<string | undefined>(['ramp', 'ice', 'wall', 'loop']);
 const CHUNK_H = 1024;
@@ -1470,6 +1881,7 @@ function drawMinimap(ctx: CanvasRenderingContext2D, game: Game, cw: number, ch: 
   // marbles
   const list = [...game.marbles].sort((a, b) => Number(a.info.isPlayer) - Number(b.info.isPlayer));
   for (const m of list) {
+    if (m.hold) continue; // hidden inside an element (MB-10 tunnel ride)
     const yy = my + Math.max(0, Math.min(1, m.body.position.y / H)) * mh;
     const xx = mx + ((m.body.position.x / W) - 0.5) * 14;
     ctx.beginPath();

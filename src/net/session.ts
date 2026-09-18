@@ -75,6 +75,11 @@ const CUE_SOUND: Record<CueName, SoundType> = {
   bucket: 'bucket',
   boost: 'hoop',
   finish: 'finish',
+  // MB-10A: shortcuts and secrets
+  cheer: 'cheer',
+  rumble: 'rumble',
+  creak: 'creak',
+  click: 'click',
 };
 
 /** One line of the classification, in the shape the results screen already reads. */

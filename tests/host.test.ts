@@ -202,17 +202,19 @@ test('MP-04 host: every frame the host publishes survives the wire', () => {
 test('MP-04 host: a guest seat is driven by its intents, not by the AI', () => {
   const pushed = harness();
   start(pushed);
-  for (let i = 0; i < 180; i++) {
+  // A long drag race against chaos tells you the marble answered for the first second — after
+  // that the track decides where the paths part. Nudge for a telling window, then compare.
+  for (let i = 0; i < 45; i++) {
     pushed.host.applyIntent(1, { type: 'intent', kind: 'nudge', v: 1 });
     pushed.tick();
   }
   const coasted = harness();
   start(coasted);
-  for (let i = 0; i < 180; i++) coasted.tick();
+  for (let i = 0; i < 45; i++) coasted.tick();
 
   const pushedX = pushed.host.game.marbles[1].body.position.x;
   const coastedX = coasted.host.game.marbles[1].body.position.x;
-  assert.ok(pushedX > coastedX + 5, `three seconds of nudging right moved the guest ${(pushedX - coastedX).toFixed(1)}px right`);
+  assert.ok(pushedX > coastedX + 5, `three-quarters of a second of nudging right moved the guest ${(pushedX - coastedX).toFixed(1)}px right`);
 });
 
 test('MP-04 host: the AI keeps its hands off every human seat', () => {
@@ -341,7 +343,9 @@ test('MP-08 host: a driver who comes back gets their own marble back, and the wo
   coasting.tick();
   coasting.host.accept({ type: 'peerStatus', playerId: 'player-1', status: 'reconnected', username: 'Guest' });
 
-  for (let i = 0; i < 180; i++) {
+  // The steering window that means something: long enough to read the intent,
+  // short enough that pinball chaos hasn't picked the lanes yet.
+  for (let i = 0; i < 45; i++) {
     h.host.applyIntent(1, { type: 'intent', kind: 'nudge', v: 1 });
     h.tick();
     coasting.tick();

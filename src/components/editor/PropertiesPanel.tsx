@@ -232,6 +232,84 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
           <NumField label="H" value={piece.h} min={2} max={4000} onValue={(v) => update({ h: clampNum(v, 2, 4000) } as unknown as Piece)} />
         </>
       )}
+
+      {(piece.t === 'barricade' || piece.t === 'crumble') && (
+        <>
+          <NumField label="X" value={piece.x} min={0} max={W} onValue={(v) => update({ x: clampNum(v, 0, W) } as unknown as Piece)} />
+          <NumField label="Y" value={piece.y} onValue={(v) => update({ y: v } as unknown as Piece)} />
+          <NumField label="W" value={piece.w} min={8} max={W} onValue={(v) => update({ w: clampNum(v, 8, W) } as unknown as Piece)} />
+          <NumField label="H" value={piece.h} min={8} max={2000} onValue={(v) => update({ h: clampNum(v, 8, 2000) } as unknown as Piece)} />
+          <NumField label="Toughness" value={piece.tough} min={1} max={10} step={1} onValue={(v) => update({ tough: Math.round(clampNum(v, 1, 10)) } as unknown as Piece)} />
+        </>
+      )}
+
+      {piece.t === 'tunnel' && (
+        <>
+          <NumField label="In X" value={piece.x} min={0} max={W} onValue={(v) => update({ x: clampNum(v, 0, W) } as unknown as Piece)} />
+          <NumField label="In Y" value={piece.y} onValue={(v) => update({ y: v } as unknown as Piece)} />
+          <NumField label="Out X" value={piece.exit[0]} min={0} max={W} onValue={(v) => update({ exit: [clampNum(v, 0, W), piece.exit[1]] } as unknown as Piece)} />
+          <NumField label="Out Y" value={piece.exit[1]} onValue={(v) => update({ exit: [piece.exit[0], v] } as unknown as Piece)} />
+          <NumField label="Ride (ms)" value={piece.ms} min={100} max={20000} step={50} onValue={(v) => update({ ms: Math.round(clampNum(v, 100, 20000)) } as unknown as Piece)} />
+          <NumField label="Exit speed" value={piece.speed} min={0} max={30} step={0.5} onValue={(v) => update({ speed: clampNum(v, 0, 30) } as unknown as Piece)} />
+          <label className="prop-field">
+            <span>Two-way</span>
+            <select value={piece.two ? 'yes' : 'no'} onChange={(e) => update({ two: e.target.value === 'yes' ? true : undefined } as unknown as Piece)} onKeyDown={(e) => e.stopPropagation()}>
+              <option value="no">No — entrance only</option>
+              <option value="yes">Yes — exit accepts marbles too</option>
+            </select>
+          </label>
+        </>
+      )}
+
+      {piece.t === 'trapdoor' && (
+        <>
+          <NumField label="X" value={piece.x} min={0} max={W} onValue={(v) => update({ x: clampNum(v, 0, W) } as unknown as Piece)} />
+          <NumField label="Y" value={piece.y} onValue={(v) => update({ y: v } as unknown as Piece)} />
+          <NumField label="W" value={piece.w} min={40} max={W} onValue={(v) => update({ w: clampNum(v, 40, W) } as unknown as Piece)} />
+          <label className="prop-field">
+            <span>Hinge</span>
+            <select value={piece.hinge} onChange={(e) => update({ hinge: Number(e.target.value) as -1 | 1 } as unknown as Piece)} onKeyDown={(e) => e.stopPropagation()}>
+              <option value={-1}>Left</option>
+              <option value={1}>Right</option>
+            </select>
+          </label>
+          <label className="prop-field">
+            <span>Mode</span>
+            <select value={piece.mode} onChange={(e) => update({ mode: e.target.value as 'timer' | 'weight' } as unknown as Piece)} onKeyDown={(e) => e.stopPropagation()}>
+              <option value="timer">Clock (timer)</option>
+              <option value="weight">Scale (weight)</option>
+            </select>
+          </label>
+          {piece.mode === 'timer' ? (
+            <>
+              <NumField label="Open (ms)" value={piece.open} min={200} max={20000} step={100} onValue={(v) => update({ open: Math.round(clampNum(v, 200, 20000)) } as unknown as Piece)} />
+              <NumField label="Closed (ms)" value={piece.closed} min={200} max={20000} step={100} onValue={(v) => update({ closed: Math.round(clampNum(v, 200, 20000)) } as unknown as Piece)} />
+              <NumField label="Phase (ms)" value={piece.phase} step={100} onValue={(v) => update({ phase: v } as unknown as Piece)} />
+            </>
+          ) : (
+            <>
+              <NumField label="Needs (kg)" value={piece.kg} min={0.1} max={50} step={0.1} onValue={(v) => update({ kg: clampNum(v, 0.1, 50) } as unknown as Piece)} />
+              <NumField label="Hold (ms)" value={piece.hold} min={0} max={5000} step={50} onValue={(v) => update({ hold: Math.round(clampNum(v, 0, 5000)) } as unknown as Piece)} />
+            </>
+          )}
+        </>
+      )}
+
+      {piece.t === 'switch' && (
+        <>
+          <NumField label="X" value={piece.x} min={0} max={W} onValue={(v) => update({ x: clampNum(v, 0, W) } as unknown as Piece)} />
+          <NumField label="Y" value={piece.y} onValue={(v) => update({ y: v } as unknown as Piece)} />
+          <NumField label="Blade len" value={piece.len} min={40} max={400} step={5} onValue={(v) => update({ len: clampNum(v, 40, 400) } as unknown as Piece)} />
+          <NumField label="Lean (rad)" value={piece.angle} min={0.1} max={1.35} step={0.05} onValue={(v) => update({ angle: clampNum(v, 0.1, 1.35) } as unknown as Piece)} />
+          <label className="prop-field">
+            <span>Starts to</span>
+            <select value={piece.side} onChange={(e) => update({ side: Number(e.target.value) as 0 | 1 } as unknown as Piece)} onKeyDown={(e) => e.stopPropagation()}>
+              <option value={0}>Left</option>
+              <option value={1}>Right</option>
+            </select>
+          </label>
+        </>
+      )}
     </div>
   );
 }

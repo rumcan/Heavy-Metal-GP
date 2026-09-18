@@ -64,6 +64,39 @@ function drawPiece(ctx: CanvasRenderingContext2D, p: Piece, k: number) {
     case 'ppeg': dot(p.x, p.y, Math.max(p.r, 9), p.color === 'orange' ? COLORS.orange : p.color === 'green' ? COLORS.item : COLORS.blue); break;
     case 'itembox': box(p.x, p.y, 30, 30, COLORS.itembox); break;
     case 'bucket': box(W / 2, p.y, 110, 30, COLORS.bucket); break;
+    // ---- MB-10A: secrets are drawn as dotted hints on the map ----
+    case 'barricade': box(p.x, p.y, p.w, p.h, COLORS.crate); break;
+    case 'crumble': box(p.x, p.y, p.w, p.h, COLORS.block); break;
+    case 'trapdoor': box(p.x, p.y, p.w, 14, COLORS.pad); break;
+    case 'switch': {
+      const lean = p.side === 1 ? -p.angle : p.angle;
+      const bx = p.x + Math.sin(lean) * p.len * 0.85;
+      const by = p.y - Math.cos(lean) * p.len * 0.85;
+      line(p.x, p.y, bx, by, COLORS.spinner, Math.max(1.5, 6 * k));
+      dot(p.x, p.y, 8, COLORS.spinner);
+      break;
+    }
+    case 'tunnel': {
+      // Dotted bore from entrance to exit, holes at both ends.
+      const mx = (p.flip ? W - p.x : p.x) * k;
+      const my = p.y * k;
+      const ex = (p.flip ? W - p.exit[0] : p.exit[0]) * k;
+      const ey = p.exit[1] * k;
+      ctx.save();
+      ctx.strokeStyle = COLORS.bucket;
+      ctx.lineWidth = Math.max(1.2, 5 * k);
+      ctx.setLineDash([4, 5]);
+      ctx.beginPath();
+      ctx.moveTo(mx, my);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = COLORS.bucket;
+      ctx.beginPath(); ctx.arc(mx, my, Math.max(1.5, 9 * k), 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(ex, ey, Math.max(1.5, 9 * k), 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      break;
+    }
   }
 }
 

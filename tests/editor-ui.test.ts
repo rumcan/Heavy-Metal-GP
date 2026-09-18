@@ -193,10 +193,10 @@ test('Editor grid: every snap is a whole 25 units, and the lattice keeps up with
 // ══════════════════════════════════════════════════════════════════════════
 
 test('Palette: the ticket\'s groups, every piece a def can store, and the race art', () => {
-  assert.deepEqual(PALETTE.map((g) => g.label), ['Rails', 'Features', 'Pegs', 'Walls']);
-  assert.deepEqual(PALETTE.map((g) => g.tiles.length), [4, 7, 5, 2]);
+  assert.deepEqual(PALETTE.map((g) => g.label), ['Rails', 'Features', 'Pegs', 'Walls', 'Secrets']);
+  assert.deepEqual(PALETTE.map((g) => g.tiles.length), [4, 7, 5, 2, 7]);
   const types = [...new Set(TILES.map((tile) => tile.t))].sort();
-  assert.deepEqual(types, ['block', 'boost', 'breakable', 'bucket', 'curve', 'hoop', 'ice', 'itembox', 'loop', 'pad', 'peg', 'ppeg', 'ramp', 'spinner', 'wall', 'wrecker'], 'the palette should cover exactly the def format\'s placeable pieces');
+  assert.deepEqual(types, ['barricade', 'block', 'boost', 'breakable', 'bucket', 'crumble', 'curve', 'hoop', 'ice', 'itembox', 'loop', 'pad', 'peg', 'ppeg', 'ramp', 'spinner', 'switch', 'trapdoor', 'tunnel', 'wall', 'wrecker'], 'the palette should cover exactly the def format\'s placeable pieces');
   const ids = TILES.map((tile) => tile.id);
   assert.equal(new Set(ids).size, ids.length, 'two tiles share an id');
   // A piece type may have variants (the Peggle peg colours): the plain tile's id is the bare type and it has no

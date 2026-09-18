@@ -82,6 +82,20 @@ export const PALETTE: PaletteGroup[] = [
       { id: 'block', t: 'block', label: 'Block', sprite: 'tile-metal', hint: 'A solid steel block. Nothing breaks it.' },
     ],
   },
+  {
+    id: 'secrets',
+    label: 'Secrets',
+    note: 'Shortcuts and hatches',
+    tiles: [
+      { id: 'barricade', t: 'barricade', label: 'No entry barricade', sprite: 'barricade', hint: 'NO ENTRY planks over a shortcut. Smash through with speed and weight.' },
+      { id: 'barricade-tough', t: 'barricade', label: 'Tough barricade', sprite: 'barricade', preset: { tough: 8 }, hint: 'Heavily boarded. Very few marbles are getting through here.' },
+      { id: 'tunnel', t: 'tunnel', label: 'Cliff tunnel', sprite: 'tunnel', hint: 'An entrance burrow. Where the arrow lands is the exit hole.' },
+      { id: 'crumble', t: 'crumble', label: 'Crumbling wall', sprite: 'crumble', hint: 'Weak stone the whole pack slowly knocks down.' },
+      { id: 'trapdoor', t: 'trapdoor', label: 'Trapdoor (clock)', sprite: 'trapdoor', hint: 'A hinged hatch that opens and shuts on a tick-tock.' },
+      { id: 'trapdoor-weight', t: 'trapdoor', label: 'Trapdoor (weight)', sprite: 'trapdoor', preset: { mode: 'weight' }, hint: 'A scale pan: enough marbles resting on it drops the hatch.' },
+      { id: 'switch', t: 'switch', label: 'Track switch lever', sprite: 'switchplate', hint: 'Every marble that crosses it flips the split for the next one.' },
+    ],
+  },
 ];
 
 /** Every tile, flat — for looking one up by piece type. */

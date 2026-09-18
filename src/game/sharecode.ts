@@ -19,7 +19,10 @@ export const SHARE_VERSION = 1;
 export const SHARE_PREFIX = `${SHARE_VERSION}-`; // e.g. "1-"
 const SHORT_KEY_PREFIX = 'heavy-metal-gp:share:';
 
-const PIECE_TYPES = ['ramp','ice','curve','loop','hoop','wrecker','pad','boost','spinner','breakable','peg','ppeg','itembox','bucket','wall','block'] as const;
+// Append-only: new piece types go at the END so old codes keep decoding (`PIECE_TO_ID` is positional).
+const PIECE_TYPES = ['ramp','ice','curve','loop','hoop','wrecker','pad','boost','spinner','breakable','peg','ppeg','itembox','bucket','wall','block',
+  // MB-10A: shortcuts and secrets
+  'barricade','tunnel','crumble','trapdoor','switch'] as const;
 type PieceTypeName = typeof PIECE_TYPES[number];
 const PIECE_TO_ID = Object.fromEntries(PIECE_TYPES.map((t,i)=>[t,i])) as Record<PieceTypeName, number>;
 
@@ -218,6 +221,41 @@ function encodeBinary(def: TrackDef): Uint8Array {
         writeUVarint(out, Math.round(p.w)); writeUVarint(out, Math.round(p.h));
         break;
       }
+      // ---- MB-10A ----
+      case 'barricade':
+      case 'crumble': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, Math.round(p.w)); writeUVarint(out, Math.round(p.h));
+        writeUVarint(out, Math.round(p.tough));
+        break;
+      }
+      case 'tunnel': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, Math.round(p.exit[0])); writeUVarint(out, Math.round(p.exit[1]));
+        writeSVarint(out, Math.round(p.edir[0] * 100)); writeSVarint(out, Math.round(p.edir[1] * 100));
+        writeUVarint(out, Math.round(p.ms));
+        writeUVarint(out, Math.round(p.speed * 10));
+        writeUVarint(out, p.two ? 1 : 0);
+        break;
+      }
+      case 'trapdoor': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, Math.round(p.w));
+        writeUVarint(out, p.hinge === 1 ? 1 : 0);
+        writeUVarint(out, p.mode === 'weight' ? 1 : 0);
+        writeUVarint(out, Math.round(p.open)); writeUVarint(out, Math.round(p.closed));
+        writeSVarint(out, Math.round(p.phase));
+        writeUVarint(out, Math.round(p.kg * 100));
+        writeUVarint(out, Math.round(p.hold));
+        break;
+      }
+      case 'switch': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, Math.round(p.len));
+        writeUVarint(out, Math.round(p.angle * 1000));
+        writeUVarint(out, p.side);
+        break;
+      }
     }
   }
   return new Uint8Array(out);
@@ -342,6 +380,38 @@ function decodeBinary(bytes: Uint8Array): TrackDef {
       case 'block': {
         const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), w = readUVarint(bytes, pos), h = readUVarint(bytes, pos);
         p = { t:'block', x, y, w, h, ...(flip?{flip}:{}) };
+        break;
+      }
+      // ---- MB-10A ----
+      case 'barricade':
+      case 'crumble': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), w = readUVarint(bytes, pos), h = readUVarint(bytes, pos), tough = readUVarint(bytes, pos);
+        p = { t, x, y, w, h, tough, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'tunnel': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos);
+        const ex = readUVarint(bytes, pos), ey = readUVarint(bytes, pos);
+        const dx = readSVarint(bytes, pos)/100, dy = readSVarint(bytes, pos)/100;
+        const ms = readUVarint(bytes, pos), speed = readUVarint(bytes, pos)/10;
+        const two = readUVarint(bytes, pos) === 1;
+        p = { t:'tunnel', x, y, exit:[ex, ey] as Vec, edir:[dx, dy] as Vec, ms, speed, ...(two?{two}:{}) , ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'trapdoor': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), w = readUVarint(bytes, pos);
+        const hinge = readUVarint(bytes, pos) === 1 ? 1 : -1;
+        const mode = readUVarint(bytes, pos) === 1 ? 'weight' : 'timer';
+        const open = readUVarint(bytes, pos), closed = readUVarint(bytes, pos);
+        const phase = readSVarint(bytes, pos);
+        const kg = readUVarint(bytes, pos)/100, hold = readUVarint(bytes, pos);
+        p = { t:'trapdoor', x, y, w, hinge: hinge as -1|1, mode: mode as 'timer'|'weight', open, closed, phase, kg, hold, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'switch': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), len = readUVarint(bytes, pos);
+        const angle = readUVarint(bytes, pos)/1000, side = readUVarint(bytes, pos);
+        p = { t:'switch', x, y, len, angle, side: (side === 1 ? 1 : 0) as 0|1, ...(flip?{flip}:{}) };
         break;
       }
       default: throw new ShareCodeError(`Unknown piece type ${t}`);

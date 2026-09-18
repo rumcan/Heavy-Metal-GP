@@ -57,10 +57,25 @@ export interface ItemBoxPiece extends PieceBase { t: 'itembox'; x: number; y: nu
 export interface BucketPiece extends PieceBase { t: 'bucket'; y: number; phase?: number }
 export interface WallPiece extends PieceBase { t: 'wall'; x: number; y: number; w: number; h: number }
 export interface BlockPiece extends PieceBase { t: 'block'; x: number; y: number; w: number; h: number }
+// ---- MB-10A: shortcuts and secrets ----
+/** NO ENTRY barricade over a tunnel entrance. `tough` is editor-friendly 1..10; hp derives from it. */
+export interface BarricadePiece extends PieceBase { t: 'barricade'; x: number; y: number; w: number; h: number; tough: number }
+/** Cliff tunnel: entrance at (x, y), exit hole at `exit`, launch dir `edir`, hidden ride `ms`, exit speed. */
+export interface TunnelPiece extends PieceBase { t: 'tunnel'; x: number; y: number; exit: Vec; edir: Vec; ms: number; speed: number; two?: boolean }
+/** Crumbling wall: pack-cumulative damage, permanent for the race. */
+export interface CrumblePiece extends PieceBase { t: 'crumble'; x: number; y: number; w: number; h: number; tough: number }
+/** Trapdoor floor: hinge side, `timer` (clock) or `weight` (pack threshold) mode. */
+export interface TrapdoorPiece extends PieceBase {
+  t: 'trapdoor'; x: number; y: number; w: number; hinge: -1 | 1;
+  mode: 'timer' | 'weight'; open: number; closed: number; phase: number; kg: number; hold: number;
+}
+/** Track switch lever: plate of `len` leaning ±`angle` at a Y-junction; `side` is the initial route. */
+export interface SwitchPiece extends PieceBase { t: 'switch'; x: number; y: number; len: number; angle: number; side: 0 | 1 }
 
 export type Piece =
   | RampPiece | CurvePiece | IcePiece | LoopPiece | HoopPiece | WreckerPiece | PadPiece | BoostPiece
-  | SpinnerPiece | BreakablePiece | PegPiece | PPegPiece | ItemBoxPiece | BucketPiece | WallPiece | BlockPiece;
+  | SpinnerPiece | BreakablePiece | PegPiece | PPegPiece | ItemBoxPiece | BucketPiece | WallPiece | BlockPiece
+  | BarricadePiece | TunnelPiece | CrumblePiece | TrapdoorPiece | SwitchPiece;
 
 export interface TrackDef {
   v: 1;
@@ -198,6 +213,34 @@ class DefRecorder extends Builder {
     return this.capture(() => super.bucket(y, phase), () => ({ t: 'bucket', y, phase, flip: this.mirrored }));
   }
 
+  // ---- MB-10A ----
+
+  override barricade(cx: number, cy: number, w: number, h: number, tough = 5) {
+    return this.capture(() => super.barricade(cx, cy, w, h, tough), () => ({ t: 'barricade', x: cx, y: cy, w, h, tough, flip: this.mirrored }));
+  }
+
+  override tunnel(x: number, y: number, exitX: number, exitY: number, dirX: number, dirY: number, transit = 900, speed = 7, twoWay = false) {
+    return this.capture(
+      () => super.tunnel(x, y, exitX, exitY, dirX, dirY, transit, speed, twoWay),
+      () => compact({ t: 'tunnel', x, y, exit: [exitX, exitY] as Vec, edir: [dirX, dirY] as Vec, ms: transit, speed, two: twoWay || undefined, flip: this.mirrored }),
+    );
+  }
+
+  override crumble(cx: number, cy: number, w: number, h: number, tough = 6) {
+    return this.capture(() => super.crumble(cx, cy, w, h, tough), () => ({ t: 'crumble', x: cx, y: cy, w, h, tough, flip: this.mirrored }));
+  }
+
+  override trapdoor(cx: number, y: number, w: number, hinge: -1 | 1 = -1, mode: 'timer' | 'weight' = 'timer', openMs = 1400, closedMs = 2800, phase = 0, kg = 2.4, holdMs = 300) {
+    return this.capture(
+      () => super.trapdoor(cx, y, w, hinge, mode, openMs, closedMs, phase, kg, holdMs),
+      () => ({ t: 'trapdoor', x: cx, y, w, hinge, mode, open: openMs, closed: closedMs, phase, kg, hold: holdMs, flip: this.mirrored }),
+    );
+  }
+
+  override switchLever(x: number, y: number, len = 120, angle = 0.65, side: 0 | 1 = 0) {
+    return this.capture(() => super.switchLever(x, y, len, angle, side), () => ({ t: 'switch', x, y, len, angle, side, flip: this.mirrored }));
+  }
+
   /** Spinners start at a rolled angle; stamp the angles the builder picked onto the pieces already recorded. */
   override randomiseSpinners() {
     super.randomiseSpinners();
@@ -249,6 +292,12 @@ function replayPiece(b: Builder, piece: Piece) {
       case 'bucket': b.bucket(piece.y, piece.phase ?? 0); break;
       case 'wall': b.wall(piece.x, piece.y, piece.w, piece.h); break;
       case 'block': b.block(piece.x, piece.y, piece.w, piece.h); break;
+      // ---- MB-10A ----
+      case 'barricade': b.barricade(piece.x, piece.y, piece.w, piece.h, piece.tough); break;
+      case 'tunnel': b.tunnel(piece.x, piece.y, piece.exit[0], piece.exit[1], piece.edir[0], piece.edir[1], piece.ms, piece.speed, piece.two === true); break;
+      case 'crumble': b.crumble(piece.x, piece.y, piece.w, piece.h, piece.tough); break;
+      case 'trapdoor': b.trapdoor(piece.x, piece.y, piece.w, piece.hinge, piece.mode, piece.open, piece.closed, piece.phase, piece.kg, piece.hold); break;
+      case 'switch': b.switchLever(piece.x, piece.y, piece.len, piece.angle, piece.side); break;
     }
   } finally {
     b.flip = false;
@@ -582,6 +631,75 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
         h: number(raw.h, `${at}.h`, 2, 4000, problems),
         ...body,
       };
+    // ---- MB-10A ----
+    case 'barricade':
+      return {
+        t: 'barricade',
+        x: number(raw.x, `${at}.x`, 0, W, problems),
+        y: real(raw.y, `${at}.y`, problems),
+        w: number(raw.w, `${at}.w`, 8, W, problems),
+        h: number(raw.h, `${at}.h`, 8, 2000, problems),
+        tough: number(raw.tough, `${at}.tough`, 1, 10, problems),
+        ...body,
+      };
+    case 'crumble':
+      return {
+        t: 'crumble',
+        x: number(raw.x, `${at}.x`, 0, W, problems),
+        y: real(raw.y, `${at}.y`, problems),
+        w: number(raw.w, `${at}.w`, 8, W, problems),
+        h: number(raw.h, `${at}.h`, 8, 2000, problems),
+        tough: number(raw.tough, `${at}.tough`, 1, 10, problems),
+        ...body,
+      };
+    case 'tunnel': {
+      const two = raw.two === undefined ? undefined : raw.two === true ? true : undefined;
+      if (raw.two !== undefined && two === undefined) problems.add(`${at}.two must be true when present.`);
+      return compact({
+        t: 'tunnel' as const,
+        x: number(raw.x, `${at}.x`, 0, W, problems),
+        y: real(raw.y, `${at}.y`, problems),
+        exit: vec(raw.exit, `${at}.exit`, problems),
+        edir: direction(raw.edir, `${at}.edir`, problems),
+        ms: number(raw.ms, `${at}.ms`, 100, 20000, problems),
+        speed: number(raw.speed, `${at}.speed`, 0, 30, problems),
+        two,
+        ...body,
+      });
+    }
+    case 'trapdoor': {
+      const hinge = raw.hinge === -1 || raw.hinge === 1 ? raw.hinge : undefined;
+      if (hinge === undefined) problems.add(`${at}.hinge must be -1 (left) or 1 (right).`);
+      const mode = raw.mode === 'timer' || raw.mode === 'weight' ? raw.mode : undefined;
+      if (mode === undefined) problems.add(`${at}.mode must be 'timer' or 'weight'.`);
+      return {
+        t: 'trapdoor',
+        x: number(raw.x, `${at}.x`, 0, W, problems),
+        y: real(raw.y, `${at}.y`, problems),
+        w: number(raw.w, `${at}.w`, 40, W, problems),
+        hinge: hinge ?? 1,
+        mode: mode ?? 'timer',
+        open: number(raw.open, `${at}.open`, 200, 20000, problems),
+        closed: number(raw.closed, `${at}.closed`, 200, 20000, problems),
+        phase: real(raw.phase, `${at}.phase`, problems),
+        kg: number(raw.kg, `${at}.kg`, 0.1, 50, problems),
+        hold: number(raw.hold, `${at}.hold`, 0, 5000, problems),
+        ...body,
+      };
+    }
+    case 'switch': {
+      const side = raw.side === 0 || raw.side === 1 ? raw.side : undefined;
+      if (side === undefined) problems.add(`${at}.side must be 0 (left) or 1 (right).`);
+      return {
+        t: 'switch',
+        x: number(raw.x, `${at}.x`, 0, W, problems),
+        y: real(raw.y, `${at}.y`, problems),
+        len: number(raw.len, `${at}.len`, 40, 400, problems),
+        angle: number(raw.angle, `${at}.angle`, 0.1, 1.35, problems),
+        side: side ?? 0,
+        ...body,
+      };
+    }
     default:
       problems.add(`${at}.t is unknown piece type ${JSON.stringify(raw.t)}.`);
       return null;
@@ -597,6 +715,10 @@ function pieceYs(piece: Piece): number[] {
       return [piece.a[1], piece.b[1], ...(piece.t === 'curve' ? [piece.c[1]] : [])];
     case 'loop':
       return [piece.bottom - piece.r * 2, piece.bottom];
+    case 'tunnel':
+      return [piece.y, piece.exit[1]];
+    case 'switch':
+      return [piece.y - piece.len, piece.y];
     case 'hoop':
     case 'spinner':
     case 'breakable':
@@ -607,6 +729,9 @@ function pieceYs(piece: Piece): number[] {
     case 'block':
     case 'boost':
     case 'pad':
+    case 'barricade':
+    case 'crumble':
+    case 'trapdoor':
       return [piece.y];
     case 'wrecker':
       return [piece.pivot[1] + piece.chain];

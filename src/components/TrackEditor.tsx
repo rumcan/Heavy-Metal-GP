@@ -158,7 +158,14 @@ function lowestPieceY(def: TrackDef): number {
       case 'block':
       case 'pad':
       case 'boost':
+      case 'barricade':
+      case 'crumble':
+      case 'trapdoor':
+      case 'switch':
         y = (p as { y: number }).y;
+        break;
+      case 'tunnel':
+        y = Math.max(p.y, p.exit[1]);
         break;
       case 'wrecker':
         y = p.pivot[1] + p.chain;

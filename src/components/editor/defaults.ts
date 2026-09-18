@@ -114,6 +114,25 @@ export function defaultPiece(type: PieceType, at: Point, snap = false): Piece {
     case 'block': {
       return { t: 'block', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, w: 60, h: 32 };
     }
+    // ---- MB-10A: shortcuts and secrets ----
+    case 'barricade': {
+      return { t: 'barricade', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, w: 120, h: 44, tough: 4 };
+    }
+    case 'crumble': {
+      return { t: 'crumble', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, w: 56, h: 120, tough: 6 };
+    }
+    case 'tunnel': {
+      // Entrance at the click; exit 340 units higher, shooting up and slightly right.
+      const ix = snap ? snapVal(cx) : cx;
+      const iy = snap ? snapVal(cy) : cy;
+      return { t: 'tunnel', x: ix, y: iy, exit: [snap ? snapVal(ix + 100) : ix + 100, iy - 340] as [number, number], edir: [0.3, -0.95] as [number, number], ms: 900, speed: 7 };
+    }
+    case 'trapdoor': {
+      return { t: 'trapdoor', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, w: 110, hinge: -1 as -1 | 1, mode: 'timer' as 'timer' | 'weight', open: 1400, closed: 2800, phase: 0, kg: 2.4, hold: 300 };
+    }
+    case 'switch': {
+      return { t: 'switch', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, len: 120, angle: 0.65, side: 0 as 0 | 1 };
+    }
     default:
       // Exhaustiveness: TypeScript ensures all PieceType are covered.
       throw new Error(`defaultPiece: unknown piece type ${(type as string)}`);

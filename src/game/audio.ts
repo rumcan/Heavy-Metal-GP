@@ -8,6 +8,8 @@ import * as storage from './storage';
 export type SoundType =
   | 'peg' | 'bump' | 'thud' | 'clack' | 'spring' | 'hoop' | 'clang' | 'crack' | 'smash'
   | 'pickup' | 'bucket' | 'loop' | 'finish' | 'item' | 'go' | 'light'
+  // MB-10A: shortcuts and secrets — the crowd, the rock, the hinge, the lever
+  | 'cheer' | 'rumble' | 'creak' | 'click'
   // story mode UI: dialogue tick and chapter/act sting
   | 'blip' | 'sting';
 
@@ -26,7 +28,7 @@ const MUTE_KEY = 'heavy-metal-gp:muted';
 // Peggle-style rising run: a major scale that keeps climbing while the streak lasts
 const SCALE = [0, 2, 4, 5, 7, 9, 11];
 const STREAK_WINDOW = 1600;
-const MIN_GAP: Partial<Record<SoundType, number>> = { peg: 25, bump: 60, thud: 90, clack: 70, crack: 90, clang: 80, hoop: 80, spring: 120, blip: 26 };
+const MIN_GAP: Partial<Record<SoundType, number>> = { peg: 25, bump: 60, thud: 90, clack: 70, crack: 90, clang: 80, hoop: 80, spring: 120, blip: 26, cheer: 500, rumble: 250, creak: 200, click: 60 };
 
 class RaceAudio {
   private ctx: AudioContext | null = null;
@@ -106,6 +108,18 @@ class RaceAudio {
       case 'light': return this.tone(t, 440, 0.16, 'square', 0.22, 0);
       case 'go': return this.tone(t, 880, 0.45, 'square', 0.28, 0);
       case 'finish': return this.finish(t, e.rank ?? 10);
+      case 'cheer': {
+        // the crowd roars: a noisy swell plus a rising whoop
+        this.noiseHit(t, 0.7, 1100, 0.3 * vol, pan, 'bandpass');
+        return this.arp(t + 0.04, [72, 76, 79, 84], 0.07, 'triangle', 0.14 * vol, pan);
+      }
+      case 'rumble': {
+        // muffled rock: low noise with a slow sub thump
+        this.noiseHit(t, 0.45, 160, 0.42 * vol, pan, 'lowpass');
+        return this.tone(t, 55, 0.4, 'sine', 0.2 * vol, pan, 38);
+      }
+      case 'creak': return this.tone(t, 140, 0.5, 'triangle', 0.16 * vol, pan, 90);
+      case 'click': return this.tone(t, 1150, 0.045, 'square', 0.16 * vol, pan, 760);
       case 'blip': return this.tone(t, 1500 + Math.random() * 220, 0.028, 'square', 0.07, 0);
       case 'sting': return this.sting(t);
     }

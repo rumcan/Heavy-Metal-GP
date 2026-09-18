@@ -143,11 +143,42 @@ function baseHandles(piece: Piece): Handle[] {
     }
     case 'breakable':
     case 'wall':
-    case 'block': {
-      // Rect centred at (x,y). Handles: centre moves, corners resize.
+    case 'block':
+    // ---- MB-10A ----
+    case 'barricade':
+    case 'crumble': {
+      // Rect centred at (x,y). Handles: centre moves, corner resizes.
       return [
         { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
         { id: 'se', x: piece.x + piece.w / 2, y: piece.y + piece.h / 2, cursor: 'nwse-resize', label: 'Size' },
+      ];
+    }
+    case 'trapdoor': {
+      // The leaf is thin and hinged; thickness is fixed, so only the width is draggable.
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
+        { id: 'se', x: piece.x + piece.w / 2, y: piece.y + 7, cursor: 'ew-resize', label: 'Width' },
+      ];
+    }
+    case 'tunnel': {
+      // Entrance moves the whole pair; exit/arrow handles reshape the ride.
+      const d = Math.hypot(piece.edir[0], piece.edir[1]) || 1;
+      const ax = piece.exit[0] + (piece.edir[0] / d) * 56;
+      const ay = piece.exit[1] + (piece.edir[1] / d) * 56;
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
+        { id: 'exit', x: piece.exit[0], y: piece.exit[1], cursor: 'crosshair', label: 'Exit hole' },
+        { id: 'dir', x: ax, y: ay, cursor: 'crosshair', label: 'Launch direction' },
+      ];
+    }
+    case 'switch': {
+      // Junction tip moves; blade length along its resting lean resizes.
+      const lean = piece.side === 1 ? -piece.angle : piece.angle;
+      const bx = piece.x + Math.sin(lean) * piece.len * 0.85;
+      const by = piece.y - Math.cos(lean) * piece.len * 0.85;
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
+        { id: 'len', x: bx, y: by, cursor: 'ew-resize', label: 'Blade length' },
       ];
     }
     case 'peg':
@@ -330,7 +361,10 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
     }
     case 'breakable':
     case 'wall':
-    case 'block': {
+    case 'block':
+    // ---- MB-10A ----
+    case 'barricade':
+    case 'crumble': {
       if (handleId === 'move') return { ...piece, x: withSnap(to.x, sx), y: withSnap(to.y, sx) };
       if (handleId === 'se') {
         const nx = withSnap(to.x, sx);
@@ -338,6 +372,44 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
         const w = Math.max(8, Math.min(W, Math.abs(nx - piece.x) * 2));
         const h = Math.max(8, Math.min(4000, Math.abs(ny - piece.y) * 2));
         return { ...piece, w: sx ? snapVal(w) : w, h: sx ? snapVal(h) : h };
+      }
+      return piece;
+    }
+    case 'trapdoor': {
+      if (handleId === 'move') return { ...piece, x: withSnap(to.x, sx), y: withSnap(to.y, sx) };
+      if (handleId === 'se') {
+        // A trapdoor's thickness is fixed — the corner handle only sets the leaf width.
+        const w = Math.max(40, Math.min(W, Math.abs(withSnap(to.x, sx) - piece.x) * 2));
+        return { ...piece, w: sx ? snapVal(w) : w };
+      }
+      return piece;
+    }
+    case 'tunnel': {
+      if (handleId === 'move') {
+        const nx = clampX(withSnap(to.x, sx));
+        const dx = nx - piece.x;
+        const dy = withSnap(to.y, sx) - piece.y;
+        return { ...piece, x: nx, y: piece.y + dy, exit: [clampX(piece.exit[0] + dx), piece.exit[1] + dy] as [number, number] };
+      }
+      if (handleId === 'exit') {
+        return { ...piece, exit: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number] };
+      }
+      if (handleId === 'dir') {
+        const dx = to.x - piece.exit[0];
+        const dy = to.y - piece.exit[1];
+        const m = Math.hypot(dx, dy);
+        if (m < 4) return piece;
+        return { ...piece, edir: [dx / m, dy / m] as [number, number] };
+      }
+      return piece;
+    }
+    case 'switch': {
+      if (handleId === 'move') return { ...piece, x: withSnap(to.x, sx), y: withSnap(to.y, sx) };
+      if (handleId === 'len') {
+        const dx = withSnap(to.x, sx) - piece.x;
+        const dy = withSnap(to.y, sx) - piece.y;
+        const len = Math.max(40, Math.min(400, Math.hypot(dx, dy) / 0.85));
+        return { ...piece, len: sx ? snapVal(len) : len };
       }
       return piece;
     }
@@ -400,7 +472,14 @@ export function movePiece(piece: Piece, dx: number, dy: number): Piece {
     case 'breakable':
     case 'wall':
     case 'block':
+    // ---- MB-10A ----
+    case 'barricade':
+    case 'crumble':
+    case 'trapdoor':
+    case 'switch':
       return { ...piece, x: clampX(piece.x + dx), y: piece.y + dy };
+    case 'tunnel':
+      return { ...piece, x: clampX(piece.x + dx), y: piece.y + dy, exit: [clampX(piece.exit[0] + dx), piece.exit[1] + dy] as [number, number] };
     case 'peg':
     case 'ppeg':
       return { ...piece, x: clampX(piece.x + dx), y: piece.y + dy };
@@ -439,7 +518,17 @@ export function mirrorPiece(piece: Piece): Piece {
     case 'breakable':
     case 'wall':
     case 'block':
+    // ---- MB-10A ----
+    case 'barricade':
+    case 'crumble':
       return { ...piece, x: mx(piece.x) };
+    case 'trapdoor':
+      // Mirroring moves the hinge to the other side of the leaf.
+      return { ...piece, x: mx(piece.x), hinge: piece.hinge === 1 ? -1 : 1 };
+    case 'tunnel':
+      return { ...piece, x: mx(piece.x), exit: [mx(piece.exit[0]), piece.exit[1]] as [number, number], edir: [-piece.edir[0], piece.edir[1]] as [number, number] };
+    case 'switch':
+      return { ...piece, x: mx(piece.x), side: piece.side === 1 ? 0 : 1 };
     case 'peg':
     case 'ppeg':
       return { ...piece, x: mx(piece.x) };

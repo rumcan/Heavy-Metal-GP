@@ -539,6 +539,27 @@ export interface CueEvent {
   seat?: number;
 }
 
+/** MB-10A. A track-switch plate flipped to a route (`side`: 0 = left, 1 = right). */
+export interface SwitchEvent {
+  kind: 'switch';
+  i: number;
+  side: 0 | 1;
+}
+
+/** MB-10A. A stateful (weight-mode) trapdoor opened or closed. */
+export interface TrapdoorEvent {
+  kind: 'trapdoor';
+  i: number;
+  open: boolean;
+}
+
+/** MB-10A. A marble is hidden inside an element (cliff tunnel) until `until` (host clock). */
+export interface HoldEvent {
+  kind: 'hold';
+  seat: number;
+  until: number;
+}
+
 export type RaceEvent =
   | PegEvent
   | CrateEvent
@@ -548,10 +569,13 @@ export type RaceEvent =
   | ShockEvent
   | ItemEvent
   | FinishEvent
-  | CueEvent;
+  | CueEvent
+  | SwitchEvent
+  | TrapdoorEvent
+  | HoldEvent;
 
 /** Every event kind, in wire order. `validateMessage` rejects anything else. */
-export const RACE_EVENT_KINDS = ['peg', 'crate', 'box', 'oil', 'freeze', 'shock', 'item', 'finish', 'sound'] as const;
+export const RACE_EVENT_KINDS = ['peg', 'crate', 'box', 'oil', 'freeze', 'shock', 'item', 'finish', 'sound', 'switch', 'trapdoor', 'hold'] as const;
 
 /**
  * host → server → everyone. What happened since the last frame.
@@ -1539,6 +1563,18 @@ function validateEvent(value: unknown): ProtocolError | null {
       if (!isSoundEvent(e.cue)) return forged(`Sound cue "${e.cue}" is not one of: ${SOUND_EVENTS.join(', ')}.`);
       if (e.seat !== undefined) return seat(e.seat);
       return null;
+    }
+    case 'switch': {
+      if (e.side !== 0 && e.side !== 1) return bad('Switch event has no side.');
+      return body(e.i);
+    }
+    case 'trapdoor': {
+      if (typeof e.open !== 'boolean') return bad('Trapdoor event has no open flag.');
+      return body(e.i);
+    }
+    case 'hold': {
+      if (typeof e.until !== 'number' || !Number.isFinite(e.until) || e.until < 0) return bad('Hold event has no release time.');
+      return seat(e.seat);
     }
     default:
       return bad(`Unknown event kind "${String(e.kind)}".`);

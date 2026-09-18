@@ -106,6 +106,31 @@ export function rotatePiece(piece: Piece, rad: number, c: Point): Piece {
       const swap = isQuarter && quarterTurns % 2 !== 0;
       return swap ? { ...piece, x, y, w: Math.min(W, piece.h), h: piece.w } : { ...piece, x, y };
     }
+    // ---- MB-10A ----
+    case 'barricade':
+    case 'crumble': {
+      const [x, y] = at(piece.x, piece.y);
+      const swap = isQuarter && quarterTurns % 2 !== 0;
+      return swap ? { ...piece, x, y, w: Math.min(W, piece.h), h: piece.w } : { ...piece, x, y };
+    }
+    case 'trapdoor': {
+      const [x, y] = at(piece.x, piece.y);
+      const swap = isQuarter && quarterTurns % 2 !== 0;
+      // A half turn moves the hinge to the other side; the hatch still falls away from it.
+      const hinge = (quarterTurns % 2 !== 0) ? (piece.hinge === 1 ? -1 : 1) : piece.hinge;
+      return swap ? { ...piece, x, y, hinge: hinge as -1 | 1 } : { ...piece, x, y, hinge: hinge as -1 | 1 };
+    }
+    case 'tunnel': {
+      const [x, y] = at(piece.x, piece.y);
+      const [ex, ey] = at(piece.exit[0], piece.exit[1]);
+      return { ...piece, x, y, exit: [ex, ey] as Vec, edir: turnDir(piece.edir, cos, sin) };
+    }
+    case 'switch': {
+      const [x, y] = at(piece.x, piece.y);
+      // A half turn swaps which side the route leans to.
+      const side = (quarterTurns % 2 !== 0) ? (piece.side === 1 ? 0 : 1) : piece.side;
+      return { ...piece, x, y, side: side as 0 | 1 };
+    }
     case 'peg':
     case 'ppeg':
     case 'itembox': {

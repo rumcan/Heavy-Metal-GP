@@ -16,6 +16,11 @@ export const CAT_SENSOR = 0x0004;
 export const CAT_LOOP_UP = 0x0008;
 /** Loop pieces marbles collide with once past the top (closing quarter back down to the bottom). */
 export const CAT_LOOP_CLOSE = 0x0010;
+/**
+ * MB-10A. Fragile barricades (NO ENTRY signs, crumbling walls). Solid to marbles, but a Ghost
+ * marble drops this category from its mask and phases straight through without opening them.
+ */
+export const CAT_FRAGILE = 0x0020;
 
 export type Kind =
   | 'wall'
@@ -37,7 +42,34 @@ export type Kind =
   | 'loopExit'
   | 'loopBail'
   | 'hoop'
-  | 'wrecker';
+  | 'wrecker'
+  // MB-10A: shortcuts and secrets
+  | 'barricade'
+  | 'tunnel'
+  | 'crumble'
+  | 'trapdoor'
+  | 'switch'
+  | 'switchPad';
+
+/**
+ * MB-10 element framework. A kinematic driver for the moving pieces: a body's pose is a pure
+ * function of the race clock (`Game.time`), exactly like the wrecking ball, so multiplayer
+ * guests compute the same motion from the frames they already receive. Stateful pieces (a
+ * weight trapdoor, a switch plate) instead ease toward a state that host events carry.
+ */
+export type Motion =
+  /** A door hinged at one end, swinging between shut (0) and openAngle on a timer program. */
+  | {
+    mode: 'hinge';
+    pivot: Matter.Vector;
+    /** Direction from hinge to free end when shut: +1 = door extends right, -1 = left. */
+    dirX: 1 | -1;
+    len: number;
+    openAngle: number;
+    openMs: number;
+    closedMs: number;
+    phase: number;
+  };
 
 export type PegColor = 'blue' | 'orange' | 'green';
 
@@ -67,6 +99,39 @@ export interface Meta {
   pivot?: Matter.Vector;
   chain?: number;
   amp?: number;
+  // ---- MB-10 elements ----
+  /** Kinematic driver (race-clock pose) for the moving MB-10 pieces, if any. */
+  motion?: Motion;
+  /** Where a tunnel/scoop spits the marble out: point, launch direction and speed. */
+  exit?: { x: number; y: number; dir: { x: number; y: number }; speed: number };
+  /** Hidden transit time (ms) for tunnel-like captures. */
+  transit?: number;
+  /** Two-way tunnels: the far hole is an entrance too (a second sensor is built). */
+  twoWay?: boolean;
+  /** Editor toughness 1..10 for fragile walls (hp is derived from it). */
+  tough?: number;
+  /** Trapdoor: which end the hinge sits at (-1 left, +1 right) and its mode. */
+  hinge?: -1 | 1;
+  mode?: 'timer' | 'weight';
+  weightKg?: number;
+  holdMs?: number;
+  openMs?: number;
+  closedMs?: number;
+  /** Stateful trapdoor (weight mode): open state decided by the host; guests mirror events. */
+  openNow?: boolean;
+  openedAt?: number;
+  /** Accumulated rest time of the pack sitting on a weight trapdoor. */
+  restSince?: number;
+  /** Switch lever: the chosen route (0 = left, 1 = right) and plate geometry. */
+  side?: 0 | 1;
+  swingAngle?: number;
+  plateLen?: number;
+  /** Time the route last flipped (the skin flashes the lantern / arc briefly). */
+  flippedAt?: number;
+  /** Eased 0..1 progress of a stateful element's swing (visual + collision). */
+  eased?: number;
+  /** Body index of the switch plate this paddle flips (indices are stable — bodies are append-only). */
+  paired?: number;
 }
 
 /** Anchors for the art skin. Physics never reads these; sprites are drawn over the vector bodies. */
@@ -372,6 +437,103 @@ export class Builder {
     b.frictionStatic = 0;
     return b;
   }
+
+  // ---------- MB-10A: shortcuts and secrets ----------
+
+  /**
+   * A NO ENTRY barricade: a wooden plank barrier nailed over a cliff-tunnel entrance. Damage is
+   * weight × speed like a SMASH crate; Heavy metal smashes it in one hit; Ghost phases through
+   * (CAT_FRAGILE leaves its mask) without opening it.
+   */
+  barricade(cx: number, cy: number, w: number, h: number, tough = 5) {
+    const hp = tough * massForWeight(10) * 2.1;
+    const b = Bodies.rectangle(this.X(cx), cy, w, h, {
+      ...STATIC_OPTS, label: 'barricade',
+      collisionFilter: { category: CAT_FRAGILE, mask: 0xffff, group: 0 },
+    });
+    b.plugin = { kind: 'barricade', hp, maxHp: hp, tough } as Meta;
+    this.bodies.push(b);
+    return b;
+  }
+
+  /**
+   * A cliff tunnel: the entrance hole (a sensor in the wall notch) swallows a marble, which rides
+   * hidden through the rock for `transit` ms and pops out of the exit hole with a set speed.
+   * `twoWay` builds a second sensor at the far hole pointing back. The exit is meta, not a body:
+   * it never blocks anything. Several entrances can share one exit point (a hub).
+   */
+  tunnel(x: number, y: number, exitX: number, exitY: number, dirX: number, dirY: number, transit = 900, speed = 7, twoWay = false) {
+    const inX = this.X(x);
+    const outX = this.X(exitX);
+    const dx = this.flip ? -dirX : dirX;
+    const m = Math.hypot(dx, dirY) || 1;
+    const b = Bodies.rectangle(inX, y, 44, 100, { ...SENSOR_OPTS, label: 'tunnel' });
+    b.plugin = { kind: 'tunnel', exit: { x: outX, y: exitY, dir: { x: dx / m, y: dirY / m }, speed }, transit, twoWay } as Meta;
+    this.bodies.push(b);
+    if (twoWay) {
+      const side = inX < W / 2 ? 1 : -1;
+      const rdir = { x: side * 0.7, y: -0.7 };
+      const rm = Math.hypot(rdir.x, rdir.y);
+      const back = Bodies.rectangle(outX, exitY, 44, 100, { ...SENSOR_OPTS, label: 'tunnel' });
+      back.plugin = { kind: 'tunnel', exit: { x: inX, y, dir: { x: rdir.x / rm, y: rdir.y / rm }, speed }, transit } as Meta;
+      this.bodies.push(back);
+    }
+    return b;
+  }
+
+  /**
+   * A crumbling wall: a cracked rock slab guarding a shortcut. Every hit by ANY marble wears it
+   * down a little (cumulative, permanent for the race); weight scales each hit and Heavy metal
+   * counts triple. Ghost phases through without opening it.
+   */
+  crumble(cx: number, cy: number, w: number, h: number, tough = 6) {
+    const hp = tough * massForWeight(10) * 3.2;
+    const b = Bodies.rectangle(this.X(cx), cy, w, h, {
+      ...STATIC_OPTS, label: 'crumble',
+      collisionFilter: { category: CAT_FRAGILE, mask: 0xffff, group: 0 },
+    });
+    b.plugin = { kind: 'crumble', hp, maxHp: hp, tough } as Meta;
+    this.bodies.push(b);
+    return b;
+  }
+
+  /**
+   * A trapdoor floor: a hinged iron hatch that drops open, either on a timer program (kinematic,
+   * guests read it off the race clock) or when enough pack weight rests on it (stateful: the
+   * `open` state crosses the wire as an event). Marbles on it when it opens fall to a lower route.
+   */
+  trapdoor(cx: number, y: number, w: number, hinge: -1 | 1 = -1, mode: 'timer' | 'weight' = 'timer', openMs = 1400, closedMs = 2800, phase = 0, kg = 2.4, holdMs = 300) {
+    const h2 = this.flip ? ((-hinge) as -1 | 1) : hinge;
+    const px = this.X(cx);
+    const pivot = { x: px + h2 * w / 2, y };
+    const b = Bodies.rectangle(px, y, w, 12, { ...STATIC_OPTS, label: 'trapdoor', chamfer: { radius: 2 } });
+    b.plugin = {
+      kind: 'trapdoor', hinge: h2, mode, weightKg: kg, holdMs, openMs, closedMs, openNow: false, restSince: 0, eased: 0,
+      motion: { mode: 'hinge', pivot, dirX: -h2 as -1 | 1, len: w, openAngle: -h2 * 1.82, openMs, closedMs, phase },
+    } as Meta;
+    this.bodies.push(b);
+    return b;
+  }
+
+  /**
+   * A track switch lever: a deflector plate at a Y-junction that leans left or right, and a small
+   * sensor paddle above it. Every marble that trips the paddle flips the plate for the NEXT marble
+   * (stateful: the side crosses the wire as an event).
+   */
+  switchLever(x: number, y: number, len = 120, angle = 0.65, side: 0 | 1 = 0) {
+    const px = this.X(x);
+    const s2 = (this.flip ? 1 - side : side) as 0 | 1;
+    const a = (s2 === 1 ? 1 : -1) * angle;
+    const plate = Bodies.rectangle(px + Math.sin(a) * len / 2, y - Math.cos(a) * len / 2, len, 12, { ...STATIC_OPTS, angle: a, label: 'switch', chamfer: { radius: 4 } });
+    plate.friction = 0.002;
+    plate.frictionStatic = 0;
+    plate.plugin = { kind: 'switch', pivot: { x: px, y }, plateLen: len, swingAngle: angle, side: s2, eased: undefined } as Meta;
+    this.bodies.push(plate);
+    const pad = Bodies.rectangle(px, y - len - 16, 30, 20, { ...SENSOR_OPTS, label: 'switchPad' });
+    pad.plugin = { kind: 'switchPad', paired: this.bodies.length - 1 } as Meta;
+    this.bodies.push(pad);
+    return plate;
+  }
 }
 
 // ---------------- Segments ----------------
@@ -610,6 +772,100 @@ export const segFinish: Seg = (b, y) => {
   return FINISH_H;
 };
 
+// ---------------- MB-10A sectors: shortcuts and secrets ----------------
+
+/**
+ * A NO ENTRY barricade nailed over a hole in the side wall. Smash it, drop into the cliff tunnel
+ * and pop out partway down the main route below. The main route always works; the tunnel just
+ * skips the zigzag. Low POOL weight — secrets should be found, not everywhere.
+ */
+const segTunnelShortcut: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  // main route: ramp across, catch landing under the end, then the long way down
+  b.ramp(0, y + 20, W - 220, y + 150);
+  if (b.rng() < 0.5) b.boostOnRamp(0, y + 20, W - 220, y + 150, 0.5);
+  b.ramp(W, y + 160, W - 170, y + 180);
+  // the secret: barricade against the right wall over the tunnel entrance notch
+  const tough = 3 + Math.floor(b.rng() * 4);
+  b.barricade(W - 42, y + 132, 26, 96, tough);
+  b.tunnel(W - 22, y + 120, W - 40, y + 330, -0.25, 1, 900 + b.rng() * 500, 6.5);
+  // main route continues down-left
+  b.ramp(W - 72, y + 262, 150, y + 380);
+  if (b.rng() < 0.6) b.itemBox(330 + b.rng() * 240, y + 250);
+  return 450;
+};
+
+/**
+ * A crumbling rock slab over the classic side-chute shortcut: the pack chips it open together
+ * (damage is cumulative and permanent), then everyone pours down the chute into the next sector.
+ */
+const segCrumbleWall: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  b.ramp(0, y + 20, W - 240, y + 160);
+  if (b.rng() < 0.5) b.boostOnRamp(0, y + 20, W - 240, y + 160, 0.45);
+  // landing floor sloping back toward the crack, and a cap so you can't drop straight in
+  b.ramp(W, y + 172, W - 180, y + 192);
+  b.ramp(W, y + 0, W - 120, y + 60);
+  const tough = 5 + Math.floor(b.rng() * 4);
+  b.crumble(W - 74, y + 122, 36, 110, tough);
+  // chute left wall + the shove that carries you down the slot
+  b.wall(W - 62, y + 222, 12, 100);
+  b.boost(W - 28, y + 330, 120, 50, 0, 1);
+  // main route remains open below — the shortcut is a bonus, never the only way
+  b.ramp(W - 76, y + 262, 160, y + 380);
+  if (b.rng() < 0.6) b.itemBox(320 + b.rng() * 260, y + 240);
+  return 500;
+};
+
+/**
+ * A floor hatch on a timer: cross while it is shut, or drop through the open door to the lower
+ * route for a small shortcut. Both routes merge below, so the sector always finishes.
+ */
+const segTrapdoorDrop: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  const openMs = 1100 + b.rng() * 700;
+  const closedMs = 2400 + b.rng() * 900;
+  b.ramp(0, y + 20, 380, y + 130);
+  // flat floor with the trapdoor in its middle; door top flush with the floor tops
+  b.wall(500, y + 170, 240, 16);
+  b.trapdoor(700, y + 168, 120, 1, 'timer', openMs, closedMs, b.rng() * (openMs + closedMs));
+  b.wall(820, y + 170, 120, 16);
+  // crossing route: off the floor's right end and down a long ramp
+  b.ramp(880, y + 188, 300, y + 400);
+  // drop route: fall through the door onto the same ramp higher up
+  if (b.rng() < 0.6) b.itemBox(500 + b.rng() * 200, y + 260);
+  return 480;
+};
+
+/**
+ * A Y-junction with a flippable switch plate. Every marble that trips the paddle swings the
+ * plate for the next one: left lane is pegs and an item, right lane is a boost. Crowd chaos by
+ * design — nobody knows which lane they get.
+ */
+const segSwitchLanes: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  // funnel walls feeding the junction point
+  b.ramp(0, y + 20, W / 2 - 60, y + 200);
+  b.ramp(W, y + 20, W / 2 + 60, y + 200);
+  b.switchLever(W / 2, y + 210, 110, 0.62, b.rng() < 0.5 ? 0 : 1);
+  // divider splitting the two lanes below the plate
+  b.wall(W / 2, y + 332, 14, 220);
+  // left lane: pegs and an item box
+  for (let r = 0; r < 2; r++) {
+    for (let x = 140 + (r % 2) * 60; x < W / 2 - 60; x += 120) {
+      b.ppeg(x, y + 260 + r * 90, b.rng() < 0.15 ? 'green' : b.rng() < 0.4 ? 'orange' : 'blue', 9);
+    }
+  }
+  b.itemBox(W / 4, y + 240);
+  // right lane: straight boost down
+  b.boost(W / 2 + 130, y + 300, 130, 200, 0, 1);
+  b.boost(W / 2 + 130, y + 420, 130, 90, 0, 1);
+  // merge lips
+  b.ramp(0, y + 450, W / 2 - 80, y + 510);
+  b.ramp(W, y + 450, W / 2 + 80, y + 510);
+  return 600;
+};
+
 const POOL: { seg: Seg; name: string; weight: number }[] = [
   { seg: segZigzag, name: 'Zigzag Pipes', weight: 2 },
   { seg: segFunnel, name: 'Funnel', weight: 2 },
@@ -623,6 +879,11 @@ const POOL: { seg: Seg; name: string; weight: number }[] = [
   { seg: segPeggle, name: 'Peggle Board', weight: 2.2 },
   { seg: segLoop, name: 'Loop', weight: 1.8 },
   { seg: segCurveDrop, name: 'Curve Drop', weight: 2 },
+  // MB-10A: shortcuts and secrets (low weights — found, not everywhere)
+  { seg: segTunnelShortcut, name: 'Tunnel Shortcut', weight: 0.7 },
+  { seg: segCrumbleWall, name: 'Crumbling Wall', weight: 0.6 },
+  { seg: segTrapdoorDrop, name: 'Trapdoor Drop', weight: 0.6 },
+  { seg: segSwitchLanes, name: 'Switchback Lanes', weight: 0.6 },
 ];
 
 export const DEFAULT_PROFILE: TrackProfile = {

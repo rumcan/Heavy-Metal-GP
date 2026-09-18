@@ -383,6 +383,13 @@ export class RaceGuest {
     const alpha = a === b ? 0 : clamp01((renderAt - a.at) / (b.at - a.at));
     this.flushEvents(b.seq);
     this.renderFrame(a, b, alpha);
+    // Held marbles (MB-10 tunnel rides) reappear when the host clock says the ride is over.
+    for (const m of this.game.marbles) {
+      if (m.hold && this.game.time >= m.hold.until) {
+        m.hold = null;
+        m.trail = [];
+      }
+    }
     this.game.ageEffects(dt);
 
     // Retire the frames the picture has drawn PAST, but keep `a`: it is still
@@ -604,6 +611,32 @@ export class RaceGuest {
       case 'sound':
         this.cues.push(event.cue);
         break;
+      // MB-10A: stateful element flips — set the state the host decided; the shared easing in
+      // `Game.ageEffects` swings the plate / door on this end exactly as it does on the host.
+      case 'switch': {
+        const body = this.bodyAt(event.i);
+        if (body) {
+          meta(body).side = event.side;
+          meta(body).flippedAt = this.game.time;
+        }
+        break;
+      }
+      case 'trapdoor': {
+        const body = this.bodyAt(event.i);
+        if (body) {
+          meta(body).openNow = event.open;
+          if (event.open) meta(body).openedAt = this.game.time;
+        }
+        break;
+      }
+      case 'hold': {
+        // A marble went into an element (tunnel). The host glides it inside from now on; the
+        // `until` is on the host clock, which we mirror, so hide it locally until then. The
+        // position frames keep flowing, so it pops out exactly where the host put it.
+        const m = marbles[event.seat];
+        if (m) m.hold = { kind: 'tunnel', until: event.until };
+        break;
+      }
     }
   }
 
