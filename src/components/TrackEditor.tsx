@@ -45,6 +45,7 @@ import {
 import Brand from './Brand';
 import Dialog from './Dialog';
 import PublishDialog from './editor/PublishDialog';
+import ThemePicker from './editor/ThemePicker';
 import RulesDialog from './RulesDialog';
 import EditorCanvas from './editor/EditorCanvas';
 import type { EditorStatus } from './editor/EditorCanvas';
@@ -65,7 +66,6 @@ import { MAX_NAME } from '../game/trackdef';
 import { generateTrackDef } from '../game/trackdef';
 import { Game } from '../game/engine';
 import { clearStaticChunks } from '../game/render';
-import { THEME_IDS } from '../game/types';
 import type { MarbleInfo, ThemeId, TrackProfile } from '../game/types';
 import TestDrive from './editor/TestDrive';
 import ValidationPanel from './editor/ValidationPanel';
@@ -921,16 +921,7 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
               <span className="eyebrow">Track name</span>
               <input value={circuit.def.name} maxLength={MAX_NAME} aria-label="Track name" onChange={(e) => editName(e.target.value)} />
             </label>
-            <label className="editor-field editor-theme">
-              <span className="eyebrow">Theme</span>
-              <select value={circuit.def.theme} aria-label="Track theme" onChange={(e) => editTheme(e.target.value as ThemeId)}>
-                {THEME_IDS.map((id) => (
-                  <option key={id} value={id}>
-                    {id[0].toUpperCase() + id.slice(1)}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="editor-field editor-theme"><ThemePicker value={circuit.def.theme} onChange={editTheme} /></div>
             <div className="editor-toggles">
               <button
                 type="button"

@@ -55,6 +55,7 @@ import type { CameraRig, EditorCamera } from '../src/components/editor/camera';
 import { PALETTE, TILES, tileFor } from '../src/components/editor/palette';
 import { W } from '../src/game/track';
 import { CALENDAR } from '../src/game/season';
+import { THEME_LABELS, themeIdFor } from '../src/game/types';
 import { MAX_NAME, TRACKDEF_VERSION, buildTrackFromDef, generateTrackDef, validateTrackDef } from '../src/game/trackdef';
 
 // ── vite's SSR pipeline: the components import CSS and use `import.meta.glob` ──
@@ -230,7 +231,9 @@ test('Workshop: the shell renders the canvas, the toolbar, the readouts and the 
   // Name and theme, from the def the editor opened on.
   assert.ok(markup.includes(`value="${MARBLEHURST.name}"`), 'the track name field does not hold the def\'s name');
   assert.ok(new RegExp(`maxlength="${MAX_NAME}"`, 'i').test(markup), `the name field ignores the ${MAX_NAME}-character limit`);
-  for (const theme of ['classic', 'forest', 'night']) assert.ok(markup.includes(`value="${theme}"`), `the ${theme} theme is not on offer`);
+  // The theme picker names the def's theme; its cards (incl. the Dwarven Forge and Worg Canyon art themes) open on click.
+  assert.ok(markup.includes('class="theme-picker-button"'), 'no theme picker');
+  assert.ok(markup.includes(`Track theme: ${THEME_LABELS[themeIdFor(MARBLEHURST.profile.theme)]}`), 'the theme picker does not name the track theme');
   // The grid and the ruler, armed by default.
   assert.ok(markup.includes(`Grid ${SNAP} u`), 'the snap-grid toggle does not name its step');
   assert.ok(markup.includes('>Ruler</button>'), 'no ruler toggle');

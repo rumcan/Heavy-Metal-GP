@@ -1,8 +1,8 @@
 import Matter from 'matter-js';
 import { Game, Marble } from './engine';
 import { meta, W } from './track';
-import { MARBLE_RADIUS, ITEM_INFO } from './types';
-import { ballFor, bodyFrame, drawRail, drawSprite, drawStrip, sprite } from './sprites';
+import { MARBLE_RADIUS, ITEM_INFO, skinFor, themeIdFor } from './types';
+import { ballFor, bodyFrame, currentSkin, drawRail, drawSprite, drawStrip, setSkin, sprite } from './sprites';
 import repeatingBgUrl from '../assets/bg/repeating.webp';
 import mineEntranceUrl from '../assets/bg/mine-entrance.webp';
 import mineUrl from '../assets/bg/mine.webp';
@@ -115,6 +115,20 @@ function vignetteFor(cw: number, ch: number): HTMLCanvasElement {
 function drawBackdrop(ctx: CanvasRenderingContext2D, cam: Camera, cw: number, ch: number, trackHeight: number) {
   ctx.fillStyle = '#0a1a33';
   ctx.fillRect(0, 0, cw, ch);
+  // Art themes bring one seamless tile that repeats all the way down (no sky -> mine descent).
+  const skin = currentSkin();
+  const skinTile = skin ? sprite('backdrop') : null;
+  if (skin && skinTile) {
+    const dpr = ctx.getTransform().a || 1;
+    const tw = Math.max(cw, 600);
+    const th = tw * (skinTile.naturalHeight / skinTile.naturalWidth);
+    const v = cam.y * 0.18;
+    const x = (cw - tw) / 2;
+    const tile = tintedTile(skinTile, `skin:${skin}`, tw * dpr, 'rgba(20,10,6,0.45)');
+    for (let row = Math.floor(v / th); row * th - v < ch; row++) ctx.drawImage(tile, x, row * th - v, tw, th + 1);
+    ctx.drawImage(vignetteFor(cw, ch), 0, 0, cw, ch);
+    return;
+  }
   if (!ready(skyBg)) return;
   const dpr = ctx.getTransform().a || 1;
   const tw = Math.max(cw, 600);
@@ -374,6 +388,8 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
   ctx.clearRect(0, 0, cw, ch);
 
   const theme = game.track.theme;
+  // Art themes swap in their own sprites; everything else draws the goblin art.
+  setSkin(skinFor(themeIdFor(theme)));
   // background
   // Scrolling repeating backdrop under a blue vignette.
   drawBackdrop(ctx, cam, cw, ch, game.track.height);
@@ -959,7 +975,8 @@ function drawDecor(ctx: CanvasRenderingContext2D, game: Game, viewTop: number, v
 const blurred = new Map<string, HTMLCanvasElement>();
 /** Cheap, portable blur: shrink the sprite hard, darken it, and let the browser smooth it back up when drawn. */
 function blurredSprite(name: string): HTMLCanvasElement | null {
-  const hit = blurred.get(name);
+  const cacheKey = `${currentSkin() ?? 'base'}/${name}`;
+  const hit = blurred.get(cacheKey);
   if (hit) return hit;
   const img = sprite(name);
   if (!img) return null;
@@ -1336,7 +1353,7 @@ function drawStaticLayer(ctx: CanvasRenderingContext2D, game: Game, viewTop: num
   }
   const now = performance.now();
   const get = (index: number) => {
-    const key = `${index}@${res}`;
+    const key = `${currentSkin() ?? 'base'}:${index}@${res}`;
     let chunk = cache!.get(key);
     if (!chunk) {
       chunk = { canvas: bakeChunk(game, index, res), used: now };

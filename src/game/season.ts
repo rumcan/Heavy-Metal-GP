@@ -9,8 +9,8 @@ export const CALENDAR: GrandPrix[] = [
   { id: 1, name: 'Monte Pipo Street Circuit', short: 'MONTE PIPO', location: 'Monte Pipo Harbour', flag: '🇲🇨', desc: 'Tight chicanes and funnels. Overtaking is hard — bring an item.', profile: P(11, { Chicane: 3, Funnel: 2.5, 'Zigzag Pipes': 1.5, 'Ice Slide': 0.2, Splitter: 0.3 }, 'street') },
   { id: 2, name: 'Silverpeg Grand Prix', short: 'SILVERPEG', location: 'Silverpeg Circuit', flag: '🎯', desc: 'A Peggle paradise. Peg fields and pop-boards everywhere.', profile: P(11, { 'Peggle Board': 3.5, 'Peg Field': 2.5, Chicane: 0.4 }, 'silver') },
   { id: 3, name: 'Spa-Francoroll', short: 'SPA', location: 'Ardennes Chutes', flag: '🇧🇪', desc: 'The fastest track of the year. Ice slides and boost pads.', profile: P(12, { 'Ice Slide': 3, 'Zigzag Pipes': 2, Splitter: 1.5, 'Peg Field': 0.3 }, 'forest') },
-  { id: 4, name: 'Suzuka Spiral', short: 'SUZUKA', location: 'Suzuka Spiral', flag: '🇯🇵', desc: 'Spinners and splitters. Technical and chaotic.', profile: P(11, { Spinners: 3, Splitter: 2.5, Funnel: 1.5 }, 'sakura') },
-  { id: 5, name: 'Yas Marble Finale', short: 'YAS MARBLE', location: 'Yas Marble Island', flag: '🏁', desc: 'The night-race finale. The longest track — every feature, every trick.', profile: P(14, { 'Crack Wall Shortcut': 1.6, 'Bounce Ramp': 1.6, 'Peggle Board': 1.5 }, 'night') },
+  { id: 4, name: 'Suzuka Spiral', short: 'SUZUKA', location: 'Suzuka Spiral', flag: '🇯🇵', desc: 'Spinners and splitters through the red-rock worg canyon. Technical and chaotic.', profile: P(11, { Spinners: 3, Splitter: 2.5, Funnel: 1.5 }, 'worg') },
+  { id: 5, name: 'Yas Marble Finale', short: 'YAS MARBLE', location: 'Yas Marble Island', flag: '🏁', desc: 'The finale, deep in the dwarven forge. The longest track — every feature, every trick.', profile: P(14, { 'Crack Wall Shortcut': 1.6, 'Bounce Ramp': 1.6, 'Peggle Board': 1.5 }, 'dwarven') },
 ];
 
 export const QUICK_PROFILE: TrackProfile = P(11, {}, 'classic');

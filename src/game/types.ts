@@ -206,11 +206,29 @@ export const TRACK_THEMES = {
   forest: { bg1: '#07140f', bg2: '#0d2418', track: '#0b1e14', pipe: '#2f6b4f', pipeEdge: '#123324' },
   sakura: { bg1: '#1a0f16', bg2: '#2a1522', track: '#22131d', pipe: '#7a4b5e', pipeEdge: '#3a1f2d' },
   night: { bg1: '#05070f', bg2: '#0c1226', track: '#0a1022', pipe: '#3a4f8a', pipeEdge: '#182349' },
+  // Art themes: full sprite skins (src/assets/game/skins/<id>/), not just colours. Keep new themes at the END:
+  // share codes store a theme by its index in THEME_IDS.
+  dwarven: { bg1: '#1a0c06', bg2: '#2a1208', track: '#1d120c', pipe: '#6b4a2e', pipeEdge: '#3a2414' },
+  worg: { bg1: '#1f0f08', bg2: '#3a1a0c', track: '#2a150c', pipe: '#8a4a2a', pipeEdge: '#4a2412' },
 } as const satisfies Record<string, TrackTheme>;
 
 export type ThemeId = keyof typeof TRACK_THEMES;
 
 export const THEME_IDS = Object.keys(TRACK_THEMES) as ThemeId[];
+
+/** Player-facing theme names (the Workshop's theme picker). */
+export const THEME_LABELS: Record<ThemeId, string> = {
+  default: 'Goblin Works', classic: 'Classic', street: 'Street', silver: 'Silver', forest: 'Forest', sakura: 'Sakura', night: 'Night',
+  dwarven: 'Dwarven Forge', worg: 'Worg Canyon',
+};
+
+/** Themes with their own art (sprite skin). The rest recolour the goblin art. */
+export const ART_THEMES: readonly ThemeId[] = ['dwarven', 'worg'];
+
+/** The sprite skin a theme draws with, or null for the default goblin art. */
+export function skinFor(id: ThemeId): string | null {
+  return (ART_THEMES as readonly string[]).includes(id) ? id : null;
+}
 
 export function themeFor(id: ThemeId): TrackTheme {
   return TRACK_THEMES[id];
