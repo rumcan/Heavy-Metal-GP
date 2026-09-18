@@ -204,6 +204,38 @@ test('MP-01 quick match: only the window closing keeps the search alive', () => 
   assert.equal(transport.isMatchmakeWindowExpired(null), false);
 });
 
+test('RK-04 rank buckets: the bucket rides the criteria, and Any rank asks for none', async () => {
+  // The pool matches a room's criteria against every key a request asks for, so
+  // the bucket is the whole "similar rank" feature: the SDK call must carry it,
+  // and the LAST rung must not carry one at all (see `quickMatch`).
+  const sdk = (await import('@series-inc/rundot-game-sdk/api')).default as unknown as { realtime?: unknown };
+  const realtime = sdk.realtime;
+  const asked: { criteria?: Record<string, unknown>; matchmakeTimeoutMs?: number }[] = [];
+  sdk.realtime = {
+    matchmakeRoom: (_type: string, opts: { criteria?: Record<string, unknown>; matchmakeTimeoutMs?: number }) => {
+      asked.push(opts);
+      return Promise.resolve({ roomCode: 'R9RCF9' });
+    },
+  };
+  try {
+    assert.equal(transport.RANK_CRITERIA_KEY, 'rank');
+    await transport.quickMatch({ rankBucket: 13 });
+    assert.deepEqual(asked[0].criteria, { ...transport.MATCH_CRITERIA, rank: 13 });
+    assert.equal(asked[0].matchmakeTimeoutMs, transport.MATCHMAKE_WINDOW_MS, 'one rung’s window is MATCHMAKE_WINDOW_MS unless it says otherwise');
+    await transport.quickMatch({ rankBucket: 13, matchmakeTimeoutMs: 6_000 });
+    assert.equal(asked[1].matchmakeTimeoutMs, 6_000, 'the rung’s own budget rides through');
+    // Any rank: the room type's criteria alone, so the search can see every
+    // waiting room — including one a similar-rank searcher created.
+    await transport.quickMatch({ rankBucket: null });
+    assert.deepEqual(asked[2].criteria, transport.MATCH_CRITERIA);
+    await transport.quickMatch();
+    assert.deepEqual(asked[3].criteria, transport.MATCH_CRITERIA);
+    assert.equal('rank' in (asked[3].criteria ?? {}), false, 'a plain search must not ask for a bucket');
+  } finally {
+    sdk.realtime = realtime;
+  }
+});
+
 test('MP-01 auth: both shapes of the anonymous rejection are recognised', async () => {
   const accessDenied = Object.assign(new Error('Anonymous users cannot create rooms'), { name: 'AccessDeniedError' });
   assert.equal(transport.isAccessDenied(accessDenied), true);

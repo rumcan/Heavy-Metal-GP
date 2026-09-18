@@ -11,6 +11,8 @@ import Portrait from './Portrait';
 import Banter from './Banter';
 import crowd from '../assets/game/goblin-crowd.webp';
 import raceFlag from '../assets/game/flag-race.webp';
+import RankResults, { RankDelta } from './RankResults';
+import type { RankedRaceView } from '../game/rank-view';
 
 export interface RaceAction { label: string; onClick: () => void; primary?: boolean }
 interface Props {
@@ -25,9 +27,16 @@ interface Props {
   onShop?: () => void;
   /** MB-08: custom circuits pay 30 % (18 % online) — show the note under the payout. */
   isCustom?: boolean;
+  /**
+   * RK-05: the rated outcome of an online race — the rating band under the
+   * summary, and a signed delta beside every rated human's name. Null/absent
+   * for a race nothing could move (an offline heat), which is why the column
+   * and the band appear together and never on their own.
+   */
+  rating?: RankedRaceView | null;
 }
 
-export default function RaceResults({ results, roster, title, subtitle, actions, championship, payout, credits, onShop, isCustom = false }: Props) {
+export default function RaceResults({ results, roster, title, subtitle, actions, championship, payout, credits, onShop, isCustom = false, rating = null }: Props) {
   const byId = (id: number) => roster.find((m) => m.id === id)!;
   const me = results.find((r) => byId(r.id).isPlayer)!;
   const finished = results.filter((r) => r.time !== null);
@@ -42,10 +51,11 @@ export default function RaceResults({ results, roster, title, subtitle, actions,
         <div className="eyebrow results-eyebrow"><Flag size={16} /> CHEQUERED FLAG <span className="muted">/ {subtitle}</span><span className="results-crowd" aria-hidden="true"><img src={raceFlag} alt="" className="results-flag" /><img src={crowd} alt="" /></span></div>
         <div className="results-heading-row"><div><h2 id="results-title" className="results-title">{me.time === null ? 'NEXT TIME. FULL SEND.' : me.rank === 1 ? 'THAT\'S A RACE WIN.' : me.rank <= 3 ? 'A PLACE ON THE PODIUM.' : 'EVERY POSITION COUNTS.'}</h2><p>{title}</p></div><div className="result-position"><span>YOUR FINISH</span><strong>{me.time === null ? 'DNF' : `P${me.rank}`}</strong></div></div>
         <div className="result-summary"><span><Timer size={14} /> {me.time === null ? 'Time limit reached' : formatTime(me.time)}</span>{championship && <span className="accent"><Trophy size={14} /> +{points} championship points</span>}<span><Check size={14} /> {finished.length}/{roster.length} finished</span></div>
+        {rating && <RankResults view={rating} />}
         <Banter lines={banter} className="results-banter" delay={600} interval={1100} />
       </header>
       <div className="results-table-wrap"><table className="results-table"><caption className="sr-only">Final race classification</caption>
-        <thead><tr><th>POS</th><th>DRIVER / TEAM</th><th className="result-pegs">PEGS</th><th>TIME / GAP</th>{championship && <th>POINTS</th>}</tr></thead>
+        <thead><tr><th>POS</th><th>DRIVER / TEAM</th><th className="result-pegs">PEGS</th><th>TIME / GAP</th>{rating && <th className="result-rating-col">RATING</th>}{championship && <th>POINTS</th>}</tr></thead>
         <tbody>{results.map((result) => {
           const m = byId(result.id);
           const team = teamOf(m.id);
@@ -54,6 +64,9 @@ export default function RaceResults({ results, roster, title, subtitle, actions,
             <td><div className="result-driver"><span className="team-stripe" style={{ background: team.color }} /><Portrait marble={m} mood={result.rank === 1 ? 'happy' : result.time === null ? 'surprised' : 'angry'} size={36} ring={result.rank === 1 && result.time !== null ? 'spiked' : undefined} /><div><strong>{m.isPlayer ? 'You' : m.name}{m.isPlayer && <small>YOU</small>}</strong><span>{team.name}</span></div></div></td>
             <td className="result-pegs"><span className="orange-peg" />{result.pegs}</td>
             <td className="classification-time">{result.time === null ? <span className="dnf-label">DNF</span> : <><strong>{formatTime(result.time)}</strong><span>{result.rank === 1 ? 'WINNER' : `+${((result.time - winnerTime) / 1000).toFixed(2)}s`}</span></>}</td>
+            {/* RK-05: the human's rating move. An AI seat has no row and prints
+                nothing — a dash would read as "rated, no movement". */}
+            {rating && <td className="result-rating-col"><RankDelta row={rating.bySeat[result.id]} /></td>}
             {championship && <td className="classification-points">{result.time === null ? '0' : `+${pointsFor(result.rank)}`}</td>}
           </tr>;
         })}</tbody>

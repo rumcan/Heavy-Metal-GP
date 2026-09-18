@@ -149,7 +149,27 @@ export class Player {
     // up yet takes the click and does nothing with it.
     await cta.waitFor({ state: 'attached', timeout: DEFAULT_TIMEOUT });
     await cta.click();
+    await this.dismissWhatsNew();
     await this.onlineTab().waitFor({ timeout: DEFAULT_TIMEOUT });
+  }
+
+  /**
+   * The version pop-up, if this page is opening on one.
+   *
+   * "What's new" is shown once per version, over the garage, and it is a modal:
+   * a click on the Online tab beneath it is a click the overlay swallows. A real
+   * player closes it, so the harness does too — and a fresh browser context has
+   * seen no version yet, which is every context a spec opens.
+   */
+  async dismissWhatsNew(): Promise<void> {
+    const close = this.page.getByRole('button', { name: /let.?s race/i });
+    try {
+      await close.first().waitFor({ state: 'visible', timeout: 4_000 });
+    } catch {
+      return; // no pop-up: an older build, or a page that has already seen it
+    }
+    await close.first().click();
+    await this.page.locator('.whats-new').waitFor({ state: 'detached', timeout: DEFAULT_TIMEOUT });
   }
 
   /** The garage's Online mode tab. */
@@ -163,9 +183,10 @@ export class Player {
   }
 
   /**
-   * The online panel: Host / Join / Quick live here, and nowhere else —
-   * "Quick race" is a race-mode toggle on the garage tab, so matching it
-   * unscoped is a strict-mode violation waiting for a browser to find it.
+   * The online panel: Quick race / Host / Join live here, and nowhere else —
+   * "Quick race" is ALSO a race-mode toggle on the garage tab since RK-05 named
+   * the ranked door, so matching it unscoped is a strict-mode violation waiting
+   * for a browser to find it.
    */
   private get online(): Locator {
     return this.page.locator('.online-panel');
@@ -184,10 +205,122 @@ export class Player {
     await this.lobby();
   }
 
+  /**
+   * RK-05: the ranked door is now "Quick race · Ranked" (it was Auto Match
+   * Making). Scoped to the online panel — the garage's own mode switch has a
+   * "Quick race" button too.
+   */
   async quickRace(): Promise<void> {
     await this.openOnline();
-    await this.online.getByRole('button', { name: /auto match making/i }).click();
+    await this.online.getByRole('button', { name: /quick race/i }).click();
     await this.lobby();
+  }
+
+  /**
+   * RK-05: this driver's rank chip as the LOBBY prints it — the badge's tier
+   * and the number beside it. Null when the seat shows no chip at all.
+   */
+  async seatRank(seat = 0): Promise<{ tier: string | null; rating: string } | null> {
+    const row = this.page.locator('.driver-grid li').nth(seat);
+    await row.waitFor({ timeout: DEFAULT_TIMEOUT });
+    const chip = row.locator('.rank-chip');
+    if (!(await chip.count())) return null;
+    return {
+      tier: await chip.getAttribute('data-tier'),
+      rating: (await chip.locator('small').innerText()).trim(),
+    };
+  }
+
+  /**
+   * RK-05: the garage header's badge — this driver's OWN file, which is what a
+   * seeded rating must show before any room exists.
+   *
+   * Two doors exist in the markup at all times (the header's, and the one the
+   * driver pane shows on a phone); CSS decides which is on screen, so the
+   * VISIBLE one is the one to read. `:visible`, not `.first()`: at 375 px the
+   * header's copy is the hidden one and would be first in DOM order.
+   */
+  async headerRank(): Promise<{ tier: string | null; rating: string }> {
+    const chip = this.page.locator('.rank-button:visible .rank-chip').first();
+    await chip.waitFor({ timeout: DEFAULT_TIMEOUT });
+    return {
+      tier: await chip.getAttribute('data-tier'),
+      rating: (await chip.locator('small').innerText()).trim(),
+    };
+  }
+
+  /**
+   * RK-05/RK-06: this driver's rating FILE, read raw — the number and the race
+   * count, which is what “the race counted once” is a claim about. Same
+   * test-only storage seam as `seedRating`; a page has no other way to show it.
+   */
+  async rankFile(): Promise<{ rating: number; matches: number; wins: number; losses: number } | null> {
+    const raw = await this.page.evaluate(async () => {
+      const api = (window as unknown as { RundotGameAPI?: { appStorage?: { getItem(k: string): Promise<string | null> } } }).RundotGameAPI;
+      return (await api?.appStorage?.getItem('heavy-metal-gp:rank:v1')) ?? null;
+    });
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as { rating?: unknown; matches?: unknown; wins?: unknown; losses?: unknown };
+      if (typeof parsed.rating !== 'number' || typeof parsed.matches !== 'number') return null;
+      return {
+        rating: parsed.rating,
+        matches: parsed.matches,
+        wins: typeof parsed.wins === 'number' ? parsed.wins : 0,
+        losses: typeof parsed.losses === 'number' ? parsed.losses : 0,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * RK-06: the results screen's rating band — the state it is in (settled,
+   * pending, unrated) and, when a race has settled, this driver's own line.
+   */
+  async ratingBand(): Promise<{ state: string; rating: string; delta: string; callouts: string } | null> {
+    const band = this.page.locator('.results-ranking');
+    if (!(await band.count())) return null;
+    return {
+      state: (await band.getAttribute('data-state')) ?? '',
+      rating: (await band.locator('.results-ranking-rating').count()) ? (await band.locator('.results-ranking-rating').innerText()).trim() : '',
+      delta: (await band.locator('.results-ranking-delta').count()) ? (await band.locator('.results-ranking-delta').innerText()).trim() : '',
+      callouts: (await band.locator('.rank-callout').allInnerTexts()).join(' ').trim(),
+    };
+  }
+
+  /**
+   * RK-06: the per-human rating rows of the results table, in the table's own
+   * order. The signed delta is read from the `data-delta` the row carries, so a
+   * changed glyph cannot be mistaken for a changed number.
+   */
+  async resultsDeltas(): Promise<{ name: string; delta: number; tier: string; mine: boolean }[]> {
+    return this.page.locator('.results-table tbody tr').evaluateAll((rows) =>
+      rows.flatMap((row) => {
+        const cell = row.querySelector<HTMLElement>('.rank-delta');
+        if (!cell || cell.dataset.delta === undefined) return [];
+        return [{
+          name: (row.querySelector('.result-driver strong')?.textContent ?? '').replace(/YOU$/, '').trim(),
+          delta: Number(cell.dataset.delta),
+          tier: cell.dataset.tier ?? '',
+          mine: row.classList.contains('player-result'),
+        }];
+      }),
+    );
+  }
+
+  /** RK-06: leave the race from the results screen and land back in the garage. */
+  async backToGarage(): Promise<void> {
+    await this.page.getByRole('button', { name: /back to the garage|back to garage/i }).first().click();
+    await this.onlineTab().waitFor({ timeout: DEFAULT_TIMEOUT });
+  }
+
+  /** RK-05: open the ladder from wherever this width keeps the badge. */
+  async openLadder(): Promise<Locator> {
+    await this.page.locator('.rank-button:visible').first().click();
+    const panel = this.page.locator('.ladder-panel');
+    await panel.waitFor({ timeout: DEFAULT_TIMEOUT });
+    return panel;
   }
 
   /** The lobby, once the room has said hello. */
@@ -281,6 +414,49 @@ export class Player {
   async reload(): Promise<void> {
     await this.page.reload();
     await this.enterGarage();
+  }
+
+  /**
+   * Put a rating in this player's file, the way played races would have left it.
+   *
+   * A dev page has no RUN account, but it does have the SDK's mock per-player
+   * store — `appStorage`, which in a browser page is a namespaced corner of
+   * `localStorage` (`rundotGame:appStorage:<game>:<key>`, exactly what
+   * `readPlayerValue` reads in production). Seeding it is the only way a spec
+   * can put two drivers in known rank buckets without asking them to play a
+   * dozen rated races first.
+   *
+   * The write is READ BACK through the same API the app reads with, so a spec
+   * that seeds a rating it never gets back fails here rather than quietly
+   * testing two drivers who are both still at 1000.
+   */
+  async seedRating(rating: number, played = 12): Promise<void> {
+    // `RANK_STORAGE_KEY` from `src/net/transport.ts`, spelled out because that
+    // module boots the RUN SDK singleton on import and this harness runs in
+    // Node, not in a page. A drift in the key fails the read-back below.
+    const key = 'heavy-metal-gp:rank:v1';
+    // `season` is left off on purpose: `parseRankState` fills it with the
+    // current one, so the seed cannot pin itself to a season the game has
+    // moved on from.
+    const seed = JSON.stringify({ rating, matches: played, wins: Math.floor(played / 2), losses: Math.ceil(played / 2) });
+
+    const stored = await this.page.evaluate(
+      async ({ key, seed }) => {
+        // The namespace the SDK's mock uses for this page's player storage —
+        // read off an existing entry rather than guessed.
+        const namespace = Object.keys(localStorage)
+          .map((entry) => entry.match(/^rundotGame:(?:appStorage|deviceCache):([^:]+):/)?.[1])
+          .find(Boolean);
+        if (!namespace) return null;
+        localStorage.setItem(`rundotGame:appStorage:${namespace}:${key}`, seed);
+        const read = await (window as unknown as { RundotGameAPI?: { appStorage?: { getItem(k: string): Promise<string | null> } } }).RundotGameAPI?.appStorage?.getItem(key);
+        return read ?? null;
+      },
+      { key, seed },
+    );
+    if (stored !== seed) {
+      throw new Error(`${this.name}: seeding a rating did not stick (${stored === null ? 'no storage namespace' : 'read back a different value'})`);
+    }
   }
 }
 
