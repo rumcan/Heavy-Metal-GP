@@ -117,6 +117,13 @@ export function isLobbyUnavailable(err: unknown): boolean {
  *
  * If the lobby we land on refuses us (closed by its host, full, or racing), a
  * fresh lobby is opened instead of retrying the same one.
+ *
+ * RK-04 moved the Online panel's Auto Match Making onto the RANKED queue
+ * (`rankedQueue` in `src/net/ranked-queue.ts`) — a search that widens by rank
+ * has to be able to sit in the pool for a window, which only `matchmakeRoom`
+ * does. This call stays because it is the casual half of the same idea and the
+ * panel's other door (RK-05 decides what it is labelled): no searching, no
+ * rank, an instant room to race in, and a code a friend can type.
  */
 export async function autoMatch(): Promise<RaceRoom> {
   try {
@@ -137,7 +144,18 @@ export interface QuickMatchOptions {
   matchmakeTimeoutMs?: number;
   /** How often to poll the pool while waiting (default 1s). */
   pollIntervalMs?: number;
+  /**
+   * RK-04 (#58): the similar-rank SEARCH WINDOW, as a bucket index from
+   * `searchBucket` (`src/net/rating.ts`). The pool has no range operator — a
+   * "within N points" search is expressed as `rank: <bucket>` and the caller
+   * widens the bucket over time. `null`/absent = Any rank: `MATCH_CRITERIA`
+   * alone.
+   */
+  rankBucket?: number | null;
 }
+
+/** The criteria key carrying a similar-rank search window (`searchBucket`). */
+export const RANK_CRITERIA_KEY = 'rank';
 
 /**
  * How long ONE matchmake request waits before the SDK gives up on it: it sends
@@ -184,10 +202,21 @@ export function isMatchmakeWindowExpired(err: unknown): boolean {
  * `isMatchmakeWindowExpired` says the window closed.
  */
 export function quickMatch(opts: QuickMatchOptions = {}): Promise<RaceRoom> {
+  const { rankBucket, ...rest } = opts;
+  // A plain search asks for the room type's own criteria only, so it can join
+  // ANY waiting room — including one a similar-rank searcher created (the pool
+  // requires the room to satisfy every requested key, not to match exactly).
+  // That asymmetry is what makes the widening ladder safe: its last rung is
+  // always "any rank", and it can see everyone. A rank-bucketed search is the
+  // narrow half of the same rule: it asks for rooms tagged with its bucket, so
+  // it does NOT see an any-rank room until the ladder widens there.
+  const criteria: Record<string, string | number> = rankBucket == null
+    ? { ...MATCH_CRITERIA }
+    : { ...MATCH_CRITERIA, [RANK_CRITERIA_KEY]: rankBucket };
   return realtime().matchmakeRoom<RaceProtocol>(ROOM_TYPE, {
-    criteria: { ...MATCH_CRITERIA },
-    matchmakeTimeoutMs: opts.matchmakeTimeoutMs ?? MATCHMAKE_WINDOW_MS,
-    pollIntervalMs: opts.pollIntervalMs,
+    criteria,
+    matchmakeTimeoutMs: rest.matchmakeTimeoutMs ?? MATCHMAKE_WINDOW_MS,
+    pollIntervalMs: rest.pollIntervalMs,
   });
 }
 

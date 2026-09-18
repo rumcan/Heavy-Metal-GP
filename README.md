@@ -119,6 +119,8 @@ counts the windows it has burned through for the "still looking" line, lets the
 player cancel (the in-flight request can still land, so a room that arrives after
 a cancel is left rather than left holding a seat), and passes a real failure —
 access denied, no room server — straight to the player instead of spinning on it.
+Since RK-04 it also asks for a WIDER rank each time a window closes; the ladder
+it walks is under [Ranked racing](#ranked-racing).
 Whoever the platform pairs first is the host. A quick lobby has no Ready button
 and no Start button: everybody is ready by sitting down, the host takes the
 circuit from the room's seed (never `Math.random()` — a republished lobby must
@@ -313,10 +315,45 @@ the survivors' numbers come from the room's own filing. Wiring this into the
 lobby, the HUD and the results screen is RK-05; the store, the room and the
 runtime are done and covered end to end.
 
-Still to come in this epic: **RK-04** (rank-bucketed quick race — `searchBucket`
-is already in `rating.ts`), **RK-05** (badges, the lobby's rated line and the
+**The quick race is a ranked queue (RK-04).** `src/net/matchmake.ts` grew the
+ladder HexMatch's RANK-01 walks: `RANK_SEARCH_STEPS` are the windows a
+similar-rank search widens through — 75 points for six seconds, then 200, then
+400, then Any rank at eight seconds each — and `rankRungs(rating)` turns each
+span into the one thing the pool understands, a bucket index (`searchBucket`).
+One rung is one `quickMatch({ rankBucket, matchmakeTimeoutMs })` — the SDK call
+behind the transport seam — and `src/net/ranked-queue.ts` is the whole wiring,
+whose one caller is the Online panel's Auto Match Making: the rating comes off
+the driver's own file (a fresh 1000 for a driver who has never raced, signed in
+or not), the rungs are computed once, and the room that lands is a MATCHMADE
+room, which is the fact RK-03's rated wire hangs off.
+
+Widening is safe because of an asymmetry in the pool's criteria rule, kept
+verbatim from HexMatch's comment: the pool requires a room to satisfy every key
+a request asks for, not to match exactly — so a plain search sees ANY waiting
+room, including a ranked one's, while a ranked search only sees rooms tagged
+with its own bucket. That is why the ladder's LAST rung asks for no rank at all:
+a driver who has waited out the tight windows can see, and be seen by, everyone.
+The ladder is walked ONCE — after it the search stays at Any rank for as long as
+the driver leaves it running, because a window closing means widen and look
+again, never "no rival found". Cancel is the only exit: it bumps the token the
+loop checks after every await, and a pair that lands anyway is left rather than
+sat in.
+
+Two facts about the dev sidecar are worth knowing before reading the tests: its
+`matchmake` action falls through to `joinOrCreate`, so it answers every request
+instantly with a room — a lone searcher is never left waiting on a window, and
+no browser spec here can watch one close. So the WIDENING is proven against a
+pool model in `tests/matchmake.test.ts` (two drivers 600 points apart, each
+widening rung by rung until the Any-rank search joins the other's still-narrow
+room), and the two-browser spec proves the other half: a seeded rank file
+reaches the wire, two ratings that round into one bucket are paired into one
+lobby with no code typed, and two a tier apart are not.
+
+Still to come in this epic: **RK-05** (badges, the lobby's rated line and the
 ladder panel, which reads `rankStore().loadLadder()` and the runtime's
-`outcome`), and **RK-06** (the ranked E2E sweep).
+`outcome`, plus the panel's ranked/friendly labels) and **RK-06** (the ranked
+E2E sweep: a matchmade race whose seats show matching deltas, and the
+mid-race-leaver room test in a three-human race).
 
 ## Credits And The Pit Shop
 
@@ -463,6 +500,15 @@ and every driver's own row is exactly the row the other two seats were shown.
 The leaver case is closed the same way: a survivor's verdict shows the driver
 who walked out as a DNF with a negative delta, and no ladder line, because the
 room witnessed the abandonment and the quitter did not.
+`tests/matchmake.test.ts` covers the matchmaking loop (MP-07) and, since RK-04,
+the ladder: a pool model with RUN's criteria rule, two drivers of a similar
+rating matched on the tightest rung, two of very different ratings widening rung
+by rung until the Any-rank search joins the other's room, and the ladder walked
+once — after the last rung the search stays at Any rank for as long as it takes.
+The browser half is `tests/e2e-mp/mp-ranked.e2e.spec.ts`: it seeds each player's
+rating file (a dev page's mock `appStorage` is a namespaced corner of
+`localStorage`, which is what the harness writes) and watches the pairing with a
+real room in the middle.
 `tests/rankstore.test.ts` covers where a rating lives (RK-02) by driving the
 real chain — `rankstore` → `transport` → the RUN SDK's own in-memory backends,
 with the browser globals stubbed the way `tests/multiplayer.test.ts` stubs them.

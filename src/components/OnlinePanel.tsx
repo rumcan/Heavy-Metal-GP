@@ -103,16 +103,17 @@ export default function OnlinePanel({ busy, error, onHost, onJoin, onQuick, sear
         className="button-secondary"
         disabled={searching || busy || offline}
         onClick={onQuick}
-        title="Join an open lobby, or open one and host it"
+        title="Queue for a race with a stranger near your rank"
       >
         <Users size={15} />Auto Match Making
       </button>
     </div>
     {searching && <div className="online-search">
       <span className="live-dot" aria-hidden />
-      {/* One SDK request is one window; the loop keeps asking, so "still
-          looking" is honest — nothing about this state is a failure. */}
-      <span><strong>Auto Match Making…</strong> Looking for an open lobby. If there isn't one, you'll get your own and be its host.</span>
+      {/* One SDK request is one window; the loop keeps asking, and each closed
+          window asks for a wider rank, so "still looking" is honest — nothing
+          about this state is a failure. */}
+      <span><strong>Auto Match Making…</strong> Looking for another driver. The search starts near your rank and widens until it finds anyone.</span>
       <button className="text-button" onClick={onCancelSearch}><X size={14} />Cancel</button>
     </div>}
     {(hint ?? error) && <p className="online-note online-note-warn">{hint ?? error}</p>}

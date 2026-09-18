@@ -110,9 +110,10 @@ test('MP-06 lobby: the panel offers host, join and Auto Match Making, and asks f
 
 test('MP-07 lobby: an Auto Match Making search says what it is doing, and can be cancelled', () => {
   const html = renderToStaticMarkup(createElement(OnlinePanel, { busy: true, error: null, onHost() {}, onJoin() {}, onQuick() {}, searching: true, windows: 2, onCancelSearch() {} }));
-  // Says what is happening: looking for a lobby, or you'll host your own.
-  assert.match(html, /Looking for an open lobby/);
-  assert.match(html, /be its host/);
+  // Says what is happening: a rank-matched search that widens until it finds
+  // anybody (RK-04 — the queue, not an open lobby).
+  assert.match(html, /Looking for another driver/);
+  assert.match(html, /widens until it finds anyone/);
   assert.match(html, /Cancel/, 'and the search can be given up on');
   // The host and join doors stay shut while a search is in flight: two rooms
   // at once is two seats, and one of them is a ghost.

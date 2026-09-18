@@ -282,6 +282,49 @@ export class Player {
     await this.page.reload();
     await this.enterGarage();
   }
+
+  /**
+   * Put a rating in this player's file, the way played races would have left it.
+   *
+   * A dev page has no RUN account, but it does have the SDK's mock per-player
+   * store — `appStorage`, which in a browser page is a namespaced corner of
+   * `localStorage` (`rundotGame:appStorage:<game>:<key>`, exactly what
+   * `readPlayerValue` reads in production). Seeding it is the only way a spec
+   * can put two drivers in known rank buckets without asking them to play a
+   * dozen rated races first.
+   *
+   * The write is READ BACK through the same API the app reads with, so a spec
+   * that seeds a rating it never gets back fails here rather than quietly
+   * testing two drivers who are both still at 1000.
+   */
+  async seedRating(rating: number, played = 12): Promise<void> {
+    // `RANK_STORAGE_KEY` from `src/net/transport.ts`, spelled out because that
+    // module boots the RUN SDK singleton on import and this harness runs in
+    // Node, not in a page. A drift in the key fails the read-back below.
+    const key = 'heavy-metal-gp:rank:v1';
+    // `season` is left off on purpose: `parseRankState` fills it with the
+    // current one, so the seed cannot pin itself to a season the game has
+    // moved on from.
+    const seed = JSON.stringify({ rating, matches: played, wins: Math.floor(played / 2), losses: Math.ceil(played / 2) });
+
+    const stored = await this.page.evaluate(
+      async ({ key, seed }) => {
+        // The namespace the SDK's mock uses for this page's player storage —
+        // read off an existing entry rather than guessed.
+        const namespace = Object.keys(localStorage)
+          .map((entry) => entry.match(/^rundotGame:(?:appStorage|deviceCache):([^:]+):/)?.[1])
+          .find(Boolean);
+        if (!namespace) return null;
+        localStorage.setItem(`rundotGame:appStorage:${namespace}:${key}`, seed);
+        const read = await (window as unknown as { RundotGameAPI?: { appStorage?: { getItem(k: string): Promise<string | null> } } }).RundotGameAPI?.appStorage?.getItem(key);
+        return read ?? null;
+      },
+      { key, seed },
+    );
+    if (stored !== seed) {
+      throw new Error(`${this.name}: seeding a rating did not stick (${stored === null ? 'no storage namespace' : 'read back a different value'})`);
+    }
+  }
 }
 
 // ── the suite ─────────────────────────────────────────────────────────────

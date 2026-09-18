@@ -15,13 +15,14 @@ import {
   listRejoinableRooms,
   NO_ROOM_SERVER_MESSAGE,
   promptLogin,
-  autoMatch,
   readActiveMatch,
   writeActiveMatch,
   type ActiveMatchMemo,
   type RaceRoom,
 } from './net/transport';
 import type { RaceProtocol } from './net/transport';
+import { rankedQueue } from './net/ranked-queue';
+import { rankStore } from './net/rankstore';
 import type { RaceLink } from './net/session';
 import { HOST_LEFT_REASON } from './net/protocol';
 import type { WelcomeMsg } from './net/protocol';
@@ -281,25 +282,40 @@ export default function App() {
   }, [explain]);
 
   /**
-   * AUTO MATCH MAKING: join an open auto lobby, or open one and host it. The
-   * platform answers in a moment, so "searching" is a short, explained state.
+   * AUTO MATCH MAKING (RK-04): the RANKED queue. The search starts in this
+   * driver's rank bucket and widens a rung at a time until it finds whoever is
+   * waiting — so "searching" is a state a player can sit in, counting the
+   * windows, with Cancel under it (a queue that gave up would be guessing at a
+   * pool it cannot see).
+   *
+   * The rating comes off the driver's own file (`rankStore().loadState()`,
+   * fresh 1000 for a player who has never raced), read once when the button is
+   * pressed. A room that lands here is a matchmade room, which is the fact
+   * RK-03's rated wire hangs off; a lobby opened by hand is not.
    */
   const findRace = useCallback(async () => {
     if (isOfflineMockRealtime()) { setMpError(NO_ROOM_SERVER_MESSAGE); return; }
     setMpError(null);
     setMpBusy(true);
+    // The ladder is this driver's own rating, read once from their file (a
+    // fresh 1000 for a driver who has never raced). The read comes BEFORE the
+    // "searching" state goes up, so Cancel always has a search to stop.
+    const { rating } = await rankStore().loadState();
     setSearch({ windows: 0 });
-    const token = { cancelled: false };
-    searchRef.current = { cancel: () => { token.cancelled = true; } };
+    let cancelled = false;
+    const search = rankedQueue(rating, { onWindowClosed: (windows) => setSearch({ windows }) });
+    searchRef.current = { cancel: () => { cancelled = true; search.cancel(); } };
     try {
-      const next = await autoMatch();
-      if (token.cancelled) { next.leave(); setMpError('Auto Match Making cancelled.'); return; }
+      const next = await search.find();
+      if (!next) { setMpError('Auto Match Making cancelled.'); return; }
       void writeActiveMatch({ roomCode: next.roomCode, at: Date.now() });
       setQuick(true);
       setRoom(next);
       setPhase('lobby');
     } catch (err) {
-      if (!token.cancelled) setMpError(await explain(err));
+      // A cancelled search resolves `null` rather than throwing, so anything
+      // that reaches here is the platform's own failure and belongs on screen.
+      if (!cancelled) setMpError(await explain(err));
     } finally {
       setMpBusy(false);
       setSearch(null);
