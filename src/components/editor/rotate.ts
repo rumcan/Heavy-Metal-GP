@@ -149,6 +149,23 @@ export function rotatePiece(piece: Piece, rad: number, c: Point): Piece {
     case 'boulder': {
       return { ...piece, pts: piece.pts.map(([x, y]) => at(x, y) as Vec) };
     }
+    // ---- MB-10C ----
+    case 'wheel': {
+      // Centre moves; the tip-out angle turns with the world.
+      const [x, y] = at(piece.x, piece.y);
+      const release = Math.max(20, Math.min(340, Math.round(piece.release + (rad * 180) / Math.PI)));
+      return { ...piece, x, y, release };
+    }
+    case 'seesaw': {
+      const [x, y] = at(piece.x, piece.y);
+      return { ...piece, x, y };
+    }
+    case 'screw':
+    case 'conveyor':
+    case 'bridge': {
+      const p2 = piece as unknown as { a: Vec; b: Vec };
+      return { ...piece, a: turn(p2.a, c, cos, sin), b: turn(p2.b, c, cos, sin) } as Piece;
+    }
     case 'peg':
     case 'ppeg':
     case 'itembox': {

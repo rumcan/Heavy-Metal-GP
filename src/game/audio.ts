@@ -12,6 +12,8 @@ export type SoundType =
   | 'cheer' | 'rumble' | 'creak' | 'click'
   // MB-10B: blades and crushers — the caught squeal, the bite, the dock
   | 'shriek' | 'grind' | 'slam'
+  // MB-10C: movers — the bucket splash/dunk, the timber groan, the screw hum
+  | 'splash' | 'groan' | 'whirr'
   // story mode UI: dialogue tick and chapter/act sting
   | 'blip' | 'sting';
 
@@ -30,7 +32,7 @@ const MUTE_KEY = 'heavy-metal-gp:muted';
 // Peggle-style rising run: a major scale that keeps climbing while the streak lasts
 const SCALE = [0, 2, 4, 5, 7, 9, 11];
 const STREAK_WINDOW = 1600;
-const MIN_GAP: Partial<Record<SoundType, number>> = { peg: 25, bump: 60, thud: 90, clack: 70, crack: 90, clang: 80, hoop: 80, spring: 120, blip: 26, cheer: 500, rumble: 250, creak: 200, click: 60, shriek: 220, grind: 180, slam: 320 };
+const MIN_GAP: Partial<Record<SoundType, number>> = { peg: 25, bump: 60, thud: 90, clack: 70, crack: 90, clang: 80, hoop: 80, spring: 120, blip: 26, cheer: 500, rumble: 250, creak: 200, click: 60, shriek: 220, grind: 180, slam: 320, splash: 200, groan: 300, whirr: 400 };
 
 class RaceAudio {
   private ctx: AudioContext | null = null;
@@ -132,6 +134,18 @@ class RaceAudio {
         // the saw bites: band noise with a low chew
         this.noiseHit(t, 0.3, 1900, 0.4 * vol, pan, 'bandpass');
         return this.tone(t, 130, 0.24, 'sawtooth', 0.16 * vol, pan, 90);
+      }
+      // MB-10C: movers
+      case 'splash': {
+        // the bucket dunks: bright noise with a plop behind it
+        this.noiseHit(t, 0.3, 2400, 0.34 * vol, pan, 'bandpass');
+        return this.tone(t, 420, 0.22, 'sine', 0.2 * vol, pan, 190);
+      }
+      case 'groan': return this.tone(t, 105, 0.65, 'sawtooth', 0.15 * vol, pan, 62); // timber under load
+      case 'whirr': {
+        // the screw turns: soft band hum with a tick
+        this.tone(t, 260, 0.4, 'sawtooth', 0.08 * vol, pan, 320);
+        return this.noiseHit(t, 0.4, 900, 0.1 * vol, pan, 'bandpass');
       }
       case 'slam': {
         // the piston docks: a boom under a dust of noise

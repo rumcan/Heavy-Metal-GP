@@ -109,6 +109,19 @@ export const PALETTE: PaletteGroup[] = [
       { id: 'mace', t: 'mace', label: 'Mace sweeper', sprite: 'mace', hint: 'A spiked ball scything the lane. A Shockwave jams it for two seconds.' },
     ],
   },
+  {
+    id: 'movers',
+    label: 'Movers',
+    note: 'Wheels, lifts and belts',
+    tiles: [
+      { id: 'wheel', t: 'wheel', label: 'Water wheel', sprite: 'wheel', hint: 'A bucket wheel: marbles drop in, ride round and tip out at the marker. Carries uphill.' },
+      { id: 'screw', t: 'screw', label: 'Screw lift', sprite: 'screw', hint: 'A turning screw inside a tube that carries marbles up and over a section. Queues at capacity.' },
+      { id: 'conveyor', t: 'conveyor', label: 'Conveyor belt', sprite: 'conveyor', hint: 'A belt that pushes marbles along the surface. Can flip its direction on a timer.' },
+      { id: 'conveyor-back', t: 'conveyor', label: 'Belt (reversed)', sprite: 'conveyor', preset: { dir: 1 }, hint: 'A belt fighting downhill. Speed marbles push through it best.' },
+      { id: 'seesaw', t: 'seesaw', label: 'Seesaw', sprite: 'seesaw', hint: 'A plank on a pivot. Heavy tips it; whoever sits light on the far end launches.' },
+      { id: 'bridge', t: 'bridge', label: 'Rope bridge', sprite: 'bridge', hint: 'A sagging plank chain between two anchors. The pack dips it; bouncy balls bounce it.' },
+    ],
+  },
 ];
 
 /** Every tile, flat — for looking one up by piece type. */

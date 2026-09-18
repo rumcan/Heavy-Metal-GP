@@ -226,6 +226,34 @@ function baseHandles(piece: Piece): Handle[] {
         { id: 'len', x: piece.x, y: piece.y + piece.arm + piece.r, cursor: 'ns-resize', label: 'Arm length' },
       ];
     }
+    // ---- MB-10C: movers ----
+    case 'wheel': {
+      // Centre moves; rim handle sets radius; release marker points where buckets tip out.
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Centre' },
+        { id: 'r', x: piece.x + piece.r, y: piece.y, cursor: 'ew-resize', label: 'Radius' },
+        { id: 'release', x: piece.x + Math.cos((piece.release * Math.PI) / 180) * piece.r, y: piece.y + Math.sin((piece.release * Math.PI) / 180) * piece.r, cursor: 'crosshair', label: 'Tip-out angle' },
+      ];
+    }
+    case 'screw':
+    case 'conveyor':
+    case 'bridge': {
+      // Two-point pieces: ends + shared middle drag.
+      const p2 = piece as unknown as { a: readonly [number, number]; b: readonly [number, number] };
+      const labels = piece.t === 'screw' ? ['Tube entry', 'Tube exit'] : piece.t === 'conveyor' ? ['Belt start', 'Belt end'] : ['Anchor A', 'Anchor B'];
+      return [
+        { id: 'move', x: (p2.a[0] + p2.b[0]) / 2, y: (p2.a[1] + p2.b[1]) / 2, cursor: 'move', label: 'Move' },
+        { id: 'a', x: p2.a[0], y: p2.a[1], cursor: 'crosshair', label: labels[0] },
+        { id: 'b', x: p2.b[0], y: p2.b[1], cursor: 'crosshair', label: labels[1] },
+      ];
+    }
+    case 'seesaw': {
+      // Pivot moves; the plank end sets the length.
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Pivot' },
+        { id: 'len', x: piece.x + piece.len / 2, y: piece.y, cursor: 'ew-resize', label: 'Plank length' },
+      ];
+    }
     case 'peg':
     case 'ppeg': {
       return [
@@ -527,6 +555,48 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       }
       return piece;
     }
+    // ---- MB-10C ----
+    case 'wheel': {
+      if (handleId === 'move') return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
+      if (handleId === 'r') {
+        const r = Math.max(60, Math.min(200, Math.abs(withSnap(to.x, sx) - piece.x)));
+        return { ...piece, r: sx ? snapVal(r) : r };
+      }
+      if (handleId === 'release') {
+        // tip-out marker drags around the rim: angle from pivot to pointer
+        const deg = ((Math.atan2(to.y - piece.y, to.x - piece.x) * 180) / Math.PI + 360) % 360;
+        const release = Math.max(20, Math.min(340, Math.round(deg)));
+        return { ...piece, release };
+      }
+      return piece;
+    }
+    case 'screw':
+    case 'conveyor':
+    case 'bridge': {
+      const span = { x: withSnap(to.x, sx), y: withSnap(to.y, sx) };
+      if (handleId === 'move') {
+        const mx = (piece.a[0] + piece.b[0]) / 2;
+        const my = (piece.a[1] + piece.b[1]) / 2;
+        const dx = span.x - mx;
+        const dy = span.y - my;
+        return {
+          ...piece,
+          a: [clampX(piece.a[0] + dx), piece.a[1] + dy] as [number, number],
+          b: [clampX(piece.b[0] + dx), piece.b[1] + dy] as [number, number],
+        };
+      }
+      if (handleId === 'a') return { ...piece, a: [clampX(span.x), span.y] as [number, number] };
+      if (handleId === 'b') return { ...piece, b: [clampX(span.x), span.y] as [number, number] };
+      return piece;
+    }
+    case 'seesaw': {
+      if (handleId === 'move') return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
+      if (handleId === 'len') {
+        const len = Math.max(140, Math.min(420, Math.abs(withSnap(to.x, sx) - piece.x) * 2));
+        return { ...piece, len: sx ? snapVal(len) : len };
+      }
+      return piece;
+    }
     case 'peg': {
       if (handleId === 'move') return { ...piece, x: withSnap(to.x, sx), y: withSnap(to.y, sx) };
       if (handleId === 'r') {
@@ -613,6 +683,20 @@ export function movePiece(piece: Piece, dx: number, dy: number): Piece {
       return { ...piece, x: clampX(piece.x + dx), y: piece.y + dy };
     case 'itembox':
       return { ...piece, x: clampX(piece.x + dx), y: piece.y + dy };
+    // ---- MB-10C ----
+    case 'wheel':
+    case 'seesaw':
+      return { ...piece, x: clampX((piece as unknown as { x: number }).x + dx), y: (piece as unknown as { y: number }).y + dy } as Piece;
+    case 'screw':
+    case 'conveyor':
+    case 'bridge': {
+      const p2 = piece as unknown as { a: readonly [number, number]; b: readonly [number, number] };
+      return {
+        ...piece,
+        a: [clampX(p2.a[0] + dx), p2.a[1] + dy] as [number, number],
+        b: [clampX(p2.b[0] + dx), p2.b[1] + dy] as [number, number],
+      } as Piece;
+    }
     case 'bucket':
       return { ...piece, y: piece.y + dy };
   }
@@ -672,6 +756,23 @@ export function mirrorPiece(piece: Piece): Piece {
       return { ...piece, x: mx(piece.x) };
     case 'itembox':
       return { ...piece, x: mx(piece.x) };
+    // ---- MB-10C ----
+    case 'wheel':
+      // Mirroring flips the spin sense so the ride direction survives the course mirror.
+      return { ...piece, x: mx((piece as unknown as { x: number }).x), dir: (piece.t === 'wheel' ? (piece.dir === 1 ? 0 : 1) : 0) } as Piece;
+    case 'seesaw':
+      return { ...piece, x: mx((piece as unknown as { x: number }).x) } as Piece;
+    case 'screw':
+    case 'conveyor':
+    case 'bridge': {
+      // Mirroring swaps the two ends (belt direction rides the surface tangent — it flips for free).
+      const p2 = piece as unknown as { a: readonly [number, number]; b: readonly [number, number] };
+      return {
+        ...piece,
+        a: [mx(p2.b[0]), p2.b[1]] as [number, number],
+        b: [mx(p2.a[0]), p2.a[1]] as [number, number],
+      } as Piece;
+    }
     case 'bucket':
       // Bucket is always centred horizontally — nothing to mirror.
       return piece;

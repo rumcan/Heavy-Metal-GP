@@ -161,6 +161,30 @@ export function defaultPiece(type: PieceType, at: Point, snap = false): Piece {
     case 'mace': {
       return { t: 'mace', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, arm: 130, arc: 1.05, sweep: 950, rest: 750, phase: 0, r: 24 };
     }
+    // ---- MB-10C: movers ----
+    case 'wheel': {
+      const x = snap ? snapVal(cx) : cx;
+      const y = snap ? snapVal(cy) : cy;
+      return { t: 'wheel', x, y, r: 110, buckets: 6, rpm: 3, dir: 0 as const, release: 105, phase: 0 };
+    }
+    case 'screw': {
+      const x = snap ? snapVal(cx) : cx;
+      const y = snap ? snapVal(cy) : cy;
+      return { t: 'screw', a: [x, y] as [number, number], b: [Math.min(W - 40, x + 120), y - 190] as [number, number], ms: 3200, cap: 2 };
+    }
+    case 'conveyor': {
+      const x = snap ? snapVal(cx) : cx;
+      const y = snap ? snapVal(cy) : cy;
+      return { t: 'conveyor', a: [x - 140, y] as [number, number], b: [Math.min(W - 40, x + 140), y + 60] as [number, number], v: 0.16, flipMs: 0, dir: 0 as const };
+    }
+    case 'seesaw': {
+      return { t: 'seesaw', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, len: 300, lim: 22, damp: 0.9 };
+    }
+    case 'bridge': {
+      const x = snap ? snapVal(cx) : cx;
+      const y = snap ? snapVal(cy) : cy;
+      return { t: 'bridge', a: [x - 180, y] as [number, number], b: [Math.min(W - 40, x + 180), y] as [number, number], planks: 8, slack: 34 };
+    }
     default:
       // Exhaustiveness: TypeScript ensures all PieceType are covered.
       throw new Error(`defaultPiece: unknown piece type ${(type as string)}`);

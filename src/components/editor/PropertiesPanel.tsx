@@ -369,6 +369,63 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
           <NumField label="Ball r" value={piece.r} min={12} max={48} step={1} onValue={(v) => update({ r: Math.round(clampNum(v, 12, 48)) } as unknown as Piece)} />
         </>
       )}
+
+      {piece.t === 'wheel' && (
+        <>
+          <NumField label="X" value={piece.x} min={0} max={W} onValue={(v) => update({ x: clampNum(v, 0, W) } as unknown as Piece)} />
+          <NumField label="Y" value={piece.y} onValue={(v) => update({ y: v } as unknown as Piece)} />
+          <NumField label="Radius" value={piece.r} min={60} max={200} step={5} onValue={(v) => update({ r: Math.round(clampNum(v, 60, 200)) } as unknown as Piece)} />
+          <NumField label="Buckets" value={piece.buckets} min={4} max={10} step={1} onValue={(v) => update({ buckets: Math.round(clampNum(v, 4, 10)) } as unknown as Piece)} />
+          <NumField label="RPM" value={piece.rpm} min={0.5} max={10} step={0.5} onValue={(v) => update({ rpm: clampNum(v, 0.5, 10) } as unknown as Piece)} />
+          <NumField label="Direction" value={piece.dir} min={0} max={1} step={1} onValue={(v) => update({ dir: (v >= 1 ? 1 : 0) as 0 | 1 } as unknown as Piece)} />
+          <NumField label="Tip-out (deg)" value={piece.release} min={20} max={340} step={5} onValue={(v) => update({ release: Math.round(clampNum(v, 20, 340)) } as unknown as Piece)} />
+          <NumField label="Phase (ms)" value={piece.phase} step={100} onValue={(v) => update({ phase: v } as unknown as Piece)} />
+        </>
+      )}
+
+      {piece.t === 'screw' && (
+        <>
+          <NumField label="Ax" value={piece.a[0]} min={0} max={W} onValue={(v) => update({ a: [clampNum(v, 0, W), piece.a[1]] } as unknown as Piece)} />
+          <NumField label="Ay" value={piece.a[1]} onValue={(v) => update({ a: [piece.a[0], v] } as unknown as Piece)} />
+          <NumField label="Bx" value={piece.b[0]} min={0} max={W} onValue={(v) => update({ b: [clampNum(v, 0, W), piece.b[1]] } as unknown as Piece)} />
+          <NumField label="By" value={piece.b[1]} onValue={(v) => update({ b: [piece.b[0], v] } as unknown as Piece)} />
+          <NumField label="Transit (ms)" value={piece.ms} min={1200} max={12000} step={100} onValue={(v) => update({ ms: Math.round(clampNum(v, 1200, 12000)) } as unknown as Piece)} />
+          <NumField label="Capacity" value={piece.cap} min={1} max={4} step={1} onValue={(v) => update({ cap: Math.round(clampNum(v, 1, 4)) } as unknown as Piece)} />
+        </>
+      )}
+
+      {piece.t === 'conveyor' && (
+        <>
+          <NumField label="Ax" value={piece.a[0]} min={0} max={W} onValue={(v) => update({ a: [clampNum(v, 0, W), piece.a[1]] } as unknown as Piece)} />
+          <NumField label="Ay" value={piece.a[1]} onValue={(v) => update({ a: [piece.a[0], v] } as unknown as Piece)} />
+          <NumField label="Bx" value={piece.b[0]} min={0} max={W} onValue={(v) => update({ b: [clampNum(v, 0, W), piece.b[1]] } as unknown as Piece)} />
+          <NumField label="By" value={piece.b[1]} onValue={(v) => update({ b: [piece.b[0], v] } as unknown as Piece)} />
+          <NumField label="Belt speed" value={piece.v} min={0.02} max={0.45} step={0.01} onValue={(v) => update({ v: clampNum(v, 0.02, 0.45) } as unknown as Piece)} />
+          <NumField label="Flip every (ms, 0 = never)" value={piece.flipMs} min={0} max={30000} step={500} onValue={(v) => update({ flipMs: Math.round(clampNum(v, 0, 30000)) } as unknown as Piece)} />
+          <NumField label="Direction" value={piece.dir} min={0} max={1} step={1} onValue={(v) => update({ dir: (v >= 1 ? 1 : 0) as 0 | 1 } as unknown as Piece)} />
+        </>
+      )}
+
+      {piece.t === 'seesaw' && (
+        <>
+          <NumField label="X" value={piece.x} min={0} max={W} onValue={(v) => update({ x: clampNum(v, 0, W) } as unknown as Piece)} />
+          <NumField label="Y" value={piece.y} onValue={(v) => update({ y: v } as unknown as Piece)} />
+          <NumField label="Plank length" value={piece.len} min={140} max={420} step={10} onValue={(v) => update({ len: clampNum(v, 140, 420) } as unknown as Piece)} />
+          <NumField label="Limit (deg)" value={piece.lim} min={6} max={28} step={1} onValue={(v) => update({ lim: clampNum(v, 6, 28) } as unknown as Piece)} />
+          <NumField label="Damping" value={piece.damp} min={0.6} max={0.995} step={0.005} onValue={(v) => update({ damp: clampNum(v, 0.6, 0.995) } as unknown as Piece)} />
+        </>
+      )}
+
+      {piece.t === 'bridge' && (
+        <>
+          <NumField label="Ax" value={piece.a[0]} min={0} max={W} onValue={(v) => update({ a: [clampNum(v, 0, W), piece.a[1]] } as unknown as Piece)} />
+          <NumField label="Ay" value={piece.a[1]} onValue={(v) => update({ a: [piece.a[0], v] } as unknown as Piece)} />
+          <NumField label="Bx" value={piece.b[0]} min={0} max={W} onValue={(v) => update({ b: [clampNum(v, 0, W), piece.b[1]] } as unknown as Piece)} />
+          <NumField label="By" value={piece.b[1]} onValue={(v) => update({ b: [piece.b[0], v] } as unknown as Piece)} />
+          <NumField label="Planks" value={piece.planks} min={6} max={12} step={1} onValue={(v) => update({ planks: Math.round(clampNum(v, 6, 12)) } as unknown as Piece)} />
+          <NumField label="Slack" value={piece.slack} min={8} max={90} step={2} onValue={(v) => update({ slack: clampNum(v, 8, 90) } as unknown as Piece)} />
+        </>
+      )}
     </div>
   );
 }

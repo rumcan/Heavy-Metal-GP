@@ -641,11 +641,27 @@ export class RaceGuest {
         break;
       }
       case 'hold': {
-        // A marble went into an element (tunnel). The host glides it inside from now on; the
-        // `until` is on the host clock, which we mirror, so hide it locally until then. The
-        // position frames keep flowing, so it pops out exactly where the host put it.
+        // A marble went into an element. The host glides it from now on; the `until` is on the
+        // host clock, which we mirror. A tunnel ride is hidden start-to-end; a wheel bucket or
+        // screw transit stays on screen — the position frames draw the ride.
         const m = marbles[event.seat];
-        if (m) m.hold = { kind: 'tunnel', until: event.until };
+        if (m) m.hold = { kind: event.of ?? 'tunnel', until: event.until };
+        break;
+      }
+      // MB-10C: dynamic mover state — set the truth, `Game.ageEffects` blends the pose in.
+      case 'seesaw': {
+        const body = this.bodyAt(event.i);
+        const ss = body ? meta(body).seesaw : undefined;
+        if (ss) ss.remote = { angle: event.angle, angVel: event.angVel, at: this.game.time };
+        break;
+      }
+      case 'bridge': {
+        const head = this.bodyAt(event.i);
+        if (head) {
+          const mdh = meta(head);
+          mdh.sagTarget = event.sag;
+          mdh.sagAt = this.game.time;
+        }
         break;
       }
     }

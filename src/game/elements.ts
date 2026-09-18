@@ -231,6 +231,14 @@ export function updateElement(body: Matter.Body, time: number, dt: number): void
         body, { x: pivot.x + Math.sin(cur) * len / 2, y: pivot.y - Math.cos(cur) * len / 2 }, true);
       return;
     }
+    // ---- MB-10C: the water wheel hub spins on the race clock like every other machine ----
+    case 'wheel': {
+      const motion = md.motion;
+      if (!motion || motion.mode !== 'spin') return;
+      (Body.setAngle as unknown as (b: Matter.Body, a: number, u: boolean) => void)(body, motion.omega * (time + motion.phaseMs), true);
+      (Body.setPosition as unknown as (b: Matter.Body, p: Matter.Vector, u: boolean) => void)(body, motion.pivot, true);
+      return;
+    }
     // ---- MB-10B: blades and crushers — all pure-clock poses, so guests draw the same machine ----
     case 'blade': {
       const motion = md.motion;
@@ -304,6 +312,7 @@ export function updateElements(track: Track, time: number, dt: number): void {
   for (const body of elementBodies(track, 'crusher')) updateElement(body, time, dt);
   for (const body of elementBodies(track, 'boulder')) updateElement(body, time, dt);
   for (const body of elementBodies(track, 'mace')) updateElement(body, time, dt);
+  for (const body of elementBodies(track, 'wheel')) updateElement(body, time, dt);
 }
 
 // ---------------------------------------------------------------- warnings (skins read these)
@@ -317,4 +326,10 @@ export function trapdoorWarn(md: Meta, time: number): boolean {
   if (!motion || motion.mode !== 'hinge') return false;
   if (md.mode === 'weight') return (md.restSince ?? 0) > 60 || !!md.openNow;
   return hingeTimerState(motion, time).warn;
+}
+
+/** MB-10C conveyor: the belt's current direction — base direction times the optional clock flip. */
+export function beltDir(belt: { dir0: 1 | -1; flipMs?: number }, time: number): 1 | -1 {
+  const flip = belt.flipMs && belt.flipMs > 0 ? (Math.floor(time / belt.flipMs) % 2 ? -1 : 1) : 1;
+  return (flip * belt.dir0) as 1 | -1;
 }

@@ -1,6 +1,6 @@
 import Matter from 'matter-js';
 import { Game, Marble } from './engine';
-import { hingeTimerState, hingeIsOpen, trapdoorWarn, pistonState } from './elements';
+import { hingeTimerState, hingeIsOpen, trapdoorWarn, pistonState, beltDir } from './elements';
 import { meta, W } from './track';
 import { MARBLE_RADIUS, ITEM_INFO, skinFor, themeIdFor } from './types';
 import { ballFor, bodyFrame, currentSkin, drawRail, drawSprite, drawStrip, setSkin, sprite } from './sprites';
@@ -894,6 +894,22 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
       case 'mace':
         drawMace(ctx, b, md, game, t);
         break;
+      // ---- MB-10C: mechanical movers ----
+      case 'wheel':
+        if (!b.isSensor) drawWheel(ctx, b, md, game, t);
+        break;
+      case 'screw':
+        drawScrew(ctx, b, md, t);
+        break;
+      case 'seesaw':
+        drawSeesaw(ctx, b, md);
+        break;
+      case 'bridge':
+        drawBridgePlank(ctx, b, md);
+        break;
+      case 'conveyor':
+        drawConveyor(ctx, b, md, game, t);
+        break;
       default:
         break;
     }
@@ -903,7 +919,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
   const sorted = [...game.marbles].sort((a, b) => Number(a.info.isPlayer) - Number(b.info.isPlayer));
   for (const m of sorted) {
     const p = m.body.position;
-    if (m.hold) continue; // hidden inside an element (MB-10 tunnel ride)
+    if (m.hold && m.hold.kind === 'tunnel') continue; // hidden inside the cliff (MB-10A); MB-10C movers keep the rider on screen
     if (p.y < viewTop || p.y > viewBottom || game.benched.has(m.info.id)) continue;
     drawMarble(ctx, game, m, t);
   }
@@ -2218,7 +2234,7 @@ function drawMinimap(ctx: CanvasRenderingContext2D, game: Game, cw: number, ch: 
   // marbles
   const list = [...game.marbles].sort((a, b) => Number(a.info.isPlayer) - Number(b.info.isPlayer));
   for (const m of list) {
-    if (m.hold) continue; // hidden inside an element (MB-10 tunnel ride)
+    if (m.hold && m.hold.kind === 'tunnel') continue; // hidden inside the cliff (MB-10A); MB-10C movers keep the rider on screen
     const yy = my + Math.max(0, Math.min(1, m.body.position.y / H)) * mh;
     const xx = mx + ((m.body.position.x / W) - 0.5) * 14;
     ctx.beginPath();
@@ -2232,4 +2248,235 @@ function drawMinimap(ctx: CanvasRenderingContext2D, game: Game, cw: number, ch: 
     }
   }
   ctx.restore();
+}
+
+
+// ---------------- MB-10C: mechanical movers ----------------
+
+/**
+ * Water wheel: rim, spokes and bucket paddles rotating on the race clock. The skin reads the
+ * hub body's angle (set by the shared spin motion), so host and guest draw the same pose; the
+ * drizzle marks it as wet unless the venue runs it dry. Buckets with riders get a highlight.
+ */
+function drawWheel(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, game: Game, t: number) {
+  const motion = md.motion;
+  if (!motion || motion.mode !== 'spin' || !md.wheel) return;
+  const P = motion.pivot;
+  const r = motion.radius;
+  const n = md.wheel.buckets;
+  const taus = Math.PI * 2;
+  // drips under the wheel (wet skin); the frame counter keeps them cheap
+  if (t % 3 < 1) {
+    ctx.fillStyle = 'rgba(125,211,252,0.5)';
+    const dx = P.x + Math.sin(t * 0.0013) * r * 0.5;
+    ctx.fillRect(dx, P.y + r + 4, 2, 6);
+    ctx.fillRect(dx + 14, P.y + r + 1, 2, 4);
+  }
+  ctx.save();
+  ctx.translate(P.x, P.y);
+  ctx.rotate(b.angle);
+  // rim + spokes
+  ctx.strokeStyle = '#6b4423';
+  ctx.lineWidth = 7;
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, taus); ctx.stroke();
+  ctx.strokeStyle = '#4b5563';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, taus); ctx.stroke();
+  for (let i = 0; i < n; i++) {
+    const a = (i * taus) / n;
+    ctx.strokeStyle = '#6b4423';
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); ctx.stroke();
+    // bucket paddle: a little open box on the rim, riding lit while occupied
+    const busy = md.wheel.slots[i] > game.time;
+    ctx.save();
+    ctx.translate(Math.cos(a) * r, Math.sin(a) * r);
+    ctx.rotate(a + Math.PI / 2);
+    ctx.fillStyle = busy ? '#d4a04a' : '#8a5a2e';
+    ctx.strokeStyle = '#3f2a14';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.rect(-11, -8, 22, 16);
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+  // hub
+  ctx.fillStyle = '#44403c';
+  ctx.beginPath(); ctx.arc(0, 0, 13, 0, taus); ctx.fill();
+  ctx.fillStyle = '#a8a29e';
+  ctx.beginPath(); ctx.arc(0, 0, 5, 0, taus); ctx.fill();
+  const img = sprite('wheel');
+  if (img) {
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.drawImage(img, -r - 8, -r - 8, (r + 8) * 2, (r + 8) * 2);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+/**
+ * Screw lift: a translucent tube with the auger helix turning inside and little windows the
+ * rider slides past. The entry collar shows the queue: full tubes dim.
+ */
+function drawScrew(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnType<typeof meta>, t: number) {
+  const sc = md.screw;
+  if (!sc) return;
+  const a = sc.a, c = sc.b;
+  const len = Math.hypot(c.x - a.x, c.y - a.y) || 1;
+  const ang = Math.atan2(c.y - a.y, c.x - a.x);
+  ctx.save();
+  ctx.translate(a.x, a.y);
+  ctx.rotate(ang);
+  // tube shell
+  ctx.fillStyle = 'rgba(125,211,252,0.14)';
+  ctx.strokeStyle = '#57534e';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.roundRect(0, -14, len, 28, 8); ctx.fill(); ctx.stroke();
+  // auger helix — a sine spine running the spiral, turning with the frame clock
+  ctx.strokeStyle = '#a16207';
+  ctx.lineWidth = 3.5;
+  ctx.beginPath();
+  for (let x = 3; x < len - 3; x += 4) {
+    const y = Math.sin((x / 14) + t * 0.004) * 9;
+    if (x === 3) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  // windows
+  ctx.fillStyle = 'rgba(2,6,23,0.55)';
+  for (let x = 18; x < len - 6; x += 44) ctx.fillRect(x, -7, 14, 14);
+  // entry collar + crank housing
+  ctx.fillStyle = '#44403c';
+  ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#a8a29e'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI * 2); ctx.stroke();
+  if (!drawSprite(ctx, 'crusher-house', len - 10, 18, 44, 36)) {
+    ctx.fillStyle = '#57534e';
+    ctx.fillRect(len - 26, 12, 30, 22);
+  }
+  ctx.restore();
+}
+
+/** Seesaw: the plank body plus the stone pivot it swings on (pivot drawn under it). */
+function drawSeesaw(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>) {
+  const ss = md.seesaw;
+  if (!ss) return;
+  const P = b.position;
+  // stone pivot
+  ctx.fillStyle = '#78716c';
+  ctx.strokeStyle = '#44403c';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(P.x - 18, P.y + 34);
+  ctx.lineTo(P.x, P.y + 2);
+  ctx.lineTo(P.x + 18, P.y + 34);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  // plank
+  ctx.save();
+  ctx.translate(P.x, P.y);
+  ctx.rotate(ss.angle);
+  if (!drawSprite(ctx, 'seesaw', 0, 0, ss.len * 1.06, 16)) {
+    ctx.fillStyle = '#8a5a2e';
+    ctx.strokeStyle = '#3f2a14';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.roundRect(-ss.len / 2, -7, ss.len, 14, 4); ctx.fill(); ctx.stroke();
+    for (let x = -ss.len / 2 + 24; x < ss.len / 2; x += 48) {
+      ctx.fillStyle = '#44403c';
+      ctx.fillRect(x, -7, 6, 14);
+    }
+  }
+  // iron pin
+  ctx.fillStyle = '#a8a29e';
+  ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+/** Rope bridge plank: timber slat with rope ties; end planks grow an anchor post. */
+function drawBridgePlank(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>) {
+  const br = md.bridge;
+  if (!br) return;
+  const angle = b.angle;
+  ctx.save();
+  ctx.translate(b.position.x, b.position.y);
+  ctx.rotate(angle);
+  if (!drawSprite(ctx, 'bridge', 0, 0, br.plankLen, 12)) {
+    ctx.fillStyle = '#a3653d';
+    ctx.strokeStyle = '#51321c';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.roundRect(-br.plankLen / 2, -4.5, br.plankLen, 9, 2); ctx.fill(); ctx.stroke();
+  }
+  // rope ties at the slat ends
+  ctx.strokeStyle = '#b45309';
+  ctx.lineWidth = 2;
+  for (const sx of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo((br.plankLen / 2 - 5) * sx, -8);
+    ctx.lineTo((br.plankLen / 2 - 5) * sx, 8);
+    ctx.stroke();
+  }
+  ctx.restore();
+  // anchor posts at the chain ends
+  if (br.idx === 0 || br.idx === br.n - 1) {
+    const anchor = br.anchor[br.idx === 0 ? 0 : 1];
+    ctx.fillStyle = '#6b4423';
+    ctx.fillRect(anchor.x - 5, anchor.y - 34, 10, 36);
+    ctx.strokeStyle = '#3f2a14';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(anchor.x - 5, anchor.y - 34, 10, 36);
+    ctx.fillStyle = '#a8a29e';
+    ctx.beginPath(); ctx.arc(anchor.x, anchor.y - 36, 5, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+/**
+ * Conveyor belt: an iron deck with rollers at both ends and a moving chevron tread; the tread
+ * direction (and its clock flip) matches what the engine pushes with.
+ */
+function drawConveyor(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnType<typeof meta>, game: Game, t: number) {
+  const surface = md.surface;
+  const belt = md.belt;
+  if (!surface || !belt) return;
+  const dir = beltDir(belt, game.time);
+  const tx = surface.tangent.x, ty = surface.tangent.y;
+  const L = surface.length;
+  const mx = (surface.start.x + surface.end.x) / 2, my = (surface.start.y + surface.end.y) / 2;
+  ctx.save();
+  ctx.translate(mx, my);
+  ctx.rotate(Math.atan2(ty, tx));
+  // deck
+  if (!drawSprite(ctx, 'conveyor', 0, -4, L * 1.02, 16)) {
+    ctx.fillStyle = '#1f2937';
+    ctx.strokeStyle = '#0b1220';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(-L / 2, -9, L, 18, 5); ctx.fill(); ctx.stroke();
+  }
+  // rollers
+  ctx.fillStyle = '#6b7280';
+  ctx.strokeStyle = '#374151';
+  ctx.lineWidth = 2;
+  for (const sx of [-1, 1]) {
+    ctx.beginPath(); ctx.arc((L / 2 - 8) * sx * 1, 0, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.save();
+    ctx.translate((L / 2 - 8) * sx, 0);
+    ctx.rotate(dir * t * 0.01);
+    ctx.beginPath(); ctx.moveTo(0, -7); ctx.lineTo(0, 7); ctx.stroke();
+    ctx.restore();
+  }
+  // moving chevron tread
+  const offset = posMod(dir * t * belt.v * 60, 46);
+  ctx.strokeStyle = 'rgba(250,204,21,0.75)';
+  ctx.lineWidth = 3;
+  for (let x = -L / 2 + offset; x < L / 2 - 8; x += 46) {
+    ctx.beginPath();
+    ctx.moveTo(x - 6, -6);
+    ctx.lineTo(x + 5, 0);
+    ctx.lineTo(x - 6, 6);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function posMod(v: number, m: number): number {
+  return ((v % m) + m) % m;
 }

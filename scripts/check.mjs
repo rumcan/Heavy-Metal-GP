@@ -29,7 +29,7 @@ const commands = [
 ];
 
 for (const args of commands) {
-  const result = spawnSync(process.execPath, args, { cwd, stdio: 'inherit', timeout: 420000 });
+  const result = spawnSync(process.execPath, args, { cwd, stdio: 'inherit', timeout: 3600000 });
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);
 }

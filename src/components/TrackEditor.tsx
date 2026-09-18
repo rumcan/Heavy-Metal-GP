@@ -179,6 +179,18 @@ function lowestPieceY(def: TrackDef): number {
       case 'mace':
         y = p.y + p.arm + p.r;
         break;
+      // ---- MB-10C ----
+      case 'wheel':
+        y = p.y + p.r;
+        break;
+      case 'seesaw':
+        y = p.y + 40;
+        break;
+      case 'screw':
+      case 'conveyor':
+      case 'bridge':
+        y = Math.max(p.a[1], p.b[1]) + 40;
+        break;
       case 'tunnel':
         y = Math.max(p.y, p.exit[1]);
         break;

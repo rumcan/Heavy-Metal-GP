@@ -59,7 +59,7 @@ export type { RaceEntry, RankWire };
  * lobby/ready/start, 20 Hz packed `state`, `events`, chunked `snapshot`,
  * `intent`, `resync`, `results`, presence and the hard refusal on mismatch.
  */
-export const PROTOCOL_VERSION = 3; // 3: the rated wire (rating board, result claim, the room's result)
+export const PROTOCOL_VERSION = 3; // 3: the rated wire (rating board, result claim, the room's result); also carries MB-10 mover rides and dynamic state (hold.of, seesaw, bridge)
 
 /**
  * Realtime WS frame cap in bytes. Mirrors the SDK's `MAX_BROADCAST_BYTES`
@@ -553,11 +553,39 @@ export interface TrapdoorEvent {
   open: boolean;
 }
 
-/** MB-10A. A marble is hidden inside an element (cliff tunnel) until `until` (host clock). */
+/**
+ * MB-10A. A marble is hidden inside an element until `until` (host clock). `of` names the
+ * carrier: a cliff `tunnel` draw is hidden start-to-end; a water-`wheel` bucket ride or a
+ * `screw` lift transit stays visible on screen (MB-10C).
+ */
 export interface HoldEvent {
   kind: 'hold';
   seat: number;
   until: number;
+  of?: 'tunnel' | 'wheel' | 'screw';
+}
+
+/**
+ * MB-10C. A seesaw's dynamic state, streamed at a low rate while the plank is moving: its
+ * angle (rad, 0 = level) and angular velocity (rad/ms). Guests blend their local copy toward
+ * it; the plank itself is a body, so track collisions follow.
+ */
+export interface SeesawEvent {
+  kind: 'seesaw';
+  i: number;
+  angle: number;
+  angVel: number;
+}
+
+/**
+ * MB-10C. A rope bridge's plank chain: `i` is the FIRST plank's body index (planks are
+ * contiguous from the builder) and `sag` is each plank's vertical offset in px, rounded.
+ * Guests spring their local planks toward it.
+ */
+export interface BridgeEvent {
+  kind: 'bridge';
+  i: number;
+  sag: number[];
 }
 
 export type RaceEvent =
@@ -572,10 +600,12 @@ export type RaceEvent =
   | CueEvent
   | SwitchEvent
   | TrapdoorEvent
-  | HoldEvent;
+  | HoldEvent
+  | SeesawEvent
+  | BridgeEvent;
 
 /** Every event kind, in wire order. `validateMessage` rejects anything else. */
-export const RACE_EVENT_KINDS = ['peg', 'crate', 'box', 'oil', 'freeze', 'shock', 'item', 'finish', 'sound', 'switch', 'trapdoor', 'hold'] as const;
+export const RACE_EVENT_KINDS = ['peg', 'crate', 'box', 'oil', 'freeze', 'shock', 'item', 'finish', 'sound', 'switch', 'trapdoor', 'hold', 'seesaw', 'bridge'] as const;
 
 /**
  * host → server → everyone. What happened since the last frame.
@@ -1574,7 +1604,18 @@ function validateEvent(value: unknown): ProtocolError | null {
     }
     case 'hold': {
       if (typeof e.until !== 'number' || !Number.isFinite(e.until) || e.until < 0) return bad('Hold event has no release time.');
+      if (e.of !== undefined && !['tunnel', 'wheel', 'screw'].includes(e.of as string)) return bad('Hold event names no carrier this build knows.');
       return seat(e.seat);
+    }
+    case 'seesaw': {
+      if (typeof e.angle !== 'number' || !Number.isFinite(e.angle) || Math.abs(e.angle) > 3) return bad('Seesaw event has no sane angle.');
+      if (typeof e.angVel !== 'number' || !Number.isFinite(e.angVel)) return bad('Seesaw event has no angular velocity.');
+      return body(e.i);
+    }
+    case 'bridge': {
+      if (!Array.isArray(e.sag) || e.sag.length < 1 || e.sag.length > 12) return bad('Bridge event has a malformed sag chain.');
+      for (const s of e.sag) if (typeof s !== 'number' || !Number.isFinite(s) || Math.abs(s) > 400) return bad('Bridge event has a plank out of range.');
+      return body(e.i);
     }
     default:
       return bad(`Unknown event kind "${String(e.kind)}".`);

@@ -1,6 +1,6 @@
 import Matter from 'matter-js';
-import { generateTrack, meta, Track, CAT_MARBLE, CAT_WALL, CAT_SENSOR, CAT_LOOP_UP, CAT_LOOP_CLOSE, CAT_FRAGILE, CAT_DANGER, W } from './track';
-import { elementBodies, updateElements, hingeTimerState, pendulumOmega, slideDir, pistonState, rollAt, pathAt } from './elements';
+import { generateTrack, meta, Track, CAT_MARBLE, CAT_WALL, CAT_SENSOR, CAT_LOOP_UP, CAT_LOOP_CLOSE, CAT_FRAGILE, CAT_DANGER, W, bridgePlankPose } from './track';
+import { elementBodies, updateElements, hingeTimerState, pendulumOmega, slideDir, pistonState, rollAt, pathAt, beltDir } from './elements';
 import { TrackDefError, buildTrackFromDef } from './trackdef';
 import { ItemType, MarbleInfo, MARBLE_RADIUS, statsToPhysics, mulberry32, TrackProfile, normalizeInventory, ITEM_TYPES, ITEM_INFO, MAX_ITEM_STACK } from './types';
 import type { Inventory } from './types';
@@ -137,13 +137,18 @@ export interface OilSlick {
  * fields are host-side only.
  */
 export interface Hold {
-  kind: 'tunnel';
+  kind: 'tunnel' | 'wheel' | 'screw';
   until: number;
   /** Clocked at `until - transit`; the glide runs from then on. Host-only on the wire. */
   transit?: number;
   from?: { x: number; y: number };
   body?: Matter.Body;
   exit?: { x: number; y: number; dir: { x: number; y: number }; speed: number };
+  /** MB-10C wheel ride: capture clock and the arc the bucket glides along (centre, radius, start angle, omega, release angle). */
+  at?: number;
+  arc?: { x: number; y: number; r: number; fromA: number; omega: number; release: number };
+  /** MB-10C screw lift: a light marble slips back mid-ride — the glide wobbles (host-side seeded). */
+  slip?: number;
 }
 
 export interface Effect {
@@ -200,6 +205,8 @@ export class Game {
   private effectsEnabled: boolean;
   private aiItemsEnabled: boolean;
   private onRecover?: (marbleId: number, pos: { x: number; y: number }) => void;
+  /** MB-10C: memoized rope-bridge plank chains (host integrates; guests blend). */
+  private bridgeCache?: Matter.Body[][];
   /** STORY HOOKS (ST-07). Undefined in every non-story race. */
   private story?: StoryHooks;
   private storySectors = new Map<number, number>();
@@ -705,8 +712,95 @@ export class Game {
         m.trail = [];
         this.sfx('rumble', m, other.position.x, other.position.y);
         this.emit({ kind: 'sound', cue: 'rumble', seat: m.info.id });
-        this.emit({ kind: 'hold', seat: m.info.id, until });
+        this.emit({ kind: 'hold', seat: m.info.id, until, of: 'tunnel' });
         this.effects.push({ type: 'snow', x: other.position.x, y: other.position.y, ttl: 30, maxTtl: 30, color: '#b8a88f', particles: this.makeParticles(other.position.x, other.position.y, 10, 2) });
+        break;
+      }
+      // ---- MB-10C: movers ----
+      case 'wheel': {
+        // A bucket catches the marble at the rim band and carries it to the release angle.
+        if (m.hold || this.time < m.tunnelSafeUntil) break;
+        const motion = md.motion;
+        if (!motion || motion.mode !== 'spin' || !md.wheel) break;
+        const P = motion.pivot;
+        const dxw = m.body.position.x - P.x, dyw = m.body.position.y - P.y;
+        const dist = Math.hypot(dxw, dyw);
+        if (Math.abs(dist - motion.radius) > 34) break; // only the rim band rides — through-swingers pass
+        const buckets = md.wheel.buckets;
+        const tau = Math.PI * 2;
+        const aFrom = Math.atan2(dyw, dxw);
+        // nearest bucket anchor, and it must be near enough to genuinely be a bucket hit
+        let bi = 0, bDiff = Infinity;
+        for (let i = 0; i < buckets; i++) {
+          const theta = motion.omega * (this.time + motion.phaseMs) + (i * tau) / buckets;
+          let diff = (aFrom - theta) % tau;
+          if (diff > Math.PI) diff -= tau;
+          if (diff < -Math.PI) diff += tau;
+          if (Math.abs(diff) < Math.abs(bDiff)) { bDiff = diff; bi = i; }
+        }
+        if (Math.abs(bDiff) * motion.radius > 30) break;
+        if (md.wheel.slots[bi] > this.time) break; // someone is already riding this bucket
+        // ride the arc around to the release angle, then tip out with the tangential speed
+        let span = (md.wheel.release - aFrom) * Math.sign(motion.omega);
+        span = ((span % tau) + tau) % tau;
+        if (span < 0.35) span += tau;
+        const ride = span / Math.abs(motion.omega);
+        let until = this.time + ride;
+        // a bouncy marble can bounce out of a bucket early — the best track kits have feel
+        if ((m.info.stats.bounce ?? 5) >= 8 && this.rng() < 0.3) until = this.time + Math.min(ride * 0.45, 1400);
+        const tip = Math.abs(motion.omega) * motion.radius * 16.667;
+        const rx = P.x + Math.cos(md.wheel.release) * motion.radius, ry = P.y + Math.sin(md.wheel.release) * motion.radius;
+        const sense2 = Math.sign(motion.omega) || 1;
+        m.hold = {
+          kind: 'wheel', until, at: this.time,
+          arc: { x: P.x, y: P.y, r: motion.radius, fromA: aFrom, omega: motion.omega, release: md.wheel.release },
+          exit: { x: rx, y: ry, dir: { x: -Math.sin(md.wheel.release) * sense2, y: Math.cos(md.wheel.release) * sense2 }, speed: Math.max(3, tip + 1.2) },
+        };
+        m.body.isSensor = true;
+        Body.setVelocity(m.body, { x: 0, y: 0 });
+        Body.setAngularVelocity(m.body, 0);
+        md.wheel.slots[bi] = until + 700;
+        this.sfx('splash', m, other.position.x, other.position.y);
+        this.emit({ kind: 'sound', cue: 'splash', seat: m.info.id });
+        this.emit({ kind: 'hold', seat: m.info.id, until, of: 'wheel' });
+        this.effects.push({ type: 'ring', x: m.body.position.x, y: m.body.position.y, ttl: 18, maxTtl: 18, color: '#7dd3fc' });
+        break;
+      }
+      case 'screw': {
+        // The tube swallows the marble and turns it up to the far end; capacity queues it.
+        if (m.hold || this.time < m.tunnelSafeUntil || !md.screw) break;
+        const sc = md.screw;
+        sc.seats = sc.seats.filter((seat) => seat.until > this.time - 500);
+        if (sc.seats.length >= sc.cap) break;
+        if (Math.hypot(m.body.position.x - sc.a.x, m.body.position.y - sc.a.y) > 42) break;
+        let slip = 0;
+        let ms = sc.ms;
+        // light marbles slip back occasionally — a seeded wobble that costs a little time
+        if ((m.info.stats.weight ?? 5) <= 3 && this.rng() < 0.5) { slip = 1; ms += 650; }
+        const until = this.time + ms;
+        const len = Math.hypot(sc.b.x - sc.a.x, sc.b.y - sc.a.y) || 1;
+        m.hold = {
+          kind: 'screw', until, at: this.time, transit: ms, slip,
+          from: { x: sc.a.x, y: sc.a.y },
+          exit: { x: sc.b.x, y: sc.b.y, dir: { x: (sc.b.x - sc.a.x) / len, y: (sc.b.y - sc.a.y) / len }, speed: 3.4 },
+        };
+        m.body.isSensor = true;
+        Body.setVelocity(m.body, { x: 0, y: 0 });
+        Body.setAngularVelocity(m.body, 0);
+        sc.seats.push({ seat: m.info.id, until });
+        this.sfx('whirr', m, sc.a.x, sc.a.y);
+        this.emit({ kind: 'sound', cue: 'whirr', seat: m.info.id });
+        this.emit({ kind: 'hold', seat: m.info.id, until, of: 'screw' });
+        break;
+      }
+      case 'bridge': {
+        // Bounce marbles bounce the planks: a little downward shove the spring chain answers.
+        const imp = 0.4 + (m.info.stats.bounce ?? 5) * 0.18;
+        if (this.time >= (md.cooldownUntil ?? 0)) {
+          md.cooldownUntil = this.time + 300;
+          md.sagVel = (md.sagVel ?? 0) + imp;
+          if (imp > 1.2) this.sfx('groan', m, other.position.x, other.position.y);
+        }
         break;
       }
       case 'switchPad': {
@@ -985,6 +1079,128 @@ export class Game {
     const velocity = Body.getVelocity(m.body);
     const impact = Math.abs(velocity.x * surface.normal.x + velocity.y * surface.normal.y);
     if (impact < 1.3) pair.restitution = 0;
+    // MB-10C conveyor: the belt shoves marbles along its tangent. Slipstream friction-free
+    // marbles ignore it; the Speed stat helps you fight a belt running against you.
+    if (omd.kind === 'conveyor' && omd.belt && this.time >= m.aeroUntil) {
+      const belt = omd.belt;
+      const dir = beltDir(belt, this.time);
+      const tangent = surface.tangent;
+      const along = velocity.x * tangent.x + velocity.y * tangent.y;
+      const fighting = dir * along < 0;
+      const scale = fighting ? 1 - 0.45 * ((m.info.stats.speed - 1) / 9) : 1;
+      const pull = (dir * belt.v - along) * 0.09 * scale;
+      Body.setVelocity(m.body, { x: velocity.x + tangent.x * pull, y: velocity.y + tangent.y * pull * 0.5 });
+      pair.friction = 0.015;
+    }
+  }
+
+  /**
+   * MB-10C. Seesaw and rope bridge: the two movers that aren't race-clock posed. Their state is
+   * plain numbers in each body's meta — the host integrates here, streams it throttled, and a
+   * guest that received a state event springs its copy toward it in `ageEffects` (it never runs
+   * physics). The plank/chain bodies are static; posing them here keeps contacts deterministic.
+   */
+  private moverDynamics(dt: number) {
+    // ---- seesaw ----
+    for (const plank of elementBodies(this.track, 'seesaw')) {
+      const ss = meta(plank).seesaw;
+      if (!ss) continue;
+      // torque from riders: mass × signed distance along the plank
+      let torque = 0;
+      const cos = Math.cos(ss.angle), sin = Math.sin(ss.angle);
+      for (const m of this.marbles) {
+        if (m.finishedAt !== null || m.hold) continue;
+        const dx = m.body.position.x - plank.position.x, dy = m.body.position.y - plank.position.y;
+        const along = dx * cos + dy * sin, across = -dx * sin + dy * cos;
+        if (Math.abs(along) > ss.len * 0.55 || across < -22 || across > 6) continue;
+        torque += m.body.mass * along;
+        // plank tip velocity shoves the rider out of the way — the catapult
+        if (Math.abs(ss.angVel) > 0.0004) {
+          const tipVy = ss.angVel * along;
+          const v = Body.getVelocity(m.body);
+          if (tipVy < v.y - 0.2) Body.setVelocity(m.body, { x: v.x, y: v.y + (tipVy - v.y) * 0.4 });
+        }
+      }
+      // angle ODE: gravity torque vs damping, clamped at the stone stops
+      ss.angVel += torque * 0.0002 * dt;
+      ss.angVel *= Math.pow(ss.damp, dt / 16.667);
+      ss.angle += ss.angVel * dt;
+      if (ss.angle < ss.min) { ss.angle = ss.min; if (ss.angVel < 0) ss.angVel = 0; }
+      if (ss.angle > ss.max) { ss.angle = ss.max; if (ss.angVel > 0) ss.angVel = 0; }
+      (Body.setAngle as unknown as (b: Matter.Body, a: number, u: boolean) => void)(plank, ss.angle, true);
+      // stream the state, throttled — a resting plank barely talks
+      if ((ss.emittedAt === undefined ? -1 : this.time - ss.emittedAt) > (Math.abs(ss.angVel) > 0.0002 ? 150 : 1200) && Math.abs(ss.angle) + Math.abs(ss.angVel * 400) > 0.004) {
+        ss.emittedAt = this.time;
+        this.emit({ kind: 'seesaw', i: this.track.bodies.indexOf(plank), angle: ss.angle, angVel: ss.angVel });
+      }
+    }
+    // ---- rope bridge ----
+    for (const chain of this.bridgeChains()) {
+      const headFull = meta(chain[0]);
+      const n = chain.length;
+      const sags: number[] = new Array(n);
+      let groan = 0;
+      for (let i = 0; i < n; i++) {
+        const bd = chain[i];
+        const mdp = meta(bd);
+        const br = mdp.bridge!;
+        // riders press this plank down — spring toward the pressed depth
+        let load = 0;
+        for (const m of this.marbles) {
+          if (m.finishedAt !== null || m.hold) continue;
+          const dx = m.body.position.x - bd.position.x, dy = m.body.position.y - bd.position.y;
+          if (Math.abs(dx) < br.plankLen * 0.75 && dy > -28 && dy < 8) load += m.body.mass;
+        }
+        // neighbour planks share the dip — a chain pulls its neighbours
+        const left = (meta(chain[Math.max(0, i - 1)]).sag ?? 0), right = (meta(chain[Math.min(n - 1, i + 1)]).sag ?? 0);
+        const target = Math.min(90, load * 5.2) + (left + right) * 0.14 - (mdp.sag ?? 0) * (i > 0 || i < n - 1 ? 0.06 : 0);
+        mdp.sagVel = (mdp.sagVel ?? 0) + (target - (mdp.sag ?? 0)) * 0.030 * (dt / 16.667);
+        mdp.sagVel *= Math.pow(0.94, dt / 16.667);
+        mdp.sag = (mdp.sag ?? 0) + mdp.sagVel * (dt / 16.667);
+        sags[i] = mdp.sag;
+        groan += load;
+      }
+      for (let i = 0; i < n; i++) {
+        const mdp = meta(chain[i]);
+        const br = mdp.bridge!;
+        const pose = bridgePlankPose(br.anchor, br.slack, i, n, sags);
+        (Body.setPosition as unknown as (b: Matter.Body, p: Matter.Vector, u: boolean) => void)(chain[i], { x: pose.x, y: pose.y }, true);
+        (Body.setAngle as unknown as (b: Matter.Body, a: number, u: boolean) => void)(chain[i], pose.angle, true);
+      }
+      // a heavy pack groans the whole span (host-side cue, throttled)
+      if (groan > 6 && this.time - (headFull.hitAt ?? -9999) > 2400) {
+        headFull.hitAt = this.time;
+        const mid = chain[Math.floor(n / 2)];
+        this.sfx('groan', null, mid.position.x, mid.position.y);
+        this.emit({ kind: 'sound', cue: 'groan' });
+      }
+      // stream the chain, throttled at a low rate while it moves
+      const moving = sags.some((v, i) => Math.abs(v) > 1 || Math.abs(meta(chain[i]).sagVel ?? 0) > 0.05);
+      const headMd = meta(chain[0]);
+      if (moving && this.time - (headMd.syncAt ?? 0) > 250) {
+        headMd.syncAt = this.time;
+        this.emit({ kind: 'bridge', i: this.track.bodies.indexOf(chain[0]), sag: sags.map((v) => Math.round(v * 10) / 10) });
+      }
+    }
+  }
+
+  /** MB-10C: the rope bridge chains of this track, each as contiguous plank bodies. */
+  private bridgeChains(): Matter.Body[][] {
+    if (!this.bridgeCache) {
+      const bridges = elementBodies(this.track, 'bridge');
+      const chains: Matter.Body[][] = [];
+      let cur: Matter.Body[] = [];
+      for (const b of bridges) {
+        const br = meta(b).bridge;
+        if (!br) continue;
+        if (br.idx === 0 && cur.length) { chains.push(cur); cur = []; }
+        cur.push(b);
+      }
+      if (cur.length) chains.push(cur);
+      // state arrays guests blend toward arrive filled with the resting chain
+      this.bridgeCache = chains;
+    }
+    return this.bridgeCache;
   }
 
   private finishMarble(m: Marble) {
@@ -1133,22 +1349,41 @@ export class Game {
     // the same decision from the shock event they receive).
   }
 
-  /** Let a held marble go: tunnels pop it out of the exit hole with the set speed. */
+  /** Let a held marble go: tunnels pop out of the exit hole, buckets tip at the release angle, screws hand off at the tube end. */
   private releaseHold(m: Marble) {
     const hold = m.hold;
     m.hold = null;
-    if (!hold || hold.kind !== 'tunnel' || !hold.exit) return;
-    const exit = hold.exit;
+    if (!hold) return;
+    let exit: { x: number; y: number; dir: { x: number; y: number }; speed: number };
+    let safe = 900;
+    if (hold.kind === 'wheel' && hold.arc) {
+      // MB-10C: wherever the bucket is at release time, the marble drops off moving with the wheel
+      const a = hold.arc.omega * (this.time - (hold.at ?? this.time)) + hold.arc.fromA;
+      const px = hold.arc.x + Math.cos(a) * hold.arc.r;
+      const py = hold.arc.y + Math.sin(a) * hold.arc.r;
+      const sense = Math.sign(hold.arc.omega) || 1;
+      exit = { x: px, y: py, dir: { x: -Math.sin(a) * sense, y: Math.cos(a) * sense }, speed: Math.max(2.6, Math.abs(hold.arc.omega) * hold.arc.r * 16.667 + 0.8) };
+      safe = 1100;
+    } else {
+      if (!hold.exit) return;
+      exit = hold.exit;
+      if (hold.kind === 'screw') safe = 800;
+    }
     m.body.isSensor = false;
     Body.setPosition(m.body, { x: exit.x, y: exit.y });
     Body.setVelocity(m.body, { x: exit.dir.x * exit.speed, y: exit.dir.y * exit.speed });
     Body.setAngularVelocity(m.body, 0);
-    m.tunnelSafeUntil = this.time + 900;
+    m.tunnelSafeUntil = this.time + safe;
     m.motionAnchor = { ...m.body.position };
     m.motionAt = m.depthAt = this.time;
     m.deepestY = m.body.position.y;
-    this.sfx('rumble', m, exit.x, exit.y);
-    this.effects.push({ type: 'snow', x: exit.x, y: exit.y, ttl: 26, maxTtl: 26, color: '#b8a88f', particles: this.makeParticles(exit.x, exit.y, 8, 2.5) });
+    if (hold.kind === 'tunnel') {
+      this.sfx('rumble', m, exit.x, exit.y);
+      this.effects.push({ type: 'snow', x: exit.x, y: exit.y, ttl: 26, maxTtl: 26, color: '#b8a88f', particles: this.makeParticles(exit.x, exit.y, 8, 2.5) });
+    } else if (hold.kind === 'wheel') {
+      this.sfx('splash', m, exit.x, exit.y);
+      this.effects.push({ type: 'ring', x: exit.x, y: exit.y, ttl: 16, maxTtl: 16, color: '#7dd3fc' });
+    }
   }
 
   /**
@@ -1158,6 +1393,35 @@ export class Game {
    */
   ageEffects(dt: number): void {
     const s = dt / TICK;
+    // MB-10C guest-side mover blending: seats where the host streams dynamic state (seesaw
+    // angle, bridge sags) converge toward it here. The host itself integrates in moverDynamics
+    // inside step and never sets a remote target, so this is a no-op for it.
+    for (const plank of elementBodies(this.track, 'seesaw')) {
+      const ss = meta(plank).seesaw;
+      if (!ss) continue;
+      if (ss.remote) {
+        const lead = Math.min(600, this.time - ss.remote.at);
+        const targetA = ss.remote.angle + ss.remote.angVel * lead;
+        ss.angle += (targetA - ss.angle) * Math.min(1, dt * 0.012);
+        ss.angle = Math.max(ss.min, Math.min(ss.max, ss.angle));
+        (Body.setAngle as unknown as (b: Matter.Body, a: number, u: boolean) => void)(plank, ss.angle, true);
+      }
+    }
+    for (const chain of this.bridgeChains()) {
+      const headMd = meta(chain[0]);
+      if (!headMd.sagTarget || headMd.sagTarget.length !== chain.length) continue;
+      const current = chain.map((b2) => meta(b2).sag ?? 0);
+      const blended = current.map((v, i) => v + ((headMd.sagTarget![i] ?? 0) - v) * Math.min(1, dt * 0.008));
+      chain.forEach((b2, i) => { meta(b2).sag = blended[i]; });
+      for (let i = 0; i < chain.length; i++) {
+        const plankB = chain[i];
+        const mdp = meta(plankB);
+        const br = mdp.bridge!;
+        const pose = bridgePlankPose(br.anchor, br.slack, i, chain.length, blended);
+        (Body.setPosition as unknown as (b: Matter.Body, p2: Matter.Vector, u: boolean) => void)(plankB, { x: pose.x, y: pose.y }, true);
+        (Body.setAngle as unknown as (b: Matter.Body, a: number, u: boolean) => void)(plankB, pose.angle, true);
+      }
+    }
     // MB-10: kinematic movers read the race clock and stateful pieces ease toward their synced
     // state here — the one hook host (via step) and guest (via its own loop) both run, so every
     // screen draws identical element poses without any per-frame wire traffic.
@@ -1565,6 +1829,12 @@ export class Game {
       if (m.hold) {
         if (this.time >= m.hold.until) {
           this.releaseHold(m);
+        } else if (m.hold.kind === 'wheel' && m.hold.arc) {
+          // MB-10C bucket ride: the marble follows the bucket anchor around the wheel
+          const arc = m.hold.arc;
+          const a = arc.omega * (this.time - (m.hold.at ?? this.time)) + arc.fromA;
+          Body.setPosition(m.body, { x: arc.x + Math.cos(a) * arc.r, y: arc.y + Math.sin(a) * arc.r });
+          continue;
         } else {
           const transit = m.hold.transit ?? 900;
           const from = m.hold.from ?? m.body.position;
@@ -1572,7 +1842,9 @@ export class Game {
           if (exit) {
             const k = Math.max(0, Math.min(1, (this.time - (m.hold.until - transit)) / transit));
             // ease in-out so the ride reads as a dive-in, coast, pop-out
-            const e = k * k * (3 - 2 * k);
+            let e = k * k * (3 - 2 * k);
+            // MB-10C: a slipping screw rider wobbles backwards mid-tube (visible through the windows)
+            if (m.hold.kind === 'screw' && m.hold.slip) e = Math.max(0, e - Math.sin(k * Math.PI * 2.5) * 0.06 * Math.sin(k * Math.PI));
             Body.setPosition(m.body, { x: from.x + (exit.x - from.x) * e, y: from.y + (exit.y - from.y) * e });
           }
           continue;
@@ -1681,6 +1953,11 @@ export class Game {
 
     this.supports.clear();
     Engine.update(this.engine, dt);
+
+    // MB-10C: the two DYNAMIC movers integrate after the solver — seesaw torque from whoever
+    // is standing on the plank, bridge springs from the pack overhead. Host streams the state;
+    // guests blend toward the streamed state and re-pose the same way.
+    this.moverDynamics(dt);
 
     for (const m of this.marbles) {
       if (m.finishedAt !== null) {

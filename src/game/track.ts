@@ -60,7 +60,13 @@ export type Kind =
   | 'saw'
   | 'crusher'
   | 'boulder'
-  | 'mace';
+  | 'mace'
+  // MB-10C: mechanical movers
+  | 'wheel'
+  | 'screw'
+  | 'conveyor'
+  | 'seesaw'
+  | 'bridge';
 
 /**
  * MB-10 element framework. A kinematic driver for the moving pieces: a body's pose is a pure
@@ -126,6 +132,15 @@ export type Motion =
     /** Rest time at each end of the arc. */
     pauseMs: number;
     phaseMs: number;
+  }
+  /** MB-10C water wheel: the hub (and its paddle art) spins about its pivot at omega. */
+  | {
+    mode: 'spin';
+    pivot: Matter.Vector;
+    /** rad/ms, sign included (dir mirrored into it). */
+    omega: number;
+    phaseMs: number;
+    radius: number;
   }
   /** MB-10B boulder: rolled along a polyline, then respawns at the start of the path. */
   | {
@@ -210,6 +225,25 @@ export interface Meta {
   rumbledAt?: number;
   /** Boulder: the distance it has already rolled this cycle (drives the rolling skin's spin). */
   rolled?: number;
+  // ---- MB-10C: mechanical movers ----
+  /** Water wheel: bucket count, tip-out angle (rad, canvas y-down from +x), bucket occupancy. */
+  wheel?: { buckets: number; release: number; slots: number[] };
+  /** Screw lift: tube endpoints, per-marble transit, capacity queue (clock-times it is busy to). */
+  screw?: { a: Matter.Vector; b: Matter.Vector; ms: number; cap: number; seats: { seat: number; until: number }[] };
+  /** Conveyor belt: push per step (px), base direction, optional clock flip period. */
+  belt?: { v: number; dir0: 1 | -1; flipMs?: number };
+  /** Seesaw: dynamic plank state (rad), angular velocity, limits, damping per 16.7ms. */
+  seesaw?: { len: number; min: number; max: number; angle: number; angVel: number; damp: number; remote?: { angle: number; angVel: number; at: number } | null; emittedAt?: number };
+  /** Rope bridge plank: chain geometry shared by the chain (anchors, gap, slack) + this plank's index. */
+  bridge?: { anchor: Matter.Vector[]; plankLen: number; slack: number; idx: number; n: number };
+  /** Bridge plank current sag offset / spring velocity (host integrates; guests blend from events). */
+  sag?: number;
+  sagVel?: number;
+  /** Low-rate dynamic sync: last clock a state event went out for this body. */
+  syncAt?: number;
+  /** MB-10C guest-side bridge chain target (head plank): plank sags from the last bridge event. */
+  sagTarget?: number[];
+  sagAt?: number;
 }
 
 /** Anchors for the art skin. Physics never reads these; sprites are drawn over the vector bodies. */
@@ -722,6 +756,147 @@ export class Builder {
     this.bodies.push(b);
     return b;
   }
+
+  // ---------- MB-10C: mechanical movers ----------
+
+  /**
+   * A water wheel: a big wooden wheel with bucket paddles. The hub body carries the shared meta
+   * (and spins for the skin); a thin rim-band sensor circle catches marbles that fall into a
+   * bucket — both share ONE meta object so bucket occupancy is single-source. Kinematic: bucket
+   * angles are pure functions of the race clock, host and guest alike.
+   */
+  waterWheel(px: number, py: number, r = 110, buckets = 8, rpm = 3, dir: 0 | 1 = 0, releaseDeg = 105, phaseMs = 0) {
+    const pivot = { x: this.X(px), y: py };
+    // mirror flips the spin sense so the ride direction survives the course mirror
+    const sense = (this.flip ? (dir === 0 ? -1 : 1) : (dir === 0 ? 1 : -1)) as 1 | -1;
+    const omega = (sense * rpm * 2 * Math.PI) / 60000;
+    const release = (releaseDeg * Math.PI) / 180;
+    const shared: Meta = {
+      kind: 'wheel',
+      motion: { mode: 'spin', pivot, omega, phaseMs, radius: r },
+      wheel: { buckets, release, slots: new Array(buckets).fill(0) },
+    };
+    const hub = Bodies.circle(pivot.x, pivot.y, 12, { ...STATIC_OPTS, angle: omega * phaseMs, label: 'wheel', restitution: 0.3, friction: 0.01 });
+    hub.plugin = shared;
+    this.bodies.push(hub);
+    const ring = Bodies.circle(pivot.x, pivot.y, r + 18, { ...SENSOR_OPTS, label: 'wheel' });
+    ring.plugin = shared;
+    this.bodies.push(ring);
+    return hub;
+  }
+
+  /**
+   * An Archimedes screw lift: a turning screw inside a tube, modelled as a timed transit from
+   * `a` to `b` (the marble rides visible through the tube windows — no real screw physics). The
+   * entry sensor queues marbles up to `cap`; tube cheeks are two parallel walls so the ride
+   * cannot be interrupted from the outside.
+   */
+  screwLift(ax: number, ay: number, bx: number, by: number, ms = 3200, cap = 2) {
+    const a = { x: this.X(ax), y: ay };
+    const b = { x: this.X(bx), y: by };
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len = Math.hypot(dx, dy);
+    const nx = -dy / len, ny = dx / len;
+    const shared: Meta = { kind: 'screw', dir: { x: dx / len, y: dy / len }, screw: { a, b, ms, cap, seats: [] } };
+    const sensor = Bodies.circle(a.x, a.y, 34, { ...SENSOR_OPTS, label: 'screw' });
+    sensor.plugin = shared;
+    this.bodies.push(sensor);
+    // tube cheeks: two thin walls running the span, mirrored about the path
+    for (const side of [-1, 1] as const) {
+      const cheek = Bodies.rectangle((a.x + b.x) / 2 + nx * 15 * side, (a.y + b.y) / 2 + ny * 15 * side, len, 5, {
+        ...STATIC_OPTS, label: 'wall', angle: Math.atan2(dy, dx), friction: 0.001,
+      });
+      cheek.plugin = { kind: 'wall' } as Meta;
+      this.bodies.push(cheek);
+    }
+    return sensor;
+  }
+
+  /**
+   * A conveyor belt: a rail that pushes marbles along its surface. `speed` is px/step; `flipMs`
+   * (optional) has the belt reverse on the race clock. The belt direction rides the surface
+   * tangent, so a mirrored course mirrors the belt for free; `dir` says which end is "forward".
+   */
+  conveyor(x1: number, y1: number, x2: number, y2: number, speed = 0.16, flipMs: number | undefined = undefined, dir: 0 | 1 = 0) {
+    const b = this.ramp(x1, y1, x2, y2, T * 1.6, 'conveyor');
+    b.friction = 0.02;
+    const md = meta(b);
+    md.belt = { v: speed, dir0: (this.flip ? (dir === 0 ? -1 : 1) : dir === 0 ? 1 : -1) as 1 | -1 };
+    if (flipMs && flipMs > 0) md.belt.flipMs = flipMs;
+    return b;
+  }
+
+  /**
+   * A seesaw: a long plank on a stone pivot that tips under weight, catapulting the light end.
+   * DYNAMIC unlike the MB-10B machines: the angle comes from a weighted ODE, so the host
+   * streams `{ angle, angVel }` at a low rate and guests spring their plank toward it.
+   */
+  seesaw(px: number, py: number, len = 300, limDeg = 22, damp = 0.9) {
+    const pivot = { x: this.X(px), y: py };
+    const lim = (limDeg * Math.PI) / 180;
+    const b = Bodies.rectangle(pivot.x, pivot.y, len, 12, {
+      ...STATIC_OPTS, label: 'seesaw', restitution: 0.35, friction: 0.005, chamfer: { radius: 3 },
+    });
+    b.plugin = { kind: 'seesaw', seesaw: { len, min: -lim, max: lim, angle: 0, angVel: 0, damp } } as Meta;
+    this.bodies.push(b);
+    return b;
+  }
+
+  /**
+   * A rope bridge: a chain of planks on ropes between two anchors, sagging and swaying under
+   * the pack. Each plank is a static body re-posed every step from the host's spring chain;
+   * guests get the chain state as a low-rate event. Planks are contiguous in `bodies`.
+   */
+  ropeBridge(ax: number, ay: number, bx: number, by: number, planks = 8, slack = 34) {
+    const a = { x: this.X(ax), y: ay };
+    const b2 = { x: this.X(bx), y: by };
+    const span = Math.hypot(b2.x - a.x, b2.y - a.y);
+    const plankLen = (span / planks) * 1.35;
+    const out: Matter.Body[] = [];
+    for (let i = 0; i < planks; i++) {
+      const t = (i + 0.5) / planks;
+      const x = a.x + (b2.x - a.x) * t;
+      const y = a.y + (b2.y - a.y) * t + slack * 4 * t * (1 - t);
+      const p = Bodies.rectangle(x, y, plankLen, 9, {
+        ...STATIC_OPTS, label: 'bridge', angle: Math.atan2(b2.y - a.y, b2.x - a.x), restitution: 0.15, friction: 0.01, chamfer: { radius: 2 },
+      });
+      p.plugin = {
+        kind: 'bridge',
+        bridge: { anchor: [a, b2], plankLen, slack, idx: i, n: planks },
+        baseY: y,
+        sag: 0,
+        sagVel: 0,
+      } as Meta;
+      this.bodies.push(p);
+      out.push(p);
+    }
+    return out;
+  }
+}
+
+// ---------------- MB-10C pose helpers (shared host / guest / skin) ----------------
+
+/** Rest height of a bridge plank: the anchor line plus the authored sag profile. */
+export function bridgeRestY(anchor: Matter.Vector[], slack: number, idx: number, n: number): number {
+  const t = (idx + 0.5) / n;
+  return anchor[0].y + (anchor[1].y - anchor[0].y) * t + slack * 4 * t * (1 - t);
+}
+
+/** Rest x position of a bridge plank on the anchor line. */
+export function bridgeRestX(anchor: Matter.Vector[], idx: number, n: number): number {
+  const t = (idx + 0.5) / n;
+  return anchor[0].x + (anchor[1].x - anchor[0].x) * t;
+}
+
+/** Pose (position + angle) of one bridge plank, given every plank's current sag offset. */
+export function bridgePlankPose(anchor: Matter.Vector[], slack: number, idx: number, n: number, sag: number[]): { x: number; y: number; angle: number } {
+  const x = bridgeRestX(anchor, idx, n);
+  const y = bridgeRestY(anchor, slack, idx, n) + (sag[idx] ?? 0);
+  const prevX = idx > 0 ? bridgeRestX(anchor, idx - 1, n) : anchor[0].x;
+  const nextX = idx < n - 1 ? bridgeRestX(anchor, idx + 1, n) : anchor[1].x;
+  const prevY = idx > 0 ? bridgeRestY(anchor, slack, idx - 1, n) + (sag[idx - 1] ?? 0) : anchor[0].y;
+  const nextY = idx < n - 1 ? bridgeRestY(anchor, slack, idx + 1, n) + (sag[idx + 1] ?? 0) : anchor[1].y;
+  return { x, y, angle: Math.atan2(nextY - prevY, nextX - prevX) };
 }
 
 // ---------------- Segments ----------------
@@ -1163,6 +1338,78 @@ const segSwitchLanes: Seg = (b, y) => {
   return 600;
 };
 
+// ---------------- MB-10C sectors: movers ----------------
+
+/**
+ * Wheel Lift: marbles drop onto the left rim of a water wheel, ride a bucket up and over,
+ * and tip out upper-right onto the exit lane. A shallow trough under the wheel catches
+ * through-swingers and bounce-outs and filters them to the same bottom-right exit — no trap.
+ */
+const segWheelLift: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  b.ramp(0, y + 30, 200, y + 200);
+  b.waterWheel(300, y + 260, 130, 6, 3.2 + b.rng() * 1.0, 0, 300);
+  // exit lane: catches the tip-out at (365, y+147) moving right+down
+  b.ramp(370, y + 170, W - 20, y + 470);
+  // trough under the wheel for misses — converges beside the exit lane
+  b.ramp(60, y + 420, W - 20, y + 492);
+  if (b.rng() < 0.4) b.itemBox(520 + b.rng() * 160, y + 360);
+  return 540;
+};
+
+/**
+ * Screw Tower: a ramp feeds the mouth of an Archimedes screw which turns marbles up to a high
+ * exit lane. Overshoots land on the floor beneath the tube and roll out bottom-right.
+ */
+const segScrewTower: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  b.ramp(0, y + 330, 430, y + 440);
+  b.screwLift(440, y + 440, 760, y + 120, 2400 + b.rng() * 800, 4);
+  b.ramp(740, y + 140, W - 10, y + 300);
+  b.ramp(420, y + 480, W - 10, y + 530);
+  return 560;
+};
+
+/**
+ * Beltway: the main descent is a conveyor that alternates shoving the pack uphill and downhill
+ * on the race clock. Same start/finish geometry as a plain ramp, so mirroring is free.
+ */
+const segBeltway: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  b.ramp(0, y + 30, 60, y + 70);
+  b.conveyor(60, y + 70, 500, y + 285, 0.2 + b.rng() * 0.1, 6000 + b.rng() * 3000, 1);
+  b.ramp(500, y + 285, W - 10, y + 420);
+  if (b.rng() < 0.5) b.itemBox(620 + b.rng() * 200, y + 330);
+  return 460;
+};
+
+/**
+ * Teeter Crossing: a seesaw plank bridges a dip. Cross the pivot smartly and the tip flings
+ * you onto the upper exit; get dumped off either end and the safety trough carries you down
+ * to the same bottom-right out — slower, never stuck.
+ */
+const segTeeterCrossing: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  b.ramp(0, y + 30, 330, y + 190);
+  b.seesaw(360, y + 215, 380, 16, 0.88);
+  b.ramp(500, y + 250, W - 10, y + 430);
+  b.ramp(150, y + 330, W - 10, y + 450);
+  return 500;
+};
+
+/**
+ * Rope Crossing: a sagging plank bridge spans a pocket. Marbles that punch through between
+ * planks drop onto the pocket floor and rejoin at the bottom-right beside the main lane.
+ */
+const segRopeCrossing: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  b.ramp(0, y + 60, 320, y + 180);
+  b.ropeBridge(330, y + 205, 590, y + 215, 8, 34 + b.rng() * 14);
+  b.ramp(590, y + 215, W - 10, y + 430);
+  b.ramp(330, y + 340, W - 10, y + 442);
+  return 480;
+};
+
 const POOL: { seg: Seg; name: string; weight: number }[] = [
   { seg: segZigzag, name: 'Zigzag Pipes', weight: 2 },
   { seg: segFunnel, name: 'Funnel', weight: 2 },
@@ -1187,6 +1434,11 @@ const POOL: { seg: Seg; name: string; weight: number }[] = [
   { seg: segCrusherAlley, name: 'Crusher Alley', weight: 0.55 },
   { seg: segBoulderRun, name: 'Boulder Run', weight: 0.6 },
   { seg: segMaceSweep, name: 'Mace Sweep', weight: 0.55 },
+  { seg: segWheelLift, name: 'Wheel Lift', weight: 0.35 },
+  { seg: segScrewTower, name: 'Screw Tower', weight: 0.4 },
+  { seg: segBeltway, name: 'Beltway', weight: 0.5 },
+  { seg: segTeeterCrossing, name: 'Teeter Crossing', weight: 0.45 },
+  { seg: segRopeCrossing, name: 'Rope Crossing', weight: 0.5 },
 ];
 
 export const DEFAULT_PROFILE: TrackProfile = {

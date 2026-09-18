@@ -105,6 +105,22 @@ function replayPiece(b: Builder, piece: Piece): void {
       case 'mace':
         b.mace(piece.x, piece.y, piece.arm, piece.arc, piece.sweep, piece.rest, piece.phase, piece.r);
         break;
+      // ---- MB-10C ----
+      case 'wheel':
+        b.waterWheel(piece.x, piece.y, piece.r, piece.buckets, piece.rpm, piece.dir, piece.release, piece.phase);
+        break;
+      case 'screw':
+        b.screwLift(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.ms, piece.cap);
+        break;
+      case 'conveyor':
+        b.conveyor(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.v, piece.flipMs || undefined, piece.dir);
+        break;
+      case 'seesaw':
+        b.seesaw(piece.x, piece.y, piece.len, piece.lim, piece.damp);
+        break;
+      case 'bridge':
+        b.ropeBridge(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.planks, piece.slack);
+        break;
     }
   } finally {
     b.flip = false;

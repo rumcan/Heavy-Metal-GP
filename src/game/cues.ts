@@ -40,6 +40,9 @@
  *   shriek    — MB-10B: a swinging blade catches a marble
  *   grind     — MB-10B: a saw bites and throws a marble up
  *   slam      — MB-10B: a crusher piston docks at floor level
+ *   splash    — MB-10C: a water wheel bucket dunks or tips a marble out
+ *   groan     — MB-10C: a seesaw or rope bridge takes real load
+ *   whirr     — MB-10C: an Archimedes screw swallows a marble for the climb
  */
 export const SOUND_EVENTS = [
   'gate',
@@ -62,6 +65,9 @@ export const SOUND_EVENTS = [
   'shriek',
   'grind',
   'slam',
+  'splash',
+  'groan',
+  'whirr',
 ] as const;
 
 /** One named cue. The wire carries these, so the list is the contract. */

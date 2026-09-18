@@ -98,6 +98,14 @@ function pieceXs(piece: Piece): number[] {
       return [piece.a[0], piece.b[0]];
     case 'boulder':
       return piece.pts.map(([x]) => x);
+    // ---- MB-10C ----
+    case 'wheel':
+    case 'seesaw':
+      return [(piece as unknown as { x: number }).x];
+    case 'screw':
+    case 'conveyor':
+    case 'bridge':
+      return [(piece as unknown as { a: readonly [number, number] }).a[0], (piece as unknown as { b: readonly [number, number] }).b[0]];
     case 'tunnel':
       return [piece.x, piece.exit[0]];
     case 'wrecker':
@@ -135,6 +143,17 @@ function pieceYs(piece: Piece): number[] {
       return piece.pts.map(([, y]) => y);
     case 'mace':
       return [piece.y, piece.y + piece.arm + piece.r];
+    // ---- MB-10C ----
+    case 'wheel':
+    case 'seesaw': {
+      const md = piece as unknown as { y: number; r?: number };
+      return piece.t === 'wheel' ? [md.y - (md.r ?? 0), md.y + (md.r ?? 0)] : [md.y, md.y + 40];
+    }
+    case 'screw':
+    case 'conveyor':
+      return [Math.min(piece.a[1], piece.b[1]), Math.max(piece.a[1], piece.b[1])];
+    case 'bridge':
+      return [Math.min(piece.a[1], piece.b[1]), Math.max(piece.a[1], piece.b[1]) + piece.slack + 40];
     default: {
       const p = piece as { y: number };
       return [p.y];
@@ -320,6 +339,24 @@ function staticChecks(def: TrackDef, track: Track | null): ValidationIssue[] {
         }
       } else if (p.t === 'mace') {
         if (p.arc > 2.2) issues.push({ severity: 'warning', message: `Mace #${idx}: sweep arc over 2.2 rad sweeps into the ground`, pos: pos({ x: p.x, y: p.y }), pieceIndex: idx });
+      } else if (p.t === 'wheel') {
+        // MB-10C: the rim band must stay inside the pipe or buckets capture marbles into the wall
+        if (p.x - p.r < 20 || p.x + p.r > W - 20) issues.push({ severity: 'warning', message: `Wheel #${idx}: rim reaches into the boundary — buckets may drop marbles on the wall`, pos: pos({ x: p.x, y: p.y }), pieceIndex: idx });
+        if (p.y + p.r > def.height + 40) issues.push({ severity: 'warning', message: `Wheel #${idx}: dips ${Math.round(p.y + p.r - def.height)}u below the circuit`, pos: pos({ x: p.x, y: p.y }), pieceIndex: idx });
+      } else if (p.t === 'screw') {
+        const len = Math.hypot(p.b[0] - p.a[0], p.b[1] - p.a[1]);
+        if (len < 120 || len > 650) issues.push({ severity: 'error', message: `Screw #${idx}: tube length ${Math.round(len)}u outside 120..650`, pos: pos({ x: p.a[0], y: p.a[1] }), pieceIndex: idx });
+        if (p.b[1] > p.a[1]) issues.push({ severity: 'warning', message: `Screw #${idx}: runs downhill — a slide, arguably`, pos: pos({ x: p.a[0], y: p.a[1] }), pieceIndex: idx });
+      } else if (p.t === 'conveyor') {
+        const len = Math.hypot(p.b[0] - p.a[0], p.b[1] - p.a[1]);
+        if (len < 80 || len > 720) issues.push({ severity: 'error', message: `Belt #${idx}: length ${Math.round(len)}u outside 80..720`, pos: pos({ x: p.a[0], y: p.a[1] }), pieceIndex: idx });
+        if (p.flipMs > 0 && p.flipMs < 1500) issues.push({ severity: 'warning', message: `Belt #${idx}: flip faster than 1.5s is a seizure, not a belt`, pos: pos({ x: p.a[0], y: p.a[1] }), pieceIndex: idx });
+      } else if (p.t === 'seesaw') {
+        if (p.x - p.len / 2 < 10 || p.x + p.len / 2 > W - 10) issues.push({ severity: 'warning', message: `Seesaw #${idx}: plank ends reach into the boundary`, pos: pos({ x: p.x, y: p.y }), pieceIndex: idx });
+      } else if (p.t === 'bridge') {
+        const span = Math.hypot(p.b[0] - p.a[0], p.b[1] - p.a[1]);
+        if (span < 160 || span > 660) issues.push({ severity: 'error', message: `Bridge #${idx}: span ${Math.round(span)}u outside 160..660`, pos: pos({ x: p.a[0], y: p.a[1] }), pieceIndex: idx });
+        if (span / p.planks < 18) issues.push({ severity: 'warning', message: `Bridge #${idx}: planks overlap — fewer planks on this span`, pos: pos({ x: p.a[0], y: p.a[1] }), pieceIndex: idx });
       }
     });
 

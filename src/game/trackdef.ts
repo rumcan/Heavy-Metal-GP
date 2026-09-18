@@ -82,12 +82,24 @@ export interface CrusherPiece extends PieceBase { t: 'crusher'; x: number; y: nu
 export interface BoulderPiece extends PieceBase { t: 'boulder'; pts: Vec[]; r: number; interval: number; rest: number; phase: number }
 /** Mace sweeper: spiked ball on an `arm`, sweeping ±`arc` rad with `sweep` ms travel and `rest` ms pause at each end. */
 export interface MacePiece extends PieceBase { t: 'mace'; x: number; y: number; arm: number; arc: number; sweep: number; rest: number; phase: number; r: number }
+// ---- MB-10C: mechanical movers (wheel/screw/conveyor kinematic; seesaw/bridge dynamic with low-rate state sync) ----
+/** Water wheel: bucket wheel at (x, y), `buckets` 4..10, `rpm` rev/min, `dir` spin sense, tip-out at `release` deg. */
+export interface WheelPiece extends PieceBase { t: 'wheel'; x: number; y: number; r: number; buckets: number; rpm: number; dir: 0 | 1; release: number; phase: number }
+/** Archimedes screw lift: timed transit from `a` to `b` over `ms`, capacity queue `cap`. */
+export interface ScrewPiece extends PieceBase { t: 'screw'; a: Vec; b: Vec; ms: number; cap: number }
+/** Conveyor belt rail: pushes along the tangent at `v` px/step; `flipMs` reverses it (0 = never); `dir` which way is forward. */
+export interface ConveyorPiece extends PieceBase { t: 'conveyor'; a: Vec; b: Vec; v: number; flipMs: number; dir: 0 | 1 }
+/** Seesaw plank: pivot at (x, y), plank `len`, tips to ±`lim` deg under weight, `damp` damping per 16.7ms. Dynamic. */
+export interface SeesawPiece extends PieceBase { t: 'seesaw'; x: number; y: number; len: number; lim: number; damp: number }
+/** Rope bridge chain: `planks` slats between anchors `a` and `b` with rope `slack`. Dynamic. */
+export interface BridgePiece extends PieceBase { t: 'bridge'; a: Vec; b: Vec; planks: number; slack: number }
 
 export type Piece =
   | RampPiece | CurvePiece | IcePiece | LoopPiece | HoopPiece | WreckerPiece | PadPiece | BoostPiece
   | SpinnerPiece | BreakablePiece | PegPiece | PPegPiece | ItemBoxPiece | BucketPiece | WallPiece | BlockPiece
   | BarricadePiece | TunnelPiece | CrumblePiece | TrapdoorPiece | SwitchPiece
-  | BladePiece | SawPiece | CrusherPiece | BoulderPiece | MacePiece;
+  | BladePiece | SawPiece | CrusherPiece | BoulderPiece | MacePiece
+  | WheelPiece | ScrewPiece | ConveyorPiece | SeesawPiece | BridgePiece;
 
 export interface TrackDef {
   v: 1;
@@ -290,6 +302,43 @@ class DefRecorder extends Builder {
     );
   }
 
+  // ---- MB-10C ----
+
+  override waterWheel(px: number, py: number, r = 110, buckets = 8, rpm = 3, dir: 0 | 1 = 0, releaseDeg = 105, phaseMs = 0) {
+    return this.capture(
+      () => super.waterWheel(px, py, r, buckets, rpm, dir, releaseDeg, phaseMs),
+      () => ({ t: 'wheel', x: px, y: py, r, buckets, rpm, dir, release: releaseDeg, phase: phaseMs, flip: this.mirrored }),
+    );
+  }
+
+  override screwLift(ax: number, ay: number, bx: number, by: number, ms = 3200, cap = 2) {
+    return this.capture(
+      () => super.screwLift(ax, ay, bx, by, ms, cap),
+      () => ({ t: 'screw', a: [ax, ay] as Vec, b: [bx, by] as Vec, ms, cap, flip: this.mirrored }),
+    );
+  }
+
+  override conveyor(x1: number, y1: number, x2: number, y2: number, speed = 0.16, flipMs?: number, dir: 0 | 1 = 0) {
+    return this.capture(
+      () => super.conveyor(x1, y1, x2, y2, speed, flipMs, dir),
+      () => ({ t: 'conveyor', a: [x1, y1] as Vec, b: [x2, y2] as Vec, v: speed, flipMs: flipMs ?? 0, dir, flip: this.mirrored }),
+    );
+  }
+
+  override seesaw(px: number, py: number, len = 300, limDeg = 22, damp = 0.9) {
+    return this.capture(
+      () => super.seesaw(px, py, len, limDeg, damp),
+      () => ({ t: 'seesaw', x: px, y: py, len, lim: limDeg, damp, flip: this.mirrored }),
+    );
+  }
+
+  override ropeBridge(ax: number, ay: number, bx: number, by: number, planks = 8, slack = 34) {
+    return this.capture(
+      () => super.ropeBridge(ax, ay, bx, by, planks, slack),
+      () => ({ t: 'bridge', a: [ax, ay] as Vec, b: [bx, by] as Vec, planks, slack, flip: this.mirrored }),
+    );
+  }
+
   /** Spinners start at a rolled angle; stamp the angles the builder picked onto the pieces already recorded. */
   override randomiseSpinners() {
     super.randomiseSpinners();
@@ -353,6 +402,12 @@ function replayPiece(b: Builder, piece: Piece) {
       case 'crusher': b.crusher(piece.x, piece.y, piece.w, piece.travel, piece.period, piece.floor, piece.phase); break;
       case 'boulder': b.boulder(piece.pts.map(([x, y]) => [x, y] as [number, number]), piece.r, piece.interval, piece.rest, piece.phase); break;
       case 'mace': b.mace(piece.x, piece.y, piece.arm, piece.arc, piece.sweep, piece.rest, piece.phase, piece.r); break;
+      // ---- MB-10C ----
+      case 'wheel': b.waterWheel(piece.x, piece.y, piece.r, piece.buckets, piece.rpm, piece.dir, piece.release, piece.phase); break;
+      case 'screw': b.screwLift(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.ms, piece.cap); break;
+      case 'conveyor': b.conveyor(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.v, piece.flipMs || undefined, piece.dir); break;
+      case 'seesaw': b.seesaw(piece.x, piece.y, piece.len, piece.lim, piece.damp); break;
+      case 'bridge': b.ropeBridge(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.planks, piece.slack); break;
     }
   } finally {
     b.flip = false;
@@ -820,6 +875,58 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
         r: number(raw.r, `${at}.r`, 12, 48, problems),
         ...body,
       };
+    // ---- MB-10C ----
+    case 'wheel':
+      return {
+        t: 'wheel',
+        x: number(raw.x, `${at}.x`, 0, W, problems),
+        y: real(raw.y, `${at}.y`, problems),
+        r: number(raw.r, `${at}.r`, 60, 200, problems),
+        buckets: number(raw.buckets, `${at}.buckets`, 4, 10, problems),
+        rpm: number(raw.rpm, `${at}.rpm`, 0.5, 10, problems),
+        dir: (raw.dir === 0 || raw.dir === 1 ? raw.dir : (problems.add(`${at}.dir must be 0 or 1.`), 0 as 0 | 1)),
+        release: number(raw.release, `${at}.release`, 20, 340, problems),
+        phase: real(raw.phase, `${at}.phase`, problems),
+        ...body,
+      };
+    case 'screw':
+      return {
+        t: 'screw',
+        a: vec(raw.a, `${at}.a`, problems),
+        b: vec(raw.b, `${at}.b`, problems),
+        ms: number(raw.ms, `${at}.ms`, 1200, 12000, problems),
+        cap: number(raw.cap, `${at}.cap`, 1, 4, problems),
+        ...body,
+      };
+    case 'conveyor':
+      return {
+        t: 'conveyor',
+        a: vec(raw.a, `${at}.a`, problems),
+        b: vec(raw.b, `${at}.b`, problems),
+        v: number(raw.v, `${at}.v`, 0.02, 0.45, problems),
+        flipMs: number(raw.flipMs, `${at}.flipMs`, 0, 30000, problems),
+        dir: (raw.dir === 0 || raw.dir === 1 ? raw.dir : (problems.add(`${at}.dir must be 0 or 1.`), 0 as 0 | 1)),
+        ...body,
+      };
+    case 'seesaw':
+      return {
+        t: 'seesaw',
+        x: number(raw.x, `${at}.x`, 0, W, problems),
+        y: real(raw.y, `${at}.y`, problems),
+        len: number(raw.len, `${at}.len`, 140, 420, problems),
+        lim: number(raw.lim, `${at}.lim`, 6, 28, problems),
+        damp: number(raw.damp, `${at}.damp`, 0.6, 0.995, problems),
+        ...body,
+      };
+    case 'bridge':
+      return {
+        t: 'bridge',
+        a: vec(raw.a, `${at}.a`, problems),
+        b: vec(raw.b, `${at}.b`, problems),
+        planks: number(raw.planks, `${at}.planks`, 6, 12, problems),
+        slack: number(raw.slack, `${at}.slack`, 8, 90, problems),
+        ...body,
+      };
     default:
       problems.add(`${at}.t is unknown piece type ${JSON.stringify(raw.t)}.`);
       return null;
@@ -849,6 +956,14 @@ function pieceYs(piece: Piece): number[] {
       return piece.pts.map(([, y]) => y);
     case 'mace':
       return [piece.y, piece.y + piece.arm + piece.r];
+    case 'wheel':
+      return [piece.y - piece.r, piece.y + piece.r];
+    case 'screw':
+    case 'conveyor':
+    case 'bridge':
+      return [Math.min(piece.a[1], piece.b[1]), Math.max(piece.a[1], piece.b[1])];
+    case 'seesaw':
+      return [piece.y, piece.y + 40];
     case 'hoop':
     case 'spinner':
     case 'breakable':
