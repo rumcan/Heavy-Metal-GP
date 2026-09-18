@@ -59,6 +59,7 @@ import {
   submitLadderScore,
   writePlayerValue,
   type LadderResult,
+  type LadderSubmitResult,
 } from './transport';
 import {
   advanceRating,
@@ -88,7 +89,12 @@ export interface FiledOutcome {
   verdict: RaceVerdict;
   /** False when this race had already been filed (the once-only guard). */
   applied: boolean;
-  /** True when the race was not rated at all (see RankVerdict.rated). */
+  /**
+   * True when this race COUNTED for this seat — it was rated by the room's
+   * rules (`RoomRaceResult.rated`) AND the arithmetic had a field to rate
+   * (`RankVerdict.rated`). False is the "no delta on this screen" flag: a
+   * practice race, a friends' lobby with house rules, or a race against nobody.
+   */
   rated: boolean;
   /**
    * Whether the rating file is in RUN storage after this call. False when a
@@ -121,6 +127,16 @@ export interface RoomRaceResult {
   durationSec?: number;
   /** The room's verdict for one seat, when the room sent one. */
   reason?: 'finish' | 'forfeit';
+  /**
+   * RK-03: the ROOM's verdict on whether this race counts at all — its rules,
+   * not the arithmetic. Absent reads as rated. False means the room did not
+   * rate this race (it was not created by matchmaking, or the host set
+   * house-rule power-ups): the classification is still shown, but NOTHING is
+   * written — no rating file, no ladder line, no once-only key consumed. The
+   * gate is here rather than in the runtime so that "an unrated race changes
+   * nothing" is a property of the store, where the writes are.
+   */
+  rated?: boolean;
 }
 
 /**
@@ -152,6 +168,33 @@ export interface RankStore {
 // ── the file ───────────────────────────────────────────────────────────────
 
 /**
+ * Where a rating is kept between races, as a seam.
+ *
+ * Production is `RUN_RANK_IO`: per-player storage plus the keep-best ladder,
+ * both behind `src/net/transport.ts` — the SDK is never named here. It is a
+ * parameter for one reason: a page has exactly ONE player bucket, and RK-03's
+ * acceptance (“every client shows the same deltas for one race”) needs two
+ * seats of one race filing for real, side by side, in a test. Two `RankIO`s,
+ * two buckets, one `fileRoomResult`.
+ */
+export interface RankIO {
+  readStorage: (key: string) => Promise<string | null>;
+  writeStorage: (key: string, value: string) => Promise<boolean>;
+  submitLadder: (params: {
+    rating: number;
+    durationSec: number;
+    metadata?: Record<string, unknown>;
+  }) => Promise<LadderSubmitResult>;
+}
+
+/** The one store the shipped game has: RUN player storage and the ladder. */
+export const RUN_RANK_IO: RankIO = {
+  readStorage: readPlayerValue,
+  writeStorage: writePlayerValue,
+  submitLadder: submitLadderScore,
+};
+
+/**
  * The rating file, or a fresh one. Never throws — a boot path that can fail on
  * a storage read is worse than a rating that starts again at 1000.
  *
@@ -159,35 +202,35 @@ export interface RankStore {
  * room, a preview, a signed-out player) gets a fresh file every time, and the
  * race it plays is unrated. See departure (1) in the header.
  */
-export async function loadRankState(): Promise<RankState> {
+export async function loadRankState(io: RankIO = RUN_RANK_IO): Promise<RankState> {
   try {
-    return parseRankState(await readPlayerValue(RANK_STORAGE_KEY)) ?? freshRankState();
+    return parseRankState(await io.readStorage(RANK_STORAGE_KEY)) ?? freshRankState();
   } catch {
     return freshRankState();
   }
 }
 
 /** Persist a rating file. Resolves whether RUN's storage took the write. */
-export async function saveRankState(state: RankState): Promise<boolean> {
+export async function saveRankState(state: RankState, io: RankIO = RUN_RANK_IO): Promise<boolean> {
   try {
-    return await writePlayerValue(RANK_STORAGE_KEY, serializeRankState(state));
+    return await io.writeStorage(RANK_STORAGE_KEY, serializeRankState(state));
   } catch {
     return false;
   }
 }
 
 /** The last room result this client filed, as its once-only key. */
-export async function loadFiledKey(): Promise<string | null> {
+export async function loadFiledKey(io: RankIO = RUN_RANK_IO): Promise<string | null> {
   try {
-    return await readPlayerValue(RANK_FILED_KEY);
+    return await io.readStorage(RANK_FILED_KEY);
   } catch {
     return null;
   }
 }
 
-export async function saveFiledKey(key: string): Promise<boolean> {
+export async function saveFiledKey(key: string, io: RankIO = RUN_RANK_IO): Promise<boolean> {
   try {
-    return await writePlayerValue(RANK_FILED_KEY, key);
+    return await io.writeStorage(RANK_FILED_KEY, key);
   } catch {
     return false;
   }
@@ -267,12 +310,19 @@ export async function fileRoomResult(input: {
   board: RatedPlayer[];
   state: RankState;
   localOnly?: boolean;
-}): Promise<FiledOutcome> {
+}, io: RankIO = RUN_RANK_IO): Promise<FiledOutcome> {
   const verdict = rateRaceOutcome({
     self: { playerId: input.selfId, state: input.state },
     board: input.board,
     order: input.result.order,
   });
+
+  // The room's rules first: a race the room did not rate is not filed whatever
+  // the arithmetic would have said about it, and it consumes no key — so a
+  // rated rematch in the same room still files.
+  if (input.result.rated === false) {
+    return { state: input.state, verdict, applied: false, rated: false, stored: true, ladder: null };
+  }
 
   // A race that was not rated (a field of one, a solo lobby) has nothing to
   // guard and nothing to publish: it is a no-op by definition, not an error.
@@ -281,7 +331,7 @@ export async function fileRoomResult(input: {
   }
 
   const key = raceKeyOf(input.result);
-  if (!input.localOnly && (await loadFiledKey()) === key) {
+  if (!input.localOnly && (await loadFiledKey(io)) === key) {
     // Same race, already counted: report the CURRENT file untouched. The
     // verdict is recomputed only for the screen's sake and deliberately not
     // adopted — a second arrival is a no-op, not a second rating.
@@ -289,8 +339,8 @@ export async function fileRoomResult(input: {
   }
 
   const next = advanceRating(input.state, verdict.state);
-  if (!input.localOnly) await saveFiledKey(key);
-  const stored = await saveRankState(next);
+  if (!input.localOnly) await saveFiledKey(key, io);
+  const stored = await saveRankState(next, io);
   if (input.localOnly) {
     return { state: next, verdict, applied: true, rated: true, stored, ladder: null };
   }
@@ -298,7 +348,7 @@ export async function fileRoomResult(input: {
   // The ladder write is last and its failure is not the player's problem: the
   // rating is already in their own file, and a keep-best board would ignore a
   // lower number anyway.
-  const ladder = await submitLadderScore({
+  const ladder = await io.submitLadder({
     rating: ladderScoreFor(next.rating),
     durationSec: input.result.durationSec ?? 0,
     metadata: {
@@ -328,10 +378,10 @@ export async function fileRoomResult(input: {
  * race and the results screen share one instance — and therefore one once-only
  * key — and a rematch in the same page cannot race two stores over one file.
  */
-export function createRankStore(): RankStore {
+export function createRankStore(io: RankIO = RUN_RANK_IO): RankStore {
   return {
-    loadState: loadRankState,
-    fileResult: fileRoomResult,
+    loadState: () => loadRankState(io),
+    fileResult: (input) => fileRoomResult(input, io),
     loadLadder: (limit = 20) => readLadder(limit),
   };
 }

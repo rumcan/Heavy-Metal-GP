@@ -277,13 +277,46 @@ differ, and a lower submission comes back `accepted: false` and changes nothing.
 An unreachable board is `null`, and the panel says so in a line rather than
 showing an empty table that looks like nobody plays this game.
 
-Still to come in this epic: **RK-03** (the room's board and the filed verdict,
-so a matchmade race actually moves a number — `src/net/rankstore.ts` is already
-the store it will call, through `fileRoomResult`), **RK-04** (rank-bucketed
-quick race), **RK-05** (badges and the ladder panel, which reads
-`rankStore().loadLadder()`) and **RK-06**. Nothing moves a rating during a race
-yet: the arithmetic, the file and the ladder are finished; the race-end wiring
-is RK-03.
+**The race, rated (RK-03).** Four messages join the wire (`PROTOCOL_VERSION` 3):
+a driver publishes **their own** rating (`playerRating` — the relay drops
+anything signed by somebody else, and a re-publish must carry the join token
+the seat first filed), the room relays the whole board back (`ratingUpdate`,
+and in the welcome, so a lobby shows numbers before the lights), the host files
+the classification when the flag falls (`resultClaim`), and the room broadcasts
+the one result it will ever carry (`result`). No rating NUMBERS travel as
+opinions: the result carries the room's board and the room's classification, and
+every client recomputes `rateRace` from that pair, so two seats cannot disagree
+about what a race did.
+
+`src/rooms/RaceRoom.ts` gained the room's half: the board it has been told, one
+result per room (the once-only guard is set *before* the broadcast), and the
+fact no client has — **who was still there**. A seat that empties during a live
+race is a DNF in the filed classification however the marble finished (MP-08
+hands it to the AI, and that AI can roll home), which is HexMatch's leaver rule
+carried into a race. A race is **rated only when it was created by matchmaking
+and raced without house-rule power-ups**: the host declares the first on its
+claim (it is the only seat that knows how the room was opened — the room's own
+`metadata` is static config and the matchmaking criteria ride a join ticket the
+room never sees) and the room ANDs in the second, the one rule it can watch for
+itself as it relays the lobby. The result carries the verdict, so every seat
+reads the same flag.
+
+`src/net/rank-runtime.ts` is the client half, ported from HexMatch's
+`RankRuntime`: hold the file, publish it, turn the host's `results` frame into
+the claim (`claimFinish` — human seats only, in the simulation's order, a DNF
+below every finisher), fold the room's `result` back into the driver's own file
+through `rankstore.fileResult`, and give the screen a `RaceVerdict` plus the
+`FiledOutcome` that says whether anything was written. A driver who walks out
+before the flag files **their own** DNF locally (`fileOwnForfeit`, `localOnly`:
+no ladder line — the ladder is written from a result the room witnessed), while
+the survivors' numbers come from the room's own filing. Wiring this into the
+lobby, the HUD and the results screen is RK-05; the store, the room and the
+runtime are done and covered end to end.
+
+Still to come in this epic: **RK-04** (rank-bucketed quick race — `searchBucket`
+is already in `rating.ts`), **RK-05** (badges, the lobby's rated line and the
+ladder panel, which reads `rankStore().loadLadder()` and the runtime's
+`outcome`), and **RK-06** (the ranked E2E sweep).
 
 ## Credits And The Pit Shop
 
@@ -416,6 +449,20 @@ nothing for a solo race; round-trips the stored file, clamps a hostile record
 and refuses somebody else's JSON; checks the wire's clamping and its
 fresh-1000 default for a driver the room never heard from; and pins the tier
 table — contiguous bands, the top one open-ended, HexMatch's thresholds.
+`tests/rank-runtime.test.ts` covers the rated race (RK-03) end to end, with no
+mocks in the middle: the real room (`tests/room-harness.ts`) between the real
+`RankRuntime` and the real `createRankStore(io)` — one store per seat. It pins
+the acceptance list: a rating published for another driver is dropped, a
+re-publish must carry the seat's own join token, the host's claim is filed once
+and only after the lights, a guest cannot claim, a claim cannot invent a driver,
+a driver who walked out is a DNF in the room's own filed classification,
+house-rule power-ups make a race unrated, and a race the room did not rate
+writes nothing at all. Its headline test is the epic's second acceptance: three
+seats, three histories, one room — including a guest that never saw a board —
+and every driver's own row is exactly the row the other two seats were shown.
+The leaver case is closed the same way: a survivor's verdict shows the driver
+who walked out as a DNF with a negative delta, and no ladder line, because the
+room witnessed the abandonment and the quitter did not.
 `tests/rankstore.test.ts` covers where a rating lives (RK-02) by driving the
 real chain — `rankstore` → `transport` → the RUN SDK's own in-memory backends,
 with the browser globals stubbed the way `tests/multiplayer.test.ts` stubs them.

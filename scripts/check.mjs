@@ -16,7 +16,10 @@ const commands = [
     // Ranked racing (RK-01): multi-player Elo, tiers, the stored file and the wire. Pure — no SDK, no DOM.
     'tests/rating.test.ts',
     // Ranked racing (RK-02): where a rating lives — RUN player storage, the once-only guard, the ladder.
-    'tests/rankstore.test.ts'],
+    'tests/rankstore.test.ts',
+    // Ranked racing (RK-03): the rated wire — the room's board, one result per room, the
+    // leaver's DNF, and the headless proof that every seat computes the same deltas.
+    'tests/rank-runtime.test.ts'],
 ];
 
 for (const args of commands) {

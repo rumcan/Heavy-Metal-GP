@@ -40,6 +40,12 @@ import type { Inventory, ItemType, MarbleStats, TrackProfile, TrackTheme } from 
 import { SOUND_EVENTS, isSoundEvent } from '../game/cues';
 import type { SoundEvent } from '../game/cues';
 export type { SoundEvent };
+// RK-01's shapes, by TYPE only: `rating.ts` is pure (no SDK, no DOM, no clock),
+// so importing it here costs the room bundle nothing — and the wire's rows are
+// then the arithmetic's own `RaceEntry`, which is what stops the two drifting.
+import { RATING_FLOOR } from './rating';
+import type { RaceEntry, RankWire } from './rating';
+export type { RaceEntry, RankWire };
 
 // ══════════════════════════════════════════════════════════════════════════
 // Constants
@@ -53,7 +59,7 @@ export type { SoundEvent };
  * lobby/ready/start, 20 Hz packed `state`, `events`, chunked `snapshot`,
  * `intent`, `resync`, `results`, presence and the hard refusal on mismatch.
  */
-export const PROTOCOL_VERSION = 2; // 2: kit frames, AI power-ups switch, benched AI seats
+export const PROTOCOL_VERSION = 3; // 3: the rated wire (rating board, result claim, the room's result)
 
 /**
  * Realtime WS frame cap in bytes. Mirrors the SDK's `MAX_BROADCAST_BYTES`
@@ -257,6 +263,14 @@ export interface WelcomeMsg {
   /** The whole grid — ten seats, humans and AI, in slot order. */
   seats: Seat[];
   settings: RaceSettings;
+  /**
+   * RK-03: the room's rating board — every driver that has published a rating,
+   * as the room holds it. It rides the greeting so a newcomer's first look at
+   * the lobby already shows the numbers, and so the board a race is rated from
+   * is the ROOM's copy rather than whichever updates happened to arrive.
+   * Optional: absent reads as "nobody has published yet".
+   */
+  ratings?: RankWire[];
 }
 
 /**
@@ -661,6 +675,161 @@ export interface HelloMsg {
   type: 'hello';
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// RK-03 — the rated wire: the room's rating board, and the one result a race
+// can file.
+//
+// Ported from HexMatch's RANK-01 (v6) messages and adapted to a race. The shape
+// of the whole thing is HexMatch's, and so is the reason for it:
+//
+//   - a RATING is published by its owner and relayed to everybody, so both ends
+//     of a race compute from one shared board (RK-01's arithmetic reads the
+//     board, never a peer's opinion);
+//   - a RESULT carries NO rating numbers at all. The claim names the finishing
+//     order of the human seats; the room stamps it with its own clock and its
+//     own copy of the board, and every client recomputes `rateRace` from THAT.
+//     A forged claim can therefore only ever ask for the wrong verdict, never
+//     hand out a number the arithmetic does not produce.
+//
+// What a race changes about the duel: there is no winner and loser pair. A race
+// is a CLASSIFICATION — an order of the rated humans, with non-finishers below
+// every finisher — so `order` is the verdict, and the room's job is to be the
+// one party that saw who actually stayed to the end.
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * One rated seat of a classification, in finishing order.
+ *
+ * These are the HUMAN seats only, by player id — AI marbles are not rated and
+ * never appear here (RK-01). `left` is the room's own mark, and it means "this
+ * driver abandoned the race" (`RaceEntry` in `src/net/rating.ts`, which this
+ * aliases so the wire and the arithmetic cannot drift apart).
+ */
+export type RankedRow = RaceEntry;
+
+/** Rated drivers a race can carry: the room's six human seats. */
+export const MAX_RATED_DRIVERS = 6;
+
+/** Ratings one board may carry: the same six seats, plus slack for a stale row. */
+export const MAX_RATING_ROWS = 8;
+
+/**
+ * client → server. A driver's rating, published once per join.
+ *
+ * The one rule the relay enforces: `playerId` must be the SENDER's own id. A
+ * rating is the one number a player is allowed to be wrong about (it only ever
+ * feeds an expectation, and it gates nothing), but it must never be possible to
+ * write somebody else's — which is why the id check exists at all.
+ *
+ * `joinToken` is minted by the client when it joins and authorises a later
+ * re-publish for the same seat (a reconnect, a re-attach). The room keeps the
+ * first token it saw for a driver and refuses any later rating that arrives
+ * without it, so a third party who joined afterwards cannot overwrite a rating
+ * mid-race. It is a session nonce, not a secret: it never leaves the room.
+ */
+export interface PlayerRatingMsg {
+  type: 'playerRating';
+  playerId: string;
+  rating: number;
+  /** Rated races played — `RankState.matches` under the board's name (RK-01). */
+  games: number;
+  joinToken: string;
+}
+
+/**
+ * server → everyone. The room's rating board, whole.
+ *
+ * Needed because a rating published after a client's own welcome would
+ * otherwise be visible only to whoever joined later: the host publishes on
+ * boot, a guest may already be in the lobby, and the guest must still learn the
+ * host's number before the race is filed. Six rows at most — cheaper to send
+ * whole than to sequence.
+ */
+export interface RatingUpdateMsg {
+  type: 'ratingUpdate';
+  ratings: RankWire[];
+}
+
+/**
+ * host → server. "The race is over, and this is the classification."
+ *
+ * Only the host may file a finished race (the relay drops it otherwise): the
+ * host is the seat that runs the simulation and therefore the only one that can
+ * say who crossed the line. A guest claiming a classification is either
+ * confused or lying; both are ignored.
+ *
+ * The claim carries no numbers. The room stamps the result with its own clock
+ * and its own copy of the board, and — this is the part that matters in a race
+ * — marks every driver it saw ABANDON as a non-finisher, whatever the host's
+ * summary said about their marble.
+ */
+export interface ResultClaimMsg {
+  type: 'resultClaim';
+  /** The rated humans, in finishing order: finishers first, then the DNFs. */
+  order: RankedRow[];
+  /** Race length in seconds, as the host measured it; 0 when unknown. */
+  durationSec: number;
+  /**
+   * The host's word on whether this race counts: true only when the room it is
+   * claiming in was created by quick-race matchmaking, and the lobby raced
+   * without house-rule power-ups.
+   *
+   * It has to be the host's call because the room CANNOT make it: a room's
+   * `config.metadata` is its static configuration (`rundot/realtime.config.json`)
+   * and the client's matchmaking criteria ride a join ticket the room never
+   * sees (`RoomOptions` is `criteria` + `createOptions` + `persistentKey`, and
+   * `matchmakeRoom` takes no `createOptions` at all) — so "was I matchmade" is
+   * only known to the seat that pressed the button, which is the host.
+   *
+   * The room still has the last word: it ANDs this with the rules it watched
+   * the lobby set (house-rule items ⇒ not rated) and stamps the result. See
+   * `ResultMsg.rated`.
+   */
+  rated: boolean;
+}
+
+/**
+ * server → everyone. The room's filed result — the end of a rated race, from
+ * the only party that saw every seat.
+ *
+ * Two producers, one shape:
+ *
+ *   1. the host's `resultClaim`, validated and stamped by the room, so every
+ *      seat acts on one classification rather than each trusting itself;
+ *   2. the room itself, when a seat EMPTIES mid-race: the driver who walked out
+ *      is a DNF (`left`), and the room is the only party that saw them go.
+ *
+ * `ratings` is the board as it stood when the result was filed, so a result is
+ * self-contained: a seat that never saw another driver's `ratingUpdate` (or saw
+ * it late) still computes the same numbers as everybody else.
+ */
+export interface ResultMsg {
+  type: 'result';
+  order: RankedRow[];
+  ratings: RankWire[];
+  reason: 'finish' | 'forfeit';
+  /**
+   * The ROOM's verdict on whether this race counts — its rules, not the
+   * arithmetic. False means: file nothing. Every seat reads the same flag, and
+   * the client that skips its write does so because the room told it to, not
+   * because its own button said so. (A field too small to rate is a separate,
+   * arithmetic verdict — `RaceVerdict.rated`.)
+   */
+  rated: boolean;
+  /** How long the race lasted, in seconds, as the host measured it. */
+  durationSec: number;
+  /**
+   * The seats that emptied during this race, as the ROOM saw them (plural: a
+   * six-seat race can lose more than one driver, where HexMatch's duel could
+   * lose only the loser). Lets a survivors' screen name who walked out even if
+   * the roster event and this message race — and every one of them is already
+   * `left` in `order`, which is what the arithmetic reads.
+   */
+  departedIds?: string[];
+  /** Room clock (ms) when the room filed it. Forms the once-only race key. */
+  at: number;
+}
+
 export type RaceProtocol =
   | WelcomeMsg
   | LobbyMsg
@@ -676,7 +845,11 @@ export type RaceProtocol =
   | KickMsg
   | PeerStatusMsg
   | RejectMsg
-  | KitMsg;
+  | KitMsg
+  | PlayerRatingMsg
+  | RatingUpdateMsg
+  | ResultClaimMsg
+  | ResultMsg;
 
 /**
  * host → everyone: what the human drivers are carrying, after a pickup or a
@@ -705,6 +878,10 @@ export const RACE_MESSAGE_TYPES = [
   'peerStatus',
   'reject',
   'kit',
+  'playerRating',
+  'ratingUpdate',
+  'resultClaim',
+  'result',
 ] as const;
 
 export type RaceMessageType = RaceProtocol['type'];
@@ -1229,6 +1406,10 @@ export function validateWelcome(msg: unknown): ProtocolError | null {
   // Settings are part of the welcome, not an afterthought: the circuit is the
   // track, and a guest that guessed it would build the wrong world.
   if (!readRaceSettings(o.settings)) return bad('Welcome settings are missing or malformed.');
+  // RK-03: the board rides the greeting. Present and unreadable is refused
+  // rather than half-read — a lobby that shows one driver's number wrong is a
+  // lobby whose race nobody can check afterwards.
+  if (o.ratings !== undefined && !readRankBoard(o.ratings)) return bad('Welcome ratings are not a board.');
   return null;
 }
 
@@ -1433,6 +1614,73 @@ function validateResults(msg: ResultsMsg): ProtocolError | null {
   return null;
 }
 
+/**
+ * One rating as it travels, or `null` when it is not one (RK-03).
+ *
+ * Tolerant in the direction that matters and strict in the other: the rating
+ * itself is clamped to a legal number (`rating.ts`'s floor, no ceiling), the
+ * game count is floored at zero, and a row that carries no id at all is
+ * refused — a board row nobody can be named by is a row nobody can be rated
+ * against.
+ */
+export function readRankWire(value: unknown): RankWire | null {
+  if (!value || typeof value !== 'object') return null;
+  const o = value as Record<string, unknown>;
+  if (!isText(o.playerId, MAX_NAME_LENGTH)) return null;
+  if (!isNumber(o.rating)) return null;
+  if (!isNumber(o.games) || o.games < 0) return null;
+  return {
+    playerId: o.playerId as string,
+    rating: Math.max(RATING_FLOOR, Math.round(o.rating)),
+    games: Math.max(0, Math.floor(o.games)),
+  };
+}
+
+/** A whole board, or `null` when any row is not a rating (RK-03). */
+export function readRankBoard(value: unknown): RankWire[] | null {
+  if (!Array.isArray(value) || value.length > MAX_RATING_ROWS) return null;
+  const board: RankWire[] = [];
+  const seen = new Set<string>();
+  for (const entry of value) {
+    const wire = readRankWire(entry);
+    if (!wire) return null;
+    // One row per driver: a duplicated id would let a seat skew its own pair.
+    if (seen.has(wire.playerId)) continue;
+    seen.add(wire.playerId);
+    board.push(wire);
+  }
+  return board;
+}
+
+/**
+ * A rated classification: one row per rated HUMAN, in finishing order (RK-03).
+ *
+ * The two rules a race cannot do without: every row names a driver, and nobody
+ * appears twice (a duplicated row would be counted twice in the pairwise
+ * arithmetic). Order between finishers is the array's, so it is not checked
+ * here — the rows are simply read in the order they arrived.
+ */
+export function readRankedOrder(value: unknown): RankedRow[] | null {
+  if (!Array.isArray(value) || value.length > MAX_RATED_DRIVERS) return null;
+  const order: RankedRow[] = [];
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object') return null;
+    const o = entry as Record<string, unknown>;
+    if (!isText(o.playerId, MAX_NAME_LENGTH)) return null;
+    if (typeof o.finished !== 'boolean') return null;
+    if (o.left !== undefined && typeof o.left !== 'boolean') return null;
+    if (seen.has(o.playerId as string)) return null;
+    seen.add(o.playerId as string);
+    order.push({
+      playerId: o.playerId as string,
+      finished: o.finished,
+      ...(o.left === true ? { left: true } : {}),
+    });
+  }
+  return order;
+}
+
 export interface ValidateOptions {
   /** Override the serialized-size cap (default `FRAME_CAP_BYTES`). */
   maxBytes?: number;
@@ -1524,6 +1772,45 @@ export function validateMessage(msg: unknown, opts: ValidateOptions = {}): Proto
       return validateFrom(msg);
     case 'results':
       return validateResults(msg);
+    // RK-03. Shape only for the rating itself: a number that is not a number is
+    // malformed, and a rating below the floor is CLAMPED rather than refused
+    // (`readRankWire`) — the board only ever feeds an expectation.
+    case 'playerRating': {
+      if (!isText(msg.playerId, MAX_NAME_LENGTH)) return bad('Rating names no driver.');
+      if (!isNumber(msg.rating)) return bad('Rating is not a number.');
+      if (!isNumber(msg.games) || msg.games < 0) return bad('Rating has no game count.');
+      if (!isText(msg.joinToken, 128)) return bad('Rating has no join token.');
+      return null;
+    }
+    case 'ratingUpdate':
+      return readRankBoard(msg.ratings) ? null : bad('Rating update is not a board.');
+    case 'resultClaim': {
+      if (!readRankedOrder(msg.order)) return bad('Result claim is not a classification.');
+      if (!isNumber(msg.durationSec) || msg.durationSec < 0) return bad('Result claim has no duration.');
+      // Required, not optional: "was this race rated" must never be a question
+      // two peers can answer differently by omission.
+      if (typeof msg.rated !== 'boolean') return bad('Result claim does not say whether the race is rated.');
+      return null;
+    }
+    case 'result': {
+      if (!readRankedOrder(msg.order)) return bad('Result is not a classification.');
+      if (!readRankBoard(msg.ratings)) return bad('Result has no rating board.');
+      if (msg.reason !== 'finish' && msg.reason !== 'forfeit') return bad('Result has no verdict.');
+      // Both required: every seat must be able to tell, from the result alone,
+      // whether the race counted and how long it lasted.
+      if (typeof msg.rated !== 'boolean') return bad('Result does not say whether the race counted.');
+      if (!isNumber(msg.durationSec) || msg.durationSec < 0) return bad('Result has no duration.');
+      if (msg.departedIds !== undefined) {
+        if (!Array.isArray(msg.departedIds) || msg.departedIds.length > MAX_RATED_DRIVERS) {
+          return bad('Result has no departing drivers.');
+        }
+        for (const id of msg.departedIds) {
+          if (!isText(id, MAX_NAME_LENGTH)) return bad('Result names no departing driver.');
+        }
+      }
+      if (!isNumber(msg.at) || msg.at < 0) return bad('Result has no room clock.');
+      return null;
+    }
     case 'peerStatus': {
       if (typeof msg.playerId !== 'string' || msg.playerId.length === 0) return bad('Peer status has no player id.');
       if (msg.status !== 'disconnected' && msg.status !== 'reconnected') return bad('Peer status is not a status.');
