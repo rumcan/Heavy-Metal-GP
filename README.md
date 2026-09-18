@@ -207,6 +207,47 @@ leave is held for the room's 30-second reconnect grace before the other seat
 sees the player leave — that is the platform's seat hold, and the room already
 announces the drop (`peerStatus`) with the countdown attached.
 
+## Ranked racing
+
+Quick race matchmaking shipped with MP-07; what ranks the drivers is the
+**RK-01..RK-06 epic**, a port of HexMatch's RANK-01 — and **RK-01, the rating,
+is in**. `src/net/rating.ts` is the pure half: an Elo number, the tier it
+names, and the arithmetic that moves it. It imports nothing at all — no RUN
+SDK, no DOM, no clock — so the client, the room and the unit suite can all read
+the same answers out of it.
+
+A race is rated as a FIELD, not as a duel. Every two rated HUMANS in it are a
+head-to-head result (ahead beats behind), each driver's K is divided by
+`(humans − 1)` — so a full six-marble race moves a rating about as much as one
+duel, and an even six-driver race pays its winner exactly what an even duel
+pays — and every pair cancels, so while a field shares one K its deltas sum to
+zero and the ladder does not inflate. AI marbles are never on the board and are
+not in the classification the ladder reads: a marble nobody is steering cannot
+be farmed for rating.
+
+The rules a scoreboard needs: a DNF ranks below every finisher, two DNFs tie at
+half a point each, and a driver who LEFT is a DNF however the classification
+read — HexMatch's leaver rule, kept, because MP-08 hands a quitter's marble to
+the AI and that marble can still roll home, and paying it would be paying
+people to quit. Crossing the line and *then* closing the tab is not leaving:
+that is a finished race, and the room is what tells the two apart. A driver the
+room never heard from is read as a fresh 1000 rather than dropped out of the
+arithmetic, so a silent seat cannot quietly turn everyone else's race into a
+duel. Provisional drivers (the first ten rated races) move at K=40, established
+ones at K=16, the floor is 100 and there is no ceiling. The tiers use
+HexMatch's thresholds with this game's names — Scrap, Bronze Bolt, Iron, Steel,
+Gold Gear, Heavy Metal — and `unranked` is a state rather than a band until a
+driver files their first rated race. `searchBucket` (a rating window as a
+matchmaking criterion, since the pool matches by equality) is here too, for
+RK-04.
+
+Still to come in this epic: **RK-02** (where a rating lives — RUN player
+storage and the leaderboard), **RK-03** (the room's board and the filed
+verdict, so a matchmade race actually moves a number), **RK-04** (rank-bucketed
+quick race), **RK-05** (badges and the ladder panel) and **RK-06**. Nothing
+writes a rating yet — the arithmetic and its file are finished, and no race has
+been wired to them.
+
 ## Credits And The Pit Shop
 
 Your first account receives 400 welcome credits. Every completed quick race or
@@ -327,6 +368,17 @@ funnels, traps, out-of-bounds recovery, freeze/oil timing, anvil mass, stat budg
 inventory consumption, effect expiry and championship points. Economy tests in
 `tests/economy.test.ts` cover purchases, insufficient funds, capped inventory,
 corrupt saves, payout amounts and duplicate-payout prevention.
+`tests/rating.test.ts` covers the rating (RK-01): HexMatch's RANK-01 tests
+ported to a race, plus the two claims the epic's acceptance names outright — a
+two-human race equals a duel exactly, pair for pair, and a six-driver race's
+deltas sum to zero apart from rounding. It also sweeps every finishing place to
+show that finishing higher never pays less; checks that a DNF ranks below every
+finisher, that two DNFs tie, and that a leaver counts as a DNF even when the
+classification lists them as a finisher; keeps AI seats off the board and files
+nothing for a solo race; round-trips the stored file, clamps a hostile record
+and refuses somebody else's JSON; checks the wire's clamping and its
+fresh-1000 default for a driver the room never heard from; and pins the tier
+table — contiguous bands, the top one open-ended, HexMatch's thresholds.
 `tests/multiplayer.test.ts` covers the transport seam: that exactly one client
 module may import the SDK's realtime API (and one server module the room
 server), that the room registration and the transport agree on the room type,
