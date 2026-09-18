@@ -21,6 +21,11 @@ export const CAT_LOOP_CLOSE = 0x0010;
  * marble drops this category from its mask and phases straight through without opening them.
  */
 export const CAT_FRAGILE = 0x0020;
+/**
+ * MB-10B. Danger machinery (blades, saws, crushers, boulders, maces). Solid to marbles, but a
+ * Ghost marble phases through danger as well as rivals — the item is the timing cheat.
+ */
+export const CAT_DANGER = 0x0040;
 
 export type Kind =
   | 'wall'
@@ -49,7 +54,13 @@ export type Kind =
   | 'crumble'
   | 'trapdoor'
   | 'switch'
-  | 'switchPad';
+  | 'switchPad'
+  // MB-10B: blades and crushers
+  | 'blade'
+  | 'saw'
+  | 'crusher'
+  | 'boulder'
+  | 'mace';
 
 /**
  * MB-10 element framework. A kinematic driver for the moving pieces: a body's pose is a pure
@@ -69,6 +80,66 @@ export type Motion =
     openMs: number;
     closedMs: number;
     phase: number;
+  }
+  /** MB-10B blade: an arm on a pivot swinging about vertical, angle = amp·sin. */
+  | {
+    mode: 'pendulum';
+    pivot: Matter.Vector;
+    /** Arm length (pivot to blade tip). The body is a thin rect from pivot to tip. */
+    arm: number;
+    amp: number;
+    periodMs: number;
+    phaseMs: number;
+    /** Half-thickness of the blade blade. */
+    thin: number;
+  }
+  /** MB-10B saw: a spinning disc sliding back and forth along a slot (a == b: set into the track). */
+  | {
+    mode: 'slide';
+    a: Matter.Vector;
+    b: Matter.Vector;
+    periodMs: number;
+    phaseMs: number;
+    /** Self-spin for the tangential throw and the skin, in rad/ms. */
+    spinW: number;
+    r: number;
+  }
+  /** MB-10B crusher: a vertical stamper: top rest, fast eased slam, floor hold, slow rise. */
+  | {
+    mode: 'piston';
+    top: Matter.Vector;
+    travel: number;
+    /** Total cycle time; the rise takes whatever the slam and holds leave. */
+    periodMs: number;
+    /** Time spent sitting at floor level each cycle (< periodMs, and the rise stays positive). */
+    floorMs: number;
+    phaseMs: number;
+  }
+  /** MB-10B mace: an arm sweeping ±arc with a pause at each end; eases so a shock can stall it. */
+  | {
+    mode: 'sweep';
+    pivot: Matter.Vector;
+    arm: number;
+    arc: number;
+    /** One-way travel time between the two end pauses. */
+    sweepMs: number;
+    /** Rest time at each end of the arc. */
+    pauseMs: number;
+    phaseMs: number;
+  }
+  /** MB-10B boulder: rolled along a polyline, then respawns at the start of the path. */
+  | {
+    mode: 'roll';
+    path: Matter.Vector[];
+    /** Cumulative length at each path point. */
+    stepLens: number[];
+    spanLen: number;
+    /** Full cycle: rest at the top, then the run. Rolling speed derives from both. */
+    intervalMs: number;
+    /** Time the boulder sits at the first point before rolling. */
+    restMs: number;
+    phaseMs: number;
+    r: number;
   };
 
 export type PegColor = 'blue' | 'orange' | 'green';
@@ -132,6 +203,13 @@ export interface Meta {
   eased?: number;
   /** Body index of the switch plate this paddle flips (indices are stable — bodies are append-only). */
   paired?: number;
+  // ---- MB-10B: blades and crushers ----
+  /** Mace sweeper: a Shockwave in range stalls the arm until this clock time (guests mirror the shock event). */
+  stunUntil?: number;
+  /** Crusher: time the rumble warning last fired (host-side debounce for the cue). */
+  rumbledAt?: number;
+  /** Boulder: the distance it has already rolled this cycle (drives the rolling skin's spin). */
+  rolled?: number;
 }
 
 /** Anchors for the art skin. Physics never reads these; sprites are drawn over the vector bodies. */
@@ -534,6 +612,116 @@ export class Builder {
     this.bodies.push(pad);
     return plate;
   }
+
+  // ---------- MB-10B: blades and crushers ----------
+
+  /**
+   * A swinging blade: a huge axe head on an iron arm, pendulum-swinging across the track off the
+   * race clock. Marbles that meet it get knocked backwards with a shriek; Ghosts phase through it
+   * (CAT_DANGER leaves their mask). The body is the thin arm/blade rect from pivot to tip.
+   */
+  blade(px: number, py: number, len: number, amp = 0.9, periodMs = 2600, phaseMs = 0, thin = 8) {
+    const pivot = { x: this.X(px), y: py };
+    const a0 = amp * Math.sin((2 * Math.PI * phaseMs) / periodMs);
+    const b = Bodies.rectangle(pivot.x + Math.sin(a0) * len / 2, pivot.y + Math.cos(a0) * len / 2, thin * 2, len, {
+      ...STATIC_OPTS, label: 'blade', angle: a0, restitution: 0.55, friction: 0.001,
+      collisionFilter: { category: CAT_DANGER, mask: 0xffff, group: 0 },
+    });
+    b.plugin = { kind: 'blade', motion: { mode: 'pendulum', pivot, arm: len, amp, periodMs, phaseMs, thin } } as Meta;
+    this.bodies.push(b);
+    return b;
+  }
+
+  /**
+   * A saw blade: a spinning disc with red teeth, either set into the track in place or sliding
+   * back and forth along a wood-and-iron slot. `to` names the far end of the slot (`[x, y] ===
+   * [x, y]` pins it in place). The disc's self-spin is the skin's cue and the engine's throw.
+   */
+  saw(x: number, y: number, r = 26, to?: [number, number], periodMs = 3600, spinW = 0.5, phaseMs = 0) {
+    const a = { x: this.X(x), y };
+    const bb = to ? { x: this.X(to[0]), y: to[1] } : { ...a };
+    const tt = ((phaseMs / periodMs) % 1 + 1) % 1;
+    const k = 0.5 - 0.5 * Math.cos(2 * Math.PI * tt);
+    const b = Bodies.circle(a.x + (bb.x - a.x) * k, a.y + (bb.y - a.y) * k, r, {
+      ...STATIC_OPTS, label: 'saw', restitution: 0.5, friction: 0.9,
+      collisionFilter: { category: CAT_DANGER, mask: 0xffff, group: 0 },
+    });
+    b.plugin = { kind: 'saw', motion: { mode: 'slide', a, b: bb, periodMs, phaseMs, spinW, r } } as Meta;
+    this.bodies.push(b);
+    return b;
+  }
+
+  /**
+   * A crusher piston: a heavy iron stamper hanging above the lane that slams down on a timer,
+   * squashing whatever is under it for a moment before slowly rising. All clock; the shadow and
+   * the rumble tell the rhythm. `floorMs` is how long it sits at floor level each cycle.
+   */
+  crusher(cx: number, topY: number, w = 130, travel = 120, periodMs = 4200, floorMs = 700, phaseMs = 0) {
+    const top = { x: this.X(cx), y: topY };
+    const plateH = 44;
+    const b = Bodies.rectangle(top.x, top.y + plateH / 2, w, plateH, {
+      ...STATIC_OPTS, label: 'crusher', restitution: 0.05, friction: 0.6, chamfer: { radius: 3 },
+      collisionFilter: { category: CAT_DANGER, mask: 0xffff, group: 0 },
+    });
+    b.plugin = { kind: 'crusher', motion: { mode: 'piston', top, travel, periodMs, floorMs, phaseMs } } as Meta;
+    this.bodies.push(b);
+    return b;
+  }
+
+  /**
+   * A rolling boulder: a round rock with a goblin face released down a path on a timer. Rolling
+   * speed falls out of the path length and the run window (`intervalMs - restMs`), so the def can
+   * store exactly three numbers and every client computes the same pose. Marbles bowl over unless
+   * they hop it with Jump; the heavier the marble, the smaller the shove.
+   */
+  boulder(pts: ReadonlyArray<readonly [number, number]>, r = 27, intervalMs = 6500, restMs = 1400, phaseMs = 0) {
+    const path = pts.map(([x, y]) => ({ x: this.X(x), y }));
+    const stepLens = [0];
+    let spanLen = 0;
+    for (let i = 1; i < path.length; i++) {
+      spanLen += Math.hypot(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y);
+      stepLens.push(spanLen);
+    }
+    const b = Bodies.circle(path[0].x, path[0].y, r, {
+      ...STATIC_OPTS, label: 'boulder', restitution: 0.6, friction: 0.35,
+      collisionFilter: { category: CAT_DANGER, mask: 0xffff, group: 0 },
+    });
+    b.plugin = { kind: 'boulder', motion: { mode: 'roll', path, stepLens, spanLen, intervalMs, restMs, phaseMs, r }, radius: r } as Meta;
+    this.bodies.push(b);
+    return b;
+  }
+
+  /**
+   * A mace sweeper: a spiked ball on a hinged arm sweeping horizontally across a chute, with a
+   * little rest at each end of the arc. Arm-length and arc make the reach; a Shockwave blast in
+   * range stalls it for two seconds (the fun interaction — guests mirror it from the shock event).
+   */
+  mace(px: number, py: number, arm = 130, arc = 1.05, sweepMs = 950, pauseMs = 750, phaseMs = 0, r = 24) {
+    const pivot = { x: this.X(px), y: py };
+    // start pose from the phase so the stored eased progress and the body agree at t=0
+    const half = sweepMs + pauseMs, cycle = 2 * half;
+    const tt = phaseMs % cycle;
+    const es = (f: number) => { const c = Math.max(0, Math.min(1, f)); return c * c * (3 - 2 * c); };
+    let side: number;
+    if (tt < sweepMs) side = -1 + 2 * es(tt / sweepMs);
+    else if (tt < half) side = 1;
+    else if (tt < half + sweepMs) side = 1 - 2 * es((tt - half) / sweepMs);
+    else side = -1;
+    const a0 = side * (arc / 2);
+    const b = Bodies.circle(pivot.x + Math.sin(a0) * arm, pivot.y + Math.cos(a0) * arm, r, {
+      ...STATIC_OPTS, label: 'mace', restitution: 0.75, friction: 0.01,
+      collisionFilter: { category: CAT_DANGER, mask: 0xffff, group: 0 },
+    });
+    b.plugin = {
+      kind: 'mace',
+      motion: { mode: 'sweep', pivot, arm, arc, sweepMs, pauseMs, phaseMs },
+      radius: r,
+      eased: tt / cycle,
+      stunUntil: 0,
+    } as Meta;
+    this.bodies.push(b);
+    return b;
+  }
 }
 
 // ---------------- Segments ----------------
@@ -760,6 +948,115 @@ const segCurveDrop: Seg = (b, y) => {
   return 660;
 };
 
+// ---------------- MB-10B sectors: blades and crushers ----------------
+
+/**
+ * Two giant axe blades swing across one long ramp run. They never shut the route — they just
+ * swat marbles back up the lane when the timing is wrong, so this reads as a gauntlet, not a gate.
+ */
+const segBladeGauntlet: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  b.ramp(0, y + 20, 430, y + 150);
+  const mid = y + 150 + 70;
+  // landing floor under the upper blade, sloping gently onward — a fall from the blade is short
+  const blade1X = 430 + (W - 500) / 2;
+  b.ramp(430, mid, W - 60, mid + 70);
+  // pivot low enough that the blade tip actually scythes the lane (tip dips to the marble band)
+  b.blade(blade1X, y + 90, 155, 0.9, 2400 + b.rng() * 900, b.rng() * 2400);
+  // low scoop under the first blade so a brushed marble rolls on instead of dropping out
+  b.ramp(blade1X - 150, mid + 44, Math.min(W - 40, blade1X + 170), mid + 74);
+  // seam continuity: the second ramp's lip tucks under the floor's end — the marble bridges the
+  // 18px slot instead of wedging between two slab faces below the walkable line (both flips)
+  b.ramp(858, y + 292, 298, y + 412);
+  const blade2X = 300 + (W - 360) / 2;
+  b.blade(blade2X, y + 225, 145, 0.85, 2100 + b.rng() * 900, b.rng() * 2100);
+  b.wall(blade2X + 10, y + 150 + 252, 240, 14);
+  if (b.rng() < 0.6) b.itemBox(500 + b.rng() * 260, y + 90);
+  return 500;
+};
+
+/**
+ * A wood-and-iron slot across the track with a spinning saw sliding along it. Marbles hop the
+ * slot where they find it — or catch the blade and get tossed up and away. Bounce raises the toss.
+ */
+const segSawSlot: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  b.ramp(0, y + 20, 500, y + 160);
+  // the slot bed: a flat floor with the saw set into it, a notch for the blade to rise from
+  const slotY = y + 260;
+  b.ramp(500, y + 160, W - 120, slotY);
+  b.wall(W - 130, slotY + 10, 120, 16);
+  const railA: [number, number] = [W - 150, slotY + 30];
+  const drift = 120 + b.rng() * 140;
+  b.saw(railA[0], railA[1], 24 + b.rng() * 8, b.rng() < 0.45 ? [railA[0] - drift, railA[1]] : undefined, 3000 + b.rng() * 2200, 0.5 + b.rng() * 0.35, b.rng() * 3000);
+  // small drop off the bed, then the chute on
+  b.ramp(W - 250, slotY + 40, 200, slotY + 190);
+  if (b.rng() < 0.5) b.itemBox(380 + b.rng() * 240, y + 210);
+  return 540;
+};
+
+/**
+ * A straight alley with a heavy stamper slamming down on a timer. The rumble and the shadow call
+ * the rhythm; get caught and you're squashed in place for a beat while the pack streams past.
+ */
+const segCrusherAlley: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  b.ramp(0, y + 20, 340, y + 140);
+  // the alley floor
+  b.wall(W - 260, y + 260, 420, 20);
+  b.crusher(W - 260 - 110, y + 150, 150, 96, 3800 + b.rng() * 1400, 650 + b.rng() * 350, b.rng() * 3800);
+  if (b.rng() < 0.55) b.crusher(W - 260 + 130, y + 150, 130, 96, 4600 + b.rng() * 1400, 600 + b.rng() * 350, b.rng() * 4600);
+  // off the alley's left end
+  b.ramp(140, y + 290, W / 2 + 120, y + 430);
+  if (b.rng() < 0.5) b.itemBox(420 + b.rng() * 240, y + 130);
+  return 520;
+};
+
+/**
+ * A boulder run: a carved rock rolls out of a shed at the top of the lane on a timer, bowing
+ * down the same ramp the marbles race, then looping back for the next release. Jump hops it.
+ */
+const segBoulderRun: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  // upper ramp right-to-left, then lower ramp left-to-right; the boulder follows both
+  b.ramp(W, y + 20, 260, y + 170);
+  b.ramp(250, y + 190, W - 140, y + 330);
+  b.ramp(W, y + 360, 180, y + 500);
+  b.boulder(
+    [
+      [W - 40, y + 40],
+      [290, y + 165],
+      [330, y + 195],
+      [W - 170, y + 325],
+      [W - 150, y + 365],
+      [220, y + 495],
+    ],
+    26 + b.rng() * 6,
+    7000 + b.rng() * 2600,
+    1300 + b.rng() * 800,
+    b.rng() * 7000,
+  );
+  if (b.rng() < 0.5) b.itemBox(430 + b.rng() * 240, y + 250);
+  return 580;
+};
+
+/**
+ * A mace sweeper over a fast chute: the spiked ball scythes across the lane and rests a heartbeat
+ * at each end. Time the gap or eat the ball; a Shockwave in range jams it for two seconds.
+ */
+const segMaceSweep: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  b.ramp(0, y + 20, W - 220, y + 170);
+  // chute down the right side, then the mace's long runway to the left
+  const laneY = y + 330;
+  b.ramp(W - 210, y + 200, W - 90, laneY);
+  b.wall(W / 2 - 20, laneY + 10, W / 2 - 40, 16);
+  b.mace(W / 2 - 20, laneY - 190, 165, 1.1, 900 + b.rng() * 500, 650 + b.rng() * 500, b.rng() * 900);
+  b.ramp(60, laneY + 40, W / 2 + 60, laneY + 190);
+  if (b.rng() < 0.5) b.itemBox(360 + b.rng() * 220, y + 200);
+  return 600;
+};
+
 export const segFinish: Seg = (b, y) => {
   b.flip = false;
   const fin = Bodies.rectangle(W / 2, y + 40, W, 14, { ...SENSOR_OPTS, label: 'finish' });
@@ -884,6 +1181,12 @@ const POOL: { seg: Seg; name: string; weight: number }[] = [
   { seg: segCrumbleWall, name: 'Crumbling Wall', weight: 0.6 },
   { seg: segTrapdoorDrop, name: 'Trapdoor Drop', weight: 0.6 },
   { seg: segSwitchLanes, name: 'Switchback Lanes', weight: 0.6 },
+  // MB-10B: blades and crushers — danger is a spice, never the whole meal
+  { seg: segBladeGauntlet, name: 'Blade Gauntlet', weight: 0.3 },
+  { seg: segSawSlot, name: 'Saw Slot', weight: 0.55 },
+  { seg: segCrusherAlley, name: 'Crusher Alley', weight: 0.55 },
+  { seg: segBoulderRun, name: 'Boulder Run', weight: 0.6 },
+  { seg: segMaceSweep, name: 'Mace Sweep', weight: 0.55 },
 ];
 
 export const DEFAULT_PROFILE: TrackProfile = {

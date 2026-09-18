@@ -37,8 +37,8 @@ export function createMarble(info: MarbleInfo, position: Matter.Vector): Matter.
     frictionAir: props.frictionAir,
     slop: 0.025,
     label: 'marble',
-    // wall | marble | sensor | loop-up | fragile (MB-10A barricades — Ghost drops the bit at runtime)
-    collisionFilter: { category: 0x0002, mask: 0x0001 | 0x0002 | 0x0004 | 0x0008 | 0x0020, group: 0 },
+    // wall | marble | sensor | loop-up | fragile (MB-10A) | danger (MB-10B) — Ghost drops the last two at runtime
+    collisionFilter: { category: 0x0002, mask: 0x0001 | 0x0002 | 0x0004 | 0x0008 | 0x0020 | 0x0040, group: 0 },
     plugin: { kind: 'marble', id: info.id },
   });
   Matter.Body.setMass(body, props.mass);

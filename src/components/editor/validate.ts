@@ -88,7 +88,16 @@ function pieceXs(piece: Piece): number[] {
     case 'crumble':
     case 'trapdoor':
     case 'switch':
+    // ---- MB-10B ----
+    case 'crusher':
+    case 'mace':
       return [(piece as { x: number }).x];
+    case 'blade':
+      return [piece.pivot[0]];
+    case 'saw':
+      return [piece.a[0], piece.b[0]];
+    case 'boulder':
+      return piece.pts.map(([x]) => x);
     case 'tunnel':
       return [piece.x, piece.exit[0]];
     case 'wrecker':
@@ -115,6 +124,17 @@ function pieceYs(piece: Piece): number[] {
       return [piece.y, piece.exit[1]];
     case 'switch':
       return [piece.y - piece.len, piece.y];
+    // ---- MB-10B ----
+    case 'blade':
+      return [piece.pivot[1], piece.pivot[1] + piece.len + piece.thin];
+    case 'saw':
+      return [Math.min(piece.a[1], piece.b[1]) - piece.r, Math.max(piece.a[1], piece.b[1]) + piece.r];
+    case 'crusher':
+      return [piece.y, piece.y + piece.travel + 44];
+    case 'boulder':
+      return piece.pts.map(([, y]) => y);
+    case 'mace':
+      return [piece.y, piece.y + piece.arm + piece.r];
     default: {
       const p = piece as { y: number };
       return [p.y];
@@ -271,6 +291,35 @@ function staticChecks(def: TrackDef, track: Track | null): ValidationIssue[] {
       } else if (p.t === 'switch') {
         const tip = p.y - p.len;
         if (tip < 0 || p.y > def.height) issues.push({ severity: 'error', message: `Switch #${idx} rises outside the circuit`, pos: { x: p.x, y: tip }, pieceIndex: idx });
+      }
+    });
+
+    // MB-10B static checks: the machinery has sensible programs and room to swing.
+    def.pieces.forEach((p, idx) => {
+      const pos = (q: { x: number; y: number }) => ({ x: q.x, y: q.y });
+      if (p.t === 'blade') {
+        if (p.pivot[1] < 0 || p.pivot[1] > def.height) issues.push({ severity: 'error', message: `Blade #${idx}: pivot outside the circuit`, pos: pos({ x: p.pivot[0], y: p.pivot[1] }), pieceIndex: idx });
+        if (p.pivot[1] + p.len > def.height + 40) issues.push({ severity: 'warning', message: `Blade #${idx}: tip swings ${Math.round(p.pivot[1] + p.len - def.height)}u below the circuit`, pos: pos({ x: p.pivot[0], y: p.pivot[1] + p.len }), pieceIndex: idx });
+        if (p.pivot[0] - p.len * Math.sin(p.amp) < 0 || p.pivot[0] + p.len * Math.sin(p.amp) > W) {
+          issues.push({ severity: 'warning', message: `Blade #${idx}: arc reaches outside the pipe`, pos: pos({ x: p.pivot[0], y: p.pivot[1] }), pieceIndex: idx });
+        }
+      } else if (p.t === 'saw') {
+        const span = Math.hypot(p.b[0] - p.a[0], p.b[1] - p.a[1]);
+        if (span > 0 && span < p.r * 2) issues.push({ severity: 'warning', message: `Saw #${idx}: slot shorter than the disc — it will just sit there`, pos: pos({ x: p.a[0], y: p.a[1] }), pieceIndex: idx });
+        if (span > W) issues.push({ severity: 'error', message: `Saw #${idx}: slot longer than the pipe is wide`, pos: pos({ x: p.a[0], y: p.a[1] }), pieceIndex: idx });
+      } else if (p.t === 'crusher') {
+        if (p.floor > p.period * 0.5) issues.push({ severity: 'error', message: `Crusher #${idx}: floor time is more than half the cycle — no rise time left`, pos: pos({ x: p.x, y: p.y }), pieceIndex: idx });
+        if (p.period < 1600) issues.push({ severity: 'warning', message: `Crusher #${idx}: cycle under 1.6s is relentless — marbles can rarely pass`, pos: pos({ x: p.x, y: p.y }), pieceIndex: idx });
+      } else if (p.t === 'boulder') {
+        if (p.rest > p.interval * 0.7) issues.push({ severity: 'error', message: `Boulder #${idx}: rest takes most of the interval — it barely rolls`, pos: pos({ x: p.pts[0][0], y: p.pts[0][1] }), pieceIndex: idx });
+        for (let i = 1; i < p.pts.length; i++) {
+          const d = Math.hypot(p.pts[i][0] - p.pts[i - 1][0], p.pts[i][1] - p.pts[i - 1][1]);
+          if (Math.abs(p.pts[i][1] - p.pts[i - 1][1]) < d * 0.15) {
+            issues.push({ severity: 'warning', message: `Boulder #${idx}: leg ${i} is nearly flat — the boulder may crawl`, pos: pos({ x: p.pts[i][0], y: p.pts[i][1] }), pieceIndex: idx });
+          }
+        }
+      } else if (p.t === 'mace') {
+        if (p.arc > 2.2) issues.push({ severity: 'warning', message: `Mace #${idx}: sweep arc over 2.2 rad sweeps into the ground`, pos: pos({ x: p.x, y: p.y }), pieceIndex: idx });
       }
     });
 

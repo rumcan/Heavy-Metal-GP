@@ -133,6 +133,34 @@ export function defaultPiece(type: PieceType, at: Point, snap = false): Piece {
     case 'switch': {
       return { t: 'switch', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, len: 120, angle: 0.65, side: 0 as 0 | 1 };
     }
+    // ---- MB-10B: blades and crushers ----
+    case 'blade': {
+      return { t: 'blade', pivot: [snap ? snapVal(cx) : cx, snap ? snapVal(cy) : cy] as [number, number], len: 160, amp: 0.9, period: 2600, phase: 0, thin: 8 };
+    }
+    case 'saw': {
+      // Set into the track at the click; drag a slot end to make it slide.
+      const x = snap ? snapVal(cx) : cx;
+      const y = snap ? snapVal(cy) : cy;
+      return { t: 'saw', a: [x, y] as [number, number], b: [x, y] as [number, number], r: 26, spin: 0.55, period: 3600, phase: 0 };
+    }
+    case 'crusher': {
+      return { t: 'crusher', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, w: 130, travel: 110, period: 4200, floor: 700, phase: 0 };
+    }
+    case 'boulder': {
+      const x = snap ? snapVal(cx) : cx;
+      const y = snap ? snapVal(cy) : cy;
+      return {
+        t: 'boulder',
+        pts: [
+          [x - 180, y] as [number, number],
+          [x + 160, y + 240] as [number, number],
+        ],
+        r: 27, interval: 6500, rest: 1400, phase: 0,
+      };
+    }
+    case 'mace': {
+      return { t: 'mace', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, arm: 130, arc: 1.05, sweep: 950, rest: 750, phase: 0, r: 24 };
+    }
     default:
       // Exhaustiveness: TypeScript ensures all PieceType are covered.
       throw new Error(`defaultPiece: unknown piece type ${(type as string)}`);

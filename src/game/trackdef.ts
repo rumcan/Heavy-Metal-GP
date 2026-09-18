@@ -71,11 +71,23 @@ export interface TrapdoorPiece extends PieceBase {
 }
 /** Track switch lever: plate of `len` leaning ±`angle` at a Y-junction; `side` is the initial route. */
 export interface SwitchPiece extends PieceBase { t: 'switch'; x: number; y: number; len: number; angle: number; side: 0 | 1 }
+// ---- MB-10B: blades and crushers (all kinematic — the race clock drives every pose) ----
+/** Swinging blade: pendulum arm `len` from `pivot`, swinging ±`amp` rad every `period` ms. */
+export interface BladePiece extends PieceBase { t: 'blade'; pivot: Vec; len: number; amp: number; period: number; phase: number; thin: number }
+/** Saw blade: spinning disc of radius `r` sliding between `a` and `b` (equal: set into the track). `spin` rad/ms. */
+export interface SawPiece extends PieceBase { t: 'saw'; a: Vec; b: Vec; r: number; spin: number; period: number; phase: number }
+/** Crusher piston: `w`-wide plate hanging at (x, y), slamming `travel` down every `period` ms, sitting `floor` ms at the deck. */
+export interface CrusherPiece extends PieceBase { t: 'crusher'; x: number; y: number; w: number; travel: number; period: number; floor: number; phase: number }
+/** Rolling boulder: a disc of radius `r` released down `pts` every `interval` ms, resting `rest` ms at the top first. */
+export interface BoulderPiece extends PieceBase { t: 'boulder'; pts: Vec[]; r: number; interval: number; rest: number; phase: number }
+/** Mace sweeper: spiked ball on an `arm`, sweeping ±`arc` rad with `sweep` ms travel and `rest` ms pause at each end. */
+export interface MacePiece extends PieceBase { t: 'mace'; x: number; y: number; arm: number; arc: number; sweep: number; rest: number; phase: number; r: number }
 
 export type Piece =
   | RampPiece | CurvePiece | IcePiece | LoopPiece | HoopPiece | WreckerPiece | PadPiece | BoostPiece
   | SpinnerPiece | BreakablePiece | PegPiece | PPegPiece | ItemBoxPiece | BucketPiece | WallPiece | BlockPiece
-  | BarricadePiece | TunnelPiece | CrumblePiece | TrapdoorPiece | SwitchPiece;
+  | BarricadePiece | TunnelPiece | CrumblePiece | TrapdoorPiece | SwitchPiece
+  | BladePiece | SawPiece | CrusherPiece | BoulderPiece | MacePiece;
 
 export interface TrackDef {
   v: 1;
@@ -241,6 +253,43 @@ class DefRecorder extends Builder {
     return this.capture(() => super.switchLever(x, y, len, angle, side), () => ({ t: 'switch', x, y, len, angle, side, flip: this.mirrored }));
   }
 
+  // ---- MB-10B ----
+
+  override blade(px: number, py: number, len: number, amp = 0.9, periodMs = 2600, phaseMs = 0, thin = 8) {
+    return this.capture(
+      () => super.blade(px, py, len, amp, periodMs, phaseMs, thin),
+      () => ({ t: 'blade', pivot: [px, py] as Vec, len, amp, period: periodMs, phase: phaseMs, thin, flip: this.mirrored }),
+    );
+  }
+
+  override saw(x: number, y: number, r = 26, to?: [number, number], periodMs = 3600, spinW = 0.5, phaseMs = 0) {
+    return this.capture(
+      () => super.saw(x, y, r, to, periodMs, spinW, phaseMs),
+      () => ({ t: 'saw', a: [x, y] as Vec, b: (to ?? [x, y]) as Vec, r, spin: spinW, period: periodMs, phase: phaseMs, flip: this.mirrored }),
+    );
+  }
+
+  override crusher(cx: number, topY: number, w = 130, travel = 120, periodMs = 4200, floorMs = 700, phaseMs = 0) {
+    return this.capture(
+      () => super.crusher(cx, topY, w, travel, periodMs, floorMs, phaseMs),
+      () => ({ t: 'crusher', x: cx, y: topY, w, travel, period: periodMs, floor: floorMs, phase: phaseMs, flip: this.mirrored }),
+    );
+  }
+
+  override boulder(pts: ReadonlyArray<readonly [number, number]>, r = 27, intervalMs = 6500, restMs = 1400, phaseMs = 0) {
+    return this.capture(
+      () => super.boulder(pts, r, intervalMs, restMs, phaseMs),
+      () => ({ t: 'boulder', pts: pts.map(([x, y]) => [x, y] as Vec), r, interval: intervalMs, rest: restMs, phase: phaseMs, flip: this.mirrored }),
+    );
+  }
+
+  override mace(px: number, py: number, arm = 130, arc = 1.05, sweepMs = 950, pauseMs = 750, phaseMs = 0, r = 24) {
+    return this.capture(
+      () => super.mace(px, py, arm, arc, sweepMs, pauseMs, phaseMs, r),
+      () => ({ t: 'mace', x: px, y: py, arm, arc, sweep: sweepMs, rest: pauseMs, phase: phaseMs, r, flip: this.mirrored }),
+    );
+  }
+
   /** Spinners start at a rolled angle; stamp the angles the builder picked onto the pieces already recorded. */
   override randomiseSpinners() {
     super.randomiseSpinners();
@@ -298,6 +347,12 @@ function replayPiece(b: Builder, piece: Piece) {
       case 'crumble': b.crumble(piece.x, piece.y, piece.w, piece.h, piece.tough); break;
       case 'trapdoor': b.trapdoor(piece.x, piece.y, piece.w, piece.hinge, piece.mode, piece.open, piece.closed, piece.phase, piece.kg, piece.hold); break;
       case 'switch': b.switchLever(piece.x, piece.y, piece.len, piece.angle, piece.side); break;
+      // ---- MB-10B ----
+      case 'blade': b.blade(piece.pivot[0], piece.pivot[1], piece.len, piece.amp, piece.period, piece.phase, piece.thin); break;
+      case 'saw': b.saw(piece.a[0], piece.a[1], piece.r, [piece.b[0], piece.b[1]], piece.period, piece.spin, piece.phase); break;
+      case 'crusher': b.crusher(piece.x, piece.y, piece.w, piece.travel, piece.period, piece.floor, piece.phase); break;
+      case 'boulder': b.boulder(piece.pts.map(([x, y]) => [x, y] as [number, number]), piece.r, piece.interval, piece.rest, piece.phase); break;
+      case 'mace': b.mace(piece.x, piece.y, piece.arm, piece.arc, piece.sweep, piece.rest, piece.phase, piece.r); break;
     }
   } finally {
     b.flip = false;
@@ -700,6 +755,71 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
         ...body,
       };
     }
+    // ---- MB-10B ----
+    case 'blade':
+      return {
+        t: 'blade',
+        pivot: vec(raw.pivot, `${at}.pivot`, problems),
+        len: number(raw.len, `${at}.len`, 60, 600, problems),
+        amp: number(raw.amp, `${at}.amp`, 0.1, 1.5, problems),
+        period: number(raw.period, `${at}.period`, 800, 20000, problems),
+        phase: real(raw.phase, `${at}.phase`, problems),
+        thin: number(raw.thin, `${at}.thin`, 4, 24, problems),
+        ...body,
+      };
+    case 'saw':
+      return {
+        t: 'saw',
+        a: vec(raw.a, `${at}.a`, problems),
+        b: vec(raw.b, `${at}.b`, problems),
+        r: number(raw.r, `${at}.r`, 14, 60, problems),
+        spin: number(raw.spin, `${at}.spin`, 0.05, 3, problems),
+        period: number(raw.period, `${at}.period`, 600, 60000, problems),
+        phase: real(raw.phase, `${at}.phase`, problems),
+        ...body,
+      };
+    case 'crusher':
+      return {
+        t: 'crusher',
+        x: number(raw.x, `${at}.x`, 0, W, problems),
+        y: real(raw.y, `${at}.y`, problems),
+        w: number(raw.w, `${at}.w`, 40, 400, problems),
+        travel: number(raw.travel, `${at}.travel`, 30, 600, problems),
+        period: number(raw.period, `${at}.period`, 1400, 30000, problems),
+        floor: number(raw.floor, `${at}.floor`, 100, 5000, problems),
+        phase: real(raw.phase, `${at}.phase`, problems),
+        ...body,
+      };
+    case 'boulder': {
+      const pts: Vec[] = [];
+      if (!Array.isArray(raw.pts) || raw.pts.length < 2 || raw.pts.length > 10) {
+        problems.add(`${at}.pts must be 2..10 path points.`);
+      } else {
+        for (let k = 0; k < raw.pts.length; k++) pts.push(vec(raw.pts[k], `${at}.pts[${k}]`, problems));
+      }
+      return {
+        t: 'boulder',
+        pts,
+        r: number(raw.r, `${at}.r`, 12, 60, problems),
+        interval: number(raw.interval, `${at}.interval`, 1800, 30000, problems),
+        rest: number(raw.rest, `${at}.rest`, 0, 10000, problems),
+        phase: real(raw.phase, `${at}.phase`, problems),
+        ...body,
+      };
+    }
+    case 'mace':
+      return {
+        t: 'mace',
+        x: number(raw.x, `${at}.x`, 0, W, problems),
+        y: real(raw.y, `${at}.y`, problems),
+        arm: number(raw.arm, `${at}.arm`, 60, 400, problems),
+        arc: number(raw.arc, `${at}.arc`, 0.4, 2.6, problems),
+        sweep: number(raw.sweep, `${at}.sweep`, 300, 6000, problems),
+        rest: number(raw.rest, `${at}.rest`, 0, 6000, problems),
+        phase: real(raw.phase, `${at}.phase`, problems),
+        r: number(raw.r, `${at}.r`, 12, 48, problems),
+        ...body,
+      };
     default:
       problems.add(`${at}.t is unknown piece type ${JSON.stringify(raw.t)}.`);
       return null;
@@ -719,6 +839,16 @@ function pieceYs(piece: Piece): number[] {
       return [piece.y, piece.exit[1]];
     case 'switch':
       return [piece.y - piece.len, piece.y];
+    case 'blade':
+      return [piece.pivot[1], piece.pivot[1] + piece.len + piece.thin];
+    case 'saw':
+      return [Math.min(piece.a[1], piece.b[1]) - piece.r, Math.max(piece.a[1], piece.b[1]) + piece.r];
+    case 'crusher':
+      return [piece.y, piece.y + piece.travel + 44];
+    case 'boulder':
+      return piece.pts.map(([, y]) => y);
+    case 'mace':
+      return [piece.y, piece.y + piece.arm + piece.r];
     case 'hoop':
     case 'spinner':
     case 'breakable':

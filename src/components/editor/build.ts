@@ -89,6 +89,22 @@ function replayPiece(b: Builder, piece: Piece): void {
       case 'switch':
         b.switchLever(piece.x, piece.y, piece.len, piece.angle, piece.side);
         break;
+      // ---- MB-10B ----
+      case 'blade':
+        b.blade(piece.pivot[0], piece.pivot[1], piece.len, piece.amp, piece.period, piece.phase, piece.thin);
+        break;
+      case 'saw':
+        b.saw(piece.a[0], piece.a[1], piece.r, [piece.b[0], piece.b[1]], piece.period, piece.spin, piece.phase);
+        break;
+      case 'crusher':
+        b.crusher(piece.x, piece.y, piece.w, piece.travel, piece.period, piece.floor, piece.phase);
+        break;
+      case 'boulder':
+        b.boulder(piece.pts.map(([x, y]) => [x, y] as [number, number]), piece.r, piece.interval, piece.rest, piece.phase);
+        break;
+      case 'mace':
+        b.mace(piece.x, piece.y, piece.arm, piece.arc, piece.sweep, piece.rest, piece.phase, piece.r);
+        break;
     }
   } finally {
     b.flip = false;

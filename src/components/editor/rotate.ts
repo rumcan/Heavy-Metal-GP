@@ -131,6 +131,24 @@ export function rotatePiece(piece: Piece, rad: number, c: Point): Piece {
       const side = (quarterTurns % 2 !== 0) ? (piece.side === 1 ? 0 : 1) : piece.side;
       return { ...piece, x, y, side: side as 0 | 1 };
     }
+    // ---- MB-10B: machinery pivots move around the centre; the programs stay upright ----
+    case 'blade': {
+      const [x, y] = at(piece.pivot[0], piece.pivot[1]);
+      return { ...piece, pivot: [x, y] as Vec };
+    }
+    case 'saw': {
+      const a = at(piece.a[0], piece.a[1]);
+      const bb = at(piece.b[0], piece.b[1]);
+      return { ...piece, a: a as Vec, b: bb as Vec };
+    }
+    case 'crusher':
+    case 'mace': {
+      const [x, y] = at(piece.x, piece.y);
+      return { ...piece, x, y };
+    }
+    case 'boulder': {
+      return { ...piece, pts: piece.pts.map(([x, y]) => at(x, y) as Vec) };
+    }
     case 'peg':
     case 'ppeg':
     case 'itembox': {

@@ -37,6 +37,9 @@
  *   rumble    — MB-10A: a marble rumbles through a cliff tunnel (or a wall gives)
  *   creak     — MB-10A: a trapdoor swings on its hinge
  *   click     — MB-10A: a track-switch lever trips over
+ *   shriek    — MB-10B: a swinging blade catches a marble
+ *   grind     — MB-10B: a saw bites and throws a marble up
+ *   slam      — MB-10B: a crusher piston docks at floor level
  */
 export const SOUND_EVENTS = [
   'gate',
@@ -56,6 +59,9 @@ export const SOUND_EVENTS = [
   'rumble',
   'creak',
   'click',
+  'shriek',
+  'grind',
+  'slam',
 ] as const;
 
 /** One named cue. The wire carries these, so the list is the contract. */

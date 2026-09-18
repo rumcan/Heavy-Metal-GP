@@ -12,6 +12,7 @@ const COLORS = {
   bg: '#0c1520', grid: 'rgba(255,255,255,0.04)', wall: '#56657a', wood: '#c98a4b', ice: '#8fd3ff', curve: '#d99a5a',
   blue: '#3b82f6', orange: '#f97316', item: '#a855f7', bumper: '#e0453a', loop: '#f2b36b', hoop: '#ff8a3d',
   boost: '#e0453a', spinner: '#f5c542', wrecker: '#9aa6b2', pad: '#b690ff', crate: '#b87a3e', block: '#7c8ba0', itembox: '#f5c542', bucket: '#34d399',
+  danger: '#f87171',
 };
 
 function drawPiece(ctx: CanvasRenderingContext2D, p: Piece, k: number) {
@@ -95,6 +96,51 @@ function drawPiece(ctx: CanvasRenderingContext2D, p: Piece, k: number) {
       ctx.beginPath(); ctx.arc(mx, my, Math.max(1.5, 9 * k), 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.arc(ex, ey, Math.max(1.5, 9 * k), 0, Math.PI * 2); ctx.fill();
       ctx.restore();
+      break;
+    }
+    // ---- MB-10B: machinery reads as red-on-iron ----
+    case 'blade': {
+      const px = (p.flip ? W - p.pivot[0] : p.pivot[0]) * k;
+      const py = p.pivot[1] * k;
+      line(px, py, px, py + p.len * k, COLORS.danger, Math.max(1.5, 7 * k));
+      dot(px, py, Math.max(1.5, 7 * k), COLORS.danger);
+      break;
+    }
+    case 'saw': {
+      line(X(p.a[0]), Y(p.a[1]), X(p.b[0]), Y(p.b[1]), COLORS.danger, Math.max(1, 3 * k));
+      dot((X(p.a[0]) + X(p.b[0])) / 2, (Y(p.a[1]) + Y(p.b[1])) / 2, Math.max(1.5, p.r * k), COLORS.danger);
+      break;
+    }
+    case 'crusher': {
+      const cx = (p.flip ? W - p.x : p.x) * k;
+      ctx.save();
+      ctx.strokeStyle = COLORS.danger;
+      ctx.lineWidth = Math.max(1, 2.5 * k);
+      ctx.strokeRect(cx - (p.w / 2) * k, p.y * k, p.w * k, (p.travel + 44) * k);
+      ctx.restore();
+      break;
+    }
+    case 'boulder': {
+      ctx.save();
+      ctx.strokeStyle = COLORS.danger;
+      ctx.lineWidth = Math.max(1, 3 * k);
+      ctx.setLineDash([3, 4]);
+      ctx.beginPath();
+      p.pts.forEach(([x, y], i) => {
+        const mx2 = (p.flip ? W - x : x) * k;
+        if (i === 0) ctx.moveTo(mx2, y * k);
+        else ctx.lineTo(mx2, y * k);
+      });
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+      break;
+    }
+    case 'mace': {
+      const mx2 = (p.flip ? W - p.x : p.x) * k;
+      line(mx2, p.y * k, mx2, (p.y + p.arm) * k, COLORS.danger, Math.max(1, 3 * k));
+      dot(mx2, p.y * k, Math.max(1.5, 6 * k), COLORS.danger);
+      dot(mx2, (p.y + p.arm) * k, Math.max(1.5, p.r * k), COLORS.danger);
       break;
     }
   }

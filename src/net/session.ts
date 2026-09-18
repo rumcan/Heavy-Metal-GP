@@ -80,6 +80,9 @@ const CUE_SOUND: Record<CueName, SoundType> = {
   rumble: 'rumble',
   creak: 'creak',
   click: 'click',
+  shriek: 'shriek',
+  grind: 'grind',
+  slam: 'slam',
 };
 
 /** One line of the classification, in the shape the results screen already reads. */

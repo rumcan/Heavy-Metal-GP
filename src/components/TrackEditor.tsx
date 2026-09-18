@@ -164,6 +164,21 @@ function lowestPieceY(def: TrackDef): number {
       case 'switch':
         y = (p as { y: number }).y;
         break;
+      case 'blade':
+        y = p.pivot[1] + p.len;
+        break;
+      case 'saw':
+        y = Math.max(p.a[1], p.b[1]) + p.r;
+        break;
+      case 'crusher':
+        y = p.y + p.travel + 44;
+        break;
+      case 'boulder':
+        y = Math.max(...p.pts.map((q) => q[1]));
+        break;
+      case 'mace':
+        y = p.y + p.arm + p.r;
+        break;
       case 'tunnel':
         y = Math.max(p.y, p.exit[1]);
         break;

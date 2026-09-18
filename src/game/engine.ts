@@ -1,6 +1,6 @@
 import Matter from 'matter-js';
-import { generateTrack, meta, Track, CAT_MARBLE, CAT_WALL, CAT_SENSOR, CAT_LOOP_UP, CAT_LOOP_CLOSE, CAT_FRAGILE, W } from './track';
-import { elementBodies, updateElements, hingeTimerState } from './elements';
+import { generateTrack, meta, Track, CAT_MARBLE, CAT_WALL, CAT_SENSOR, CAT_LOOP_UP, CAT_LOOP_CLOSE, CAT_FRAGILE, CAT_DANGER, W } from './track';
+import { elementBodies, updateElements, hingeTimerState, pendulumOmega, slideDir, pistonState, rollAt, pathAt } from './elements';
 import { TrackDefError, buildTrackFromDef } from './trackdef';
 import { ItemType, MarbleInfo, MARBLE_RADIUS, statsToPhysics, mulberry32, TrackProfile, normalizeInventory, ITEM_TYPES, ITEM_INFO, MAX_ITEM_STACK } from './types';
 import type { Inventory } from './types';
@@ -115,6 +115,10 @@ export interface Marble {
   hold: Hold | null;
   /** MB-10: brief invulnerability after a tunnel exit so the marble isn't instantly re-caught. */
   tunnelSafeUntil: number;
+  /** MB-10B: pinned under a crusher plate until this clock time (velocity squashed while pinned). */
+  crushedUntil: number;
+  /** Debounce so one crusher docking registers one pin per marble. */
+  crushMarkAt: number;
 }
 
 export interface OilSlick {
@@ -306,6 +310,8 @@ export class Game {
         nudges: 0,
         hold: null,
         tunnelSafeUntil: 0,
+        crushedUntil: 0,
+        crushMarkAt: 0,
       };
       this.marbles.push(m);
       this.byId.set(info.id, m);
@@ -533,9 +539,9 @@ export class Game {
 
   private applyMask(m: Marble) {
     const ghost = m.ghostUntil > this.time;
-    // Ghost marbles phase through rivals (CAT_MARBLE) and fragile barricades (CAT_FRAGILE,
-    // MB-10A: a ghost slips through a NO ENTRY sign or a crumbling wall without opening it).
-    m.body.collisionFilter.mask = CAT_WALL | CAT_SENSOR | (ghost ? 0 : CAT_MARBLE | CAT_FRAGILE) | (m.loopStage === 1 ? CAT_LOOP_CLOSE : CAT_LOOP_UP);
+    // Ghost marbles phase through rivals (CAT_MARBLE), fragile barricades (CAT_FRAGILE, MB-10A) and
+    // danger machinery (CAT_DANGER, MB-10B): a ghost goes untroubled between the blades.
+    m.body.collisionFilter.mask = CAT_WALL | CAT_SENSOR | (ghost ? 0 : CAT_MARBLE | CAT_FRAGILE | CAT_DANGER) | (m.loopStage === 1 ? CAT_LOOP_CLOSE : CAT_LOOP_UP);
   }
 
   private setLoopStage(m: Marble, stage: 0 | 1) {
@@ -716,6 +722,128 @@ export class Game {
         this.effects.push({ type: 'ring', x: other.position.x, y: other.position.y, ttl: 14, maxTtl: 14, color: '#fbbf24' });
         break;
       }
+      // ---- MB-10B: blades and crushers (all kinematic; guests never simulate these contacts) ----
+      case 'blade': {
+        // grazing touches don't count: the flat scrubs you, the edge writes you a flight plan.
+        // (Start pairs do, and the matter solver usually blurs blade contacts into 'active'
+        // contactSurface hits — this one fires when a mid-swing blade meets a marble.)
+        const relSpeed = Body.getSpeed(m.body) + (md.motion?.mode === 'pendulum' ? Math.abs(pendulumOmega(md.motion, this.time)) * md.motion.arm : 0);
+        if (relSpeed < 0.5) break;
+        // one shove per swing — the blade sweeps through the pack once, not every sub-step
+        if (this.time < (md.cooldownUntil ?? 0)) break;
+        md.cooldownUntil = this.time + 600;
+        // Timed wrong: knocked back with a shriek. Heavy marbles shrug more of it off; a frozen
+        // marble is brittle and gets launched twice as hard. (Ghosts never meet it.)
+        const motion = md.motion;
+        let pvx = 0, pvy = 0;
+        if (motion && motion.mode === 'pendulum') {
+          const omega = pendulumOmega(motion, this.time);
+          pvx = -omega * (m.body.position.y - motion.pivot.y);
+          pvy = omega * (m.body.position.x - motion.pivot.x);
+        }
+        const dx = m.body.position.x - other.position.x, dy = m.body.position.y - other.position.y;
+        const d = Math.hypot(dx, dy) || 1;
+        const frozen = this.time < m.frozenUntil;
+        const light = 1 / Math.sqrt(m.body.mass / 0.8);
+        const k = 2.6 * light * (frozen ? 2.2 : 1);
+        const v = Body.getVelocity(m.body);
+        Body.setVelocity(m.body, {
+          // backwards scrape: kill most uphill speed, give a little tip-velocity shove
+          x: v.x * 0.55 + pvx * 0.6 + (dx / d) * k,
+          y: Math.min(v.y * 0.4, 2) + pvy * 0.5 + (dy / d) * k - 1,
+        });
+        this.shake = Math.max(this.shake, 5);
+        this.sfx('shriek', m, other.position.x, other.position.y);
+        this.emit({ kind: 'sound', cue: 'shriek', seat: m.info.id });
+        this.effects.push({ type: 'debris', x: m.body.position.x, y: m.body.position.y, ttl: 14, maxTtl: 14, color: '#fef08a', particles: this.makeParticles(m.body.position.x, m.body.position.y, 7, 4).map((p) => ({ ...p, vy: -Math.abs(p.vy) })) });
+        this.effects.push({ type: 'ring', x: m.body.position.x, y: m.body.position.y, ttl: 12, maxTtl: 12, color: '#e2e8f0' });
+        break;
+      }
+      case 'saw': {
+        // one hop per pass — a marble sitting on the slot isn't machine-gunned
+        if (this.time < (md.cooldownUntil ?? 0)) break;
+        md.cooldownUntil = this.time + 700;
+        // The disc's rim throws marbles up and away from its travel direction. Bounce raises the
+        // toss; a Heavy-metal marble ploughs over with a small bump instead.
+        const motion = md.motion;
+        const v = Body.getVelocity(m.body);
+        const bounce = m.info.stats.bounce;
+        const anvil = this.time < m.anvilUntil;
+        const above = m.body.position.y < other.position.y - 6;
+        if (anvil) {
+          Body.setVelocity(m.body, { x: v.x, y: above ? -2.5 : v.y * 0.4 });
+          this.sfx('clang', m, other.position.x, other.position.y);
+          break;
+        }
+        const spin = motion && motion.mode === 'slide' ? motion.spinW : 0;
+        const slide = motion && motion.mode === 'slide' ? slideDir(motion, this.time) : 1;
+        const spinSide = Math.sign(spin || 1) * slide;
+        const toss = above ? -(5.2 + bounce * 0.5) : -(2.5 + bounce * 0.3);
+        Body.setVelocity(m.body, { x: v.x * 0.5 + spinSide * (2 + Math.abs(spin) * 3), y: v.y * 0.2 + toss });
+        this.sfx('grind', m, other.position.x, other.position.y);
+        this.emit({ kind: 'sound', cue: 'grind', seat: m.info.id });
+        this.shake = Math.max(this.shake, 4);
+        this.effects.push({ type: 'debris', x: m.body.position.x, y: m.body.position.y, ttl: 16, maxTtl: 16, color: '#fca5a5', particles: this.makeParticles(m.body.position.x, m.body.position.y, 9, 4.5) });
+        break;
+      }
+      case 'boulder': {
+        // bowled over once per contact — the boulder keeps rolling, the marble keeps racing
+        if (this.time < (md.cooldownUntil ?? 0)) break;
+        md.cooldownUntil = this.time + 650;
+        // Bowled over: thrown along the boulder's travel; Jump hops it instead. Weight decides
+        // the shove — a heavy marble guts it out where a light one is sent flying.
+        const motion = md.motion;
+        const v = Body.getVelocity(m.body);
+        if (this.time < m.jumpUntil) {
+          Body.setVelocity(m.body, { x: v.x, y: -9.5 - m.info.stats.bounce * 0.2 });
+          this.sfx('spring', m, m.body.position.x, m.body.position.y);
+          this.effects.push({ type: 'ring', x: m.body.position.x, y: m.body.position.y, ttl: 16, maxTtl: 16, color: '#a7f3d0' });
+          break;
+        }
+        const dir = motion && motion.mode === 'roll' ? pathAt(motion, rollAt(motion, this.time).d).dir : { x: 0, y: 1 };
+        const k = 6.2 * (1 / Math.sqrt(m.body.mass / 0.8));
+        Body.setVelocity(m.body, { x: v.x * 0.35 + dir.x * k, y: v.y * 0.35 + dir.y * k - 2 });
+        this.sfx('thud', m, other.position.x, other.position.y);
+        this.sfx('clack', m, other.position.x, other.position.y);
+        this.shake = Math.max(this.shake, 4);
+        this.effects.push({ type: 'snow', x: other.position.x, y: other.position.y, ttl: 22, maxTtl: 22, color: '#b8a88f', particles: this.makeParticles(other.position.x, other.position.y, 8, 2.5) });
+        break;
+      }
+      case 'mace': {
+        // one scything per pass
+        if (this.time < (md.cooldownUntil ?? 0)) break;
+        md.cooldownUntil = this.time + 550;
+        // Scythed: knocked radially away from the pivot with the arm's sweep behind it; bouncy
+        // marbles ricochet further, frozen ones shatter-fly, and the ball is never mistaken for
+        // the track: it sparks on contact.
+        const motion = md.motion;
+        const v = Body.getVelocity(m.body);
+        let nx = 0, ny = 1, sweepX = 0;
+        if (motion && motion.mode === 'sweep') {
+          nx = m.body.position.x - motion.pivot.x;
+          ny = m.body.position.y - motion.pivot.y;
+          const d = Math.hypot(nx, ny) || 1;
+          nx /= d; ny /= d;
+          // sweep drive: while the program is moving, add a push along the current sweep side
+          const half = motion.sweepMs + motion.pauseMs;
+          const t = (md.eased ?? 0) * (half * 2);
+          const sliding = t < motion.sweepMs || (t >= half && t < half + motion.sweepMs);
+          sweepX = sliding ? (t < half ? 2.4 : -2.4) : 0;
+        }
+        const frozen = this.time < m.frozenUntil;
+        const k = 8.5 * (1 + m.info.stats.bounce * 0.07) * (1 / Math.sqrt(m.body.mass / 0.8)) * (frozen ? 1.8 : 1);
+        Body.setVelocity(m.body, { x: v.x * 0.2 + nx * k + sweepX, y: v.y * 0.2 + ny * k - 2 });
+        this.sfx('clang', m, other.position.x, other.position.y);
+        this.shake = Math.max(this.shake, 5);
+        this.effects.push({ type: 'ring', x: m.body.position.x, y: m.body.position.y, ttl: 14, maxTtl: 14, color: '#cbd5e1' });
+        this.effects.push({ type: 'debris', x: m.body.position.x, y: m.body.position.y, ttl: 14, maxTtl: 14, color: '#fef08a', particles: this.makeParticles(m.body.position.x, m.body.position.y, 6, 4) });
+        break;
+      }
+      case 'crusher': {
+        // Brushed by the plate casing: a dull clunk (the pin itself is handled by docking).
+        if (Body.getSpeed(m.body) > 4) this.sfx('thud', m, other.position.x, other.position.y);
+        break;
+      }
       case 'pad': {
         if (this.time < m.padCooldownUntil) break;
         m.padCooldownUntil = this.time + 600;
@@ -814,6 +942,9 @@ export class Game {
       if (!m || (ma && mb) || m.frozen || m.finishedAt !== null || !this.gateOpen) continue;
       const md = meta(other);
       if (!md) continue;
+      // MB-10B skins paint contact flashes; reuse the one-shove-per-pass debounce so a marble
+      // resting on a machine doesn't redraw its burst 120 times a second.
+      if ((md.kind === 'blade' || md.kind === 'saw' || md.kind === 'mace' || md.kind === 'boulder') && this.time < (md.cooldownUntil ?? 0)) continue;
       this.contactSurface(m, other, pair);
       // A marble too slow to make the loop settles at the bottom; let it roll out instead of rocking forever.
       if (md.kind === 'loopBail' && m.loopStage === 0 && Body.getSpeed(m.body) < 2.5) this.setLoopStage(m, 1);
@@ -837,7 +968,14 @@ export class Game {
   }
 
   private contactSurface(m: Marble, obstacle: Matter.Body, pair: Matter.Pair) {
-    const surface = meta(obstacle)?.surface;
+    const omd = meta(obstacle);
+    // MB-10B: danger bodies carry no ramp surface, so a marble resting on (or grinding against)
+    // one falls here instead of marbleHits. Apply the same one-shove-per-beat knock the
+    // collision-start path gives, straight from this pair.
+    if (omd && !m.frozen && m.finishedAt === null && (omd.kind === 'blade' || omd.kind === 'saw' || omd.kind === 'mace' || omd.kind === 'crusher' || omd.kind === 'boulder') && this.time >= (omd.cooldownUntil ?? 0)) {
+      this.marbleHits(m, obstacle);
+    }
+    const surface = omd?.surface;
     if (!surface || m.frozen || m.finishedAt !== null) return;
     const offset = { x: m.body.position.x - surface.start.x, y: m.body.position.y - surface.start.y };
     if (offset.x * surface.normal.x + offset.y * surface.normal.y < 0) return;
@@ -935,6 +1073,64 @@ export class Game {
         }
       } else md.restSince = 0;
     }
+
+    // MB-10B crushers: the slam docks, dust flies, and whatever was under the plate is pinned for
+    // a beat (Heavy-metal marbles shrug it off; Slipstream slips free early). All pose is clock —
+    // the pin affects only marble bodies, which MP guests mirror from the frames they receive.
+    for (const plate of elementBodies(this.track, 'crusher')) {
+      const md = meta(plate);
+      const motion = md.motion;
+      if (!motion || motion.mode !== 'piston' || md.destroyed) continue;
+      const st = pistonState(motion, this.time);
+      const was = md.eased ?? 0;
+      md.eased = st.k;
+      if (st.warn && this.time - (md.rumbledAt ?? -1e9) > motion.periodMs * 0.9) {
+        let near = false;
+        for (const m of this.marbles) {
+          if (m.finishedAt !== null) continue;
+          const p = m.body.position;
+          if (p.y > motion.top.y && p.y < motion.top.y + motion.travel + 320 && Math.abs(p.x - motion.top.x) < 340) { near = true; break; }
+        }
+        if (near) {
+          md.rumbledAt = this.time;
+          this.sfx('rumble', this.player, motion.top.x, motion.top.y + motion.travel);
+          this.emit({ kind: 'sound', cue: 'rumble' });
+        }
+      }
+      if (was < 0.995 && st.k >= 0.995) {
+        // the slam lands
+        const floorY = motion.top.y + 22 + motion.travel;
+        this.shake = Math.max(this.shake, 6);
+        this.sfx('slam', this.player, motion.top.x, floorY);
+        this.emit({ kind: 'sound', cue: 'slam' });
+        this.effects.push({ type: 'snow', x: motion.top.x, y: floorY + 14, ttl: 26, maxTtl: 26, color: '#d6d3d1', particles: this.makeParticles(motion.top.x, floorY + 12, 12, 3) });
+        this.effects.push({ type: 'flash', x: motion.top.x, y: floorY + 10, ttl: 8, maxTtl: 8, color: '#e7e5e4' });
+        const bounds = plate.bounds;
+        for (const m of this.marbles) {
+          const p = m.body.position;
+          if (m.finishedAt !== null || m.hold || m.frozen) continue;
+          if (this.time - m.crushMarkAt < 400) continue;
+          if (p.x < bounds.min.x - 20 || p.x > bounds.max.x + 20) continue;
+          if (p.y < floorY - 40 || p.y > floorY + 40) continue;
+          m.crushMarkAt = this.time;
+          // Heavy metal never pins; Slipstream slips out early; everyone else eats 600ms of deck.
+          if (this.time < m.anvilUntil || m.body.mass >= 9) continue;
+          m.crushedUntil = this.time + (this.time < m.aeroUntil ? 180 : 600);
+          Body.setVelocity(m.body, { x: 0, y: 0 });
+          if (m.info.isPlayer) this.onEvent?.('SQUASHED!', '#d6d3d1');
+          else this.effects.push({ type: 'text', x: p.x, y: p.y - 24, ttl: 40, maxTtl: 40, color: '#e7e5e4', text: 'SQUASHED' });
+        }
+      }
+    }
+    // pinned marbles wait it out
+    for (const m of this.marbles) {
+      if (m.crushedUntil > this.time && m.finishedAt === null) {
+        Body.setVelocity(m.body, { x: 0, y: 0 });
+        m.stuckTime = 0;
+      }
+    }
+    // MB-10B maces: a Shockwave within range jams the sweeper for two seconds (and guests replay
+    // the same decision from the shock event they receive).
   }
 
   /** Let a held marble go: tunnels pop it out of the exit hole with the set speed. */
@@ -1000,6 +1196,20 @@ export class Game {
       m.deepestY = p.y;
       m.depthAt = this.time;
     }
+    // MB-10B: kinematic machines glide; they never prove the marble itself moved. A marble pinned
+    // by a crusher or boxed in by a blade is stalling, not travelling.
+    const seen = new Set<Matter.Body>();
+    for (const v of m.body.vertices) {
+      for (const hit of Query.point(this.track.bodies, v)) {
+        if (seen.has(hit) || !hit.isStatic) continue;
+        seen.add(hit);
+        const md = meta(hit);
+        if (!md?.motion) continue;
+        m.motionAnchor = { ...p };
+        m.motionAt = m.depthAt = this.time;
+        m.deepestY = p.y;
+      }
+    }
     const stalled = this.time - m.motionAt;
     const noDescent = this.time - m.depthAt;
     m.stuckTime = Math.max(stalled, noDescent);
@@ -1023,7 +1233,9 @@ export class Game {
       x: Number.isFinite(p.x) ? Math.max(35, Math.min(W - 35, p.x)) : W / 2,
       y: Number.isFinite(p.y) ? Math.max(this.track.startY, p.y) : m.deepestY,
     };
-    const blockers = [...this.track.bodies.filter((body) => !meta(body).destroyed), ...this.marbles.map((marble) => marble.body)].filter((body) => body !== m.body && !body.isSensor);
+    // Kinematic machines still occupy their slice of track, but the marshal must not refuse a
+    // spot just for touching one — they glide away on their own clock between frames.
+    const blockers = [...this.track.bodies.filter((body) => !meta(body).destroyed && !meta(body).motion), ...this.marbles.map((marble) => marble.body)].filter((body) => body !== m.body && !body.isSensor);
     const probe = Bodies.circle(0, 0, MARBLE_RADIUS + 4);
     const direction = origin.x < W / 2 ? 1 : -1;
     let destination: Matter.Vector | undefined;
@@ -1192,6 +1404,17 @@ export class Game {
         this.shake = 8;
         this.effects.push({ type: 'ring', x: p.x, y: p.y, ttl: 30, maxTtl: 30, color: '#facc15' });
         this.emit({ kind: 'shock', seat: m.info.id, x: p.x, y: p.y });
+        // MB-10B: the fun interaction — a blast in range jams a mace sweeper for two seconds.
+        for (const arm of elementBodies(this.track, 'mace')) {
+          const amd = meta(arm);
+          const motion = amd.motion;
+          if (!motion || motion.mode !== 'sweep') continue;
+          if (Math.hypot(motion.pivot.x - p.x, motion.pivot.y - p.y) < 280 || Math.hypot(arm.position.x - p.x, arm.position.y - p.y) < 280) {
+            amd.stunUntil = this.time + 2000;
+            this.effects.push({ type: 'text', x: motion.pivot.x, y: motion.pivot.y + 40, ttl: 60, maxTtl: 60, color: '#facc15', text: 'JAMMED' });
+            this.sfx('clang', m, motion.pivot.x, motion.pivot.y);
+          }
+        }
         for (const o of this.marbles) {
           if (o === m || o.finishedAt !== null) continue;
           const dx = o.body.position.x - p.x;
@@ -1435,6 +1658,21 @@ export class Game {
           m.aiUseAt = this.time + 1500;
         } else if (item === 'shock' && !this.marbles.some((o) => o !== m && Math.hypot(o.body.position.x - b.position.x, o.body.position.y - b.position.y) < shockRange)) {
           m.aiUseAt = this.time + 700;
+        } else if (item === 'ghost' && m.ghostUntil < this.time) {
+          // MB-10B: ghost is the timing cheat — burn it where the danger machines actually are.
+          let danger = false;
+          for (const kind of ['blade', 'saw', 'crusher', 'boulder', 'mace'] as const) {
+            for (const d of elementBodies(this.track, kind)) {
+              const md = meta(d);
+              if (md.destroyed) continue;
+              const dx = d.position.x - b.position.x;
+              const dy = d.position.y - b.position.y;
+              if (Math.abs(dx) < 260 && dy > -60 && dy < 620) { danger = true; break; }
+            }
+            if (danger) break;
+          }
+          if (danger) this.useItem(m);
+          else m.aiUseAt = this.time + 1200;
         } else this.useItem(m);
       }
     }

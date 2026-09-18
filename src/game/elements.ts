@@ -97,6 +97,96 @@ export function hingeIsOpen(motion: Extract<Motion, { mode: 'hinge' }>, angle: n
   return Math.abs(angle) > Math.abs(motion.openAngle) * 0.45;
 }
 
+// ---------------------------------------------------------------- MB-10B programs
+
+/** Blade swing angle at `time`: ±amp about vertical, full period `periodMs`. */
+export function pendulumAngle(motion: Extract<Motion, { mode: 'pendulum' }>, time: number): number {
+  return motion.amp * Math.sin((2 * Math.PI * ((time + motion.phaseMs) % motion.periodMs)) / motion.periodMs);
+}
+
+/** Blade angular speed (rad/ms) at `time` — drives the knockback's shove. */
+export function pendulumOmega(motion: Extract<Motion, { mode: 'pendulum' }>, time: number): number {
+  return motion.amp * ((2 * Math.PI) / motion.periodMs) * Math.cos((2 * Math.PI * ((time + motion.phaseMs) % motion.periodMs)) / motion.periodMs);
+}
+
+/**
+ * Saw slide: eased ping-pong between the slot ends (a smooth start/stop sells the machinery).
+ * Returns 0..1 along a→b.
+ */
+export function slideAt(motion: Extract<Motion, { mode: 'slide' }>, time: number): number {
+  const tt = (((time + motion.phaseMs) / motion.periodMs) % 1 + 1) % 1;
+  return 0.5 - 0.5 * Math.cos(2 * Math.PI * tt);
+}
+
+/** Saw slides back: the direction of travel at `time` (+1 toward b, -1 toward a). */
+export function slideDir(motion: Extract<Motion, { mode: 'slide' }>, time: number): number {
+  const tt = (((time + motion.phaseMs) / motion.periodMs) % 1 + 1) % 1;
+  return Math.sin(2 * Math.PI * tt) >= 0 ? 1 : -1;
+}
+
+/** The crusher's slam window in ms — a fast eased drop; the rise takes the rest of the cycle. */
+export const PISTON_SLAM_MS = 220;
+/** How far above the plate a squash is heard (rumble warning window before the slam). */
+export const PISTON_WARN_MS = 700;
+
+/**
+ * Crusher piston pose: 0 = parked at the top, 1 = at the floor. Program: top rest, a fast eased
+ * slam, `floorMs` sitting on the deck, then a slow rise over whatever the cycle leaves.
+ */
+export function pistonState(motion: Extract<Motion, { mode: 'piston' }>, time: number): { k: number; slam: boolean; warn: boolean } {
+  const cycle = motion.periodMs;
+  const t = ((time + motion.phaseMs) % cycle + cycle) % cycle;
+  const slamEnd = cycle - motion.floorMs - PISTON_SLAM_MS - Math.max(400, cycle * 0.25);
+  // layout: [0, slamStart) rest at top, [slamStart, +SLAM) drop, floor hold, then rise
+  const slamStart = Math.max(0, slamEnd);
+  if (t < slamStart) return { k: 0, slam: false, warn: t > slamStart - PISTON_WARN_MS };
+  if (t < slamStart + PISTON_SLAM_MS) {
+    const r = (t - slamStart) / PISTON_SLAM_MS;
+    return { k: ease01(r), slam: true, warn: true };
+  }
+  const riseStart = slamStart + PISTON_SLAM_MS + motion.floorMs;
+  if (t < riseStart) return { k: 1, slam: false, warn: false };
+  const riseMs = Math.max(60, cycle - riseStart);
+  const r = (t - riseStart) / riseMs;
+  return { k: ease01(1 - r), slam: false, warn: false };
+}
+
+/**
+ * Boulder pose: distance rolled into the path at `time` (0 while resting at the top, capped at
+ * `spanLen` until the cycle wraps and it is "collected" back to the shed).
+ */
+export function rollAt(motion: Extract<Motion, { mode: 'roll' }>, time: number): { d: number; rolling: boolean } {
+  const t = ((time + motion.phaseMs) % motion.intervalMs + motion.intervalMs) % motion.intervalMs;
+  if (t < motion.restMs) return { d: 0, rolling: false };
+  const runMs = Math.max(200, motion.intervalMs - motion.restMs);
+  const d = Math.min(motion.spanLen, ((t - motion.restMs) / runMs) * motion.spanLen);
+  return { d, rolling: true };
+}
+
+/** Point on a boulder path at distance `d` (and the local travel direction). */
+export function pathAt(motion: Extract<Motion, { mode: 'roll' }>, d: number): { x: number; y: number; dir: Matter.Vector } {
+  const { path, stepLens } = motion;
+  let i = stepLens.length - 1;
+  for (let k = 1; k < stepLens.length; k++) if (d <= stepLens[k]) { i = k - 1; break; }
+  const a = path[i], b = path[Math.min(i + 1, path.length - 1)];
+  const seg = Math.max(1e-6, stepLens[i + 1] - stepLens[i]);
+  const k = Math.max(0, Math.min(1, (d - stepLens[i]) / seg));
+  return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, dir: { x: (b.x - a.x) / seg, y: (b.y - a.y) / seg } };
+}
+
+/** Mace sweep angle from eased progress k∈[0,1] over the program: sweep, pause, sweep back, pause. */
+export function sweepAngleFrom(k: number, motion: Extract<Motion, { mode: 'sweep' }>): number {
+  const half = motion.sweepMs + motion.pauseMs;
+  const t = k * (half * 2);
+  const swing = (f: number) => -1 + 2 * ease01(Math.max(0, Math.min(1, f)));
+  let side: number;
+  if (t < motion.sweepMs) side = swing(t / motion.sweepMs);
+  else if (t < half) side = 1;
+  else if (t < half + motion.sweepMs) side = -swing((t - half) / motion.sweepMs);
+  else side = -1;
+  return side * (motion.arc / 2);
+}
+
 // ---------------------------------------------------------------- generic movers
 
 /**
@@ -141,15 +231,79 @@ export function updateElement(body: Matter.Body, time: number, dt: number): void
         body, { x: pivot.x + Math.sin(cur) * len / 2, y: pivot.y - Math.cos(cur) * len / 2 }, true);
       return;
     }
+    // ---- MB-10B: blades and crushers — all pure-clock poses, so guests draw the same machine ----
+    case 'blade': {
+      const motion = md.motion;
+      if (!motion || motion.mode !== 'pendulum') return;
+      const angle = pendulumAngle(motion, time);
+      (Body.setAngle as unknown as (b: Matter.Body, a: number, u: boolean) => void)(body, angle, true);
+      (Body.setPosition as unknown as (b: Matter.Body, p: Matter.Vector, u: boolean) => void)(
+        body, { x: motion.pivot.x + Math.sin(angle) * motion.arm / 2, y: motion.pivot.y + Math.cos(angle) * motion.arm / 2 }, true);
+      return;
+    }
+    case 'saw': {
+      const motion = md.motion;
+      if (!motion || motion.mode !== 'slide') return;
+      const k = slideAt(motion, time);
+      (Body.setPosition as unknown as (b: Matter.Body, p: Matter.Vector, u: boolean) => void)(
+        body, { x: motion.a.x + (motion.b.x - motion.a.x) * k, y: motion.a.y + (motion.b.y - motion.a.y) * k }, true);
+      return;
+    }
+    case 'crusher': {
+      const motion = md.motion;
+      if (!motion || motion.mode !== 'piston') return;
+      const { k } = pistonState(motion, time);
+      (Body.setPosition as unknown as (b: Matter.Body, p: Matter.Vector, u: boolean) => void)(
+        body, { x: motion.top.x, y: motion.top.y + 22 + motion.travel * k }, true);
+      return;
+    }
+    case 'boulder': {
+      const motion = md.motion;
+      if (!motion || motion.mode !== 'roll') return;
+      const { d } = rollAt(motion, time);
+      const p = pathAt(motion, d);
+      (Body.setPosition as unknown as (b: Matter.Body, p2: Matter.Vector, u: boolean) => void)(body, { x: p.x, y: p.y }, true);
+      (Body.setAngle as unknown as (b: Matter.Body, a: number, u: boolean) => void)(body, d / Math.max(1, motion.r), true);
+      md.rolled = d;
+      return;
+    }
+    case 'mace': {
+      const motion = md.motion;
+      if (!motion || motion.mode !== 'sweep') return;
+      const cycle = 2 * (motion.sweepMs + motion.pauseMs);
+      let k = md.eased ?? ((motion.phaseMs % cycle) / cycle);
+      if (time < (md.stunUntil ?? 0)) {
+        // shocked: the arm shivers in place for two seconds instead of sweeping
+        const ju = Math.sin(time * 0.09) * 0.02;
+        (Body.setPosition as unknown as (b: Matter.Body, p: Matter.Vector, u: boolean) => void)(
+          body, maceTip(motion, sweepAngleFrom(k, motion) + ju), true);
+        return;
+      }
+      k = (k + dt / cycle) % 1;
+      md.eased = k;
+      (Body.setPosition as unknown as (b: Matter.Body, p: Matter.Vector, u: boolean) => void)(
+        body, maceTip(motion, sweepAngleFrom(k, motion)), true);
+      return;
+    }
     default:
       return;
   }
+}
+
+/** Mace head centre at sweep angle a (pivot + the arm rotated off straight-down). */
+export function maceTip(motion: Extract<Motion, { mode: 'sweep' }>, a: number): Matter.Vector {
+  return { x: motion.pivot.x + Math.sin(a) * motion.arm, y: motion.pivot.y + Math.cos(a) * motion.arm };
 }
 
 /** Drive every framework element of this track for one frame. */
 export function updateElements(track: Track, time: number, dt: number): void {
   for (const body of elementBodies(track, 'trapdoor')) updateElement(body, time, dt);
   for (const body of elementBodies(track, 'switch')) updateElement(body, time, dt);
+  for (const body of elementBodies(track, 'blade')) updateElement(body, time, dt);
+  for (const body of elementBodies(track, 'saw')) updateElement(body, time, dt);
+  for (const body of elementBodies(track, 'crusher')) updateElement(body, time, dt);
+  for (const body of elementBodies(track, 'boulder')) updateElement(body, time, dt);
+  for (const body of elementBodies(track, 'mace')) updateElement(body, time, dt);
 }
 
 // ---------------------------------------------------------------- warnings (skins read these)

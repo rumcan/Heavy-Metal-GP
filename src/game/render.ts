@@ -1,6 +1,6 @@
 import Matter from 'matter-js';
 import { Game, Marble } from './engine';
-import { hingeTimerState, hingeIsOpen, trapdoorWarn } from './elements';
+import { hingeTimerState, hingeIsOpen, trapdoorWarn, pistonState } from './elements';
 import { meta, W } from './track';
 import { MARBLE_RADIUS, ITEM_INFO, skinFor, themeIdFor } from './types';
 import { ballFor, bodyFrame, currentSkin, drawRail, drawSprite, drawStrip, setSkin, sprite } from './sprites';
@@ -878,6 +878,22 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
       case 'switchPad':
         drawSwitchPad(ctx, b, md, game, t);
         break;
+      // ---- MB-10B: blades and crushers ----
+      case 'blade':
+        drawBlade(ctx, b, md, t);
+        break;
+      case 'saw':
+        drawSaw(ctx, b, md, t);
+        break;
+      case 'crusher':
+        drawCrusher(ctx, b, md, game, t);
+        break;
+      case 'boulder':
+        drawBoulder(ctx, b, md);
+        break;
+      case 'mace':
+        drawMace(ctx, b, md, game, t);
+        break;
       default:
         break;
     }
@@ -1291,6 +1307,327 @@ function drawTorchGlows(ctx: CanvasRenderingContext2D, game: Game, viewTop: numb
 function bodyJitter(b: Matter.Body, salt: number): number {
   const x = b.position.x * 12.9898 + b.position.y * 78.233 + salt * 37.719;
   return Math.abs(Math.sin(x) * 43758.5453) % 1;
+}
+
+// ---- MB-10B: blades and crushers — all moving parts drawn per frame from the clock ----
+
+/** Swinging axe blade on its iron arm: pivot hub at the top, blade sweeping with the body angle. */
+function drawBlade(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, t: number) {
+  const motion = md.motion;
+  if (!motion || motion.mode !== 'pendulum') return;
+  const pv = motion.pivot;
+  // swivel mount at the pivot
+  drawSprite(ctx, 'tile-metal', pv.x, pv.y, 26, 14);
+  ctx.fillStyle = '#374151';
+  ctx.beginPath(); ctx.arc(pv.x, pv.y, 5, 0, Math.PI * 2); ctx.fill();
+  // arm + axe head (art points down the arm when angle = 0)
+  const img = sprite('blade');
+  ctx.save();
+  ctx.translate(pv.x, pv.y);
+  ctx.rotate(b.angle + Math.sin(t / 1600) * 0.004);
+  const len = motion.arm;
+  if (img) {
+    const bw = len * 0.58, bh = img.naturalHeight * (len * 1.18) / img.naturalWidth;
+    ctx.drawImage(img, -bw / 2, 0, bw, len * 1.18 > bh ? bh : len * 1.18);
+  } else {
+    // iron arm
+    ctx.fillStyle = '#4b5563';
+    ctx.fillRect(-5, 0, 10, len * 0.78);
+    ctx.strokeStyle = '#1f2937';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-5, 0, 10, len * 0.78);
+    // wedge blade: wide crescent at the tip
+    ctx.beginPath();
+    ctx.moveTo(-len * 0.26, len * 0.66);
+    ctx.lineTo(len * 0.26, len * 0.66);
+    ctx.lineTo(len * 0.2, len);
+    ctx.lineTo(-len * 0.2, len);
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(-len * 0.26, 0, len * 0.26, 0);
+    grad.addColorStop(0, '#9ca3af');
+    grad.addColorStop(0.5, '#e5e7eb');
+    grad.addColorStop(1, '#6b7280');
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.strokeStyle = '#374151';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    // a nick of goblin red at the edge
+    ctx.strokeStyle = '#b3261e';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-len * 0.19, len - 5);
+    ctx.lineTo(len * 0.19, len - 5);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/** Spinning saw disc (red teeth, skull hub), plus the wood-and-iron slot it runs in. */
+function drawSaw(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, t: number) {
+  const motion = md.motion;
+  if (!motion || motion.mode !== 'slide') return;
+  const r = motion.r;
+  // the slot bed (static path), drawn each frame under the disc — cheap: two rails and shadow
+  if (motion.a.x !== motion.b.x || motion.a.y !== motion.b.y) {
+    ctx.save();
+    ctx.strokeStyle = '#52341c';
+    ctx.lineWidth = r * 1.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(motion.a.x, motion.a.y + r * 0.35);
+    ctx.lineTo(motion.b.x, motion.b.y + r * 0.35);
+    ctx.stroke();
+    ctx.strokeStyle = '#2f2012';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(motion.a.x, motion.a.y + r * 0.9);
+    ctx.lineTo(motion.b.x, motion.b.y + r * 0.9);
+    ctx.stroke();
+    ctx.restore();
+  }
+  const spin = t * motion.spinW * 0.06 + motion.phaseMs * 0.01;
+  const img = sprite('saw');
+  if (img) {
+    ctx.save();
+    ctx.translate(b.position.x, b.position.y);
+    ctx.rotate(spin);
+    ctx.drawImage(img, -r * 1.25, -r * 1.25, r * 2.5, r * 2.5);
+    ctx.restore();
+    return;
+  }
+  ctx.save();
+  ctx.translate(b.position.x, b.position.y);
+  ctx.rotate(spin);
+  const teeth = 14;
+  ctx.beginPath();
+  for (let i = 0; i < teeth; i++) {
+    const a = (i / teeth) * Math.PI * 2;
+    const tip = a + Math.PI / teeth * 0.5;
+    ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    ctx.lineTo(Math.cos(tip) * r * 1.22, Math.sin(tip) * r * 1.22);
+  }
+  ctx.closePath();
+  ctx.fillStyle = '#dc2626';
+  ctx.fill();
+  ctx.strokeStyle = '#7f1d1d';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.86, 0, Math.PI * 2);
+  ctx.fillStyle = '#9ca3af';
+  ctx.fill();
+  ctx.strokeStyle = '#4b5563';
+  ctx.stroke();
+  // skull hub
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.3, 0, Math.PI * 2);
+  ctx.fillStyle = '#f3e9cf';
+  ctx.fill();
+  ctx.fillStyle = '#1f2937';
+  ctx.beginPath(); ctx.arc(-r * 0.11, -r * 0.05, r * 0.07, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(r * 0.11, -r * 0.05, r * 0.07, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+/** Crusher piston: housing at the top, hanging stamper; warning glow + shadow while it arms. */
+function drawCrusher(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, game: Game, t: number) {
+  const motion = md.motion;
+  if (!motion || motion.mode !== 'piston') return;
+  const st = pistonState(motion, game.time);
+  const { min, max } = b.bounds;
+  const w = max.x - min.x;
+  const floorY = motion.top.y + 22 + motion.travel + 22;
+  // shadow of the falling plate on the deck, growing with the drop
+  ctx.save();
+  ctx.globalAlpha = 0.16 + st.k * 0.3;
+  ctx.fillStyle = '#0b1120';
+  ctx.beginPath();
+  ctx.ellipse((min.x + max.x) / 2, floorY, w / 2 * (0.5 + st.k * 0.5), 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  // hazard plate at the deck line
+  hazardStripe(ctx, min.x - 12, floorY + 6, w + 24, 12, '#eab308');
+  // housing: iron cylinder the piston drops out of
+  const houseImg = sprite('crusher-house');
+  if (houseImg) {
+    ctx.drawImage(houseImg, min.x - 10, motion.top.y - 58, w + 20, 60);
+  } else {
+    ctx.fillStyle = '#3f4653';
+    ctx.fillRect(min.x - 8, motion.top.y - 56, w + 16, 58);
+    ctx.strokeStyle = '#1f2937';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(min.x - 8, motion.top.y - 56, w + 16, 58);
+    ctx.fillStyle = '#576072';
+    for (let x = min.x; x < max.x - 8; x += 22) ctx.fillRect(x, motion.top.y - 52, 5, 50);
+  }
+  // the stamper block
+  const img = sprite('crusher');
+  const warn = st.warn ? 0.5 + 0.5 * Math.sin(t / 90) : 0;
+  if (img) {
+    ctx.drawImage(img, min.x - 6, min.y - 8, w + 12, (max.y - min.y) + 16);
+  } else {
+    ctx.fillStyle = '#57534e';
+    ctx.fillRect(min.x, min.y, w, max.y - min.y);
+    ctx.strokeStyle = '#292524';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(min.x, min.y, w, max.y - min.y);
+    // iron bands
+    ctx.fillStyle = '#44403c';
+    ctx.fillRect(min.x, min.y + 6, w, 7);
+    ctx.fillRect(min.x, max.y - 13, w, 7);
+    // rivets
+    ctx.fillStyle = '#a8a29e';
+    for (let x = min.x + 10; x < max.x - 6; x += 18) {
+      ctx.beginPath(); ctx.arc(x, min.y + 9.5, 2, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x, max.y - 9.5, 2, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  // warning glow across the bands while the slam arms
+  if (warn > 0) {
+    ctx.save();
+    ctx.globalAlpha = warn * 0.5;
+    ctx.fillStyle = '#ef4444';
+    ctx.fillRect(min.x, min.y + 6, w, 7);
+    ctx.restore();
+  }
+}
+
+/** Boulder with a carved goblin face, spinning with the distance it has rolled. */
+function drawBoulder(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>) {
+  const r = md.radius ?? 27;
+  const img = sprite('boulder');
+  ctx.save();
+  ctx.translate(b.position.x, b.position.y);
+  ctx.rotate(b.angle);
+  if (img) {
+    ctx.drawImage(img, -r * 1.12, -r * 1.12, r * 2.24, r * 2.24);
+  } else {
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    const grad = ctx.createRadialGradient(-r * 0.3, -r * 0.3, r * 0.2, 0, 0, r);
+    grad.addColorStop(0, '#a8a29e');
+    grad.addColorStop(1, '#57534e');
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.strokeStyle = '#44403c';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    // the face: two crater eyes, a jagged grin
+    ctx.fillStyle = '#292524';
+    ctx.beginPath(); ctx.ellipse(-r * 0.32, -r * 0.18, r * 0.14, r * 0.18, 0.2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(r * 0.3, -r * 0.14, r * 0.12, r * 0.16, -0.15, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#292524';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.4, r * 0.36);
+    ctx.quadraticCurveTo(0, r * 0.55, r * 0.38, r * 0.3);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/** Spiked mace ball on its arm; the arm swings with the ball body. Stars while jammed. */
+function drawMace(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, game: Game, t: number) {
+  const motion = md.motion;
+  if (!motion || motion.mode !== 'sweep') return;
+  const pv = motion.pivot;
+  const r = md.radius ?? 24;
+  const stunned = game.time < (md.stunUntil ?? 0);
+  // the arm from pivot to ball
+  ctx.strokeStyle = stunned ? '#7c5f2c' : '#1f2937';
+  ctx.lineWidth = 7;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(pv.x, pv.y);
+  ctx.lineTo(b.position.x, b.position.y);
+  ctx.stroke();
+  ctx.strokeStyle = '#4b5563';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(pv.x, pv.y);
+  ctx.lineTo(b.position.x, b.position.y);
+  ctx.stroke();
+  drawSprite(ctx, 'tile-metal', pv.x, pv.y, 22, 12);
+  ctx.fillStyle = '#9ca3af';
+  ctx.beginPath(); ctx.arc(pv.x, pv.y, 4, 0, Math.PI * 2); ctx.fill();
+  // the ball
+  const img = sprite('mace');
+  if (img) {
+    ctx.save();
+    ctx.translate(b.position.x, b.position.y);
+    ctx.rotate(t * 0.002);
+    ctx.drawImage(img, -r * 1.35, -r * 1.35, r * 2.7, r * 2.7);
+    ctx.restore();
+  } else {
+    ctx.save();
+    ctx.translate(b.position.x, b.position.y);
+    ctx.rotate(t * 0.002);
+    // spikes
+    ctx.fillStyle = '#6b7280';
+    const spikes = 10;
+    for (let i = 0; i < spikes; i++) {
+      const a = (i / spikes) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * r * 0.8, Math.sin(a) * r * 0.8);
+      ctx.lineTo(Math.cos(a + 0.16) * r * 1.42, Math.sin(a + 0.16) * r * 1.42);
+      ctx.lineTo(Math.cos(a + 0.32) * r * 0.8, Math.sin(a + 0.32) * r * 0.8);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    const grad = ctx.createRadialGradient(-r * 0.3, -r * 0.3, r * 0.2, 0, 0, r);
+    grad.addColorStop(0, '#9ca3af');
+    grad.addColorStop(1, '#374151');
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.strokeStyle = '#1f2937';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.restore();
+  }
+  // jam stars while shocked
+  if (stunned) {
+    ctx.fillStyle = '#facc15';
+    for (let i = 0; i < 3; i++) {
+      const a = t / 300 + (i * Math.PI * 2) / 3;
+      const sx = b.position.x + Math.cos(a) * (r + 14), sy = b.position.y - 6 + Math.sin(a) * 6;
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(a);
+      ctx.beginPath();
+      for (let k = 0; k < 4; k++) {
+        const aa = (k / 4) * Math.PI * 2;
+        ctx.lineTo(Math.cos(aa) * 5, Math.sin(aa) * 5);
+        ctx.lineTo(Math.cos(aa + Math.PI / 4) * 1.8, Math.sin(aa + Math.PI / 4) * 1.8);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+}
+
+/** Ramped warning stripes (drawn under crusher decks and machinery beds). */
+function hazardStripe(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string) {
+  ctx.save();
+  ctx.fillStyle = '#1c1917';
+  ctx.fillRect(x, y, w, h);
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+  ctx.fillStyle = color;
+  for (let sx = x - h; sx < x + w + h; sx += 16) {
+    ctx.beginPath();
+    ctx.moveTo(sx, y + h);
+    ctx.lineTo(sx + 8, y);
+    ctx.lineTo(sx + 16, y);
+    ctx.lineTo(sx + 8, y + h);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
 /** NO ENTRY planks over a tunnel (or any shortcut). Cracks grow as hp drops. */

@@ -96,6 +96,19 @@ export const PALETTE: PaletteGroup[] = [
       { id: 'switch', t: 'switch', label: 'Track switch lever', sprite: 'switchplate', hint: 'Every marble that crosses it flips the split for the next one.' },
     ],
   },
+  {
+    id: 'danger',
+    label: 'Danger',
+    note: 'Blades and crushers',
+    tiles: [
+      { id: 'blade', t: 'blade', label: 'Swinging blade', sprite: 'blade', hint: 'A huge axe swinging across the track. Time the swing or eat the flat.' },
+      { id: 'saw', t: 'saw', label: 'Saw blade', sprite: 'saw', hint: 'A spinning disc set into the track. Drag a slot end and it slides.' },
+      { id: 'crusher', t: 'crusher', label: 'Crusher piston', sprite: 'crusher', hint: 'A stamper slamming down on a timer. Watch the shadow, dash on the rise.' },
+      { id: 'crusher-rapid', t: 'crusher', label: 'Rapid crusher', sprite: 'crusher', preset: { period: 2400, floor: 450 }, hint: 'A twitchy stamper on a short cycle. Relentless.' },
+      { id: 'boulder', t: 'boulder', label: 'Rolling boulder', sprite: 'boulder', hint: 'A goblin-faced rock rolling down its path on a timer. Jump hops it.' },
+      { id: 'mace', t: 'mace', label: 'Mace sweeper', sprite: 'mace', hint: 'A spiked ball scything the lane. A Shockwave jams it for two seconds.' },
+    ],
+  },
 ];
 
 /** Every tile, flat — for looking one up by piece type. */

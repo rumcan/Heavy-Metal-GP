@@ -22,6 +22,7 @@ import { Game, LIGHTS_OUT_STAGE } from '../game/engine';
 import type { Marble } from '../game/engine';
 import type { Track } from '../game/track';
 import { meta } from '../game/track';
+import { elementBodies } from '../game/elements';
 import type { MarbleInfo } from '../game/types';
 import type { SoundEvent } from '../game/cues';
 import {
@@ -592,6 +593,16 @@ export class RaceGuest {
         // The shock shatters ice: the host unfroze everyone in range, so the
         // guest does too rather than leaving a marble in ice that has melted.
         for (const m of marbles) if (m.frozen) this.game.setFrozen(m, false);
+        // MB-10B: a blast in range jams a mace sweeper for two seconds. The host made the same
+        // distance check before it sent this event, so the arm freezes identically on this side.
+        for (const arm of elementBodies(this.game.track, 'mace')) {
+          const amd = meta(arm);
+          const motion = amd.motion;
+          if (!motion || motion.mode !== 'sweep') continue;
+          if (Math.hypot(motion.pivot.x - event.x, motion.pivot.y - event.y) < 280 || Math.hypot(arm.position.x - event.x, arm.position.y - event.y) < 280) {
+            amd.stunUntil = this.game.time + 2000;
+          }
+        }
         break;
       }
       case 'item': {
