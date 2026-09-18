@@ -1,4 +1,5 @@
 import * as storage from './storage';
+import type { TrackDef } from './trackdef';
 import { GrandPrix, HeatResult, MarbleInfo, POINTS, FASTEST_BONUS, HEATS_PER_GP, TEAMS, Team, TrackProfile, CIRCUIT_LENGTH_MULTIPLIER, TRACK_THEMES, ThemeId } from './types';
 
 const P = (segments: number, weights: Record<string, number>, theme: ThemeId): TrackProfile => ({ segments: segments * CIRCUIT_LENGTH_MULTIPLIER, weights, theme: TRACK_THEMES[theme] });
@@ -22,6 +23,34 @@ export interface SeasonState {
   results: HeatResult[][][]; // [round][heat] -> results
   fastest: (number | null)[]; // marble id awarded fastest-heat bonus per round
   complete: boolean;
+  /**
+   * Per round, a player-built circuit that replaces the calendar track (null/missing = the calendar track).
+   * A copy of the def, not a My-tracks id, so editing or deleting the saved track can't change a season.
+   */
+  tracks?: (TrackDef | null)[];
+}
+
+/** The player-built circuit a round runs on, or null for the calendar track. */
+export function roundTrack(season: SeasonState, round: number): TrackDef | null {
+  return season.tracks?.[round] ?? null;
+}
+
+/** Display name of a round's circuit: the custom track's name, or the Grand Prix name. */
+export function roundName(season: SeasonState, round: number): string {
+  return roundTrack(season, round)?.name ?? CALENDAR[round].name;
+}
+
+/** A round can change track until its first heat has been raced. */
+export function canChangeRoundTrack(season: SeasonState, round: number): boolean {
+  return !season.complete && round >= season.round && (season.results[round]?.length ?? 0) === 0;
+}
+
+/** Swap a round's track (null = back to the calendar). Returns the season unchanged if the round has started. */
+export function setRoundTrack(season: SeasonState, round: number, def: TrackDef | null): SeasonState {
+  if (!canChangeRoundTrack(season, round)) return season;
+  const tracks = CALENDAR.map((_, i) => season.tracks?.[i] ?? null);
+  tracks[round] = def ? (JSON.parse(JSON.stringify(def)) as TrackDef) : null;
+  return { ...season, tracks };
 }
 
 export function gpSeed(seasonSeed: number, round: number): number {

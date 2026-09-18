@@ -37,8 +37,14 @@ import {
   ZoomIn,
   ZoomOut,
   FlipHorizontal,
+  RotateCcw,
+  RotateCw,
+  MoveVertical,
+  Eraser,
 } from 'lucide-react';
 import Brand from './Brand';
+import Dialog from './Dialog';
+import PublishDialog from './editor/PublishDialog';
 import RulesDialog from './RulesDialog';
 import EditorCanvas from './editor/EditorCanvas';
 import type { EditorStatus } from './editor/EditorCanvas';
@@ -48,11 +54,12 @@ import PropertiesPanel from './editor/PropertiesPanel';
 import { SNAP, clampCamera, formatUnits, formatZoom, newRig, rigCenter, rigFit, rigZoom } from './editor/camera';
 import type { CameraRig, Point } from './editor/camera';
 import { tileFor } from './editor/palette';
-import type { PieceType } from './editor/palette';
 import { defaultPiece } from './editor/defaults';
 import { History } from './editor/history';
 import { buildEditorTrack } from './editor/build';
 import { applyHandle, movePiece, mirrorPiece } from './editor/handles';
+import { ROTATE_STEP_DEG, rotateSelection } from './editor/rotate';
+import { FINISH_H, START_H } from '../game/track';
 import type { Piece, TrackDef } from '../game/trackdef';
 import { MAX_NAME } from '../game/trackdef';
 import { generateTrackDef } from '../game/trackdef';
@@ -69,7 +76,7 @@ import SharePanel from './editor/SharePanel';
 import { loadTracksSync, loadTracks, loadDraftSync, saveDraft, createTrack, updateTrack, deleteTrack as deleteSavedTrack, duplicateTrack as duplicateSavedTrack, renameTrack as renameSavedTrack } from '../game/tracks';
 import type { SavedTrack } from '../game/tracks';
 import { encodeShareCode } from '../game/sharecode';
-import bannerUrl from '../assets/editor/workshop-banner.png';
+import bannerUrl from '../assets/editor/workshop-banner.webp';
 import NewTrackDialog from './editor/NewTrackDialog';
 import CoachMarks from './editor/CoachMarks';
 import '../editor.css';
@@ -80,6 +87,8 @@ interface Props {
   name: string;
   driver: MarbleInfo;
   onExit: () => void;
+  /** Open the Community tracks screen (the draft is saved first). */
+  onCommunity?: () => void;
 }
 
 interface Circuit {
@@ -91,11 +100,42 @@ function cloneDef(def: TrackDef): TrackDef {
   return JSON.parse(JSON.stringify(def)) as TrackDef;
 }
 
-function ensureHeight(def: TrackDef): TrackDef {
-  // Height must contain every piece's y and still leave room for the finish stub.
-  // Validation rejects a piece whose y exceeds height, so after adding/moving we
-  // grow the circuit if needed.
-  let maxY = def.height;
+/**
+ * Longest a Workshop track may be: the longest calendar circuit. Yas Marble, the finale, measures up to
+ * about 23,700 u depending on its seed (checked across 40 seeds), so the cap rounds that up.
+ */
+const MAX_TRACK_LENGTH = 24_000;
+/** Shortest a track may be: the blank canvas (start area + 800 u of building room + finish). */
+const MIN_TRACK_LENGTH = START_H + 800 + FINISH_H;
+/** Step for the length field and its buttons. */
+const LENGTH_STEP = 500;
+
+/** The lowest point any piece reaches (0 for an empty track). */
+/** Number field that only commits on Enter or blur, and snaps back to the real length (e.g. after clamping). */
+function LengthInput({ value, min, max, step, onCommit }: { value: number; min: number; max: number; step: number; onCommit: (v: number) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commitDraft = () => {
+    if (draft !== null) onCommit(Number(draft));
+    setDraft(null);
+  };
+  return <input
+    type="number"
+    aria-label="Track length in units"
+    value={draft ?? String(Math.round(value))}
+    min={min}
+    max={max}
+    step={step}
+    onChange={(e) => setDraft(e.target.value)}
+    onBlur={commitDraft}
+    onKeyDown={(e) => {
+      if (e.key === 'Enter') commitDraft();
+      if (e.key === 'Escape') setDraft(null);
+    }}
+  />;
+}
+
+function lowestPieceY(def: TrackDef): number {
+  let maxY = 0;
   for (const p of def.pieces) {
     let y = 0;
     switch (p.t) {
@@ -126,13 +166,30 @@ function ensureHeight(def: TrackDef): TrackDef {
         y = p.y;
         break;
     }
-    if (y > maxY - 300) maxY = y + 400;
+    if (y > maxY) maxY = y;
   }
-  if (maxY !== def.height) return { ...def, height: Math.max(def.height, maxY) };
-  return def;
+  return maxY;
 }
 
-export default function TrackEditor({ seed, profile, name, driver, onExit }: Props) {
+/** Shortest the track can be made without cutting off a piece: 400 u of room below the lowest piece. */
+function minLengthFor(def: TrackDef): number {
+  return Math.max(MIN_TRACK_LENGTH, Math.ceil(lowestPieceY(def) + 400));
+}
+
+function ensureHeight(def: TrackDef): TrackDef {
+  // Height must contain every piece's y and still leave room for the finish stub.
+  // Validation rejects a piece whose y exceeds height, so after adding/moving we
+  // grow the circuit if needed — but never past MAX_TRACK_LENGTH (or the track's own
+  // length, if it was imported longer than that).
+  const lowest = lowestPieceY(def);
+  if (lowest <= def.height - 300) return def;
+  const cap = Math.max(MAX_TRACK_LENGTH, def.height);
+  const grown = Math.min(cap, lowest + 400);
+  return grown > def.height ? { ...def, height: grown } : def;
+}
+
+export default function TrackEditor({ seed, profile, name, driver, onExit, onCommunity }: Props) {
+  const [publishOpen, setPublishOpen] = useState(false);
   const [circuit, setCircuit] = useState<Circuit>(() => {
     const draft = loadDraftSync();
     if (draft) return { def: draft, build: 0 };
@@ -144,7 +201,9 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
   const [stage, setStage] = useState<Game | null>(null);
   const [grid, setGrid] = useState(true);
   const [ruler, setRuler] = useState(true);
-  const [armed, setArmed] = useState<PieceType | null>(null);
+  /** Armed palette tile id (see `palette.ts`); `armedTile.t` is the piece type it places. */
+  const [armed, setArmed] = useState<string | null>(null);
+  const armedTile = armed ? tileFor(armed) ?? null : null;
   const [rules, setRules] = useState(false);
   const [drawer, setDrawer] = useState(false);
   const [status, setStatus] = useState<EditorStatus>({ top: 0, bottom: 0, scale: 1, cursor: null });
@@ -160,6 +219,7 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
   const [draftMsg, setDraftMsg] = useState<string | null>(null);
   const [shareMsg, setShareMsg] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
   const [coachForced, setCoachForced] = useState(false);
   const rigRef = useRef<CameraRig | null>(null);
   if (!rigRef.current) rigRef.current = newRig();
@@ -315,7 +375,9 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
   const handlePlace = useCallback(
     (world: { x: number; y: number }) => {
       if (!armed) return;
-      const piece = defaultPiece(armed, world, grid);
+      const tile = tileFor(armed);
+      if (!tile) return;
+      const piece = { ...defaultPiece(tile.t, world, grid), ...tile.preset } as Piece;
       commit(
         (def) => {
           def.pieces.push(piece);
@@ -418,6 +480,40 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
       return { def: ensureHeight(next), build: cur.build + 1 };
     });
   }, [selected, pushHistory]);
+
+  /** Turn the selection by `deg` degrees, clockwise on screen. One undo step per press. */
+  const handleRotate = useCallback(
+    (deg: number) => {
+      if (selected.length === 0) return;
+      pushHistory();
+      setCircuit((cur) => {
+        const next = cloneDef(cur.def);
+        next.pieces = rotateSelection(next.pieces, selected, deg);
+        return { def: ensureHeight(next), build: cur.build + 1 };
+      });
+    },
+    [selected, pushHistory],
+  );
+
+  /** Set the track length, clamped between the lowest piece (+ room) and MAX_TRACK_LENGTH. */
+  const setTrackLength = useCallback(
+    (value: number) => {
+      if (!Number.isFinite(value)) return;
+      commit((def) => {
+        const min = minLengthFor(def);
+        const max = Math.max(MAX_TRACK_LENGTH, min);
+        return { ...def, height: Math.round(Math.max(min, Math.min(max, value))) };
+      });
+    },
+    [commit],
+  );
+
+  /** Remove every piece (name, theme and length stay). One undo step, so Ctrl+Z brings it all back. */
+  const handleClearMap = useCallback(() => {
+    setConfirmClear(false);
+    setSelected([]);
+    commit((def) => ({ ...def, pieces: [] }));
+  }, [commit]);
 
   const handleNudge = useCallback(
     (dx: number, dy: number) => {
@@ -639,6 +735,10 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
     try { saveDraft(circuit.def); } catch { /* ignore */ }
     onExit();
   }, [circuit.def, onExit]);
+  const handleCommunity = useCallback(() => {
+    try { saveDraft(circuit.def); } catch { /* ignore */ }
+    onCommunity?.();
+  }, [circuit.def, onCommunity]);
 
   // Keyboard: delete, duplicate, undo/redo, nudge, mirror, escape clears selection / disarms
   useEffect(() => {
@@ -681,6 +781,13 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
         setArmed(null);
         return;
       }
+      if (e.key.toLowerCase() === 'r' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (selected.length) {
+          e.preventDefault();
+          handleRotate(e.shiftKey ? -ROTATE_STEP_DEG : ROTATE_STEP_DEG);
+        }
+        return;
+      }
       if (e.key.toLowerCase() === 'm' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         if (selected.length) {
           e.preventDefault();
@@ -704,7 +811,7 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [testing, selected, handleDelete, handleDuplicate, handleMirror, handleNudge, handleUndo, handleRedo]);
+  }, [testing, selected, handleDelete, handleDuplicate, handleMirror, handleRotate, handleNudge, handleUndo, handleRedo]);
 
   const editName = useCallback(
     (value: string) => {
@@ -731,6 +838,7 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
         <nav className="main-nav" aria-label="Main navigation">
           <button onClick={handleExit}>Garage</button>
           <button className="active" aria-current="page">Workshop</button>
+          {onCommunity && <button onClick={handleCommunity}>Community</button>}
           <button onClick={() => setRules(true)}>How to play</button>
         </nav>
         <div className="header-tools">
@@ -760,7 +868,7 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
             </button>
           </header>
           <button className="button-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={() => setShowNew(true)}><LayoutGrid size={13} /> New track</button>
-          <PiecePalette active={armed} onPick={(t) => setArmed((cur) => (cur === t ? null : t))} />
+          <PiecePalette active={armed} onPick={(id) => setArmed((cur) => (cur === id ? null : id))} />
           <div className="editor-inspector">
             <header className="eyebrow"><b>02</b> PROPERTIES</header>
             <PropertiesPanel selected={selected} pieces={circuit.def.pieces} onChange={handlePropChange} onChangeMany={handleBulkChange} />
@@ -792,6 +900,14 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
               title={validation?.canShare ? 'Copy share code — track passed validation (≥9/10, no hard errors)' : 'Share requires validation pass (≥9/10 finishers, no hard errors) — run Validate first'}
             >
               <Share2 size={13} /> Share
+            </button>
+            <button
+              className="button-primary"
+              onClick={() => setPublishOpen(true)}
+              disabled={!validation?.canShare}
+              title={validation?.canShare ? 'Publish this track to Community tracks for everyone to race' : 'Run Validate first: only tracks that pass can be published'}
+            >
+              <Users size={13} /> Publish
             </button>
             {draftMsg && <span className="editor-save-msg is-draft"><Check size={11} />{draftMsg}</span>}
             {shareMsg && <span className="editor-save-msg is-share">{shareMsg}</span>}
@@ -841,6 +957,12 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
                 <ScanSearch size={13} />Fit
               </button>
             </div>
+            <div className="editor-length" title={`Track length: ${formatUnits(minLengthFor(circuit.def))} to ${formatUnits(MAX_TRACK_LENGTH)}. It can't be shorter than the lowest piece.`}>
+              <span className="eyebrow"><MoveVertical size={12} />Length</span>
+              <button className="icon-button" aria-label="Shorter track" onClick={() => setTrackLength(circuit.def.height - LENGTH_STEP)} disabled={circuit.def.height <= minLengthFor(circuit.def)}>−</button>
+              <LengthInput value={circuit.def.height} min={minLengthFor(circuit.def)} max={MAX_TRACK_LENGTH} step={LENGTH_STEP} onCommit={setTrackLength} />
+              <button className="icon-button" aria-label="Longer track" onClick={() => setTrackLength(circuit.def.height + LENGTH_STEP)} disabled={circuit.def.height >= MAX_TRACK_LENGTH}>+</button>
+            </div>
             <div className="editor-jumps">
               <button className="text-button" onClick={() => rigCenter(rig, 0)}>
                 <ArrowUpToLine size={13} />Start
@@ -868,11 +990,20 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
             <button className="text-button" onClick={handleMirror} disabled={selected.length === 0} title="Mirror horizontally (M)">
               <FlipHorizontal size={13} />Mirror
             </button>
+            <button className="text-button" onClick={() => handleRotate(-ROTATE_STEP_DEG)} disabled={selected.length === 0} title={`Rotate ${ROTATE_STEP_DEG}° anticlockwise (Shift+R). Or drag the round handle above a ramp.`} aria-label={`Rotate ${ROTATE_STEP_DEG} degrees anticlockwise`}>
+              <RotateCcw size={13} />
+            </button>
+            <button className="text-button" onClick={() => handleRotate(ROTATE_STEP_DEG)} disabled={selected.length === 0} title={`Rotate ${ROTATE_STEP_DEG}° clockwise (R). Or drag the round handle above a ramp.`} aria-label={`Rotate ${ROTATE_STEP_DEG} degrees clockwise`}>
+              <RotateCw size={13} />Rotate
+            </button>
             <button className="text-button" onClick={handleDelete} disabled={selected.length === 0} title="Delete">
               <Trash2 size={13} />Delete
             </button>
+            <button className="text-button editor-clear" onClick={() => setConfirmClear(true)} disabled={circuit.def.pieces.length === 0} title="Remove every piece from the track">
+              <Eraser size={13} />Clear map
+            </button>
             <span className="editor-chip" style={{ marginLeft: 'auto' }}>
-              {selected.length ? `${selected.length} SELECTED` : armed ? `ARMED · ${(tileFor(armed)?.label ?? armed).toUpperCase()}` : 'NO PIECE ARMED'}
+              {selected.length ? `${selected.length} SELECTED` : armedTile ? `ARMED · ${armedTile.label.toUpperCase()}` : 'NO PIECE ARMED'}
             </span>
           </div>
 
@@ -933,7 +1064,7 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
                 grid={grid}
                 ruler={ruler}
                 onStatus={setStatus}
-                armed={armed}
+                armed={armedTile?.t ?? null}
                 track={track}
                 bodyToPiece={bodyToPiece}
                 selected={selected}
@@ -969,6 +1100,18 @@ export default function TrackEditor({ seed, profile, name, driver, onExit }: Pro
 
       {rules && <RulesDialog onClose={() => setRules(false)} />}
       {showNew && <NewTrackDialog onClose={() => setShowNew(false)} onCreate={handleNewTrack} />}
+      {confirmClear && (
+        <Dialog titleId="clear-map-title" onClose={() => setConfirmClear(false)} className="clear-map-dialog">
+          <span className="eyebrow"><Eraser size={14} /> CLEAR MAP</span>
+          <h2 id="clear-map-title">Are you sure?</h2>
+          <p className="dialog-intro">This removes {circuit.def.pieces.length === 1 ? 'the only piece' : `all ${circuit.def.pieces.length} pieces`} from “{circuit.def.name}”. The track name, theme and length stay. You can undo it with Ctrl+Z.</p>
+          <div className="pause-actions">
+            <button className="button-secondary" onClick={() => setConfirmClear(false)} autoFocus>Cancel</button>
+            <button className="button-primary" onClick={handleClearMap}><Eraser size={15} />Clear map</button>
+          </div>
+        </Dialog>
+      )}
+      {publishOpen && <PublishDialog def={circuit.def} onClose={() => setPublishOpen(false)} onViewCommunity={onCommunity ? () => { setPublishOpen(false); handleCommunity(); } : undefined} />}
       <CoachMarks def={circuit.def} testing={testing} validating={validating} canShare={!!validation?.canShare} armed={armed} onClose={() => setCoachForced(false)} forceOpen={coachForced} />
     </div>
   );

@@ -6,10 +6,12 @@ import { PHYSICS_STEP } from '../game/physics';
 import { HEAT_TIME_LIMIT } from '../game/physics';
 import { W } from '../game/track';
 import type { MarbleInfo, TrackProfile } from '../game/types';
+import type { TrackDef } from '../game/trackdef';
 
-interface Props { seed: number; roster: MarbleInfo[]; profile: TrackProfile }
+/** `def`: a player-built circuit to preview instead of generating one from `seed` + `profile`. */
+interface Props { seed: number; roster: MarbleInfo[]; profile: TrackProfile; def?: TrackDef | null }
 
-export default function CircuitPreview({ seed, roster, profile }: Props) {
+export default function CircuitPreview({ seed, roster, profile, def }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pausedRef = useRef(false);
   const [paused, setPaused] = useState(false);
@@ -21,7 +23,7 @@ export default function CircuitPreview({ seed, roster, profile }: Props) {
     if (!canvas || !ctx) return;
     let game: Game;
     const setup = () => {
-      game = new Game(seed, roster, { profile });
+      game = new Game(seed, roster, { profile, def: def ?? undefined });
       game.openGate();
       for (let tick = 0; tick < 200; tick++) game.step(PHYSICS_STEP);
     };
@@ -69,7 +71,7 @@ export default function CircuitPreview({ seed, roster, profile }: Props) {
     };
     raf = requestAnimationFrame(loop);
     return () => { cancelAnimationFrame(raf); observer.disconnect(); game.destroy(); };
-  }, [seed, roster, profile]);
+  }, [seed, roster, profile, def]);
 
   return <div className="circuit-canvas-wrap">
     <canvas ref={canvasRef} className="circuit-canvas" aria-label="Live preview of marbles racing on the selected circuit" />

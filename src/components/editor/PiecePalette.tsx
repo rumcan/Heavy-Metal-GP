@@ -1,21 +1,17 @@
 /**
- * MB-02 + MB-09. The piece palette: the sidebar a player builds from.
- *
- * MB-09 adds a Blizzard-style riveted frame around each icon
- * (src/assets/editor/palette-frame.png, easily replaceable) and data-coach
- * hooks for the 5-step tutorial.
+ * MB-02 + MB-09. The piece palette: the sidebar a player builds from. Each tile shows the piece's race art on
+ * a dark, rust-edged card (styled in editor.css), and carries a data-coach hook for the 5-step tutorial.
+ * Tiles are armed by id, so variants of one piece (blue / orange / item pegs) are separate tiles.
  */
 import { PALETTE } from './palette';
-import type { PieceType } from './palette';
-// MB-09 palette icon frame — Blizzard style, easily replaceable at src/assets/editor/palette-frame.png
-import frameUrl from '../../assets/editor/palette-frame.png';
 
 const art = import.meta.glob<string>('../../assets/game/*.webp', { eager: true, import: 'default' });
 const artFor = (name: string | null) => (name ? art[`../../assets/game/${name}.webp`] ?? null : null);
 
 interface Props {
-  active: PieceType | null;
-  onPick: (t: PieceType) => void;
+  /** Armed tile id. */
+  active: string | null;
+  onPick: (id: string) => void;
 }
 
 export default function PiecePalette({ active, onPick }: Props) {
@@ -24,19 +20,18 @@ export default function PiecePalette({ active, onPick }: Props) {
       <header className="palette-heading"><span className="eyebrow" id={`palette-${group.id}`}>{group.label}</span><small>{group.note}</small></header>
       <div className="palette-tiles">{group.tiles.map((tile) => {
         const src = artFor(tile.sprite);
-        const armed = active === tile.t;
+        const armed = active === tile.id;
         return <button
-          key={tile.t}
+          key={tile.id}
           type="button"
           className={`palette-tile ${armed ? 'armed' : ''}`}
           aria-pressed={armed}
           title={`${tile.label} — ${tile.hint}`}
-          onClick={() => onPick(tile.t)}
-          data-coach={`palette-${tile.t}`}
+          onClick={() => onPick(tile.id)}
+          data-coach={`palette-${tile.id}`}
         >
           <span className="palette-art">
-            <span className="palette-frame" style={{ backgroundImage: `url(${frameUrl})` }} aria-hidden="true" />
-            <span className="palette-art-inner">{src ? <img src={src} alt="" draggable={false} /> : <i className="palette-art-fallback" aria-hidden="true" />}</span>
+            {src ? <img src={src} alt="" draggable={false} /> : <i className="palette-art-fallback" aria-hidden="true" />}
           </span>
           <span className="palette-label">{tile.label}</span>
         </button>;

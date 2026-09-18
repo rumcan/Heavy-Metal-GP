@@ -31,7 +31,7 @@ import HostLeftOverlay from './components/PeerNotices';
 import { circuitIndexOf, gridOrderOf, rosterOf } from './net/lobby';
 import type { SeatGarage } from './net/lobby';
 import { MarbleInfo, MarbleStats, AI_COLORS, randomStats, mulberry32, PLAYER_COLORS, HeatResult, HEATS_PER_GP } from './game/types';
-import { SeasonState, newSeason, recordHeat, gridOrder, gpSeed, CALENDAR, saveSeason, loadSeason } from './game/season';
+import { SeasonState, newSeason, recordHeat, gridOrder, gpSeed, CALENDAR, saveSeason, loadSeason, roundTrack, roundName, setRoundTrack } from './game/season';
 import { loadAccount, saveAccount, purchaseItem, onlineRaceId, settleOnlineRace, settleRace, settleCustomRace } from './game/economy';
 import type { RacerAccount, RacePayout } from './game/economy';
 import { loadTracksSync } from './game/tracks';
@@ -44,6 +44,7 @@ import type { Line } from './game/characters';
 import LoadingScreen from './components/LoadingScreen';
 import StoryMode from './components/story/StoryMode';
 import TrackEditor from './components/TrackEditor';
+import CommunityScreen from './components/CommunityScreen';
 import { loadStory } from './game/story/state';
 
 /**
@@ -75,7 +76,7 @@ function makeRivals(seed: number): MarbleInfo[] {
   }));
 }
 
-type Phase = 'menu' | 'retune' | 'hub' | 'race' | 'quick' | 'story' | 'lobby' | 'online' | 'editor';
+type Phase = 'menu' | 'retune' | 'hub' | 'race' | 'quick' | 'story' | 'lobby' | 'online' | 'editor' | 'community';
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>('menu');
@@ -395,10 +396,10 @@ export default function App() {
     setPayout(paid.payout);
   }, [online, publishAccount, room]);
 
-  const awardWinnings = (results: HeatResult[]) => {
+  /** `isCustom`: the heat ran on a player-built track (pays 30%). Quick races pass the Garage pick; a championship heat its round's track. */
+  const awardWinnings = (results: HeatResult[], isCustom = !!customTrackDef) => {
     const result = results.find((r) => r.id === 0);
     if (!result) return;
-    const isCustom = !!customTrackDef;
     const paid = isCustom ? settleCustomRace(accountRef.current, raceId, result, false) : settleRace(accountRef.current, raceId, result);
     publishAccount(paid.account);
     setPayout(paid.payout);
@@ -475,7 +476,7 @@ export default function App() {
 
   const [pendingResult, setPendingResult] = useState<HeatResult[] | null>(null);
   const onHeatFinished = (results: HeatResult[]) => {
-    awardWinnings(results);
+    awardWinnings(results, !!(season && roundTrack(season, season.round)));
     setPendingResult(results);
     // Persist immediately, without replacing the active race's immutable roster or track.
     if (season) saveSeason(recordHeat(season, results));
@@ -519,6 +520,7 @@ export default function App() {
         onPortrait={setPortrait}
         onStartStory={() => setPhase('story')}
         onWorkshop={() => setPhase('editor')}
+        onCommunity={() => setPhase('community')}
         storyInProgress={storyInProgress}
         mpBusy={mpBusy}
         mpError={mpError}
@@ -544,7 +546,13 @@ export default function App() {
       name={gp.name}
       driver={quickRoster[0]}
       onExit={() => setPhase('menu')}
+      onCommunity={() => setPhase('community')}
     />;
+  }
+
+  // Community tracks: browse, upvote and copy other players' tracks into My tracks.
+  if (phase === 'community') {
+    return withShop(<CommunityScreen account={account} onShop={openShop} onGarage={() => setPhase('menu')} onWorkshop={() => setPhase('editor')} />);
   }
 
   // Online lobby (MP-06): the room the host opened, seen from either end.
@@ -589,11 +597,12 @@ export default function App() {
           setPayout(null);
           setRaceKey((k) => k + 1);
           const heatNo = season.results[season.round].length + 1;
-          setLoading({ eyebrow: `ROUND ${String(season.round + 1).padStart(2, '0')} / HEAT ${heatNo} OF ${HEATS_PER_GP}`, title: CALENDAR[season.round].name.toUpperCase(), cta: 'Lights out', banter: preRaceBanter(seasonRoster, Math.random), next: 'race' });
+          setLoading({ eyebrow: `ROUND ${String(season.round + 1).padStart(2, '0')} / HEAT ${heatNo} OF ${HEATS_PER_GP}`, title: roundName(season, season.round).toUpperCase(), cta: 'Lights out', banter: preRaceBanter(seasonRoster, Math.random), next: 'race' });
         }}
         onRetune={() => { setCircuitIndex(season.round); setPhase('retune'); }}
         onAbandon={() => setPhase('menu')}
         onNewSeason={startSeason}
+        onChangeTrack={(round, def) => setSeason(setRoundTrack(season, round, def))}
         account={account}
         onShop={openShop}
       />
@@ -602,6 +611,7 @@ export default function App() {
 
   if (phase === 'race' && season) {
     const gp = CALENDAR[season.round];
+    const roundDef = roundTrack(season, season.round);
     const heatNo = (season.results[season.round]?.length ?? 0) + 1;
     const isLastHeat = heatNo === HEATS_PER_GP;
     const actions: RaceAction[] = [
@@ -614,7 +624,9 @@ export default function App() {
         roster={seasonRoster}
         profile={gp.profile}
         gridOrder={seasonGrid}
-        title={gp.name}
+        trackDef={roundDef}
+        isCustom={!!roundDef}
+        title={roundName(season, season.round)}
         subtitle={`ROUND ${String(season.round + 1).padStart(2, '0')} / HEAT ${heatNo} OF ${HEATS_PER_GP}`}
         championship
         onExit={() => {
@@ -695,7 +707,7 @@ export default function App() {
       isCustom={!!customTrackDef}
       subtitle={quickSubtitle}
       onExit={() => setPhase('menu')}
-      onFinished={awardWinnings}
+      onFinished={(results) => awardWinnings(results)}
       actions={quickActions}
       inventory={account.inventory}
       credits={account.credits}

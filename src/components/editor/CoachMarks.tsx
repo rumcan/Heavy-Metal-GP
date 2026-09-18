@@ -7,12 +7,13 @@
  * persisted so returning players aren't nagged, but a "Show tutorial" button can
  * reopen it.
  */
-import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { X, ChevronRight, ChevronLeft, Sparkles } from 'lucide-react';
 import * as storage from '../../game/storage';
 import type { TrackDef } from '../../game/trackdef';
 
-const KEY = 'heavy-metal-gp:coach:v1';
+// v2: v1 saves were pushed to step 3 by the old auto-advance, so everyone restarts at step 1 once.
+const KEY = 'heavy-metal-gp:coach:v2';
 
 interface CoachState {
   dismissed: boolean;
@@ -78,31 +79,28 @@ export default function CoachMarks({ def, testing, canShare, forceOpen, onClose 
     }
   }, [forceOpen, state.dismissed, state.step]);
 
-  // Auto-advance / auto-rewind based on track content so a fresh blank track always starts at step 0
+  // Advance when the player actually does the step. The Workshop usually opens on a copy of a calendar
+  // circuit that already has ramps and loops, so "the track has a ramp" can't count as placing one: count
+  // pieces against a baseline taken when the step began, and only advance when the player adds one.
+  const rampCount = def.pieces.filter((p) => p.t === 'ramp' || p.t === 'ice').length;
+  const loopCount = def.pieces.filter((p) => p.t === 'loop').length;
+  const baseline = useRef<{ step: number; ramps: number; loops: number } | null>(null);
   useEffect(() => {
-    if (!open || done) return;
-    const hasRamp = def.pieces.some((p) => p.t === 'ramp' || p.t === 'ice');
-    const hasLoop = def.pieces.some((p) => p.t === 'loop');
-    // Compute the earliest step that is still incomplete based on current track
-    let desired = 0;
-    if (!hasRamp) desired = 0;
-    else if (!hasLoop) desired = 1;
-    else if (!testing && !canShare) desired = 2; // need to test
-    else if (!canShare) desired = 3; // need to validate
-    else desired = 4; // share
-    // If the track changed to an earlier stage (e.g., Blank after a full track), rewind
-    // If it moved forward, advance — but never skip ahead more than one at a time for test/validate
-    let next = state.step;
-    if (desired < state.step) next = desired;
-    else if (stepIdx === 0 && hasRamp) next = 1;
-    else if (stepIdx === 1 && hasLoop) next = 2;
+    if (!open || done) { baseline.current = null; return; }
+    if (!baseline.current || baseline.current.step !== stepIdx) {
+      baseline.current = { step: stepIdx, ramps: rampCount, loops: loopCount };
+      return;
+    }
+    let next = stepIdx;
+    if (stepIdx === 0 && rampCount > baseline.current.ramps) next = 1;
+    else if (stepIdx === 1 && loopCount > baseline.current.loops) next = 2;
     else if (stepIdx === 2 && testing) next = 3;
     else if (stepIdx === 3 && canShare) next = 4;
-    if (next !== state.step) {
+    if (next !== stepIdx) {
       const ns = { ...state, step: next };
       setState(ns); saveCoach(ns);
     }
-  }, [def.pieces, testing, canShare, open, done, stepIdx, state]);
+  }, [rampCount, loopCount, testing, canShare, open, done, stepIdx, state]);
 
   // Track target rect for spotlight
   useLayoutEffect(() => {

@@ -193,10 +193,16 @@ test('Editor grid: every snap is a whole 25 units, and the lattice keeps up with
 
 test('Palette: the ticket\'s groups, every piece a def can store, and the race art', () => {
   assert.deepEqual(PALETTE.map((g) => g.label), ['Rails', 'Features', 'Pegs', 'Walls']);
-  assert.deepEqual(PALETTE.map((g) => g.tiles.length), [4, 7, 3, 2]);
-  const types = TILES.map((tile) => tile.t).sort();
+  assert.deepEqual(PALETTE.map((g) => g.tiles.length), [4, 7, 5, 2]);
+  const types = [...new Set(TILES.map((tile) => tile.t))].sort();
   assert.deepEqual(types, ['block', 'boost', 'breakable', 'bucket', 'curve', 'hoop', 'ice', 'itembox', 'loop', 'pad', 'peg', 'ppeg', 'ramp', 'spinner', 'wall', 'wrecker'], 'the palette should cover exactly the def format\'s placeable pieces');
-  assert.equal(new Set(types).size, types.length, 'a piece type is on two tiles');
+  const ids = TILES.map((tile) => tile.id);
+  assert.equal(new Set(ids).size, ids.length, 'two tiles share an id');
+  // A piece type may have variants (the Peggle peg colours): the plain tile's id is the bare type and it has no
+  // preset; every variant has its own id and a preset.
+  for (const type of types) assert.equal(TILES.filter((tile) => tile.id === type).length, 1, `${type} has no plain tile`);
+  for (const tile of TILES) assert.equal(tile.id === tile.t, tile.preset === undefined, `${tile.id}: variants need a preset, plain tiles must not have one`);
+  assert.deepEqual(TILES.filter((tile) => tile.t === 'ppeg').map((tile) => tile.preset?.color ?? 'blue'), ['blue', 'orange', 'green']);
   for (const tile of TILES) {
     assert.ok(tile.label && tile.hint, `${tile.t} needs a label and a hint`);
     assert.ok(tile.sprite === null || /^[a-z0-9-]+$/.test(tile.sprite), `${tile.t} names art that cannot exist: ${tile.sprite}`);

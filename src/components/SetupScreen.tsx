@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { BookOpen, ArrowRight, ArrowUpRight, RotateCcw, Shuffle, Flag, Trophy, FlaskConical, CircleHelp, Gauge, Weight, MoveUp, LockKeyhole, ChevronRight, ChevronLeft, Radio, Hammer } from 'lucide-react';
+import { BookOpen, Users, ArrowRight, ArrowUpRight, RotateCcw, Shuffle, Flag, Trophy, FlaskConical, CircleHelp, Gauge, Weight, MoveUp, LockKeyhole, ChevronRight, ChevronLeft, Radio, Hammer } from 'lucide-react';
 import { adjustStat, statsToPhysics, STAT_BUDGET, PLAYER_COLORS, teamOf } from '../game/types';
 import { DRIVER_NAMES, PLAYER_PORTRAIT_COUNT, RIVALS, characterOf } from '../game/characters';
 import Portrait from './Portrait';
@@ -60,6 +60,8 @@ interface Props {
   onDismissRejoin?: () => void;
   /** MB-02: the Workshop (track editor) — reachable from the header, beside Garage and Championship. */
   onWorkshop?: () => void;
+  /** Open Community tracks. */
+  onCommunity?: () => void;
 }
 
 const PANES = [['circuit', 'Circuit'], ['driver', 'Driver'], ['grid', 'Grid']] as const;
@@ -85,8 +87,15 @@ export default function SetupScreen(props: Props) {
   // MB-08: quick race can run a player-built circuit. Tabs are calendar vs My tracks.
   const myTracks = loadTracksSync();
   const selectedCustom = myTracks.find((t) => t.id === props.customTrackId) ?? null;
-  const [circuitTab, setCircuitTab] = useState<'calendar' | 'custom'>(props.customTrackId ? 'custom' : 'calendar');
-  useEffect(() => { if (props.customTrackId) setCircuitTab('custom'); }, [props.customTrackId]);
+  // Championships always run the calendar, so the retune screen only shows it. Everywhere else, picking one of
+  // your own tracks switches the launch bar to Quick race, the only mode that can race it.
+  const [circuitTab, setCircuitTab] = useState<'calendar' | 'custom'>(props.customTrackId && !seasonMode ? 'custom' : 'calendar');
+  useEffect(() => {
+    if (!props.customTrackId || seasonMode) return;
+    setCircuitTab('custom');
+    setMode('quick');
+  }, [props.customTrackId, seasonMode]);
+  const raceCustom = selectedCustom && !seasonMode ? () => { setMode('quick'); onStart(); } : null;
 
   return <div className="app-shell garage-page fit-shell" data-pane={pane}>
     <header className="app-header">
@@ -95,18 +104,19 @@ export default function SetupScreen(props: Props) {
         <button className="active" aria-current="page">Garage</button>
         <button onClick={onContinueSeason ?? (() => setMode('season'))}>Championship</button>
         {onWorkshop && <button onClick={onWorkshop}>Workshop</button>}
+        {props.onCommunity && <button onClick={props.onCommunity}>Community</button>}
         <button onClick={() => setDialog('rules')}>How to play</button>
       </nav>
-      <div className="header-tools">{onWorkshop && <button className="icon-button mobile-only" onClick={onWorkshop} aria-label="Workshop" title="Workshop — build your own circuit"><Hammer size={17} /></button>}<button className="icon-button mobile-only" onClick={() => setDialog('rules')} aria-label="How to play"><CircleHelp size={17} /></button>{import.meta.env.DEV && <button className="text-button lab-link" onClick={() => setDialog('lab')}><FlaskConical size={16} /><span>Physics lab</span></button>}<WalletButton credits={account.credits} onClick={onShop} /></div>
+      <div className="header-tools">{onWorkshop && <button className="icon-button mobile-only" onClick={onWorkshop} aria-label="Workshop" title="Workshop — build your own circuit"><Hammer size={17} /></button>}{props.onCommunity && <button className="icon-button mobile-only" onClick={props.onCommunity} aria-label="Community tracks" title="Community tracks"><Users size={17} /></button>}<button className="icon-button mobile-only" onClick={() => setDialog('rules')} aria-label="How to play"><CircleHelp size={17} /></button>{import.meta.env.DEV && <button className="text-button lab-link" onClick={() => setDialog('lab')}><FlaskConical size={16} /><span>Physics lab</span></button>}<WalletButton credits={account.credits} onClick={onShop} /></div>
     </header>
 
     <main className="fit-main garage-fit">
       <section className="fit-pane circuit-panel" data-pane-id="circuit" aria-labelledby="circuit-title">
         <div className="section-topline"><span className="eyebrow"><b>01</b> THE CIRCUIT</span><button className="text-button" onClick={onNewSeed}><Shuffle size={14} />Regenerate</button></div>
-        <div className="circuit-tabs" role="tablist" aria-label="Circuit source">
+        {!seasonMode && <div className="circuit-tabs" role="tablist" aria-label="Circuit source">
           <button role="tab" aria-selected={circuitTab === 'calendar'} className={circuitTab === 'calendar' ? 'selected' : ''} onClick={() => { setCircuitTab('calendar'); props.onSelectCustom?.(null); }}>Calendar</button>
           <button role="tab" aria-selected={circuitTab === 'custom'} className={circuitTab === 'custom' ? 'selected' : ''} onClick={() => setCircuitTab('custom')}>My tracks{myTracks.length ? ` (${myTracks.length})` : ''}</button>
-        </div>
+        </div>}
         {circuitTab === 'calendar' ? (
           <>
             <div className="circuit-title-row"><div><h2 id="circuit-title">{circuit.short}</h2><span>{circuit.location}</span></div><span className="circuit-seed">SEED<br /><b>{seed.toString(16).slice(0, 6).toUpperCase()}</b></span></div>
@@ -119,10 +129,13 @@ export default function SetupScreen(props: Props) {
               <div className="custom-selected">
                 <div className="circuit-title-row"><div><h2 id="circuit-title">{selectedCustom.def.name.toUpperCase()}</h2><span>CUSTOM • {selectedCustom.def.pieces.length} pieces • {selectedCustom.def.height}px</span></div><span className="circuit-seed">CUSTOM<br /><b>{selectedCustom.id.slice(0, 6).toUpperCase()}</b></span></div>
                 <div className="custom-preview"><TrackThumbnail def={selectedCustom.def} /><p className="muted">{selectedCustom.def.name} — a player-built circuit. Quick race payout is reduced (30 %) to keep farming in check; calendar races pay full purse.</p></div>
-                <button className="text-button" onClick={() => props.onSelectCustom?.(null)}>Back to Calendar</button>
+                <div className="custom-actions">
+                  {raceCustom && <button className="button-primary" onClick={raceCustom}><Flag size={15} />Race this track<ArrowRight size={16} /></button>}
+                  <button className="text-button" onClick={() => props.onSelectCustom?.(null)}>Back to Calendar</button>
+                </div>
               </div>
-            ) : (
-              <p className="muted">Pick a track from My tracks. Quick race on a custom circuit pays 30 % (calendar races pay full).</p>
+            ) : myTracks.length === 0 ? null : (
+              <p className="muted">Click one of your tracks below to select it, then press <b>Race this track</b>. Races on your own tracks pay 30 % of the usual winnings.</p>
             )}
             <div className="my-tracks-list" role="listbox" aria-label="Saved tracks">
               {myTracks.length === 0 ? (
@@ -206,7 +219,7 @@ export default function SetupScreen(props: Props) {
                 onDismissRejoin={onDismissRejoin}
               />
               : <p className="mode-note">Online needs the RUN.world host — race the AI here.</p>
-            : <button className="button-primary launch-button" onClick={mode === 'season' ? onStartSeason : onStart}>{mode === 'season' ? (onContinueSeason ? 'NEW SEASON' : 'START CHAMPIONSHIP') : 'LIGHTS OUT'}<ArrowRight size={20} /></button>}
+            : <button className="button-primary launch-button" onClick={mode === 'season' ? onStartSeason : onStart}>{mode === 'season' ? (onContinueSeason ? 'NEW SEASON' : 'START CHAMPIONSHIP') : selectedCustom ? `RACE ${selectedCustom.def.name.toUpperCase()}` : 'LIGHTS OUT'}<ArrowRight size={20} /></button>}
         </>}
     </footer>
     <nav className="pane-tabs" aria-label="Garage sections">{PANES.map(([id, label]) => <button key={id} className={pane === id ? 'selected' : ''} aria-pressed={pane === id} onClick={() => setPane(id)}>{label}</button>)}</nav>

@@ -13,6 +13,7 @@
 import type { Piece } from '../../game/trackdef';
 import { SNAP } from './camera';
 import { W } from '../../game/track';
+import { applyRotateHandle, hasFreeRotation, rotateHandlePoint } from './rotate';
 
 export interface Handle {
   id: string;
@@ -33,6 +34,20 @@ function withSnap(v: number, snap: boolean): number {
 
 /** World positions of every handle for `piece`. The first entry is always the "move" handle (centre). */
 export function handlesFor(piece: Piece): Handle[] {
+  const handles = baseHandles(piece);
+  if (hasFreeRotation(piece)) {
+    const r = rotateHandlePoint(piece);
+    handles.push({ id: 'rot', x: r.x, y: r.y, cursor: 'grab', label: 'Rotate' });
+  }
+  return handles;
+}
+
+/** The move handle (the piece's centre) without the rotate handle; `rotate.ts` builds on it. */
+export function moveHandle(piece: Piece): Handle {
+  return baseHandles(piece)[0];
+}
+
+function baseHandles(piece: Piece): Handle[] {
   switch (piece.t) {
     case 'ramp':
     case 'ice': {
@@ -156,6 +171,7 @@ export function handlesFor(piece: Piece): Handle[] {
  * new world position of that handle (already snapped if the grid is on).
  */
 export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: number }, snap: boolean): Piece {
+  if (handleId === 'rot') return applyRotateHandle(piece, to, snap);
   const sx = snap;
   switch (piece.t) {
     case 'ramp':

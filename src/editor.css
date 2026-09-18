@@ -1,6 +1,6 @@
 /* MB-02 — the Workshop (the Track Editor shell). Imported by src/components/TrackEditor.tsx. */
 
-.editor-shell { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100dvh; overflow: hidden; }
+.editor-shell { display: grid; grid-template-rows: auto auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); height: 100dvh; overflow: hidden; }
 .editor-seed { font: 8px var(--mono); letter-spacing: .8px; color: #6f7f8e; }
 .editor-seed b { color: #a7b6c4; font-weight: 500; }
 .editor-main { display: grid; grid-template-columns: 252px minmax(0, 1fr) 138px; min-height: 0; }
@@ -15,13 +15,13 @@
 .palette-heading .eyebrow { font-size: 9px; letter-spacing: 1.5px; color: #c3cdd7; }
 .palette-heading small { font-size: 8px; color: #5f6d7c; text-align: right; line-height: 1.2; }
 .palette-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
-.palette-tile { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 7px 3px 6px; background: #141b24; border: 1px solid #242e3a; border-radius: 4px; color: #a8b6c3; transition: border-color .16s, background .16s, color .16s; }
-.palette-tile:hover { background: #18212c; border-color: #3b4c5f; color: #e6edf3; }
-.palette-tile.armed { background: #d63e2e1a; border-color: var(--accent); color: #fff; }
-.palette-art { display: grid; place-items: center; width: 100%; height: 26px; }
-.palette-art img { max-width: 100%; max-height: 26px; object-fit: contain; }
+.palette-tile { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 4px 6px; background: radial-gradient(ellipse at 50% 35%, #1d3147 0%, #0e1a28 70%); border: 1px solid #3b2a20; border-radius: 6px; box-shadow: inset 0 0 0 1px #8b5a3c33, 0 2px 0 #02070c; color: #b9c3cc; transition: border-color .15s, transform .15s, box-shadow .15s; }
+.palette-tile:hover { border-color: #b8794f; color: #fff3dc; transform: translateY(-1px); box-shadow: inset 0 0 0 1px #b8794f55, 0 3px 0 #02070c; }
+.palette-tile.armed { border-color: var(--accent); color: #fff; box-shadow: inset 0 0 0 1px #d63e2e88, 0 0 12px #d63e2e55; background: radial-gradient(ellipse at 50% 35%, #4a1f1a 0%, #1a1016 75%); }
+.palette-art { display: grid; place-items: center; width: 100%; height: 40px; }
+.palette-art img { max-width: 88%; max-height: 38px; object-fit: contain; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.7)); }
 .palette-art-fallback { width: 22px; height: 13px; background: #2b3644; border-radius: 2px; }
-.palette-label { font-size: 8px; line-height: 1.2; letter-spacing: .3px; text-align: center; }
+.palette-label { font: 500 10px/1.15 var(--display); letter-spacing: .4px; text-transform: uppercase; text-align: center; }
 .palette-note { margin: 0; font-size: 9px; line-height: 1.6; color: #66737f; }
 
 /* ---------- properties ---------- */
@@ -50,6 +50,10 @@
 .editor-name input:focus { border-color: var(--accent); outline: none; }
 .editor-theme select { padding: 5px 6px; background: #0b1016; border: 1px solid #2b3644; border-radius: 3px; color: #cdd8e2; font: 10px var(--mono); letter-spacing: .5px; text-transform: uppercase; }
 .editor-toggles, .editor-zoom, .editor-jumps { display: flex; align-items: center; gap: 6px; }
+.editor-length { display: flex; align-items: center; gap: 5px; }
+.editor-length .eyebrow { display: inline-flex; align-items: center; gap: 4px; margin-right: 2px; }
+.editor-length input { width: 74px; height: 28px; padding: 0 6px; font: 12px var(--mono); text-align: right; color: var(--kit-parchment, #ede3c7); background: #0b1016; border: 1px solid var(--line); border-radius: 4px; }
+.editor-length .icon-button { width: 26px; height: 26px; font: 700 15px/1 var(--mono); }
 .editor-toggle { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; background: #131a23; border: 1px solid #2b3644; border-radius: 3px; color: #93a3b3; font: 9px var(--mono); letter-spacing: .3px; }
 .editor-toggle:hover { color: #e6edf3; }
 .editor-toggle.on { background: #d63e2e1f; border-color: var(--accent); color: #fff; }
@@ -128,19 +132,22 @@
 .my-tracks-filter::placeholder { color: #5f6d7c; }
 .my-tracks-filter:focus { border-color: var(--accent); outline: none; }
 .my-tracks-list { display: flex; flex-direction: column; gap: 8px; max-height: 380px; overflow-y: auto; padding-right: 2px; }
-.my-track-row { display: flex; gap: 8px; padding: 8px; background: #0b1016; border: 1px solid #1e2936; border-radius: 5px; align-items: flex-start; }
+.my-track-row { display: grid; grid-template-columns: 56px minmax(0, 1fr); grid-template-areas: 'thumb main' 'ops ops'; gap: 8px 10px; padding: 8px; background: #0b1016; border: 1px solid #1e2936; border-radius: 5px; align-items: start; }
+/* The thumbnail draws at 96x108; shown at 56 px wide so the details get the room. */
+.my-track-row > canvas { grid-area: thumb; width: 56px !important; height: auto !important; aspect-ratio: 96 / 108; border-radius: 3px; cursor: pointer; }
 .my-track-row.is-active { border-color: var(--accent); background: #1a1410; }
 .track-thumb { flex-shrink: 0; border: 1px solid #1e2936; border-radius: 4px; background: #0a0f14; cursor: pointer; }
 .track-thumb:hover { border-color: #2a3a5a; }
-.my-track-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.my-track-name { background: none; border: none; padding: 0; text-align: left; font: 11px/1.2 var(--sans); font-weight: 600; color: #e6edf3; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.my-track-main { grid-area: main; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.my-track-name { background: none; border: none; padding: 0; text-align: left; font: 600 15px/1.15 var(--display); letter-spacing: .3px; color: #e6edf3; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .my-track-name:hover { color: var(--accent); }
 .my-track-rename { display: flex; gap: 4px; align-items: center; }
 .my-track-rename input { flex: 1; min-width: 0; padding: 3px 6px; background: #0e141d; border: 1px solid #2b3644; border-radius: 3px; color: #eef1f3; font: 10px var(--mono); }
-.my-track-meta { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
-.my-track-stat { display: inline-flex; align-items: center; gap: 3px; font: 8px var(--mono); letter-spacing: .2px; color: #8ea2b5; }
-.my-track-length { font: 8px var(--mono); color: #5f6d7c; }
-.my-track-ops { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
+.my-track-meta { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+.my-track-stat { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; font: 9px var(--mono); letter-spacing: .2px; color: #8ea2b5; }
+.my-track-length { font: 9px var(--mono); color: #7c8a98; }
+.my-track-ops { grid-area: ops; display: flex; gap: 6px; padding-top: 6px; border-top: 1px solid #1e2936; }
+.my-track-ops .icon-button { flex: 1; width: auto; height: 26px; }
 .my-track-badge { display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; border-radius: 3px; font: 8px var(--mono); letter-spacing: .3px; }
 .my-track-badge.is-pass { background: #0f2a1a; border: 1px solid #1a5a2e; color: #7ddf90; }
 .my-track-badge.is-fail { background: #2a1414; border: 1px solid #5a1a1a; color: #ffb4ac; }
@@ -223,20 +230,15 @@
 }
 
 /* ---------- MB-09 Workshop header banner + palette frame + handles + onboarding ---------- */
-/* Workshop banner — Blizzard goblin mechanic art, easily replaceable PNG at src/assets/editor/workshop-banner.png */
-.workshop-banner { position: relative; overflow: hidden; height: 92px; border-bottom: 1px solid var(--line); background: #09101a; }
-.workshop-banner img { width: 100%; height: 100%; object-fit: cover; object-position: center 28%; display: block; filter: saturate(1.05) contrast(1.05); }
+/* Workshop banner — goblin mechanics at the forge, replaceable: edit src/assets/editor/workshop-banner.png, then re-export it as workshop-banner.webp (that is what the game loads) */
+.workshop-banner { position: relative; overflow: hidden; height: 120px; border-bottom: 1px solid var(--line); background: #09101a; }
+.workshop-banner img { width: 100%; height: 100%; object-fit: cover; object-position: center 50%; display: block; filter: saturate(1.05) contrast(1.05); }
 .workshop-banner::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(8,12,18,0.35) 0%, transparent 32%, transparent 68%, rgba(8,12,18,0.5) 100%), linear-gradient(to bottom, transparent 60%, rgba(8,12,18,0.55) 100%); pointer-events: none; }
 .workshop-banner-title { position: absolute; left: 14px; bottom: 10px; display: flex; align-items: center; gap: 8px; z-index: 1; }
 .workshop-banner-title strong { font: 800 13px/1 var(--sans); letter-spacing: 1.2px; text-transform: uppercase; color: #fff; text-shadow: 0 1px 6px #000, 0 0 14px rgba(214,62,46,0.35); }
 .workshop-banner-title span { font: 8px var(--mono); letter-spacing: 1px; color: #ffd18a; background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.14); padding: 2px 6px; border-radius: 3px; }
 
 /* Palette frame — riveted Blizzard UI frame around each tile icon */
-.palette-art { position: relative; display: grid; place-items: center; width: 100%; height: 30px; }
-.palette-frame { position: absolute; inset: 0; background-size: 100% 100%; background-repeat: no-repeat; background-position: center; opacity: 0.95; pointer-events: none; border-radius: 3px; }
-.palette-art-inner { position: relative; z-index: 1; display: grid; place-items: center; width: 100%; height: 100%; padding: 4px; }
-.palette-art-inner img { max-width: 100%; max-height: 22px; object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6)); }
-.palette-tile.armed .palette-frame { filter: brightness(1.2) drop-shadow(0 0 6px rgba(214,62,46,0.35)); }
 
 /* New track dialog */
 .new-track-overlay { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 18px; background: rgba(4,8,14,0.68); backdrop-filter: blur(6px); }
@@ -261,7 +263,9 @@
 .new-track-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid #1e2936; background: #0b1016; border-radius: 0 0 10px 10px; }
 
 /* Coach marks — 5-step tutorial */
-.coach-overlay { position: fixed; inset: 0; z-index: 55; background: rgba(4,8,14,0.42); backdrop-filter: blur(2px); pointer-events: none; }
+.coach-overlay { position: fixed; inset: 0; z-index: 55; pointer-events: none; }
+/* No spotlight target on screen: dim the page instead. Never blur, the highlighted control has to stay readable. */
+.coach-overlay:not(:has(.coach-spot)) { background: rgba(4,8,14,0.42); }
 .coach-spot { position: fixed; border: 2px solid #ffd18a; border-radius: 8px; box-shadow: 0 0 0 9999px rgba(4,8,14,0.55), 0 0 18px rgba(255,209,138,0.45); pointer-events: none; transition: all .25s ease; }
 .coach-card { position: fixed; width: min(360px, 92vw); background: #111a26; border: 1px solid #2a3a52; border-radius: 10px; box-shadow: 0 18px 40px rgba(0,0,0,0.55); padding: 14px; display: flex; flex-direction: column; gap: 10px; pointer-events: auto; }
 .coach-card.is-done { top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }

@@ -22,13 +22,75 @@ import { hitPieceAt, piecesInBox } from './build';
 import { handlesFor } from './handles';
 import type { PieceType } from './palette';
 // MB-09 handle knobs — Blizzard style, easily replaceable PNGs
-import knobUrl from '../../assets/editor/handle-knob.png';
-import knobMoveUrl from '../../assets/editor/handle-knob-move.png';
 
-const knobImg = typeof Image !== 'undefined' ? new Image() : null;
-const knobMoveImg = typeof Image !== 'undefined' ? new Image() : null;
-if (knobImg) knobImg.src = knobUrl as unknown as string;
-if (knobMoveImg) knobMoveImg.src = knobMoveUrl as unknown as string;
+/**
+ * Handle icons, drawn in screen space: a red disc with a four-way arrow to move, a parchment disc with a
+ * curved arrow to rotate, and a small ringed dot for every other handle (ends, size, radius, direction...).
+ */
+function drawHandleIcon(ctx: CanvasRenderingContext2D, x: number, y: number, id: string) {
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.6)';
+  ctx.shadowBlur = 4;
+  ctx.shadowOffsetY = 1;
+  if (id === 'move' || id === 'rot') {
+    const r = 12;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = id === 'move' ? '#d63e2e' : '#ede3c7';
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = id === 'move' ? '#fff3dc' : '#1b1510';
+    ctx.stroke();
+    const ink = id === 'move' ? '#fff3dc' : '#1b1510';
+    ctx.strokeStyle = ink;
+    ctx.fillStyle = ink;
+    ctx.lineWidth = 1.8;
+    ctx.lineCap = 'round';
+    if (id === 'move') {
+      // four-way arrow
+      const a = 7.5, head = 3;
+      ctx.beginPath();
+      ctx.moveTo(x - a, y); ctx.lineTo(x + a, y);
+      ctx.moveTo(x, y - a); ctx.lineTo(x, y + a);
+      ctx.stroke();
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const tx = x + dx * a, ty = y + dy * a;
+        ctx.beginPath();
+        ctx.moveTo(tx, ty);
+        ctx.lineTo(tx - dx * head - dy * head, ty - dy * head - dx * head);
+        ctx.lineTo(tx - dx * head + dy * head, ty - dy * head + dx * head);
+        ctx.closePath();
+        ctx.fill();
+      }
+    } else {
+      // curved arrow, most of a circle with a head at the end
+      const rr = 6;
+      const start = -Math.PI * 0.35, end = Math.PI * 1.25;
+      ctx.beginPath();
+      ctx.arc(x, y, rr, start, end);
+      ctx.stroke();
+      const ex = x + Math.cos(end) * rr, ey = y + Math.sin(end) * rr;
+      const tx = -Math.sin(end), ty = Math.cos(end); // tangent (direction of travel)
+      ctx.beginPath();
+      ctx.moveTo(ex + tx * 3.5, ey + ty * 3.5);
+      ctx.lineTo(ex - ty * 3.2, ey + tx * 3.2);
+      ctx.lineTo(ex + ty * 3.2, ey - tx * 3.2);
+      ctx.closePath();
+      ctx.fill();
+    }
+  } else {
+    ctx.beginPath();
+    ctx.arc(x, y, 6, 0, Math.PI * 2);
+    ctx.fillStyle = '#ede3c7';
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#d63e2e';
+    ctx.stroke();
+  }
+  ctx.restore();
+}
 
 export interface EditorStatus {
   top: number;
@@ -590,36 +652,26 @@ export default function EditorCanvas(props: Props) {
         const piece = pieces[idx];
         if (!piece) return;
         const handles = handlesFor(piece);
+        // Rotate handle: a stalk from the centre with a curved arrow, drawn under the knobs.
+        const rot = handles.find((h) => h.id === 'rot');
+        const centre = handles[0];
+        if (rot && centre) {
+          const sc = toScreen(centre);
+          const sr = toScreen(rot);
+          ctx.save();
+          ctx.strokeStyle = 'rgba(255,209,138,0.85)';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([4, 3]);
+          ctx.beginPath();
+          ctx.moveTo(sc.x, sc.y);
+          ctx.lineTo(sr.x, sr.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.restore();
+        }
         for (const h of handles) {
           const s = toScreen(h);
-          const isMove = h.id === 'move';
-          const img = isMove ? knobMoveImg : knobImg;
-          const size = isMove ? 22 : 18;
-          if (img && img.complete && img.naturalWidth) {
-            ctx.save();
-            // subtle shadow for Blizzard pop
-            ctx.shadowColor = 'rgba(0,0,0,0.55)';
-            ctx.shadowBlur = 4;
-            ctx.shadowOffsetY = 1;
-            ctx.drawImage(img, s.x - size / 2, s.y - size / 2, size, size);
-            ctx.restore();
-          } else {
-            ctx.save();
-            ctx.beginPath();
-            ctx.arc(s.x, s.y, HANDLE_SCREEN, 0, Math.PI * 2);
-            ctx.fillStyle = isMove ? '#d63e2e' : '#e6edf3';
-            ctx.strokeStyle = isMove ? '#fff' : '#0b1016';
-            ctx.lineWidth = isMove ? 2 : 1.5;
-            ctx.fill();
-            ctx.stroke();
-            if (isMove) {
-              ctx.beginPath();
-              ctx.arc(s.x, s.y, 3, 0, Math.PI * 2);
-              ctx.fillStyle = '#fff';
-              ctx.fill();
-            }
-            ctx.restore();
-          }
+          drawHandleIcon(ctx, s.x, s.y, h.id);
         }
         // Direction arrows for pad/boost/hoop etc: draw line from move handle to dir handle
         const move = handles.find((h) => h.id === 'move');

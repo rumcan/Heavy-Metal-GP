@@ -11,6 +11,8 @@ export const STORAGE_KEYS = [
   'heavy-metal-gp:story',
   'heavy-metal-gp:tracks:v1',
   'heavy-metal-gp:open-draft:v1',
+  'heavy-metal-gp:coach:v2',
+  'heavy-metal-gp:community-local:v1',
 ] as const;
 
 const cache = new Map<string, string>();

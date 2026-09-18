@@ -1,0 +1,163 @@
+/**
+ * Rotation for the Workshop: turn one piece or a whole selection around a centre.
+ *
+ * Everything here works in the piece's STORED coordinates, the same space `handlesFor` and `movePiece` use.
+ * A piece with `flip` set is drawn mirrored about the centre line, and a mirror reverses the sense of a turn,
+ * so `rotateSelection` negates the angle for flipped pieces to keep "clockwise" clockwise on screen.
+ *
+ * What a turn can change depends on what the piece stores:
+ * - ramps, ice rails and curves turn freely (their end points move);
+ * - boosts and fire hoops turn freely (their direction vector turns);
+ * - spinners turn their starting blade angle;
+ * - walls, crates and blocks are always upright boxes, so only quarter turns change them (width and height swap);
+ * - round and single-point pieces (loops, pegs, bumpers, item boxes, wrecking balls) only move around the centre.
+ */
+import type { Piece, Vec } from '../../game/trackdef';
+import { W } from '../../game/track';
+import { moveHandle } from './handles';
+
+export interface Point { x: number; y: number }
+
+/** Snap step for keyboard/button turns and for the rotate handle when the grid is on. */
+export const ROTATE_STEP_DEG = 15;
+
+const clampX = (x: number) => Math.max(0, Math.min(W, x));
+/** Keep coordinates tidy (0.01 u) so repeated turns don't pile up float noise like 450.00000000000006. */
+const tidy = (v: number) => Math.round(v * 100) / 100;
+
+/** The point a piece turns around: its move handle. */
+export function pieceCentre(piece: Piece): Point {
+  const move = moveHandle(piece);
+  return { x: move.x, y: move.y };
+}
+
+/** Pieces with a free angle, and so a rotate handle. Boxes turn only by quarter turns, via R / the toolbar. */
+export function hasFreeRotation(piece: Piece): boolean {
+  return piece.t === 'ramp' || piece.t === 'ice' || piece.t === 'curve' || piece.t === 'boost' || piece.t === 'hoop' || piece.t === 'spinner';
+}
+
+/** Current on-screen angle (radians) of a freely rotating piece. */
+export function pieceAngle(piece: Piece): number {
+  switch (piece.t) {
+    case 'ramp':
+    case 'ice':
+    case 'curve':
+      return Math.atan2(piece.b[1] - piece.a[1], piece.b[0] - piece.a[0]);
+    case 'boost':
+    case 'hoop':
+      return Math.atan2(piece.dir[1], piece.dir[0]);
+    case 'spinner':
+      return piece.angle ?? 0;
+    default:
+      return 0;
+  }
+}
+
+function turn(p: Vec, c: Point, cos: number, sin: number): Vec {
+  const dx = p[0] - c.x;
+  const dy = p[1] - c.y;
+  return [tidy(clampX(c.x + dx * cos - dy * sin)), tidy(c.y + dx * sin + dy * cos)];
+}
+
+function turnDir(d: Vec, cos: number, sin: number): Vec {
+  return [tidy(d[0] * cos - d[1] * sin), tidy(d[0] * sin + d[1] * cos)];
+}
+
+/** Rotate `piece` by `rad` (stored coordinates, positive = clockwise on screen since y grows downward) about `c`. */
+export function rotatePiece(piece: Piece, rad: number, c: Point): Piece {
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const at = (x: number, y: number) => turn([x, y], c, cos, sin);
+  const quarterTurns = Math.round(rad / (Math.PI / 2));
+  const isQuarter = Math.abs(rad - quarterTurns * (Math.PI / 2)) < 1e-6;
+  switch (piece.t) {
+    case 'ramp':
+    case 'ice':
+      return { ...piece, a: turn(piece.a, c, cos, sin), b: turn(piece.b, c, cos, sin) };
+    case 'curve':
+      return { ...piece, a: turn(piece.a, c, cos, sin), c: turn(piece.c, c, cos, sin), b: turn(piece.b, c, cos, sin) };
+    case 'loop': {
+      const [x, cy] = at(piece.x, piece.bottom - piece.r);
+      return { ...piece, x, bottom: cy + piece.r };
+    }
+    case 'hoop': {
+      const [x, y] = at(piece.x, piece.y);
+      return { ...piece, x, y, dir: turnDir(piece.dir, cos, sin) };
+    }
+    case 'boost': {
+      const [x, y] = at(piece.x, piece.y);
+      return { ...piece, x, y, dir: turnDir(piece.dir, cos, sin) };
+    }
+    case 'spinner': {
+      const [x, y] = at(piece.x, piece.y);
+      return { ...piece, x, y, angle: (piece.angle ?? 0) + rad };
+    }
+    case 'wrecker':
+      return { ...piece, pivot: turn(piece.pivot, c, cos, sin) };
+    case 'pad': {
+      const [x, y] = at(piece.x, piece.y);
+      // A pad only launches left or right: a half turn swaps the side.
+      return { ...piece, x, y, dir: cos < 0 ? (piece.dir === 1 ? -1 : 1) : piece.dir };
+    }
+    case 'breakable':
+    case 'wall':
+    case 'block': {
+      const [x, y] = at(piece.x, piece.y);
+      const swap = isQuarter && quarterTurns % 2 !== 0;
+      return swap ? { ...piece, x, y, w: Math.min(W, piece.h), h: piece.w } : { ...piece, x, y };
+    }
+    case 'peg':
+    case 'ppeg':
+    case 'itembox': {
+      const [x, y] = at(piece.x, piece.y);
+      return { ...piece, x, y };
+    }
+    case 'bucket':
+      // Always spans the pipe at a fixed height.
+      return piece;
+  }
+}
+
+/**
+ * Turn the pieces at `indices` by `deg` degrees (clockwise on screen) as one group. A single piece turns
+ * around its own centre; a group turns around the average of its pieces' centres, so the layout stays intact.
+ */
+export function rotateSelection(pieces: Piece[], indices: number[], deg: number): Piece[] {
+  const picked = indices.filter((i) => pieces[i]);
+  if (picked.length === 0 || deg === 0) return pieces;
+  const centres = picked.map((i) => pieceCentre(pieces[i]));
+  const c = { x: centres.reduce((s, p) => s + p.x, 0) / centres.length, y: centres.reduce((s, p) => s + p.y, 0) / centres.length };
+  const rad = (deg * Math.PI) / 180;
+  const next = pieces.slice();
+  for (const i of picked) {
+    const p = pieces[i];
+    // Flipped pieces are drawn mirrored: mirror the centre and reverse the turn to match what the player sees.
+    next[i] = p.flip ? rotatePiece(p, -rad, { x: W - c.x, y: c.y }) : rotatePiece(p, rad, c);
+  }
+  return next;
+}
+
+/** Where the rotate handle sits: `offset` world units "above" the piece, perpendicular to its angle. */
+export function rotateHandlePoint(piece: Piece): Point {
+  const c = pieceCentre(piece);
+  const a = pieceAngle(piece);
+  const halfLen = piece.t === 'ramp' || piece.t === 'ice' || piece.t === 'curve'
+    ? Math.hypot(piece.b[0] - piece.a[0], piece.b[1] - piece.a[1]) / 2
+    : 0;
+  const offset = Math.max(56, Math.min(120, halfLen * 0.35 + 40));
+  return { x: c.x + Math.sin(a) * offset, y: c.y - Math.cos(a) * offset };
+}
+
+/** Apply a rotate-handle drag: the piece turns so its handle points at `to`. Snaps to 15° when `snap`. */
+export function applyRotateHandle(piece: Piece, to: Point, snap: boolean): Piece {
+  const c = pieceCentre(piece);
+  if (Math.hypot(to.x - c.x, to.y - c.y) < 6) return piece;
+  // The handle sits at angle - 90°, so the piece's new angle is the pointer's angle + 90°.
+  let target = Math.atan2(to.y - c.y, to.x - c.x) + Math.PI / 2;
+  if (snap) {
+    const step = (ROTATE_STEP_DEG * Math.PI) / 180;
+    target = Math.round(target / step) * step;
+  }
+  const delta = target - pieceAngle(piece);
+  return rotatePiece(piece, delta, c);
+}

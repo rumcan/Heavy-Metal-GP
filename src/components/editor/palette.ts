@@ -11,8 +11,15 @@ import type { Piece } from '../../game/trackdef';
 export type PieceType = Piece['t'];
 
 export interface PaletteTile {
+  /**
+   * Unique tile id: what the palette arms. For the plain tile of a piece type it IS the type (so tutorial hooks
+   * like `palette-ramp` keep working); variants of the same piece (e.g. the orange Peggle peg) get their own id.
+   */
+  id: string;
   /** The `TrackDef` piece this tile places. */
   t: PieceType;
+  /** Fields laid over the piece's defaults when it is placed, e.g. `{ color: 'orange' }`. */
+  preset?: Partial<Piece>;
   label: string;
   /** Sprite name in `src/assets/game`, or null for pieces the skin draws from vectors only. */
   sprite: string | null;
@@ -34,10 +41,10 @@ export const PALETTE: PaletteGroup[] = [
     label: 'Rails',
     note: 'The pipe itself',
     tiles: [
-      { t: 'ramp', label: 'Ramp', sprite: 'rail-wood', hint: 'A straight rail. Drag its ends to set the angle.' },
-      { t: 'curve', label: 'Curve', sprite: 'rail-chevron', hint: 'A quadratic bend between two rails.' },
-      { t: 'ice', label: 'Ice rail', sprite: 'strip-ice', hint: 'Almost frictionless — carry speed, lose control.' },
-      { t: 'wall', label: 'Wall', sprite: 'tile-metal', hint: 'A plain barrier. Rails, ledges and catch walls.' },
+      { id: 'ramp', t: 'ramp', label: 'Ramp', sprite: 'rail-wood', hint: 'A straight rail. Drag its ends to set the angle.' },
+      { id: 'curve', t: 'curve', label: 'Curve', sprite: 'rail-chevron', hint: 'A quadratic bend between two rails.' },
+      { id: 'ice', t: 'ice', label: 'Ice rail', sprite: 'strip-ice', hint: 'Almost frictionless — carry speed, lose control.' },
+      { id: 'wall', t: 'wall', label: 'Wall', sprite: 'strip-metal', hint: 'A plain barrier. Rails, ledges and catch walls.' },
     ],
   },
   {
@@ -45,13 +52,13 @@ export const PALETTE: PaletteGroup[] = [
     label: 'Features',
     note: 'Things that happen to a marble',
     tiles: [
-      { t: 'loop', label: 'Loop', sprite: 'loop-ring', hint: 'A full loop the marble has to carry speed through.' },
-      { t: 'hoop', label: 'Fire hoop', sprite: 'fire-hoop', hint: 'A hoop that launches a marble at speed.' },
-      { t: 'pad', label: 'Spring sheep', sprite: 'sheep-spring', hint: 'A bouncy launch pad pointed left or right.' },
-      { t: 'boost', label: 'Boost', sprite: 'spring', hint: 'A chevron strip that accelerates whatever crosses it.' },
-      { t: 'spinner', label: 'Spinner', sprite: 'spinner-blade', hint: 'A blade that sweeps marbles aside.' },
-      { t: 'wrecker', label: 'Wrecking ball', sprite: 'wrecking-ball', hint: 'A swinging ball on a chain.' },
-      { t: 'bucket', label: 'Minecart', sprite: 'minecart', hint: 'A cart that shuttles across the track.' },
+      { id: 'loop', t: 'loop', label: 'Loop', sprite: 'loop-ring', hint: 'A full loop the marble has to carry speed through.' },
+      { id: 'hoop', t: 'hoop', label: 'Fire hoop', sprite: 'fire-hoop', hint: 'A hoop that launches a marble at speed.' },
+      { id: 'pad', t: 'pad', label: 'Spring sheep', sprite: 'sheep-spring', hint: 'A bouncy launch pad pointed left or right.' },
+      { id: 'boost', t: 'boost', label: 'Boost', sprite: 'strip-red', hint: 'A chevron strip that accelerates whatever crosses it.' },
+      { id: 'spinner', t: 'spinner', label: 'Spinner', sprite: 'spinner-blade', hint: 'A blade that sweeps marbles aside.' },
+      { id: 'wrecker', t: 'wrecker', label: 'Wrecking ball', sprite: 'wrecking-ball', hint: 'A swinging ball on a chain.' },
+      { id: 'bucket', t: 'bucket', label: 'Minecart', sprite: 'minecart', hint: 'A cart that shuttles across the track.' },
     ],
   },
   {
@@ -59,9 +66,11 @@ export const PALETTE: PaletteGroup[] = [
     label: 'Pegs',
     note: 'Score, bounce, arm',
     tiles: [
-      { t: 'peg', label: 'Crown bumper', sprite: 'bumper-crown', hint: 'Bounces a marble away. Every one is a point.' },
-      { t: 'ppeg', label: 'Peggle peg', sprite: 'gem-blue', hint: 'Coloured, score-bearing peg the marble erases.' },
-      { t: 'itembox', label: 'Item box', sprite: 'crate', hint: 'Gives the marble that hits it an item.' },
+      { id: 'peg', t: 'peg', label: 'Crown bumper', sprite: 'bumper-crown', hint: 'Bounces a marble away. Every one is a point.' },
+      { id: 'ppeg', t: 'ppeg', label: 'Blue peg', sprite: 'gem-blue', hint: 'A Peggle peg: bounces the marble and disappears when hit.' },
+      { id: 'ppeg-orange', t: 'ppeg', label: 'Orange peg', sprite: 'gem-orange', preset: { color: 'orange' }, hint: 'A Peggle peg worth credits: every orange peg hit pays out at the finish.' },
+      { id: 'ppeg-item', t: 'ppeg', label: 'Item peg', sprite: 'gem-purple', preset: { color: 'green', r: 13 }, hint: 'A glowing Peggle peg that gives the marble a free item.' },
+      { id: 'itembox', t: 'itembox', label: 'Item box', sprite: 'crate', hint: 'Gives the marble that hits it an item.' },
     ],
   },
   {
@@ -69,7 +78,8 @@ export const PALETTE: PaletteGroup[] = [
     label: 'Walls',
     note: 'Breakables and blockers',
     tiles: [
-      { t: 'breakable', label: 'SMASH crate', sprite: 'crate-tall', hint: 'Breaks under a heavy enough marble.' },
+      { id: 'breakable', t: 'breakable', label: 'SMASH crate', sprite: 'crate-tall', hint: 'Breaks under a heavy enough marble.' },
+      { id: 'block', t: 'block', label: 'Block', sprite: 'tile-metal', hint: 'A solid steel block. Nothing breaks it.' },
     ],
   },
 ];
@@ -77,4 +87,6 @@ export const PALETTE: PaletteGroup[] = [
 /** Every tile, flat — for looking one up by piece type. */
 export const TILES: PaletteTile[] = PALETTE.flatMap((group) => group.tiles);
 
-export const tileFor = (t: PieceType): PaletteTile | undefined => TILES.find((tile) => tile.t === t);
+/** A tile by its id, falling back to the plain tile of a piece type. */
+export const tileFor = (idOrType: string): PaletteTile | undefined =>
+  TILES.find((tile) => tile.id === idOrType) ?? TILES.find((tile) => tile.t === idOrType);

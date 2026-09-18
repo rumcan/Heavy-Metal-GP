@@ -131,7 +131,7 @@ export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, on
       )}
 
       <div className="my-tracks-foot">
-        <span className="my-tracks-hint">Autosave every 10 s + on exit. Reload restores My tracks and open draft. Stored via device cache + cloud (appStorage) — compressed (integers) to stay under 80 KB per track.</span>
+        <span className="my-tracks-hint">Your open track saves itself every 10 seconds and when you leave the Workshop. Tracks here stay after a reload.</span>
       </div>
 
       {/* Current draft preview — helps verify autosave is working */}
