@@ -19,7 +19,10 @@ const commands = [
     'tests/rankstore.test.ts',
     // Ranked racing (RK-03): the rated wire — the room's board, one result per room, the
     // leaver's DNF, and the headless proof that every seat computes the same deltas.
-    'tests/rank-runtime.test.ts'],
+    'tests/rank-runtime.test.ts',
+    // Ranked racing (RK-05): the rank surfaces' view models — the chip's tier and
+    // number, and what the results screen may say about a race. Pure, no DOM.
+    'tests/rank-view.test.ts'],
 ];
 
 for (const args of commands) {

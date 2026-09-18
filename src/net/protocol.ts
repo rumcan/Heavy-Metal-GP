@@ -291,6 +291,22 @@ export interface LobbyMsg {
   settings?: RaceSettings;
   /** False once the host closed the lobby to new drivers. Absent reads as open. */
   open?: boolean;
+  /**
+   * RK-05: the HOST's word that this is a RATED lobby — they came in through
+   * Quick race (matchmaking), not a code, and the lobby is racing without
+   * house-rule power-ups.
+   *
+   * It has to travel because ratedness is decided by the DOOR, and only the
+   * host knows which door they came through. A guest who joined a matchmade
+   * room by its code is in the same rated race as everybody else, and would
+   * otherwise print "a friendly race" on a result that moved their rating.
+   *
+   * It is a HINT, not authority: the room ANDs the same claim with what it can
+   * see for itself (house rules) and stamps `ResultMsg.rated`, which is the
+   * flag every seat files from. Absent reads as false — a lobby that says
+   * nothing is a friendly one.
+   */
+  rated?: boolean;
 }
 
 /**

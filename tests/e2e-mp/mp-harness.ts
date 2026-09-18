@@ -163,9 +163,10 @@ export class Player {
   }
 
   /**
-   * The online panel: Host / Join / Quick live here, and nowhere else —
-   * "Quick race" is a race-mode toggle on the garage tab, so matching it
-   * unscoped is a strict-mode violation waiting for a browser to find it.
+   * The online panel: Quick race / Host / Join live here, and nowhere else —
+   * "Quick race" is ALSO a race-mode toggle on the garage tab since RK-05 named
+   * the ranked door, so matching it unscoped is a strict-mode violation waiting
+   * for a browser to find it.
    */
   private get online(): Locator {
     return this.page.locator('.online-panel');
@@ -184,10 +185,56 @@ export class Player {
     await this.lobby();
   }
 
+  /**
+   * RK-05: the ranked door is now "Quick race · Ranked" (it was Auto Match
+   * Making). Scoped to the online panel — the garage's own mode switch has a
+   * "Quick race" button too.
+   */
   async quickRace(): Promise<void> {
     await this.openOnline();
-    await this.online.getByRole('button', { name: /auto match making/i }).click();
+    await this.online.getByRole('button', { name: /quick race/i }).click();
     await this.lobby();
+  }
+
+  /**
+   * RK-05: this driver's rank chip as the LOBBY prints it — the badge's tier
+   * and the number beside it. Null when the seat shows no chip at all.
+   */
+  async seatRank(seat = 0): Promise<{ tier: string | null; rating: string } | null> {
+    const row = this.page.locator('.driver-grid li').nth(seat);
+    await row.waitFor({ timeout: DEFAULT_TIMEOUT });
+    const chip = row.locator('.rank-chip');
+    if (!(await chip.count())) return null;
+    return {
+      tier: await chip.getAttribute('data-tier'),
+      rating: (await chip.locator('small').innerText()).trim(),
+    };
+  }
+
+  /**
+   * RK-05: the garage header's badge — this driver's OWN file, which is what a
+   * seeded rating must show before any room exists.
+   *
+   * Two doors exist in the markup at all times (the header's, and the one the
+   * driver pane shows on a phone); CSS decides which is on screen, so the
+   * VISIBLE one is the one to read. `:visible`, not `.first()`: at 375 px the
+   * header's copy is the hidden one and would be first in DOM order.
+   */
+  async headerRank(): Promise<{ tier: string | null; rating: string }> {
+    const chip = this.page.locator('.rank-button:visible .rank-chip').first();
+    await chip.waitFor({ timeout: DEFAULT_TIMEOUT });
+    return {
+      tier: await chip.getAttribute('data-tier'),
+      rating: (await chip.locator('small').innerText()).trim(),
+    };
+  }
+
+  /** RK-05: open the ladder from wherever this width keeps the badge. */
+  async openLadder(): Promise<Locator> {
+    await this.page.locator('.rank-button:visible').first().click();
+    const panel = this.page.locator('.ladder-panel');
+    await panel.waitFor({ timeout: DEFAULT_TIMEOUT });
+    return panel;
   }
 
   /** The lobby, once the room has said hello. */

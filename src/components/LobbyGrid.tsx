@@ -17,6 +17,8 @@ import { RIVALS, characterOf } from '../game/characters';
 import type { Seat } from '../net/protocol';
 import type { PeerPresence } from '../net/presence';
 import Portrait from './Portrait';
+import RankChip from './RankChip';
+import type { RankChipLookup } from '../game/rank-view';
 
 interface Props {
   /** The grid, in slot order. */
@@ -34,9 +36,15 @@ interface Props {
   benched?: readonly number[];
   /** Host only: take an AI off the grid or put it back. */
   onToggleAI?: (slot: number) => void;
+  /**
+   * RK-05: a HUMAN seat's rank chip — this driver's own file, or the number the
+   * room's board has for a rival. Absent (or a `null` answer) prints no chip,
+   * which is what an older caller and an unranked seat both look like.
+   */
+  rankOf?: RankChipLookup;
 }
 
-export default function LobbyGrid({ seats, roster, myPlayerId, isHost, onKick, peers, benched = [], onToggleAI }: Props) {
+export default function LobbyGrid({ seats, roster, myPlayerId, isHost, onKick, peers, benched = [], onToggleAI, rankOf }: Props) {
   return <ol className="driver-grid lobby-grid">
     {seats.map((seat, index) => {
       const mine = seat.playerId === myPlayerId;
@@ -54,6 +62,13 @@ export default function LobbyGrid({ seats, roster, myPlayerId, isHost, onKick, p
           <small>{dropped ? 'RECONNECTING' : mine ? 'YOU' : off ? 'OFF THE GRID' : seat.isAI ? 'MACHINE' : seat.ready ? 'READY' : 'NOT READY'}</small>
           <span>{seat.isAI ? RIVALS[characterOf(info)]?.tag ?? 'AI' : `${seat.stats.weight}/${seat.stats.speed}/${seat.stats.bounce}`}</span>
         </div>
+        {/* RK-05: a rated seat shows its badge and number. AI seats have no
+            rating — they are never rated, so they get no chip rather than an
+            unranked one that would read as a player. */}
+        {!seat.isAI && rankOf && (() => {
+          const chip = rankOf(seat.playerId);
+          return chip ? <RankChip model={chip} compact /> : null;
+        })()}
         <i className="lobby-livery" style={{ background: seat.color }} aria-hidden />
         {isHost && seat.isAI && onToggleAI && <button
           className="icon-button lobby-kick"

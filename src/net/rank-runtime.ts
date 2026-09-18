@@ -102,9 +102,9 @@ export class RankRuntime {
   private readonly session: RankSession;
   private readonly store: RankStore;
   private readonly onVerdict: (verdict: RaceVerdict) => void;
-  private readonly roster: Map<number, RankSeat>;
+  private roster: Map<number, RankSeat>;
   private readonly joinToken: string;
-  private readonly ratedRoom: boolean;
+  private ratedRoom: boolean;
   private stateValue: RankState | null = null;
   private verdictValue: RaceVerdict | null = null;
   private outcomeValue: FiledOutcome | null = null;
@@ -154,6 +154,34 @@ export class RankRuntime {
   /** Whether this seat believes the room rates races at all. */
   get rated(): boolean {
     return this.ratedRoom;
+  }
+
+  /**
+   * RK-05: the grid, as the LOBBY settled it, handed over when the lights go
+   * out.
+   *
+   * A duel knows both seats at construction; a race does not. The runtime is
+   * born with the ROOM (the moment a socket exists, so a driver's rating can
+   * be published while the lobby fills), and the seat table is not settled
+   * until the host drops the lights — drivers join, leave and get re-seated
+   * right up to the start. The roster is only ever read at filing time
+   * (`claimFinish`), so this is a hand-over, not a subscription.
+   */
+  setRoster(seats: readonly RankSeat[]): void {
+    this.roster = new Map(seats.map((seat) => [seat.slot, seat]));
+  }
+
+  /**
+   * RK-05: whether the lobby that is about to race believes itself RATED.
+   *
+   * Same reason as `setRoster`: ratedness is a fact about the DOOR (Quick race
+   * vs a shared code) plus the lobby's rules (house-rule power-ups), and both
+   * are known by the time the race starts — not when the room was opened. The
+   * ROOM still has the last word: `ResultMsg.rated` is what every seat files
+   * from, and a stray `true` here cannot rate a race the room refused.
+   */
+  setRated(rated: boolean): void {
+    this.ratedRoom = rated === true;
   }
 
   /**

@@ -112,7 +112,9 @@ seed — and `RaceScreen` runs the race through a `RaceSession`
 (`src/net/session.ts`), which is either the host's simulation or the guest's
 picture of it. The same screen, the same HUD, one prop's difference.
 
-**Quick race is a loop, not a request.** The SDK's `matchmakeRoom` is a bounded
+**Quick race is a loop, not a request** — and, since RK-05, the RATED door:
+**Host game** and **Join with code** are labelled Friendly and move nothing.
+The SDK's `matchmakeRoom` is a bounded
 window: it waits, and when the window closes it rejects and drops the ticket.
 `src/net/matchmake.ts` is the "keep looking" part — it asks again after a pause,
 counts the windows it has burned through for the "still looking" line, lets the
@@ -212,8 +214,8 @@ announces the drop (`peerStatus`) with the countdown attached.
 ## Ranked racing
 
 Quick race matchmaking shipped with MP-07; what ranks the drivers is the
-**RK-01..RK-06 epic**, a port of HexMatch's RANK-01 — and **RK-01, the rating,
-is in**. `src/net/rating.ts` is the pure half: an Elo number, the tier it
+**RK-01..RK-06 epic**, a port of HexMatch's RANK-01 — **RK-01 through RK-05 are
+in**, with only the ranked E2E sweep (RK-06) left. `src/net/rating.ts` is the pure half: an Elo number, the tier it
 names, and the arithmetic that moves it. It imports nothing at all — no RUN
 SDK, no DOM, no clock — so the client, the room and the unit suite can all read
 the same answers out of it.
@@ -312,8 +314,8 @@ through `rankstore.fileResult`, and give the screen a `RaceVerdict` plus the
 before the flag files **their own** DNF locally (`fileOwnForfeit`, `localOnly`:
 no ladder line — the ladder is written from a result the room witnessed), while
 the survivors' numbers come from the room's own filing. Wiring this into the
-lobby, the HUD and the results screen is RK-05; the store, the room and the
-runtime are done and covered end to end.
+lobby, the HUD and the results screen IS RK-05 (next section down); the store,
+the room and the runtime are covered end to end.
 
 **The quick race is a ranked queue (RK-04).** `src/net/matchmake.ts` grew the
 ladder HexMatch's RANK-01 walks: `RANK_SEARCH_STEPS` are the windows a
@@ -322,7 +324,8 @@ similar-rank search widens through — 75 points for six seconds, then 200, then
 span into the one thing the pool understands, a bucket index (`searchBucket`).
 One rung is one `quickMatch({ rankBucket, matchmakeTimeoutMs })` — the SDK call
 behind the transport seam — and `src/net/ranked-queue.ts` is the whole wiring,
-whose one caller is the Online panel's Auto Match Making: the rating comes off
+whose one caller is the Online panel's Quick race door (RK-05 renamed it from
+Auto Match Making, because it is the rated one): the rating comes off
 the driver's own file (a fresh 1000 for a driver who has never raced, signed in
 or not), the rungs are computed once, and the room that lands is a MATCHMADE
 room, which is the fact RK-03's rated wire hangs off.
@@ -349,11 +352,44 @@ room), and the two-browser spec proves the other half: a seeded rank file
 reaches the wire, two ratings that round into one bucket are paired into one
 lobby with no code typed, and two a tier apart are not.
 
-Still to come in this epic: **RK-05** (badges, the lobby's rated line and the
-ladder panel, which reads `rankStore().loadLadder()` and the runtime's
-`outcome`, plus the panel's ranked/friendly labels) and **RK-06** (the ranked
-E2E sweep: a matchmade race whose seats show matching deltas, and the
-mid-race-leaver room test in a three-human race).
+**The ranked surfaces (RK-05).** Ratings are worthless if a driver cannot see
+them, so the number, the badge that names it and the delta it moved by are on
+the screens a player already uses. `src/game/rank-badge.ts` is HexMatch's
+`rank-badge.ts`, ported: one Vite import per tier, so a badge is a bundled asset
+with a hashed URL and no fetch at paint time. The plates are DERIVED, never
+hand-edited — `tools/make-rank-badges.mjs` knocks the dark ground out of the one
+painted medallion in `assets/ui/rank/medallion-master.png`, re-metals the same
+luminance per tier, and draws the tier's marks (one riveted star per band, in
+ladder order; `unranked` is the bare medal) into the blank disc. `RANK_TIERS`,
+the tool's table and the PNGs on disk are checked against each other by
+`tests/rating.test.ts`, so a renamed tier is a failing test rather than a blank
+square in a lobby.
+
+`src/game/rank-view.ts` is the half that is not markup: a `RankChipModel`
+(a badge key, a label, a rating or an honest `null`) for the garage header, a
+lobby seat and a ladder row, and `rankedViewFor()` which decides what the
+results screen may say — `pending` while the room is still filing (never a `+0`,
+which a player would believe), `unrated` with the reason (`alone` for a rated
+lobby nobody else rated, `room` for a friendly one), or `settled` with a row per
+rated human, this driver's own delta, and the tier callouts. The components
+(`RankChip`, `RankResults`, `LadderDialog`) only paint it. The lobby's seats show
+a chip per HUMAN — a rival's number comes off the room's board, the driver's own
+off their file, and an AI seat gets none rather than an unranked medal that would
+read as a player.
+
+Ratedness travels with the lobby now. It is decided by the DOOR — Quick race is
+matchmade, a code is a friendly — plus the lobby's rules, and only the host
+knows both, so the host puts `rated` on the `lobby` frame and everyone reads it
+(the same claim the room ANDs with what it can see before any result is filed).
+Which is why the panel labels its doors: **Quick race · Ranked** beside **Host
+game · Friendly** and **Join with code · Friendly**. The ladder panel reads
+`rankStore().loadLadder(50)` — the top of the public board plus the driver's own
+card — and it degrades in one line when there is no board behind the page
+(`isLadderAvailable`), because an empty table reads as "nobody plays this game".
+
+Still to come in this epic: **RK-06** (the ranked E2E sweep: a matchmade race
+whose seats show matching deltas and a refresh that does not file it twice, plus
+the mid-race-leaver room test in a three-human race).
 
 ## Credits And The Pit Shop
 
@@ -508,7 +544,19 @@ once — after the last rung the search stays at Any rank for as long as it take
 The browser half is `tests/e2e-mp/mp-ranked.e2e.spec.ts`: it seeds each player's
 rating file (a dev page's mock `appStorage` is a namespaced corner of
 `localStorage`, which is what the harness writes) and watches the pairing with a
-real room in the middle.
+real room in the middle. `tests/e2e-mp/mp-rank-ui.e2e.spec.ts` (RK-05) is the
+visual half: a seeded file reaches the garage header, the ladder panel opens on
+it and degrades in one line without a leaderboard, and two ranked drivers in one
+lobby each show their own badge and number — re-checked at 375 px, where the
+badge moves out of the header row and into the driver pane rather than pushing
+the wallet off the edge, and every seat row keeps its chip inside its own box.
+`tests/rank-view.test.ts` covers the rank surfaces' models (RK-05): which tier
+and badge a rating names, that a seat the room never heard from prints an honest
+blank instead of a guessed 1000, and the three states of the results panel —
+pending (no numbers), unrated (with `alone` and `room` told apart) and settled
+(one row per rated human, seat-to-player joined for the table's own numbering,
+promotion only on a band change, a refused write said out loud, a leaver's row a
+forfeit).
 `tests/rankstore.test.ts` covers where a rating lives (RK-02) by driving the
 real chain — `rankstore` → `transport` → the RUN SDK's own in-memory backends,
 with the browser globals stubbed the way `tests/multiplayer.test.ts` stubs them.

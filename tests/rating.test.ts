@@ -19,6 +19,7 @@
 // ══════════════════════════════════════════════════════════════════════════
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync, readdirSync } from 'node:fs';
 
 import {
   K_ESTABLISHED,
@@ -562,4 +563,46 @@ test('RK-01 advanceRating takes the NEWER file — a loss lowers the rating', ()
   // A season reset REPLACES: the new season's file is the truth, lower or not.
   const nextSeason = { ...held, rating: 1000, matches: 0, season: 's2' };
   assert.deepEqual(advanceRating(held, nextSeason), nextSeason);
+});
+
+// ── RK-05: the badges on disk ─────────────────────────────────────────────
+// The tier keys are the badge FILE names (`src/game/rank-badge.ts` bundles one
+// import per key, and `tools/make-rank-badges.mjs` derives them from the
+// painted master). Three lists have to agree or the lobby prints a blank square
+// where a medal should be, so this is the test that keeps them honest:
+//
+//   RANK_TIERS (the arithmetic)  ↔  tools/make-rank-badges.mjs (the painter)
+//                                ↔  src/assets/ui/rank/*.png (what ships)
+//
+// Read as SOURCE TEXT, not imported: the badge module imports PNGs, which only
+// vite can resolve, and the tool is a script. A renamed tier is a failing test
+// rather than a broken image in a race.
+
+test('RK-05 badges: the tier table, the derive tool and the PNGs are one list', () => {
+  const root = new URL('../', import.meta.url);
+  const keys = [UNRANKED_KEY, ...RANK_TIERS.map((tier) => tier.key)];
+
+  // 1. the tool's table
+  const tool = readFileSync(new URL('tools/make-rank-badges.mjs', root), 'utf8');
+  const toolKeys = [...tool.matchAll(/\{\s*key:\s*"([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(toolKeys, keys, 'the derive tool paints exactly the tiers the ladder has');
+
+  // 2. the files on disk
+  const onDisk = readdirSync(new URL('src/assets/ui/rank', root))
+    .filter((name) => name.endsWith('.png'))
+    .map((name) => name.replace(/\.png$/, ''))
+    .sort();
+  assert.deepEqual(onDisk, [...keys].sort(), 'every key ships a plate, and no plate is orphaned');
+
+  // 3. the bundle (source text: the module imports the PNGs through vite)
+  const bundle = readFileSync(new URL('src/game/rank-badge.ts', root), 'utf8');
+  for (const key of keys) {
+    assert.match(bundle, new RegExp(`assets/ui/rank/${key}\\.png`), `${key} is bundled`);
+  }
+  // And the ladder order is the pip order: one more star per band, unranked bare.
+  assert.equal(toolKeys[0], UNRANKED_KEY);
+  assert.match(tool, /unranked[^\n]*pips: 0/, 'a driver with no rated race wears the bare medal');
+  for (const [i, tier] of RANK_TIERS.entries()) {
+    assert.match(tool, new RegExp(`${tier.key}[^\\n]*pips: ${i + 1}`), `${tier.key} wears ${i + 1} star(s)`);
+  }
 });

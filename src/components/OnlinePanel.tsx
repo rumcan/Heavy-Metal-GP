@@ -1,11 +1,19 @@
 // ══════════════════════════════════════════════════════════════════════════
-// MP-06 — the garage's ONLINE panel: host a race, or join one by its code.
+// MP-06 — the garage's ONLINE panel: host a race, join one by its code, or
+// queue for a rated one.
 //
-// Three ways into a race, and the third is not built yet:
+// Three ways into a race, and since RK-05 they are not the same KIND of race:
 //
+//   QUICK RACE      the rated door (RK-04's queue): a stranger near your rank,
+//                   and the race counts — a rating moves, up or down
 //   HOST GAME       opens a room, becomes the host, shows a six-character code
 //   JOIN WITH CODE  the code your host is showing
-//   AUTO MATCH MAKING  join an open auto lobby, or open one and host it
+//
+// The two code doors are FRIENDLY and stay that way (HexMatch's decision, kept:
+// "a shared code is how you play with friends, and a ladder fed by arranged
+// matches is a ladder of arrangements"). So the panel labels them: `Friendly`
+// on both, `Ranked` on the queue. The room still has the last word — a rated
+// lobby that switches on house-rule power-ups is unrated again (`ResultMsg.rated`).
 //
 // Every multiplayer call goes through `src/net/transport.ts` — the SDK's
 // realtime API has exactly one door in this app, and this panel is not it.
@@ -77,10 +85,10 @@ export default function OnlinePanel({ busy, error, onHost, onJoin, onQuick, sear
     </div>}
     {offline
       ? <p className="online-note online-note-warn">{NO_ROOM_SERVER_MESSAGE}</p>
-      : <p className="online-note">Up to six players per race — AI drivers fill the rest of the grid.</p>}
+      : <p className="online-note">Up to six players per race — AI drivers fill the rest of the grid. <b>Quick race</b> is the rated door; a race you host or join by code is <b>friendly</b> and moves nothing.</p>}
     <div className="online-panel-row">
       <button className="button-primary" disabled={busy || offline} onClick={onHost}>
-        <Radio size={16} />{busy ? 'Opening the room…' : 'Host game'}
+        <Radio size={16} />{busy ? 'Opening the room…' : 'Host game'}<small>· Friendly</small>
       </button>
       <div className="online-code-entry">
         <Globe size={15} aria-hidden />
@@ -96,16 +104,16 @@ export default function OnlinePanel({ busy, error, onHost, onJoin, onQuick, sear
           disabled={busy || offline}
         />
         <button className="button-secondary" disabled={busy || offline || !ready} onClick={join}>
-          <LogIn size={15} />Join with code
+          <LogIn size={15} />Join with code<small>· Friendly</small>
         </button>
       </div>
       <button
         className="button-secondary"
         disabled={searching || busy || offline}
         onClick={onQuick}
-        title="Queue for a race with a stranger near your rank"
+        title="Quick race: queue for a stranger near your rank — rated, so your rating moves"
       >
-        <Users size={15} />Auto Match Making
+        <Users size={15} />Quick race<small>· Ranked</small>
       </button>
     </div>
     {searching && <div className="online-search">
@@ -113,7 +121,7 @@ export default function OnlinePanel({ busy, error, onHost, onJoin, onQuick, sear
       {/* One SDK request is one window; the loop keeps asking, and each closed
           window asks for a wider rank, so "still looking" is honest — nothing
           about this state is a failure. */}
-      <span><strong>Auto Match Making…</strong> Looking for another driver. The search starts near your rank and widens until it finds anyone.</span>
+      <span><strong>Quick race · ranked…</strong> Looking for another driver. The search starts near your rank and widens until it finds anyone.</span>
       <button className="text-button" onClick={onCancelSearch}><X size={14} />Cancel</button>
     </div>}
     {(hint ?? error) && <p className="online-note online-note-warn">{hint ?? error}</p>}
