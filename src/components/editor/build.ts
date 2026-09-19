@@ -20,9 +20,7 @@ import { Builder, FINISH_H, W, meta, segFinish, segStart } from '../../game/trac
 import type { Track } from '../../game/track';
 import { themeFor } from '../../game/types';
 import { replayPiece, type TrackDef } from '../../game/trackdef';
-import { visualBoundsForPiece } from './bounds';
-
-type Bounds = { min: { x: number, y: number }, max: { x: number, y: number } };
+import { visualBoundsForPiece, type Bounds } from './bounds';
 
 export interface EditorBuild {
   track: Track;
@@ -136,7 +134,10 @@ export function hitPieceAt(point: { x: number; y: number }, track: Track, bodyTo
     if (piece === -1 || piece === undefined) continue;
     if (checked.has(piece)) continue;
     checked.add(piece);
-    const { min, max } = pieceBounds[piece];
+    // Visual bounds (rendered world coordinates) — fall back to this body's
+    // own AABB if the entry is missing, never to the un-mirrored piece numbers.
+    const bounds = pieceBounds[piece] ?? track.bodies[i].bounds;
+    const { min, max } = bounds;
     if (point.x >= min.x && point.x <= max.x && point.y >= min.y && point.y <= max.y) {
       return piece;
     }
