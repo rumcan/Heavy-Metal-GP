@@ -20,11 +20,9 @@ import { drawCursorMark, drawGrid, drawRuler, viewWindow } from './overlay';
 import type { OverlayView } from './overlay';
 import { hitPieceAt, piecesInBox } from './build';
 import { handlesFor } from './handles';
-import { defaultPiece } from './defaults';
-import { tileFor } from './palette';
-import { Builder } from '../../game/track';
-import { replayPiece, type Piece } from '../../game/trackdef';
-import { getTemplates, placeTemplate } from './templates';
+import { ghostPreview } from './ghost';
+import type { GhostPreview } from './ghost';
+import { getTemplates } from './templates';
 // MB-09 handle knobs — Blizzard style, easily replaceable PNGs
 
 /**
@@ -193,8 +191,6 @@ export default function EditorCanvas(props: Props) {
     let lastStatus = 0;
     let fitted = false;
     let cursor: Point | null = null;
-    // For handle hit testing we need raw world (unsnapped) separate from snapped.
-    let cursorRaw: Point | null = null;
 
     const localPoint = (clientX: number, clientY: number): Point => {
       const rect = canvas.getBoundingClientRect();
@@ -285,7 +281,6 @@ export default function EditorCanvas(props: Props) {
       const local = localPoint(event.clientX, event.clientY);
       const worldRaw = toWorldRaw(local);
       const world = toWorld(local);
-      cursorRaw = worldRaw;
       cursor = world;
       // MB-04: picking spawn point has priority over all editor interactions
       if (pickingSpawnRef.current) {
@@ -386,7 +381,6 @@ export default function EditorCanvas(props: Props) {
       const local = localPoint(event.clientX, event.clientY);
       const worldRaw = toWorldRaw(local);
       const world = toWorld(local);
-      cursorRaw = worldRaw;
       cursor = world;
 
       if (pointers.has(event.pointerId)) pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -525,14 +519,12 @@ export default function EditorCanvas(props: Props) {
         downPoint = null;
       }
 
-      cursorRaw = worldRaw;
       cursor = world;
     };
 
     const pointerLeave = () => {
       if (!pointers.size) {
         cursor = null;
-        cursorRaw = null;
       }
     };
 
@@ -734,167 +726,144 @@ export default function EditorCanvas(props: Props) {
       ctx.restore();
     };
 
-    let templateGhost: { key: string; bodies: Track['bodies'] | null } | null = null;
+    // ---- placement ghost -------------------------------------------------------------
+    // The preview is the piece a click actually commits: `placementPieces` is shared with
+    // `TrackEditor.handlePlace`, so a variant tile's preset, a trapdoor hinge or a whole saved
+    // template group reads from the placement geometry instead of a second copy of the defaults.
+    // Cached against the cursor because resolving it walks the palette and the stored templates.
+    let ghostKey = '';
+    let ghostCache: GhostPreview | null = null;
+
     const drawGhost = (ctx: CanvasRenderingContext2D, overlay: OverlayView) => {
       const armedT = armedRef.current;
       const cur = cursor;
-      const curRaw = cursorRaw;
-      if (!armedT || !cur) return;
       // Only show ghost when not dragging handles/pieces
-      if (handleDrag || pieceDrag || boxDrag) return;
+      if (!armedT || !cur || handleDrag || pieceDrag || boxDrag) return;
       const cam = overlay.camera;
-      const toScreen = (w: Point): Point => ({ x: (w.x - cam.x) * cam.scale + overlay.width / 2, y: (w.y - cam.y) * cam.scale + overlay.height / 2 });
+      const sc = cam.scale;
+      const toScreen = (w: Point): Point => ({ x: (w.x - cam.x) * sc + overlay.width / 2, y: (w.y - cam.y) * sc + overlay.height / 2 });
+      const at = (p: { x: number; y: number }): Point => toScreen({ x: p.x, y: p.y });
+      const atVec = (p: readonly [number, number]): Point => toScreen({ x: p[0], y: p[1] });
+
+      const key = `${armedT}|${cur.x}|${cur.y}|${gridRef.current ? 1 : 0}`;
+      if (key !== ghostKey) {
+        ghostKey = key;
+        // The template list is read from the memo rather than storage: this runs on every cursor
+        // move, and `armed` is the only thing that can change which template is meant.
+        ghostCache = ghostPreview(armedT, cur, gridRef.current, templateRef.current ? [templateRef.current] : []);
+      }
+      const preview = ghostCache;
+      if (!preview) return;
+
+      if (preview.invalid) {
+        // A template group wider than the track is refused instead of squashed (#74), so the ghost
+        // marks the refusal rather than previewing a placement the click would not make.
+        const no = toScreen(cur);
+        ctx.save();
+        ctx.strokeStyle = '#d63e2e';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(no.x - 10, no.y - 10); ctx.lineTo(no.x + 10, no.y + 10);
+        ctx.moveTo(no.x + 10, no.y - 10); ctx.lineTo(no.x - 10, no.y + 10);
+        ctx.stroke();
+        ctx.restore();
+        return;
+      }
+
       ctx.save();
-      ctx.globalAlpha = 0.55;
-      ctx.strokeStyle = '#d63e2e';
-      ctx.fillStyle = 'rgba(214,62,46,0.18)';
-      ctx.lineWidth = 2;
       ctx.setLineDash([6, 4]);
-      const sc = overlay.camera.scale;
-      const tile = tileFor(armedT);
-      // Draw the piece this click will really build — the same defaults, the same snap, and the same
-      // slide back off an edge — so the preview never promises a spot the piece will not land in (#71).
-      const ghost = tile ? ({ ...defaultPiece(tile.t, cur, gridRef.current), ...tile.preset } as Piece) : null;
-      const s = toScreen(ghost ? handlesFor(ghost)[0] : cur);
-      const dot = (at: Point, r: number) => {
-        ctx.beginPath();
-        ctx.arc(at.x, at.y, r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-      };
-      const label = (at: Point) => {
-        ctx.fillStyle = '#fff';
-        ctx.font = `10px system-ui`;
-        ctx.textAlign = 'center';
-        ctx.fillText(armedT, at.x, at.y - 14);
-      };
-      const ends = (pts: Point[]) => {
-        ctx.beginPath();
-        pts.forEach((pt, i) => (i === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y)));
-        ctx.stroke();
-        for (const pt of pts) dot(pt, 5);
-      };
-      if (armedT.startsWith('template-')) {
-        const template = templateRef.current;
-        const key = `${armedT}:${cur.x}:${cur.y}:${gridRef.current}`;
-        if (templateGhost?.key !== key) {
-          const pieces = template ? placeTemplate(template, cur, gridRef.current) : null;
-          const builder = new Builder(0);
-          if (pieces) for (const piece of pieces) replayPiece(builder, piece);
-          templateGhost = { key, bodies: pieces ? builder.bodies : null };
-        }
-        if (templateGhost.bodies) {
-          for (const body of templateGhost.bodies) {
-            ctx.beginPath();
-            body.vertices.forEach((vertex, index) => {
-              const p = toScreen(vertex);
-              if (index === 0) ctx.moveTo(p.x, p.y);
-              else ctx.lineTo(p.x, p.y);
-            });
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      for (const ghost of preview.pieces) {
+        // Variants that differ only by colour keep their own tint, so an orange peg reads orange.
+        const accent = ghost.tint ?? '#d63e2e';
+        ctx.strokeStyle = accent;
+        ctx.fillStyle = accent;
+        for (const part of ghost.parts) {
+          ctx.globalAlpha = 0.72;
+          ctx.lineWidth = part.kind === 'path' ? part.width ?? 2 : 2;
+          switch (part.kind) {
+            case 'box': {
+              const s = at(part);
+              const w = part.w * sc;
+              const h = part.h * sc;
+              ctx.globalAlpha = 0.14;
+              ctx.fillRect(s.x - w / 2, s.y - h / 2, w, h);
+              ctx.globalAlpha = 0.72;
+              ctx.strokeRect(s.x - w / 2, s.y - h / 2, w, h);
+              break;
+            }
+            case 'ring': {
+              const s = at(part);
+              ctx.beginPath();
+              ctx.arc(s.x, s.y, Math.max(2, part.r * sc), 0, Math.PI * 2);
+              if (part.fill) {
+                ctx.globalAlpha = 0.55;
+                ctx.fill();
+              } else {
+                ctx.globalAlpha = 0.14;
+                ctx.fill();
+                ctx.globalAlpha = 0.72;
+                ctx.stroke();
+              }
+              break;
+            }
+            case 'path': {
+              ctx.beginPath();
+              part.pts.forEach(([wx, wy], i) => {
+                const s = toScreen({ x: wx, y: wy });
+                if (i) ctx.lineTo(s.x, s.y);
+                else ctx.moveTo(s.x, s.y);
+              });
+              if (part.close) {
+                ctx.closePath();
+                ctx.globalAlpha = 0.14;
+                ctx.fill();
+                ctx.globalAlpha = 0.72;
+              }
+              ctx.stroke();
+              break;
+            }
+            case 'arrow': {
+              const a = atVec(part.from);
+              const b = atVec(part.to);
+              ctx.beginPath();
+              ctx.moveTo(a.x, a.y);
+              ctx.lineTo(b.x, b.y);
+              const ang = Math.atan2(b.y - a.y, b.x - a.x);
+              for (const side of [-1, 1]) {
+                ctx.moveTo(b.x, b.y);
+                ctx.lineTo(b.x + Math.cos(ang + side * 2.5) * 8, b.y + Math.sin(ang + side * 2.5) * 8);
+              }
+              ctx.stroke();
+              break;
+            }
           }
-        } else {
-          // Explicit invalid-placement marker for groups wider than the track.
-          const c = toScreen(cur);
+        }
+        // The grab points the placed piece will expose — route ends, orientation, size handles —
+        // so a piece can be reshaped in one move from the ghost.
+        ctx.globalAlpha = 0.85;
+        ctx.setLineDash([]);
+        ctx.lineWidth = 1.5;
+        for (const h of ghost.handles) {
+          const s = at(h);
           ctx.beginPath();
-          ctx.moveTo(c.x - 10, c.y - 10); ctx.lineTo(c.x + 10, c.y + 10);
-          ctx.moveTo(c.x + 10, c.y - 10); ctx.lineTo(c.x - 10, c.y + 10);
+          ctx.rect(s.x - 3.5, s.y - 3.5, 7, 7);
           ctx.stroke();
         }
-        ctx.restore();
-        return;
+        ctx.setLineDash([6, 4]);
       }
-      if (!ghost) {
-        dot(s, 6);
-        ctx.restore();
-        void curRaw;
-        return;
-      }
-      switch (ghost.t) {
-        case 'ramp':
-        case 'ice':
-          ends([toScreen({ x: ghost.a[0], y: ghost.a[1] }), toScreen({ x: ghost.b[0], y: ghost.b[1] })]);
-          break;
-        case 'curve': {
-          const a = toScreen({ x: ghost.a[0], y: ghost.a[1] });
-          const c = toScreen({ x: ghost.c[0], y: ghost.c[1] });
-          const b = toScreen({ x: ghost.b[0], y: ghost.b[1] });
-          ctx.beginPath();
-          ctx.moveTo(a.x, a.y);
-          ctx.quadraticCurveTo(c.x, c.y, b.x, b.y);
-          ctx.stroke();
-          dot(a, 5);
-          dot(b, 5);
-          break;
-        }
-        case 'loop': {
-          ctx.beginPath();
-          ctx.arc(s.x, s.y, ghost.r * sc, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.fill();
-          break;
-        }
-        case 'peg':
-        case 'ppeg':
-          dot(s, ghost.r * sc);
-          break;
-        case 'wall':
-        case 'block':
-        case 'breakable':
-        case 'barricade':
-        case 'crumble': {
-          const w = ghost.w * sc;
-          const h = ghost.h * sc;
-          ctx.fillRect(s.x - w / 2, s.y - h / 2, w, h);
-          ctx.strokeRect(s.x - w / 2, s.y - h / 2, w, h);
-          break;
-        }
-        // Two-ended pieces: draw the span itself, so a placement that slid along a wall shows it.
-        case 'wind':
-        case 'mud':
-        case 'pool':
-        case 'conveyor':
-        case 'bridge':
-        case 'saw':
-        case 'screw':
-          ends([toScreen({ x: ghost.a[0], y: ghost.a[1] }), toScreen({ x: ghost.b[0], y: ghost.b[1] })]);
-          break;
-        case 'platform':
-          ends([toScreen({ x: ghost.ax, y: ghost.ay }), toScreen({ x: ghost.bx, y: ghost.by })]);
-          break;
-        case 'boulder':
-          ends(ghost.pts.map(([x, y]) => toScreen({ x, y })));
-          break;
-        case 'tunnel': {
-          const exit = toScreen({ x: ghost.exit[0], y: ghost.exit[1] });
-          ends([s, exit]);
-          dot(s, 8);
-          dot(exit, 8);
-          break;
-        }
-        case 'trapdoor': {
-          // The leaf hangs off the hinge the placement picked, not a hardcoded left hinge.
-          const hinge = toScreen({ x: ghost.x + (ghost.hinge * ghost.w) / 2, y: ghost.y });
-          const tip = toScreen({ x: ghost.x - (ghost.hinge * ghost.w) / 2, y: ghost.y });
-          dot(hinge, 8);
-          ctx.beginPath();
-          ctx.moveTo(hinge.x, hinge.y);
-          ctx.lineTo(tip.x, tip.y);
-          ctx.lineWidth = 4 * sc;
-          ctx.strokeStyle = '#4f5a6a';
-          ctx.stroke();
-          ctx.lineWidth = 1;
-          label(hinge);
-          break;
-        }
-        default:
-          dot(s, 8);
-          label(s);
-      }
+
+      // Name the armed tile or template once, under the cursor.
+      const s = toScreen(cur);
+      ctx.globalAlpha = 1;
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#f2f5fa';
+      ctx.font = '10px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText(preview.label.toUpperCase(), s.x, s.y - 16);
       ctx.restore();
-      void curRaw;
     };
 
     const drawSpawn = (ctx: CanvasRenderingContext2D, overlay: OverlayView) => {

@@ -58,8 +58,8 @@ import PropertiesPanel from './editor/PropertiesPanel';
 import { SNAP, clampCamera, formatUnits, formatZoom, newRig, rigCenter, rigFit, rigZoom } from './editor/camera';
 import type { CameraRig, Point } from './editor/camera';
 import { PALETTE, tileFor } from './editor/palette';
-import { defaultPiece } from './editor/defaults';
-import { getTemplates, saveTemplate, snapshotTemplate, placeTemplate } from './editor/templates';
+import { placementPieces, TEMPLATE_ARM } from './editor/ghost';
+import { saveTemplate, snapshotTemplate } from './editor/templates';
 import { History } from './editor/history';
 import { buildEditorTrack } from './editor/build';
 import { applyHandle, movePieces, mirrorPiece } from './editor/handles';
@@ -416,18 +416,26 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
     transactionRef.current = false;
   }, []);
 
+  /**
+   * Place what the armed tool holds. `placementPieces` is the single source for that — the canvas
+   * ghost is painted from the very same call, so the preview and the piece can not disagree
+   * (#75): a variant tile's preset, a template group's offset and the grid snap all happen there.
+   */
   const handlePlace = useCallback(
     (world: { x: number; y: number }) => {
       if (!armed) return;
-      if (armed.startsWith('template-')) {
-        const tpl = getTemplates().find(t => t.id === armed);
-        if (!tpl || tpl.pieces.length === 0) return;
-        
-        const toAdd = placeTemplate(tpl, world, grid);
-        if (!toAdd) {
-          setDraftMsg('This template cannot fit inside the track without changing its layout.');
-          return;
-        }
+      // Placement and the canvas ghost are the same call, so the preview cannot disagree with the
+      // piece that lands: a variant tile's preset, a template group's transform and the grid snap all
+      // resolve inside `placementPieces`. A null result is `placeTemplate`'s refusal (#74), which the
+      // player hears about; an empty array is an id that names nothing placeable, which stays silent.
+      const toAdd = placementPieces(armed, world, grid);
+      if (!toAdd) {
+        setDraftMsg('This template cannot fit inside the track without changing its layout.');
+        return;
+      }
+      if (!toAdd.length) return;
+
+      if (armed.startsWith(TEMPLATE_ARM)) {
         const startLen = circuit.def.pieces.length;
         const select = toAdd.map((_, i) => startLen + i);
         commit((def) => {
@@ -438,13 +446,7 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
         return;
       }
 
-      const tile = tileFor(armed);
-      if (!tile) return;
-      const placed = { ...defaultPiece(tile.t, world, grid), ...tile.preset } as Piece;
-
-      // Every prompt clamps through the same limits as the settings popup (#71), so an answer can
-      // never put the piece outside what the schema accepts and make the map unshareable.
-      const piece = applyPlacementSettings(placed, (question, value) => window.prompt(question, value));
+      const piece = applyPlacementSettings(toAdd[0], (question, value) => window.prompt(question, value));
 
       // The new piece is not selected: the tool stays armed so the player can keep placing. Select mode (E) edits.
       commit(
@@ -455,7 +457,7 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
         { select: [] },
       );
     },
-    [armed, grid, commit],
+    [armed, grid, commit, circuit.def.pieces.length],
   );
 
   const handleSelect = useCallback(
