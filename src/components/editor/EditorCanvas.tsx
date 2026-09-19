@@ -338,26 +338,18 @@ export default function EditorCanvas(props: Props) {
         }
 
         // Miss
+        if (event.button === 1 || event.button === 2) {
+          pan = { from: { x: event.clientX, y: event.clientY }, camX: camera().x, camY: camera().y };
+          return;
+        }
+
         if (armedRef.current) {
-          // Pending place — will confirm on pointerUp if no drag
           pendingPlace = world;
-          // No pan while armed? Allow pan via second finger or shift? For now, placement click
-          // should not pan. So we suppress pan when armed and miss.
-          // But user still needs to pan when armed — they can use pinch or right-drag? Keep pan only if they drag far?
-          // We'll allow pan if they drag far while armed: treat as pan after slop.
-          // For now, do not start pan; we will start pan on move if drag exceeds slop and not placing.
           return;
         }
 
-        if (event.shiftKey) {
-          // Box select
-          boxDrag = { startWorld: worldRaw, curWorld: worldRaw };
-          return;
-        }
-
-        // Clear selection on empty click (will do on up if no box/pan)
-        // Start pan for empty drag
-        pan = { from: { x: event.clientX, y: event.clientY }, camX: camera().x, camY: camera().y };
+        // Left click empty space: Box select
+        boxDrag = { startWorld: worldRaw, curWorld: worldRaw };
       } else if (pointers.size === 2) {
         // Pinch start
         // Cancel other drags
@@ -592,12 +584,15 @@ export default function EditorCanvas(props: Props) {
       event.preventDefault();
     };
 
+    const preventContext = (e: Event) => e.preventDefault();
+
     canvas.addEventListener('wheel', wheel, { passive: false });
     canvas.addEventListener('pointerdown', pointerDown);
     canvas.addEventListener('pointermove', pointerMove);
     canvas.addEventListener('pointerup', pointerUp);
     canvas.addEventListener('pointercancel', pointerUp);
     canvas.addEventListener('pointerleave', pointerLeave);
+    canvas.addEventListener('contextmenu', preventContext);
     window.addEventListener('keydown', onKey);
 
     // ---- render loop --------------------------------------------------------
@@ -809,7 +804,36 @@ export default function EditorCanvas(props: Props) {
         case 'spinner':
         case 'wrecker':
         case 'bucket':
-        case 'curve': {
+        case 'curve':
+        case 'trampoline':
+        case 'turnstile':
+        case 'targets':
+        case 'vortex':
+        case 'platform':
+        case 'wheel':
+        case 'screw':
+        case 'conveyor':
+        case 'seesaw':
+        case 'bridge':
+        case 'cannon':
+        case 'catapult':
+        case 'flipper':
+        case 'sling':
+        case 'scoop':
+        case 'wind':
+        case 'magnet':
+        case 'mud':
+        case 'pool':
+        case 'geyser':
+        case 'blade':
+        case 'saw':
+        case 'crusher':
+        case 'boulder':
+        case 'mace':
+        case 'barricade':
+        case 'crumble':
+        case 'tunnel':
+        case 'switch': {
           // Generic dot + label
           ctx.beginPath();
           ctx.arc(s.x, s.y, 8, 0, Math.PI * 2);
@@ -819,6 +843,31 @@ export default function EditorCanvas(props: Props) {
           ctx.font = `10px system-ui`;
           ctx.textAlign = 'center';
           ctx.fillText(armedT, s.x, s.y - 14);
+          break;
+        }
+        case 'trapdoor': {
+          const w = 110 * sc;
+          const h2 = -1; // Default hinge
+          const h = { x: s.x + h2 * w / 2, y: s.y };
+          const otherX = s.x - h2 * w / 2;
+          
+          ctx.beginPath();
+          ctx.arc(h.x, h.y, 8, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          
+          ctx.beginPath();
+          ctx.moveTo(h.x, h.y);
+          ctx.lineTo(otherX, h.y);
+          ctx.lineWidth = 4 * sc;
+          ctx.strokeStyle = '#4f5a6a';
+          ctx.stroke();
+          ctx.lineWidth = 1;
+          
+          ctx.fillStyle = '#fff';
+          ctx.font = `10px system-ui`;
+          ctx.textAlign = 'center';
+          ctx.fillText(armedT, h.x, h.y - 14);
           break;
         }
         default:
@@ -977,6 +1026,7 @@ export default function EditorCanvas(props: Props) {
       canvas.removeEventListener('pointerup', pointerUp);
       canvas.removeEventListener('pointercancel', pointerUp);
       canvas.removeEventListener('pointerleave', pointerLeave);
+      canvas.removeEventListener('contextmenu', preventContext);
       window.removeEventListener('keydown', onKey);
     };
   }, [rig]);

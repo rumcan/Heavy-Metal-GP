@@ -131,6 +131,8 @@ export interface Marble {
   crushedUntil: number;
   /** Debounce so one crusher docking registers one pin per marble. */
   crushMarkAt: number;
+  /** Number of times this marble has been crushed. */
+  crushCount: number;
   /** MB-10D: per-marble slingshot cooldown so a resting marble isn't machine-gunned. */
   slingAt?: number;
   /** MB-10D: last flipper kick clock, so one swing delivers one swat per marble. */
@@ -335,6 +337,7 @@ export class Game {
         tunnelSafeUntil: 0,
         crushedUntil: 0,
         crushMarkAt: 0,
+        crushCount: 0,
       };
       this.marbles.push(m);
       this.byId.set(info.id, m);
@@ -524,7 +527,46 @@ export class Game {
     });
   }
 
-  // ---------- collisions ----------
+  private ignoreGoneCrumble(_m: Marble, b: Matter.Body, pair: Matter.Pair): boolean {
+    const md = meta(b);
+    if (md?.kind !== 'crumble') return false;
+    const ratio = (md.hp ?? 1) / (md.maxHp ?? 1);
+    if (ratio >= 0.999) return false;
+
+    const { min, max } = b.bounds;
+    const w = max.x - min.x, h = max.y - min.y;
+    const rows = Math.max(2, Math.round(h / 22));
+    const cols = Math.max(1, Math.round(w / 30));
+
+    let allGone = true;
+    const supports = pair.collision.supports;
+    if (!supports || supports.length === 0) return false;
+
+    for (const contact of supports) {
+      const r = Math.floor((contact.y - min.y) / (h / rows));
+      const c = Math.floor((contact.x - min.x) / (w / cols));
+      if (r >= 0 && r < rows && c >= 0 && c < cols) {
+        const permanent = 1 - ratio;
+        const seed = r * 7 + c;
+        const jitter = ((b.id * 13 + seed * 17) % 31) / 31;
+        const gone = (r + 1) / rows + jitter * 0.35 < permanent * 1.15;
+        if (!gone) {
+          allGone = false;
+          break;
+        }
+      } else {
+        allGone = false;
+        break;
+      }
+    }
+
+    if (allGone) {
+      pair.isActive = false;
+      return true;
+    }
+    return false;
+  }
+
   private onCollisionStart(e: Matter.IEventCollision<Matter.Engine>) {
     for (const pair of e.pairs) {
       const a = pair.bodyA;
@@ -532,9 +574,11 @@ export class Game {
       const ma = this.marbleOf(a);
       const mb = this.marbleOf(b);
       if (ma && !mb) {
+        if (this.ignoreGoneCrumble(ma, b, pair)) continue;
         this.contactSurface(ma, b, pair);
         this.marbleHits(ma, b);
       } else if (mb && !ma) {
+        if (this.ignoreGoneCrumble(mb, a, pair)) continue;
         this.contactSurface(mb, a, pair);
         this.marbleHits(mb, a);
       }
@@ -838,7 +882,7 @@ export class Game {
         const sc = md.screw;
         sc.seats = sc.seats.filter((seat) => seat.until > this.time - 500);
         if (sc.seats.length >= sc.cap) break;
-        if (Math.hypot(m.body.position.x - sc.a.x, m.body.position.y - sc.a.y) > 42) break;
+        if (Math.hypot(m.body.position.x - sc.a.x, m.body.position.y - sc.a.y) > 85) break;
         let slip = 0;
         let ms = sc.ms;
         // light marbles slip back occasionally — a seeded wobble that costs a little time
@@ -1137,6 +1181,7 @@ export class Game {
       const m = ma ?? mb;
       const other = ma ? b : a;
       if (!m || (ma && mb) || m.frozen || m.finishedAt !== null || !this.gateOpen) continue;
+      if (this.ignoreGoneCrumble(m, other, pair)) continue;
       const md = meta(other);
       if (!md) continue;
       // MB-10B skins paint contact flashes; reuse the one-shove-per-pass debounce so a marble
@@ -1191,7 +1236,8 @@ export class Game {
       const along = velocity.x * tangent.x + velocity.y * tangent.y;
       const fighting = dir * along < 0;
       const scale = fighting ? 1 - 0.45 * ((m.info.stats.speed - 1) / 9) : 1;
-      const pull = (dir * belt.v - along) * 0.09 * scale;
+      const targetV = dir * belt.v * 50; // Convert 0.16 into ~8 px/step so it actually shoves the marble
+      const pull = (targetV - along) * 0.09 * scale;
       Body.setVelocity(m.body, { x: velocity.x + tangent.x * pull, y: velocity.y + tangent.y * pull * 0.5 });
       pair.friction = 0.015;
     }
@@ -1434,10 +1480,19 @@ export class Game {
           m.crushMarkAt = this.time;
           // Heavy metal never pins; Slipstream slips out early; everyone else eats 600ms of deck.
           if (this.time < m.anvilUntil || m.body.mass >= 9) continue;
-          m.crushedUntil = this.time + (this.time < m.aeroUntil ? 180 : 600);
-          Body.setVelocity(m.body, { x: 0, y: 0 });
-          if (m.info.isPlayer) this.onEvent?.('SQUASHED!', '#d6d3d1');
-          else this.effects.push({ type: 'text', x: p.x, y: p.y - 24, ttl: 40, maxTtl: 40, color: '#e7e5e4', text: 'SQUASHED' });
+          m.crushCount++;
+          if (m.crushCount === 1) {
+            m.crushedUntil = this.time + (this.time < m.aeroUntil ? 180 : 600);
+            Body.setVelocity(m.body, { x: 0, y: 0 });
+            if (m.info.isPlayer) this.onEvent?.('SQUASHED!', '#d6d3d1');
+            else this.effects.push({ type: 'text', x: p.x, y: p.y - 24, ttl: 40, maxTtl: 40, color: '#e7e5e4', text: 'SQUASHED' });
+          } else {
+            const side = p.x < motion.top.x ? -1 : 1;
+            Body.setVelocity(m.body, { x: side * 35, y: -5 });
+            m.crushCount = 0;
+            if (m.info.isPlayer) this.onEvent?.('EJECTED!', '#f87171');
+            else this.effects.push({ type: 'text', x: p.x, y: p.y - 24, ttl: 40, maxTtl: 40, color: '#f87171', text: 'EJECTED' });
+          }
         }
       }
     }

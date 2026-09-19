@@ -128,7 +128,11 @@ export function defaultPiece(type: PieceType, at: Point, snap = false): Piece {
       return { t: 'tunnel', x: ix, y: iy, exit: [snap ? snapVal(ix + 100) : ix + 100, iy - 340] as [number, number], edir: [0.3, -0.95] as [number, number], ms: 900, speed: 7 };
     }
     case 'trapdoor': {
-      return { t: 'trapdoor', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, w: 110, hinge: -1 as -1 | 1, mode: 'timer' as 'timer' | 'weight', open: 1400, closed: 2800, phase: 0, kg: 2.4, hold: 300 };
+      const w = 110;
+      const hinge = -1 as -1 | 1;
+      const hx = snap ? snapVal(cx) : cx;
+      const center_x = hx - hinge * w / 2;
+      return { t: 'trapdoor', x: center_x, y: snap ? snapVal(cy) : cy, w, hinge, mode: 'timer' as 'timer' | 'weight', open: 1400, closed: 2800, phase: 0, kg: 2.4, hold: 300 };
     }
     case 'switch': {
       return { t: 'switch', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, len: 120, angle: 0.65, side: 0 as 0 | 1 };

@@ -279,7 +279,7 @@ body { min-width: 0; }
   box-shadow: inset 0 1px 0 #ffffff14, 0 0 26px -8px #d63e2e99; text-shadow: 0 0 18px #d63e2e66;
 }
 .lobby-code-note { margin: 0; font-size: 11px; color: var(--muted); font-family: var(--mono); letter-spacing: .4px; }
-.lobby-fit { grid-template-columns: minmax(0, 1fr) minmax(320px, 460px); }
+.lobby-fit { grid-template-columns: minmax(0, 1fr) minmax(280px, 380px) minmax(320px, 460px); }
 .lobby-circuit h2 { font-family: var(--display); font-size: 24px; margin: 6px 0 0; }
 .lobby-circuit-desc { margin: 8px 0 0; color: #a9b3c0; font-size: 13px; line-height: 1.5; }
 .lobby-note { margin: 8px 0 0; font-size: 11px; color: var(--muted); line-height: 1.5; }
@@ -307,8 +307,8 @@ body { min-width: 0; }
      Its row is CAPPED rather than content-sized: a busy chat must not be
      able to squeeze the power-ups pane off the screen, and a chat with one
      line in it must not leave a hole. */
-  grid-template-areas: "code code" "circuit grid" "powerups grid" "chat grid";
-  grid-template-rows: auto auto minmax(0, 1fr) minmax(0, 250px);
+  grid-template-areas: "code code code" "circuit circuit grid" "powerups chat grid";
+  grid-template-rows: auto auto minmax(0, 1fr);
 }
 .lobby-code-card { grid-area: code; }
 .lobby-page .lobby-circuit { grid-area: circuit; }
@@ -511,3 +511,14 @@ body { min-width: 0; }
 .whats-new-coming ol small { display: block; margin-left: 22px; font-size: 10px; line-height: 1.35; color: #7c8a98; }
 .whats-new .pause-actions { margin-top: 14px; }
 @media (max-width: 760px) { .whats-new-coming ol { grid-template-columns: minmax(0, 1fr); } }
+
+.palette-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+.palette-tabs .tab-btn { flex: 1; padding: 6px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #9ca3af; cursor: pointer; border-radius: 4px; }
+.palette-tabs .tab-btn.active { background: rgba(255,255,255,0.1); color: #fff; border-color: rgba(255,255,255,0.3); }
+
+/* Global scrollbars */
+* { scrollbar-color: #1e3a5f #11161d; }
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track { background: #11161d; }
+::-webkit-scrollbar-thumb { background: #1e3a5f; border-radius: 6px; border: 3px solid #11161d; }
+::-webkit-scrollbar-corner { background: #11161d; }

@@ -437,31 +437,31 @@ class DefRecorder extends Builder {
   override trampoline(x: number, y: number, w = 180, tension = 1) {
     return this.capture(
       () => super.trampoline(x, y, w, tension),
-      () => ({ t: 'trampoline', x, y, w, tension }),
+      () => ({ t: 'trampoline', x, y, w, tension, flip: this.mirrored }),
     );
   }
   override turnstile(x: number, y: number, arms = 4, r = 70, mode: 0 | 1 = 0, periodMs = 0, phaseMs = 0) {
     return this.capture(
       () => super.turnstile(x, y, arms, r, mode, periodMs, phaseMs),
-      () => ({ t: 'turnstile', x, y, arms, r, mode, period: periodMs, phase: phaseMs }),
+      () => ({ t: 'turnstile', x, y, arms, r, mode, period: periodMs, phase: phaseMs, flip: this.mirrored }),
     );
   }
   override targets(x: number, y: number, count = 4, resetMs = 6000) {
     return this.capture(
       () => super.targets(x, y, count, resetMs),
-      () => ({ t: 'targets', x, y, count, reset: resetMs }),
+      () => ({ t: 'targets', x, y, count, reset: resetMs, flip: this.mirrored }),
     );
   }
   override vortex(x: number, y: number, r = 140, spin = 1.5, holeR = 34) {
     return this.capture(
       () => super.vortex(x, y, r, spin, holeR),
-      () => ({ t: 'vortex', x, y, r, spin, hole: holeR }),
+      () => ({ t: 'vortex', x, y, r, spin, hole: holeR, flip: this.mirrored }),
     );
   }
   override platform(ax: number, ay: number, bx: number, by: number, w = 120, travelMs = 2600, pauseMs = 1800, phaseMs = 0) {
     return this.capture(
       () => super.platform(ax, ay, bx, by, w, travelMs, pauseMs, phaseMs),
-      () => ({ t: 'platform', ax, ay, bx, by, w, travel: travelMs, pause: pauseMs, phase: phaseMs }),
+      () => ({ t: 'platform', ax, ay, bx, by, w, travel: travelMs, pause: pauseMs, phase: phaseMs, flip: this.mirrored }),
     );
   }
 

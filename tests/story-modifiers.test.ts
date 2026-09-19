@@ -75,6 +75,7 @@ function sectorFixture(sectors: number, sectorHeight = 300, obstacles: Matter.Bo
     startY: 116, finishY, gate, segments: segmentList,
     spinners: [], itemBoxes: [], buckets: [], pegCount: { orange: 0, total: 0 },
     ramps: obstacles.filter((body) => !!meta(body).surface), theme: DEFAULT_PROFILE.theme, decor: [], wreckers: [],
+    targetBanks: [],
   };
 }
 

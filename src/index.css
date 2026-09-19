@@ -22,7 +22,7 @@ button, a, input { outline-offset: 5px; }
 :focus-visible { outline: 2px solid var(--accent); }
 ::selection { background: var(--accent); color: #fff3dc; }
 ::-webkit-scrollbar { width: 5px; height: 4px; }
-::-webkit-scrollbar-thumb { background: #404955; border-radius: 9px; }
+::-webkit-scrollbar-thumb { background: #1e2936; border-radius: 9px; }
 .app-shell { min-height: 100dvh; color: #eef1f3; background: #0c0f13; }
 .app-header { height: 77px; border-bottom: 1px solid var(--line); display: flex; align-items: center; padding: 0 38px; gap: 40px; }
 .brand { display: inline-flex; align-items: center; gap: 11px; flex: 0 0 auto; padding: 0; background: none; border: 0; color: var(--accent); text-align: left; }

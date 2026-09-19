@@ -55,8 +55,9 @@ import PiecePalette from './editor/PiecePalette';
 import PropertiesPanel from './editor/PropertiesPanel';
 import { SNAP, clampCamera, formatUnits, formatZoom, newRig, rigCenter, rigFit, rigZoom } from './editor/camera';
 import type { CameraRig, Point } from './editor/camera';
-import { tileFor } from './editor/palette';
+import { PALETTE, tileFor } from './editor/palette';
 import { defaultPiece } from './editor/defaults';
+import { getTemplates, saveTemplate } from './editor/templates';
 import { History } from './editor/history';
 import { buildEditorTrack } from './editor/build';
 import { applyHandle, movePiece, mirrorPiece } from './editor/handles';
@@ -410,9 +411,66 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
   const handlePlace = useCallback(
     (world: { x: number; y: number }) => {
       if (!armed) return;
+      if (armed.startsWith('template-')) {
+        const tpl = getTemplates().find(t => t.id === armed);
+        if (!tpl || tpl.pieces.length === 0) return;
+        
+        // Use the first piece as the anchor
+        const anchor = tpl.pieces[0];
+        // Snap the drop position if grid is on
+        let dropX = world.x;
+        let dropY = world.y;
+        if (grid) {
+          dropX = Math.round(dropX / 25) * 25;
+          dropY = Math.round(dropY / 25) * 25;
+        }
+        const anchorX = 'x' in anchor ? anchor.x : ('a' in anchor ? anchor.a[0] : 0);
+        const anchorY = 'y' in anchor ? anchor.y : ('a' in anchor ? anchor.a[1] : 0);
+        const dx = dropX - anchorX;
+        const dy = dropY - anchorY;
+
+        commit((def) => {
+          const toAdd = tpl.pieces.map(p => {
+             const cloned = JSON.parse(JSON.stringify(p)) as Piece;
+             return movePiece(cloned, dx, dy);
+          });
+          def.pieces.push(...toAdd);
+          return def;
+        }, { select: [] });
+        return;
+      }
+
       const tile = tileFor(armed);
       if (!tile) return;
       const piece = { ...defaultPiece(tile.t, world, grid), ...tile.preset } as Piece;
+      
+      if (piece.t === 'trapdoor') {
+        if (piece.mode === 'timer') {
+          const p = window.prompt('How many milliseconds until it opens?', String(piece.open));
+          if (p !== null) {
+            const val = parseInt(p, 10);
+            if (!isNaN(val) && val > 0) piece.open = val;
+          }
+        } else if (piece.mode === 'weight') {
+          const p = window.prompt('How many kg of weight to trigger it?', String(piece.kg));
+          if (p !== null) {
+            const val = parseFloat(p);
+            if (!isNaN(val) && val > 0) piece.kg = val;
+          }
+        }
+      } else if (piece.t === 'crusher') {
+        const periodPrompt = window.prompt('How many milliseconds for a full cycle (period)?', String(piece.period));
+        if (periodPrompt !== null) {
+          const val = parseInt(periodPrompt, 10);
+          if (!isNaN(val) && val > 0) piece.period = val;
+        }
+        const floorPrompt = window.prompt('How many milliseconds should it stay down (floor hold)?', String(piece.floor));
+        if (floorPrompt !== null) {
+          const val = parseInt(floorPrompt, 10);
+          if (!isNaN(val) && val >= 0) piece.floor = val;
+        }
+      }
+
       // The new piece is not selected: the tool stays armed so the player can keep placing. Select mode (E) edits.
       commit(
         (def) => {
@@ -481,6 +539,18 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
       return { def: ensureHeight({ ...cloneDef(cur.def), pieces }), build: cur.build + 1 };
     });
   }, [selected, pushHistory]);
+
+  const handleSaveTemplate = useCallback(() => {
+    if (selected.length === 0) return;
+    const name = window.prompt('Enter a name for this template:', 'New Template');
+    if (!name) return;
+    const pieces = selected.map(i => JSON.parse(JSON.stringify(circuit.def.pieces[i])));
+    // Just use a generic icon like 'rail-wood' or pick from the first piece.
+    const sprite = (PALETTE.flatMap(g => g.tiles).find(t => t.t === pieces[0].t)?.sprite) || 'rail-wood';
+    saveTemplate({ name, sprite, pieces });
+    // Alert or small UX feedback
+    alert(`Template "${name}" saved! Check the Templates tab.`);
+  }, [selected, circuit.def.pieces]);
 
   const handleDuplicate = useCallback(() => {
     if (selected.length === 0) return;
@@ -1019,6 +1089,9 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
             <span className="editbar-sep" />
             <button className="text-button" onClick={handleDuplicate} disabled={selected.length === 0} title="Duplicate (Ctrl+D)">
               <Copy size={13} />Duplicate
+            </button>
+            <button className="text-button" onClick={handleSaveTemplate} disabled={selected.length < 2} title="Save selected items as a new template">
+              <Save size={13} />Template
             </button>
             <button className="text-button" onClick={handleMirror} disabled={selected.length === 0} title="Mirror horizontally (M)">
               <FlipHorizontal size={13} />Mirror

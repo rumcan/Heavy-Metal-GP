@@ -136,6 +136,18 @@ function replayPiece(b: Builder, piece: Piece): void {
       case 'bridge':
         b.ropeBridge(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.planks, piece.slack);
         break;
+      // ---- MB-10D launchers and pinball ----
+      case 'cannon': b.cannon(piece.x, piece.y, piece.aimMin, piece.aimMax, piece.power, piece.auto, piece.phase); break;
+      case 'catapult': b.catapult(piece.x, piece.y, piece.len, piece.reload, piece.dir); break;
+      case 'flipper': b.flipper(piece.x, piece.y, piece.side, piece.len, piece.strength, piece.timer, piece.phase); break;
+      case 'sling': b.sling(piece.x, piece.y, piece.size, piece.facing, piece.strength); break;
+      case 'scoop': b.scoop(piece.x, piece.y, piece.deg, piece.hold, piece.exit); break;
+      // ---- MB-10E ----
+      case 'wind': b.wind(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.dir, piece.str, piece.pulse, piece.phase); break;
+      case 'magnet': b.magnet(piece.x, piece.y, piece.r, piece.str, piece.period, piece.phase); break;
+      case 'mud': b.mud(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.drag); break;
+      case 'pool': b.pool(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.depth, piece.skip); break;
+      case 'geyser': b.geyser(piece.x, piece.y, piece.h, piece.period, piece.phase); break;
     }
   } finally {
     b.flip = false;
