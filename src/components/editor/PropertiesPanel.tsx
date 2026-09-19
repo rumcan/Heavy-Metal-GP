@@ -376,8 +376,9 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
           <NumField label="Y" value={piece.y} onValue={(v) => update({ y: v } as unknown as Piece)} />
           <NumField label="Radius" value={piece.r} min={60} max={200} step={5} onValue={(v) => update({ r: Math.round(clampNum(v, 60, 200)) } as unknown as Piece)} />
           <NumField label="Buckets" value={piece.buckets} min={4} max={10} step={1} onValue={(v) => update({ buckets: Math.round(clampNum(v, 4, 10)) } as unknown as Piece)} />
-          <NumField label="RPM" value={piece.rpm} min={0.5} max={10} step={0.5} onValue={(v) => update({ rpm: clampNum(v, 0.5, 10) } as unknown as Piece)} />
+          <NumField label="Speed (RPM)" value={piece.rpm} min={0.5} max={10} step={0.5} onValue={(v) => update({ rpm: clampNum(v, 0.5, 10) } as unknown as Piece)} />
           <NumField label="Direction" value={piece.dir} min={0} max={1} step={1} onValue={(v) => update({ dir: (v >= 1 ? 1 : 0) as 0 | 1 } as unknown as Piece)} />
+          <NumField label="Ride time (seconds; 0 = release angle)" value={(piece.rideMs ?? 0) / 1000} min={0} max={60} step={0.1} onValue={(v) => update({ rideMs: Math.round(clampNum(v, 0, 60) * 1000) } as Partial<Piece>)} />
           <NumField label="Tip-out (deg)" value={piece.release} min={20} max={340} step={5} onValue={(v) => update({ release: Math.round(clampNum(v, 20, 340)) } as unknown as Piece)} />
           <NumField label="Phase (ms)" value={piece.phase} step={100} onValue={(v) => update({ phase: v } as unknown as Piece)} />
         </>

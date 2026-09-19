@@ -84,7 +84,7 @@ export interface BoulderPiece extends PieceBase { t: 'boulder'; pts: Vec[]; r: n
 export interface MacePiece extends PieceBase { t: 'mace'; x: number; y: number; arm: number; arc: number; sweep: number; rest: number; phase: number; r: number }
 // ---- MB-10C: mechanical movers (wheel/screw/conveyor kinematic; seesaw/bridge dynamic with low-rate state sync) ----
 /** Water wheel: bucket wheel at (x, y), `buckets` 4..10, `rpm` rev/min, `dir` spin sense, tip-out at `release` deg. */
-export interface WheelPiece extends PieceBase { t: 'wheel'; x: number; y: number; r: number; buckets: number; rpm: number; dir: 0 | 1; release: number; phase: number }
+export interface WheelPiece extends PieceBase { t: 'wheel'; x: number; y: number; r: number; buckets: number; rpm: number; dir: 0 | 1; release: number; phase: number; rideMs?: number }
 /** Archimedes screw lift: timed transit from `a` to `b` over `ms`, capacity queue `cap`. */
 export interface ScrewPiece extends PieceBase { t: 'screw'; a: Vec; b: Vec; ms: number; cap: number }
 /** Conveyor belt rail: pushes along the tangent at `v` px/step; `flipMs` reverses it (0 = never); `dir` which way is forward. */
@@ -342,10 +342,10 @@ class DefRecorder extends Builder {
 
   // ---- MB-10C ----
 
-  override waterWheel(px: number, py: number, r = 110, buckets = 8, rpm = 3, dir: 0 | 1 = 0, releaseDeg = 105, phaseMs = 0) {
+  override waterWheel(px: number, py: number, r = 110, buckets = 8, rpm = 3, dir: 0 | 1 = 0, releaseDeg = 105, phaseMs = 0, rideMs?: number) {
     return this.capture(
-      () => super.waterWheel(px, py, r, buckets, rpm, dir, releaseDeg, phaseMs),
-      () => ({ t: 'wheel', x: px, y: py, r, buckets, rpm, dir, release: releaseDeg, phase: phaseMs, flip: this.mirrored }),
+      () => super.waterWheel(px, py, r, buckets, rpm, dir, releaseDeg, phaseMs, rideMs),
+      () => ({ t: 'wheel', x: px, y: py, r, buckets, rpm, dir, release: releaseDeg, phase: phaseMs, ...(rideMs ? { rideMs } : {}), flip: this.mirrored }),
     );
   }
 
@@ -543,7 +543,7 @@ export function replayPiece(b: Builder, piece: Piece) {
       case 'boulder': b.boulder(piece.pts.map(([x, y]) => [x, y] as [number, number]), piece.r, piece.interval, piece.rest, piece.phase); break;
       case 'mace': b.mace(piece.x, piece.y, piece.arm, piece.arc, piece.sweep, piece.rest, piece.phase, piece.r); break;
       // ---- MB-10C ----
-      case 'wheel': b.waterWheel(piece.x, piece.y, piece.r, piece.buckets, piece.rpm, piece.dir, piece.release, piece.phase); break;
+      case 'wheel': b.waterWheel(piece.x, piece.y, piece.r, piece.buckets, piece.rpm, piece.dir, piece.release, piece.phase, piece.rideMs); break;
       case 'screw': b.screwLift(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.ms, piece.cap); break;
       case 'conveyor': b.conveyor(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.v, piece.flipMs || undefined, piece.dir); break;
       case 'seesaw': b.seesaw(piece.x, piece.y, piece.len, piece.lim, piece.damp); break;
@@ -1101,6 +1101,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
         dir: (raw.dir === 0 || raw.dir === 1 ? raw.dir : (problems.add(`${at}.dir must be 0 or 1.`), 0 as 0 | 1)),
         release: number(raw.release, `${at}.release`, 20, 340, problems),
         phase: real(raw.phase, `${at}.phase`, problems),
+        ...(raw.rideMs !== undefined ? { rideMs: number(raw.rideMs, `${at}.rideMs`, 0, 60000, problems) } : {}),
         ...body,
       };
     case 'screw':

@@ -854,17 +854,18 @@ export class Game {
         let span = (md.wheel.release - aFrom) * Math.sign(motion.omega);
         span = ((span % tau) + tau) % tau;
         if (span < 0.35) span += tau;
-        const ride = span / Math.abs(motion.omega);
+        const ride = md.wheel.rideMs || span / Math.abs(motion.omega);
         let until = this.time + ride;
         // a bouncy marble can bounce out of a bucket early — the best track kits have feel
-        if ((m.info.stats.bounce ?? 5) >= 8 && this.rng() < 0.3) until = this.time + Math.min(ride * 0.45, 1400);
+        if (!md.wheel.rideMs && (m.info.stats.bounce ?? 5) >= 8 && this.rng() < 0.3) until = this.time + Math.min(ride * 0.45, 1400);
         const tip = Math.abs(motion.omega) * motion.radius * 16.667;
-        const rx = P.x + Math.cos(md.wheel.release) * motion.radius, ry = P.y + Math.sin(md.wheel.release) * motion.radius;
+        const release = md.wheel.rideMs ? aFrom + motion.omega * ride : md.wheel.release;
+        const rx = P.x + Math.cos(release) * motion.radius, ry = P.y + Math.sin(release) * motion.radius;
         const sense2 = Math.sign(motion.omega) || 1;
         m.hold = {
           kind: 'wheel', until, at: this.time,
-          arc: { x: P.x, y: P.y, r: motion.radius, fromA: aFrom, omega: motion.omega, release: md.wheel.release },
-          exit: { x: rx, y: ry, dir: { x: -Math.sin(md.wheel.release) * sense2, y: Math.cos(md.wheel.release) * sense2 }, speed: Math.max(3, tip + 1.2) },
+          arc: { x: P.x, y: P.y, r: motion.radius, fromA: aFrom, omega: motion.omega, release },
+          exit: { x: rx, y: ry, dir: { x: -Math.sin(release) * sense2, y: Math.cos(release) * sense2 }, speed: Math.max(3, tip + 1.2) },
         };
         m.body.isSensor = true;
         Body.setVelocity(m.body, { x: 0, y: 0 });

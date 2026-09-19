@@ -15,7 +15,7 @@ import { ITEM_TYPES } from './types';
 import type { ItemType } from './types';
 import type { PegColor } from './track';
 
-export const SHARE_VERSION = 1;
+export const SHARE_VERSION = 2;
 export const SHARE_PREFIX = `${SHARE_VERSION}-`; // e.g. "1-"
 const SHORT_KEY_PREFIX = 'heavy-metal-gp:share:';
 
@@ -307,6 +307,7 @@ function encodeBinary(def: TrackDef): Uint8Array {
         writeUVarint(out, Math.round(p.r)); writeUVarint(out, Math.round(p.buckets));
         writeUVarint(out, Math.round(p.rpm * 100)); writeUVarint(out, p.dir);
         writeUVarint(out, Math.round(p.release * 1000)); writeUVarint(out, Math.round(p.phase * 1000));
+        writeUVarint(out, Math.round(p.rideMs ?? 0));
         break;
       }
       case 'screw': {
@@ -439,7 +440,7 @@ function encodeBinary(def: TrackDef): Uint8Array {
   return new Uint8Array(out);
 }
 
-function decodeBinary(bytes: Uint8Array): TrackDef {
+function decodeBinary(bytes: Uint8Array, version = 1): TrackDef {
   const pos = { o: 0 };
   const name = readString(bytes, pos);
   if (!name || name.length > MAX_NAME) throw new ShareCodeError('Invalid name');
@@ -636,7 +637,8 @@ function decodeBinary(bytes: Uint8Array): TrackDef {
         const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), r = readUVarint(bytes, pos);
         const buckets = readUVarint(bytes, pos), rpm = readUVarint(bytes, pos)/100, dir = readUVarint(bytes, pos);
         const release = readUVarint(bytes, pos)/1000, phase = readUVarint(bytes, pos)/1000;
-        p = { t:'wheel', x, y, r, buckets, rpm, dir: (dir === 1 ? 1 : 0) as 0|1, release, phase, ...(flip?{flip}:{}) };
+        const rideMs = version >= 2 ? readUVarint(bytes, pos) : 0;
+        p = { t:'wheel', x, y, r, buckets, rpm, dir: (dir === 1 ? 1 : 0) as 0|1, release, phase, ...(rideMs ? { rideMs } : {}), ...(flip?{flip}:{}) };
         break;
       }
       case 'screw': {
@@ -942,7 +944,9 @@ export async function decodeShareCode(code: string): Promise<TrackDef> {
     return decodeShareCode(long);
   }
   let b64 = trimmed;
-  if (trimmed.startsWith(SHARE_PREFIX)) b64 = trimmed.slice(SHARE_PREFIX.length);
+  let version = 1;
+  if (trimmed.startsWith(SHARE_PREFIX)) { b64 = trimmed.slice(SHARE_PREFIX.length); version = SHARE_VERSION; }
+  else if (trimmed.startsWith('1-')) b64 = trimmed.slice(2);
   else if (/^\d+-/.test(trimmed)) {
     // future version prefix like "2-…" — reject cleanly
     const ver = trimmed.split('-')[0];
@@ -957,7 +961,7 @@ export async function decodeShareCode(code: string): Promise<TrackDef> {
   try { deflated = base64UrlDecode(b64); } catch { throw new ShareCodeError('Share code is not valid base64.'); }
   let binary: Uint8Array;
   try { binary = await inflateBytes(deflated); } catch (e) { throw e instanceof ShareCodeError ? e : new ShareCodeError('Share code decompression failed.'); }
-  return decodeBinary(binary);
+  return decodeBinary(binary, version);
 }
 
 /** Synchronous helper for previews where async deflate is not needed — not used for sharing, only local cache. */

@@ -114,3 +114,40 @@ test('Interaction: a loaded seesaw tips and publishes its first state update', (
     assert.ok(events < 30, 'state updates must remain throttled');
   } finally { game.destroy(); }
 });
+
+test('Water-wheel speed and ride duration are independent, exact and shareable', async () => {
+  const { encodeShareCode, decodeShareCode } = await import('../src/game/sharecode');
+  for (const rpm of [1, 8]) {
+    const base = defaultPiece('wheel', { x: 450, y: 1500 });
+    assert.ok(base.t === 'wheel');
+    const piece = { ...base, rpm, rideMs: 1800 };
+    const def: TrackDef = { v: 1, name: 'Timed wheel', seed: 23, theme: 'classic', height: 4000, pieces: [piece] };
+    const decoded = await decodeShareCode(await encodeShareCode(def));
+    assert.deepEqual(decoded.pieces[0], piece);
+    const game = singlePieceGame(decoded.pieces[0]);
+    try {
+      game.openGate();
+      Matter.Body.setPosition(game.player.body, { x: 560, y: 1500 });
+      let capturedAt: number | undefined;
+      let exit: { x: number; y: number } | undefined;
+      for (let frame = 0; frame < 360; frame++) {
+        game.step(PHYSICS_STEP);
+        if (capturedAt === undefined && game.player.hold?.kind === 'wheel') {
+          capturedAt = game.time;
+          assert.ok(Math.abs(game.player.hold.until - game.time - 1800) < 0.01);
+          exit = game.player.hold.exit;
+        }
+        if (capturedAt !== undefined && !game.player.hold) {
+          assert.ok(Math.abs(game.time - capturedAt - 1800) <= PHYSICS_STEP + 0.01);
+          assert.ok(Math.hypot(game.player.body.position.x - exit!.x, game.player.body.position.y - exit!.y) < 20);
+          break;
+        }
+      }
+      assert.ok(capturedAt !== undefined);
+      assert.equal(game.player.hold, null);
+    } finally { game.destroy(); }
+  }
+  const legacy = await decodeShareCode('1-eJzj8UlNT0yuVCjPSE3NYWRcIM_AKMVwiPkOdx7bGiaGFVvYGACvJAmj');
+  assert.equal(legacy.pieces[0].t, 'wheel');
+  assert.ok(legacy.pieces[0].t === 'wheel' && !legacy.pieces[0].rideMs);
+});

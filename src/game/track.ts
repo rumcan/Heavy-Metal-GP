@@ -264,7 +264,7 @@ export interface Meta {
   rolled?: number;
   // ---- MB-10C: mechanical movers ----
   /** Water wheel: bucket count, tip-out angle (rad, canvas y-down from +x), bucket occupancy. */
-  wheel?: { buckets: number; release: number; slots: number[] };
+  wheel?: { buckets: number; release: number; rideMs?: number; slots: number[] };
   /** Screw lift: tube endpoints, per-marble transit, capacity queue (clock-times it is busy to). */
   screw?: { a: Matter.Vector; b: Matter.Vector; ms: number; cap: number; seats: { seat: number; until: number }[] };
   /** Conveyor belt: push per step (px), base direction, optional clock flip period. */
@@ -858,7 +858,7 @@ export class Builder {
    * bucket — both share ONE meta object so bucket occupancy is single-source. Kinematic: bucket
    * angles are pure functions of the race clock, host and guest alike.
    */
-  waterWheel(px: number, py: number, r = 110, buckets = 8, rpm = 3, dir: 0 | 1 = 0, releaseDeg = 105, phaseMs = 0) {
+  waterWheel(px: number, py: number, r = 110, buckets = 8, rpm = 3, dir: 0 | 1 = 0, releaseDeg = 105, phaseMs = 0, rideMs?: number) {
     const pivot = { x: this.X(px), y: py };
     // mirror flips the spin sense so the ride direction survives the course mirror
     const sense = (this.flip ? (dir === 0 ? -1 : 1) : (dir === 0 ? 1 : -1)) as 1 | -1;
@@ -867,7 +867,7 @@ export class Builder {
     const shared: Meta = {
       kind: 'wheel',
       motion: { mode: 'spin', pivot, omega, phaseMs, radius: r },
-      wheel: { buckets, release, slots: new Array(buckets).fill(0) },
+      wheel: { buckets, release, rideMs, slots: new Array(buckets).fill(0) },
     };
     const hub = Bodies.circle(pivot.x, pivot.y, 12, { ...STATIC_OPTS, angle: omega * phaseMs, label: 'wheel', restitution: 0.3, friction: 0.01 });
     hub.plugin = shared;
