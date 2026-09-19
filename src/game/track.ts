@@ -289,7 +289,7 @@ export interface Meta {
   /** Flipper: bat geometry (rest/swing angles from the static pivot, canvas rad), strength, timer mode, trigger clock. */
   flipper?: { px: number; py: number; side: 1 | -1; len: number; strength: number; restA: number; swingA: number; swingMs: number; dropMs: number; periodMs: number; phaseMs: number; firedAt: number; lastAuto: number };
   /** Slingshot kicker: unit facing, impulse strength (px/step), skin flash clock. */
-  sling?: { facing: Matter.Vector; strength: number; flashAt: number };
+  sling?: { facing: Matter.Vector; strength: number; flashAt: number; size: number };
   /** Scoop: eject angle (canvas rad), hold time, seeded occupancy; exit (down a subway) when linked. */
   scoop?: { deg: number; holdMs: number; loadedAt: number | null; fireAt: number | null; seat: number | null };
   // ---- MB-10E: fields and surfaces ----
@@ -1067,7 +1067,7 @@ export class Builder {
       { x: bx + nx * size * 0.55 - facing.x * size * 0.18, y: by + ny * size * 0.55 - facing.y * size * 0.18 },
       { x: bx + facing.x * size * 0.32, y: by + facing.y * size * 0.32 },
     ]], { ...STATIC_OPTS, label: 'sling', restitution: 0.4, friction: 0.001 });
-    tri.plugin = { kind: 'sling', sling: { facing, strength, flashAt: -1e9 } } as Meta;
+    tri.plugin = { kind: 'sling', sling: { facing, strength, flashAt: -1e9, size } } as Meta;
     this.bodies.push(tri);
     return tri;
   }

@@ -41,16 +41,14 @@ interface SpriteRect { x: number; y: number; w: number; h: number }
 
 /** Sprite local rects — the single set of render dimensions the editor uses. */
 const SPRITES = {
-  /** `drawSling`: translate(body), rotate(facing + π), drawSprite('sling', -30, -34, 60, 68). */
-  sling: { x: -30, y: -34, w: 60, h: 68 },
-  /** `drawWind`: translate(fan corner), drawSprite('wind', -14, -10, 28, 20). */
-  windFan: { x: -14, y: -10, w: 28, h: 20 },
-  /** `drawMagnet`: translate(centre), drawSprite('magnet', -24, -22, 48, 45). */
-  magnet: { x: -24, y: -22, w: 48, h: 45 },
-  /** `drawGeyser`: translate(vent), drawSprite('geyser', -17, -20, 34, 44). */
-  geyser: { x: -17, y: -20, w: 34, h: 44 },
-  /** `drawScoop`: translate(pocket), drawSprite('scoop', -20, -12, 40, 24). */
-  scoop: { x: -20, y: -12, w: 40, h: 24 },
+  /** `drawWind`: translate(windFanAnchor), drawSprite('wind', 0, 0, 28, 20). */
+  windFan: { x: 0, y: 0, w: 28, h: 20 },
+  /** `drawMagnet`: translate(centre), drawSprite('magnet', 0, 0, 48, 45). */
+  magnet: { x: 0, y: 0, w: 48, h: 45 },
+  /** `drawGeyser`: translate(cx, topY - 8), drawSprite('geyser', 0, -6, 34, 44). */
+  geyser: { x: 0, y: -6, w: 34, h: 44 },
+  /** `drawScoop`: translate(pocket), drawSprite('scoop', 0, 0, 40, 24). */
+  scoop: { x: 0, y: 0, w: 40, h: 24 },
   /** render.ts `case 'itembox'`: drawSprite('crate', 0, 0, 34, 30) at the body. */
   crate: { x: 0, y: 0, w: 34, h: 30 },
 } as const satisfies Record<string, SpriteRect>;
@@ -170,14 +168,17 @@ export function visualBoundsForPiece(piece: Piece, bodies: Matter.Body[]): Bound
       break;
     }
     case 'sling': {
-      // drawSling anchors the 60×68 art on the triangle body, rotated to face
-      // along the kick normal — so the box follows Size and Facing, and the
-      // Builder has already mirrored `facing` for flipped slings.
+      // drawSling anchors the crate art (and wedge fallback) on the triangle
+      // body, rotated to face along the kick normal, scaled by the builder
+      // size: the painted content lands on [-0.38s, 0.22s] × ±0.62s in that
+      // frame — so the box follows Size and Facing, and the Builder has
+      // already mirrored `facing` for flipped slings.
       const b = bodyWith(bodies, 'sling');
       const md = metaOf(b)?.sling;
       if (b && md) {
+        const s = md.size ?? 90;
         const fa = Math.atan2(md.facing.y, md.facing.x);
-        box.addSprite(b.position, fa + Math.PI, SPRITES.sling);
+        box.addSprite(b.position, fa + Math.PI, { x: -0.08 * s, y: 0, w: 0.6 * s, h: 1.24 * s });
       }
       break;
     }
@@ -210,7 +211,8 @@ export function visualBoundsForPiece(piece: Piece, bodies: Matter.Body[]): Bound
       // plus the vent plinth icon at the mound.
       const md = metaOf(bodyWith(bodies, 'geyser'))?.geyser;
       if (md) {
-        box.addSprite({ x: md.cx, y: md.topY }, 0, SPRITES.geyser);
+        // renderer translates to (cx, topY - 8): the sit-on-mound offset
+        box.addSprite({ x: md.cx, y: md.topY - 8 }, 0, SPRITES.geyser);
         box.addRect(md.cx - 12, md.topY - 20, md.cx + 12, md.topY + 16); // procedural mound
       }
       break;
