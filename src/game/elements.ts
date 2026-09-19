@@ -312,6 +312,20 @@ export function updateElement(body: Matter.Body, time: number, dt: number): void
         body, { x: fl.px + Math.cos(a) * fl.len / 2, y: fl.py + Math.sin(a) * fl.len / 2 }, true);
       return;
     }
+    case 'platform': {
+      const motion = md.motion;
+      if (!motion || motion.mode !== 'platform') return;
+      const p = platformPose(motion, time);
+      (Body.setPosition as unknown as (b: Matter.Body, p: Matter.Vector, u: boolean) => void)(body, p, true);
+      return;
+    }
+    case 'turnstile': {
+      const ts = md.turnstile;
+      if (!ts) return;
+      const a = turnstileAngle(ts, time);
+      (Body.setAngle as unknown as (b: Matter.Body, a: number, u: boolean) => void)(body, a, true);
+      return;
+    }
     default:
       return;
   }
@@ -335,6 +349,8 @@ export function updateElements(track: Track, time: number, dt: number): void {
   // MB-10D
   for (const body of elementBodies(track, 'catapult')) updateElement(body, time, dt);
   for (const body of elementBodies(track, 'flipper')) updateElement(body, time, dt);
+  for (const body of elementBodies(track, 'platform')) updateElement(body, time, dt);
+  for (const body of elementBodies(track, 'turnstile')) updateElement(body, time, dt);
 }
 
 // ---------------------------------------------------------------- warnings (skins read these)
@@ -354,4 +370,29 @@ export function trapdoorWarn(md: Meta, time: number): boolean {
 export function beltDir(belt: { dir0: 1 | -1; flipMs?: number }, time: number): 1 | -1 {
   const flip = belt.flipMs && belt.flipMs > 0 ? (Math.floor(time / belt.flipMs) % 2 ? -1 : 1) : 1;
   return (flip * belt.dir0) as 1 | -1;
+}
+
+/** MB-10F platform pose: shuttle a<->b at steady speed, pausing at each end. Deterministic off the clock. */
+export function platformPose(motion: Extract<Motion, { mode: 'platform' }>, time: number): Matter.Vector {
+  const leg = motion.travelMs + motion.pauseMs;
+  const cycle = leg * 2;
+  const t = ((time + motion.phaseMs) % cycle + cycle) % cycle;
+  let u: number;
+  if (t < motion.pauseMs) u = 0;
+  else if (t < motion.pauseMs + motion.travelMs) u = (t - motion.pauseMs) / motion.travelMs;
+  else u = 1;
+  if (t >= leg) u = 1 - u; // coming home: mirror the outbound run
+  const e = u * u * (3 - 2 * u); // smooth departs and arrives, pauses read as dwelling
+  return { x: motion.a.x + (motion.b.x - motion.a.x) * e, y: motion.a.y + (motion.b.y - motion.a.y) * e };
+}
+
+/** MB-10F turnstile angle: free spin off the clock, or an eased 90/-90 ratchet step from the last hit. */
+export function turnstileAngle(t: { mode: 0 | 1; arms: number; periodMs: number; phaseMs: number; stepIndex: number; stepAt: number }, time: number): number {
+  if (t.mode === 1) return ((time + t.phaseMs) * Math.PI * 2) / t.periodMs;
+  const step = (Math.PI * 2) / (t.arms * 2); // half a notch per hit: arms pass twice per revolution
+  const from = (t.stepIndex - 1) * step;
+  const to = t.stepIndex * step;
+  const k = Math.min(1, Math.max(0, (time - t.stepAt) / 420));
+  const e = k * k * (3 - 2 * k);
+  return from + (to - from) * e;
 }

@@ -27,6 +27,7 @@ export interface Handle {
 
 const snapVal = (v: number) => Math.round(v / SNAP) * SNAP;
 const clampX = (x: number) => Math.max(0, Math.min(W, x));
+const clampNum = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 function withSnap(v: number, snap: boolean): number {
   return snap ? snapVal(v) : v;
@@ -323,6 +324,29 @@ function baseHandles(piece: Piece): Handle[] {
         { id: 'depth', x: piece.b[0], y: top + piece.depth, cursor: 'ns-resize', label: 'Depth' },
       ];
     }
+    case 'trampoline':
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
+        { id: 'w', x: piece.x + piece.w / 2, y: piece.y, cursor: 'ew-resize', label: 'Width' },
+      ];
+    case 'turnstile':
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
+        { id: 'r', x: piece.x + piece.r, y: piece.y, cursor: 'ew-resize', label: 'Arm length' },
+      ];
+    case 'targets':
+      return [{ id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' }];
+    case 'vortex':
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
+        { id: 'r', x: piece.x + piece.r, y: piece.y, cursor: 'ew-resize', label: 'Bowl radius' },
+      ];
+    case 'platform':
+      return [
+        { id: 'move', x: (piece.ax + piece.bx) / 2, y: (piece.ay + piece.by) / 2, cursor: 'move', label: 'Move path' },
+        { id: 'a', x: piece.ax, y: piece.ay, cursor: 'crosshair', label: 'End A' },
+        { id: 'b', x: piece.bx, y: piece.by, cursor: 'crosshair', label: 'End B' },
+      ];
     case 'geyser':
       return [
         { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
@@ -751,6 +775,27 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       const ddy = withSnap(to.y, sx) - (piece.a[1] + piece.b[1]) / 2;
       return { ...piece, a: [clampX(piece.a[0] + ddx), piece.a[1] + ddy], b: [clampX(piece.b[0] + ddx), piece.b[1] + ddy] };
     }
+    case 'trampoline': {
+      if (handleId === 'w') return { ...piece, w: clampNum(Math.abs(withSnap(to.x, sx) - piece.x) * 2, 60, 400) };
+      return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
+    }
+    case 'turnstile': {
+      if (handleId === 'r') return { ...piece, r: clampNum(Math.abs(withSnap(to.x, sx) - piece.x), 30, 160) };
+      return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
+    }
+    case 'targets':
+      return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
+    case 'vortex': {
+      if (handleId === 'r') return { ...piece, r: clampNum(Math.abs(withSnap(to.x, sx) - piece.x), 60, 300) };
+      return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
+    }
+    case 'platform': {
+      if (handleId === 'a') return { ...piece, ax: clampX(withSnap(to.x, sx)), ay: withSnap(to.y, sx) };
+      if (handleId === 'b') return { ...piece, bx: clampX(withSnap(to.x, sx)), by: withSnap(to.y, sx) };
+      const ddx = withSnap(to.x, sx) - (piece.ax + piece.bx) / 2;
+      const ddy = withSnap(to.y, sx) - (piece.ay + piece.by) / 2;
+      return { ...piece, ax: clampX(piece.ax + ddx), ay: piece.ay + ddy, bx: clampX(piece.bx + ddx), by: piece.by + ddy };
+    }
     case 'geyser': {
       if (handleId === 'h') {
         const h = Math.max(80, Math.min(600, piece.y - withSnap(to.y, sx)));
@@ -848,7 +893,13 @@ export function movePiece(piece: Piece, dx: number, dy: number): Piece {
     }
     case 'magnet':
     case 'geyser':
+    case 'trampoline':
+    case 'turnstile':
+    case 'targets':
+    case 'vortex':
       return { ...piece, x: clampX(piece.x + dx), y: piece.y + dy } as Piece;
+    case 'platform':
+      return { ...piece, ax: clampX(piece.ax + dx), ay: piece.ay + dy, bx: clampX(piece.bx + dx), by: piece.by + dy } as Piece;
     case 'screw':
     case 'conveyor':
     case 'bridge': {
@@ -957,7 +1008,13 @@ export function mirrorPiece(piece: Piece): Piece {
       } as Piece;
     case 'magnet':
     case 'geyser':
+    case 'trampoline':
+    case 'turnstile':
+    case 'targets':
+    case 'vortex':
       return { ...piece, x: mx(piece.x) } as Piece;
+    case 'platform':
+      return { ...piece, ax: mx(piece.bx), ay: piece.by, bx: mx(piece.ax), by: piece.ay } as Piece;
     case 'screw':
     case 'conveyor':
     case 'bridge': {

@@ -662,6 +662,25 @@ export class RaceGuest {
         if (fl) fl.firedAt = event.at;
         break;
       }
+      // MB-10F: a turnstile stepped — replicate the same ratchet beat.
+      case 'turnstile': {
+        const hub = this.bodyAt(event.i);
+        const ts = hub ? meta(hub).turnstile : undefined;
+        if (ts) { ts.stepIndex = event.steps; ts.stepAt = event.at; }
+        break;
+      }
+      // MB-10F: a drop-target pin dropped or re-armed — set the same pin state on our copy.
+      case 'targets': {
+        const pin = this.bodyAt(event.i);
+        const tg = pin ? meta(pin).target : undefined;
+        if (pin && tg) {
+          tg.dropAt = event.down === 1 ? event.at : -1;
+          pin.isSensor = event.down === 1;
+          const bank = this.game.track.targetBanks[tg.bank];
+          if (bank) bank.downAt[tg.slot] = event.down === 1 ? event.at : -1;
+        }
+        break;
+      }
       // MB-10D: a slingshot face tossed someone — redraw the band flash on our copy.
       case 'sling': {
         const tri = this.bodyAt(event.i);

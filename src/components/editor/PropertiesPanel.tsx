@@ -527,6 +527,56 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
         </>
       )}
 
+      {piece.t === 'trampoline' && (
+        <>
+          <NumField label="X" value={piece.x} min={0} max={W} onValue={(v) => update({ x: clampNum(v, 0, W) } as unknown as Piece)} />
+          <NumField label="Y" value={piece.y} onValue={(v) => update({ y: v } as unknown as Piece)} />
+          <NumField label="Width" value={piece.w} min={60} max={400} step={5} onValue={(v) => update({ w: Math.round(clampNum(v, 60, 400)) } as unknown as Piece)} />
+          <NumField label="Tension" value={piece.tension} min={0.5} max={3} step={0.05} onValue={(v) => update({ tension: clampNum(v, 0.5, 3) } as unknown as Piece)} />
+        </>
+      )}
+
+      {piece.t === 'turnstile' && (
+        <>
+          <NumField label="X" value={piece.x} min={0} max={W} onValue={(v) => update({ x: clampNum(v, 0, W) } as unknown as Piece)} />
+          <NumField label="Y" value={piece.y} onValue={(v) => update({ y: v } as unknown as Piece)} />
+          <NumField label="Arms" value={piece.arms} min={2} max={5} step={1} onValue={(v) => update({ arms: Math.round(clampNum(v, 2, 5)) } as unknown as Piece)} />
+          <NumField label="Arm radius" value={piece.r} min={30} max={160} step={2} onValue={(v) => update({ r: Math.round(clampNum(v, 30, 160)) } as unknown as Piece)} />
+          <NumField label="Mode (0 = ratchet, 1 = spin)" value={piece.mode} min={0} max={1} step={1} onValue={(v) => update({ mode: Math.round(clampNum(v, 0, 1)) } as unknown as Piece)} />
+          <NumField label="Spin period (ms)" value={piece.period} min={0} max={60000} step={200} onValue={(v) => update({ period: Math.round(clampNum(v, 0, 60000)) } as unknown as Piece)} />
+          <NumField label="Phase (ms)" value={piece.phase} min={0} max={20000} step={100} onValue={(v) => update({ phase: Math.round(clampNum(v, 0, 20000)) } as unknown as Piece)} />
+        </>
+      )}
+
+      {piece.t === 'targets' && (
+        <>
+          <NumField label="X" value={piece.x} min={0} max={W} onValue={(v) => update({ x: clampNum(v, 0, W) } as unknown as Piece)} />
+          <NumField label="Y" value={piece.y} onValue={(v) => update({ y: v } as unknown as Piece)} />
+          <NumField label="Pins" value={piece.count} min={3} max={5} step={1} onValue={(v) => update({ count: Math.round(clampNum(v, 3, 5)) } as unknown as Piece)} />
+          <NumField label="Re-arm (ms)" value={piece.reset} min={1000} max={30000} step={200} onValue={(v) => update({ reset: Math.round(clampNum(v, 1000, 30000)) } as unknown as Piece)} />
+        </>
+      )}
+
+      {piece.t === 'vortex' && (
+        <>
+          <NumField label="X" value={piece.x} min={0} max={W} onValue={(v) => update({ x: clampNum(v, 0, W) } as unknown as Piece)} />
+          <NumField label="Y" value={piece.y} onValue={(v) => update({ y: v } as unknown as Piece)} />
+          <NumField label="Bowl radius" value={piece.r} min={60} max={300} step={5} onValue={(v) => update({ r: Math.round(clampNum(v, 60, 300)) } as unknown as Piece)} />
+          <NumField label="Spin" value={piece.spin} min={0.5} max={4} step={0.1} onValue={(v) => update({ spin: clampNum(v, 0.5, 4) } as unknown as Piece)} />
+          <NumField label="Hole" value={piece.hole} min={16} max={80} step={2} onValue={(v) => update({ hole: Math.round(clampNum(v, 16, 80)) } as unknown as Piece)} />
+        </>
+      )}
+
+      {piece.t === 'platform' && (
+        <>
+          <NumField label="Width" value={piece.w} min={40} max={300} step={5} onValue={(v) => update({ w: Math.round(clampNum(v, 40, 300)) } as unknown as Piece)} />
+          <NumField label="Travel (ms, one way)" value={piece.travel} min={800} max={20000} step={100} onValue={(v) => update({ travel: Math.round(clampNum(v, 800, 20000)) } as unknown as Piece)} />
+          <NumField label="Pause (ms each end)" value={piece.pause} min={0} max={10000} step={100} onValue={(v) => update({ pause: Math.round(clampNum(v, 0, 10000)) } as unknown as Piece)} />
+          <NumField label="Phase (ms)" value={piece.phase} min={0} max={20000} step={100} onValue={(v) => update({ phase: Math.round(clampNum(v, 0, 20000)) } as unknown as Piece)} />
+          <p className="hint">Drag the two end handles to set the ferry route.</p>
+        </>
+      )}
+
       {piece.t === 'geyser' && (
         <>
           <NumField label="X" value={piece.x} min={0} max={W} onValue={(v) => update({ x: clampNum(v, 0, W) } as unknown as Piece)} />

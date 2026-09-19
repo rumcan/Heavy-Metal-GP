@@ -78,7 +78,12 @@ export type Kind =
   | 'magnet'
   | 'mud'
   | 'pool'
-  | 'geyser';
+  | 'geyser'
+  | 'trampoline'
+  | 'turnstile'
+  | 'target'
+  | 'vortex'
+  | 'platform';
 
 /**
  * MB-10 element framework. A kinematic driver for the moving pieces: a body's pose is a pure
@@ -121,6 +126,17 @@ export type Motion =
     /** Self-spin for the tangential throw and the skin, in rad/ms. */
     spinW: number;
     r: number;
+  }
+  /** MB-10F platform: a flat slab shuttling a<->b at steady speed with a pause at each end. */
+  | {
+    mode: 'platform';
+    a: Matter.Vector;
+    b: Matter.Vector;
+    /** One-way travel time between the two end pauses. */
+    travelMs: number;
+    /** Rest time at each end of the run. */
+    pauseMs: number;
+    phaseMs: number;
   }
   /** MB-10B crusher: a vertical stamper: top rest, fast eased slam, floor hold, slow rise. */
   | {
@@ -286,6 +302,19 @@ export interface Meta {
   pool?: { topY: number; depth: number; skip: number; box: { x: number; y: number; w: number; h: number } };
   /** Geyser: column geometry + timed eruption program off the race clock (kinematic). */
   geyser?: { cx: number; topY: number; h: number; periodMs: number; phaseMs: number; burstMs: number };
+  /** MB-10F trampoline: restitution override zone. `half` is the half-width; tension scales the spring. */
+  trampoline?: { half: number; tension: number };
+  /** MB-10F trampoline skin state: 0..1 sag depth of the last spring — render only. */
+  tramp?: { depth: number };
+  /** MB-10F turnstile hub: kinematic ratchet steps or free spin; angleOf body. */
+  turnstile?: { arms: number; r: number; mode: 0 | 1; periodMs: number; phaseMs: number; stepIndex: number; stepAt: number };
+  /** MB-10F drop target: thin pin that vanishes on hit and resets after `resetMs`; `gate` links to the lane gate body. */
+  target?: { dropAt: number; resetAt: number; bank: number; slot: number };
+  /** MB-10F drop-target bank gate + bank bookkeeping (bank id → down count). */
+  targetBank?: { bank: number; count: number; resetMs: number; downAt: number[]; openedAt: number; gate: Matter.Body };
+  /** MB-10F vortex funnel: orbital field torus; drop below `holeR` to exit. */
+  vortex?: { cx: number; cy: number; r: number; spin: number; holeR: number };
+
   sagAt?: number;
 }
 
@@ -316,6 +345,8 @@ export interface Track {
   theme: TrackTheme;
   decor: Decor[];
   wreckers: Matter.Body[];
+  /** MB-10F drop-target banks: per-bank pin/down bookkeeping and the gate plank they open. */
+  targetBanks: TargetBank[];
 }
 
 export function meta(b: Matter.Body): Meta {
@@ -336,6 +367,24 @@ const SENSOR_OPTS = {
   collisionFilter: { category: CAT_SENSOR, mask: CAT_MARBLE, group: 0 },
 };
 
+/** MB-10F drop-target bank state (builder-produced, engine-updated): pins, per-pin down clocks and the lane gate. */
+export interface TargetBank {
+  kind: 'targets';
+  pins: Matter.Body[];
+  count: number;
+  resetMs: number;
+  /** race-time each pin went down, -1 = standing. */
+  downAt: number[];
+  /** race-time the gate first opened, -1 = still shut. */
+  openedAt: number;
+  gate: Matter.Body;
+  /** local easing state for the gate plough (derivable from the pin clocks; not on the wire). */
+  gateK?: number;
+  prevOpen?: boolean;
+  closedAt?: number;
+  cheeredAt?: number;
+}
+
 export class Builder {
   bodies: Matter.Body[] = [];
   spinners: Matter.Body[] = [];
@@ -343,6 +392,7 @@ export class Builder {
   buckets: Matter.Body[] = [];
   decor: Decor[] = [];
   wreckers: Matter.Body[] = [];
+  targetBanks: TargetBank[] = [];
   pegCount = { orange: 0, total: 0 };
   flip = false;
   rng: () => number;
@@ -1129,6 +1179,89 @@ export class Builder {
     return column;
   }
 
+  // ---------------- MB-10F: big set pieces ----------------
+
+  /**
+   * Trampoline net: a thin static plank whose contact restitution is overridden in the engine
+   * (the harder you land, the higher you fly; tension scales the spring). Drawn sagging when hit.
+   */
+  trampoline(x: number, y: number, w = 180, tension = 1) {
+    const cx = this.X(x);
+    const half = w / 2;
+    const b = Bodies.rectangle(cx, y, w, 12, { ...STATIC_OPTS, label: 'trampoline', chamfer: { radius: 4 }, restitution: 0.05 });
+    b.plugin = { kind: 'trampoline', trampoline: { half, tension } } as Meta;
+    this.bodies.push(b);
+    return b;
+  }
+
+  /**
+   * Turnstile diverter: N thin arms radiating from a hub. A ratchet step eases 90° per hit
+   * (event-synced), or a free spin follows a period on the race clock. Either way the body
+   * angle is purely kinematic, so guests replay the exact pose.
+   */
+  turnstile(x: number, y: number, arms = 4, r = 70, mode: 0 | 1 = 0, periodMs = 0, phaseMs = 0) {
+    const cx = this.X(x);
+    // one long bar spanning the arms; art draws the extra blades
+    const b = Bodies.rectangle(cx, y, r * 2, 12, { ...STATIC_OPTS, label: 'turnstile', chamfer: { radius: 5 }, friction: 0.02 });
+    b.plugin = {
+      kind: 'turnstile',
+      turnstile: { arms, r, mode, periodMs: mode === 1 ? Math.max(2400, periodMs || 6000) : 0, phaseMs, stepIndex: 0, stepAt: -1e9 },
+    } as Meta;
+    this.bodies.push(b);
+    return b;
+  }
+
+  /**
+   * Drop-target bank: `count` thin pins standing shoulder to shoulder, each resetting some time
+   * after it drops; when every pin is down the lane gate lifts. All state is per-pin clocks, so
+   * guests replay it from the same events the host sees.
+   */
+  targets(x: number, y: number, count = 4, resetMs = 6000) {
+    const cx = this.X(x);
+    const pins: Matter.Body[] = [];
+    const downAt: number[] = [];
+    for (let k = 0; k < count; k++) {
+      const slotX = cx + (k - (count - 1) / 2) * 26;
+      // shallow hurdle: 14px tall on an 18-wide pin — a rolling marble can crown it, a rolling
+      // contact above a crawl knocks it over. The pack leaks through one lean at a time.
+      const b = Bodies.rectangle(slotX, y - 7, 18, 14, { ...STATIC_OPTS, label: 'target', chamfer: { radius: 2 }, restitution: 0.4, friction: 0.05 });
+      b.plugin = { kind: 'target', target: { dropAt: -1, resetAt: 0, bank: this.targetBanks.length, slot: k } } as Meta;
+      this.bodies.push(b);
+      pins.push(b);
+      downAt.push(-1);
+    }
+    this.targetBanks.push({ kind: 'targets', pins, count, resetMs, downAt, openedAt: -1, gate: pins[0] });
+    return pins[0];
+  }
+
+  /**
+   * Vortex funnel: an orbital field torus around (x,y) of radius r. Marbles entering the ring
+   * circle faster the faster they fly, sink sooner the heavier they are, and drop out of a hole
+   * in the floor once they cross the `holeR` ring. Field-only; deterministic.
+   */
+  vortex(x: number, y: number, r = 140, spin = 1.5, holeR = 34) {
+    const cx = this.X(x);
+    const b = Bodies.circle(cx, y, r, { ...SENSOR_OPTS, label: 'vortex' });
+    b.plugin = { kind: 'vortex', vortex: { cx, cy: y, r, spin, holeR } } as Meta;
+    this.bodies.push(b);
+    return b;
+  }
+
+  /**
+   * Moving platform: a wooden slab shuttling between two points with a pause at each end —
+   * the drawbridge that timing beats. Kinematic slide; guests compute the pose from the clock.
+   */
+  platform(ax: number, ay: number, bx: number, by: number, w = 120, travelMs = 2600, pauseMs = 1800, phaseMs = 0) {
+    const pax = this.X(ax), pbx = this.X(bx);
+    const b = Bodies.rectangle((pax + pbx) / 2, (ay + by) / 2, w, 16, { ...STATIC_OPTS, label: 'platform', chamfer: { radius: 5 }, friction: 0.04 });
+    b.plugin = {
+      kind: 'platform',
+      motion: { mode: 'platform', a: { x: pax, y: ay }, b: { x: pbx, y: by }, travelMs, pauseMs, phaseMs },
+    } as Meta;
+    this.bodies.push(b);
+    return b;
+  }
+
 }
 
 // ---------------- MB-10C pose helpers (shared host / guest / skin) ----------------
@@ -1901,6 +2034,80 @@ const segVentField: Seg = (b, y) => {
   return 460;
 };
 
+
+// ---------------- MB-10F sectors: the carnival big-toys ----------------
+
+/**
+ * Trampoline Alley: the inbound ramp drops onto a broad net stretched over a gully. Land hard and
+ * the gully is a memory; land soft and the trough below picks you up — either road still reaches
+ * the far shelf.
+ */
+const segBounceNet: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  b.ramp(0, y + 30, 300, y + 150);
+  // the net sits in the dip
+  b.trampoline(390, y + 250, 175, 1.1 + b.rng() * 0.5);
+  // gully bottom: the low road for anyone under-sprung
+  b.ramp(60, y + 330, W - 10, y + 440);
+  // landing shelf back up at water level, reachable off a real bounce
+  b.ramp(540, y + 160, W - 20, y + 290);
+  return 480;
+};
+
+/**
+ * Turnstile Square: two hubs across the S-chute — a free-spinning one above the mean line and a
+ * ratcheted one at the kink. Push it round or get batted; either way you lever through the square.
+ */
+const segTurnstileSquare: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  b.ramp(0, y + 30, 470, y + 220);
+  // hubs hoover just above the marble's rolling line so the blades sweep the lane
+  b.turnstile(455, y + 196, 4, 78, 0, 0, 0);   // ratcheted: each shove eases it a step
+  b.ramp(470, y + 220, 180, y + 380);
+  b.turnstile(200, y + 356, 3, 88, 1, 4200, b.rng() * 4200); // free spin on the clock
+  b.ramp(180, y + 380, W - 20, y + 560);
+  return 600;
+};
+
+/**
+ * Target Gate: a pinwall blocks the quick flat; drop all of them and the plough gate sinks out of
+ * the lane. Pins re-arm on their own clocks — the gate is alive as long as the bank stays down.
+ */
+const segTargetGate: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  b.ramp(0, y + 30, 300, y + 170);
+  b.ramp(300, y + 170, 520, y + 186);
+  b.targets(370, y + 178, 3 + Math.floor(b.rng() * 3), 5200 + b.rng() * 2200);
+  b.ramp(520, y + 196, W - 20, y + 330);
+  return 380;
+};
+
+/**
+ * Vortex Bowl: a funnel field straddled over the main descent — roll through its ring and it
+ * slings you round; heavy marbles sink to the centre and drop through the hole onto the lane
+ * below, quick ones keep circling. Ordering is rewritten at the bowl.
+ */
+const segVortexBowl: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  b.ramp(0, y + 30, 880, y + 300);
+  b.vortex(560, y + 180, 175, 1.35 + b.rng() * 0.5, 34);
+  b.ramp(0, y + 420, 880, y + 560);
+  return 600;
+};
+
+/**
+ * Drawbridge Gap: a lip-to-lip jump with a shuttling ferry pad between. Catch the pad's window or
+ * take the trough below — timing decides who makes the jump.
+ */
+const segDrawbridgeGap: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  b.ramp(0, y + 30, 380, y + 190);
+  b.ramp(560, y + 190, W - 20, y + 340);
+  b.platform(405, y + 226, 535, y + 226, 130, 2200 + b.rng() * 900, 1500, b.rng() * 1800);
+  b.ramp(60, y + 420, W - 10, y + 520);
+  return 560;
+};
+
 const POOL: { seg: Seg; name: string; weight: number }[] = [
   { seg: segZigzag, name: 'Zigzag Pipes', weight: 2 },
   { seg: segFunnel, name: 'Funnel', weight: 2 },
@@ -1942,6 +2149,12 @@ const POOL: { seg: Seg; name: string; weight: number }[] = [
   { seg: segTarFlats, name: 'Tar Flats', weight: 0.4 },
   { seg: segSkippingPools, name: 'Skipping Pools', weight: 0.4 },
   { seg: segVentField, name: 'Vent Field', weight: 0.4 },
+  // MB-10F: the carnival big-toys — same cameo treatment
+  { seg: segBounceNet, name: 'Trampoline Alley', weight: 0.4 },
+  { seg: segTurnstileSquare, name: 'Turnstile Square', weight: 0.35 },
+  { seg: segTargetGate, name: 'Target Gate', weight: 0.35 },
+  { seg: segVortexBowl, name: 'Vortex Bowl', weight: 0.35 },
+  { seg: segDrawbridgeGap, name: 'Drawbridge Gap', weight: 0.4 },
 ];
 
 export const DEFAULT_PROFILE: TrackProfile = {
@@ -2040,6 +2253,7 @@ export function assembleTrack(b: Builder, seed: number, profile: TrackProfile): 
     itemBoxes: b.itemBoxes,
     ramps: b.bodies.filter((body) => !!meta(body).surface),
     buckets: b.buckets,
+    targetBanks: b.targetBanks,
     pegCount: b.pegCount,
     gate,
     startY,

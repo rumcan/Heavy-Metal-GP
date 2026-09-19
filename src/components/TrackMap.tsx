@@ -123,7 +123,7 @@ function drawPiece(ctx: CanvasRenderingContext2D, p: Piece, k: number) {
       ctx.lineWidth = Math.max(1, 3 * k);
       ctx.setLineDash([3, 4]);
       ctx.beginPath();
-      p.pts.forEach(([x, y], i) => {
+      p.pts.forEach(([x, y]: [number, number], i: number) => {
         if (i === 0) ctx.moveTo(X(x), Y(y));
         else ctx.lineTo(X(x), Y(y));
       });
@@ -268,6 +268,38 @@ function drawPiece(ctx: CanvasRenderingContext2D, p: Piece, k: number) {
       line(p.x, p.y, p.x, p.y - Math.min(p.h, 240), COLORS.field, Math.max(1, 1.5 * k));
       break;
     }
+    // ---- MB-10F: big set pieces ----
+    case 'trampoline':
+      dot(p.x, p.y, 7, COLORS.launcher);
+      break;
+    case 'turnstile': {
+      dot(p.x, p.y, 7, COLORS.mover);
+      const arms = Math.max(2, p.arms);
+      for (let i = 0; i < arms; i++) {
+        const a = ((i * 360) / arms) * (Math.PI / 180);
+        line(p.x, p.y, p.x + Math.cos(a) * p.r, p.y + Math.sin(a) * p.r, COLORS.mover, Math.max(1, 2 * k));
+      }
+      break;
+    }
+    case 'targets':
+      line(p.x - p.count * 13, p.y - 6, p.x + p.count * 13, p.y - 6, COLORS.launcher, Math.max(2, 4 * k));
+      dot(p.x, p.y, 5, COLORS.launcher);
+      break;
+    case 'vortex': {
+      ctx.save();
+      ctx.strokeStyle = COLORS.mover;
+      ctx.lineWidth = Math.max(1, 1.5 * k);
+      ctx.beginPath();
+      ctx.arc(X(p.x), Y(p.y), p.r * k, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+      dot(p.x, p.y, 4, COLORS.mover);
+      break;
+    }
+    case 'platform':
+      line(p.ax, p.ay, p.bx, p.by, COLORS.mover, Math.max(1.5, 3 * k));
+      dot(p.bx, p.by, 5, COLORS.mover);
+      break;
   }
 }
 

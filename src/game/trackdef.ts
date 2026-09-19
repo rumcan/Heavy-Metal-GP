@@ -117,6 +117,18 @@ export interface PoolPiece extends PieceBase { t: 'pool'; a: Vec; b: Vec; depth:
 /** Geyser / steam vent: vent plinth at (x, y); eruption column `h` high every `period` ms (kinematic, off the race clock). */
 export interface GeyserPiece extends PieceBase { t: 'geyser'; x: number; y: number; h: number; period: number; phase: number }
 
+// ---- MB-10F: big set pieces ----
+/** Trampoline net: width w centred on (x,y); land harder, bounce higher. `tension` scales the spring. */
+export interface TrampolinePiece extends PieceBase { t: 'trampoline'; x: number; y: number; w: number; tension: number }
+/** Turnstile diverter: N arms on a hub at (x,y), radius r. mode 0 = ratchet (90/-90 per hit, eased), mode 1 = free spin on a period. */
+export interface TurnstilePiece extends PieceBase { t: 'turnstile'; x: number; y: number; arms: number; r: number; mode: number; period: number; phase: number }
+/** Drop-target bank: `count` targets blocking a lane at (x,y); all down opens the gate until `reset` ms elapses. */
+export interface TargetsPiece extends PieceBase { t: 'targets'; x: number; y: number; count: number; reset: number }
+/** Vortex funnel: ring at (x,y) radius r circling marbles out the centre hole; heavier marbles descend sooner. */
+export interface VortexPiece extends PieceBase { t: 'vortex'; x: number; y: number; r: number; spin: number; hole: number }
+/** Moving platform: a slab of width w shuttling a<->b with pauses at both ends (kinematic slide). */
+export interface PlatformPiece extends PieceBase { t: 'platform'; ax: number; ay: number; bx: number; by: number; w: number; travel: number; pause: number; phase: number }
+
 export type Piece =
   | RampPiece | CurvePiece | IcePiece | LoopPiece | HoopPiece | WreckerPiece | PadPiece | BoostPiece
   | SpinnerPiece | BreakablePiece | PegPiece | PPegPiece | ItemBoxPiece | BucketPiece | WallPiece | BlockPiece
@@ -124,7 +136,8 @@ export type Piece =
   | BladePiece | SawPiece | CrusherPiece | BoulderPiece | MacePiece
   | WheelPiece | ScrewPiece | ConveyorPiece | SeesawPiece | BridgePiece
   | CannonPiece | CatapultPiece | FlipperPiece | SlingPiece | ScoopPiece
-  | WindPiece | MagnetPiece | MudPiece | PoolPiece | GeyserPiece;
+  | WindPiece | MagnetPiece | MudPiece | PoolPiece | GeyserPiece
+  | TrampolinePiece | TurnstilePiece | TargetsPiece | VortexPiece | PlatformPiece;
 
 export interface TrackDef {
   v: 1;
@@ -421,6 +434,37 @@ class DefRecorder extends Builder {
     );
   }
 
+  override trampoline(x: number, y: number, w = 180, tension = 1) {
+    return this.capture(
+      () => super.trampoline(x, y, w, tension),
+      () => ({ t: 'trampoline', x, y, w, tension }),
+    );
+  }
+  override turnstile(x: number, y: number, arms = 4, r = 70, mode: 0 | 1 = 0, periodMs = 0, phaseMs = 0) {
+    return this.capture(
+      () => super.turnstile(x, y, arms, r, mode, periodMs, phaseMs),
+      () => ({ t: 'turnstile', x, y, arms, r, mode, period: periodMs, phase: phaseMs }),
+    );
+  }
+  override targets(x: number, y: number, count = 4, resetMs = 6000) {
+    return this.capture(
+      () => super.targets(x, y, count, resetMs),
+      () => ({ t: 'targets', x, y, count, reset: resetMs }),
+    );
+  }
+  override vortex(x: number, y: number, r = 140, spin = 1.5, holeR = 34) {
+    return this.capture(
+      () => super.vortex(x, y, r, spin, holeR),
+      () => ({ t: 'vortex', x, y, r, spin, hole: holeR }),
+    );
+  }
+  override platform(ax: number, ay: number, bx: number, by: number, w = 120, travelMs = 2600, pauseMs = 1800, phaseMs = 0) {
+    return this.capture(
+      () => super.platform(ax, ay, bx, by, w, travelMs, pauseMs, phaseMs),
+      () => ({ t: 'platform', ax, ay, bx, by, w, travel: travelMs, pause: pauseMs, phase: phaseMs }),
+    );
+  }
+
   override seesaw(px: number, py: number, len = 300, limDeg = 22, damp = 0.9) {
     return this.capture(
       () => super.seesaw(px, py, len, limDeg, damp),
@@ -516,6 +560,11 @@ function replayPiece(b: Builder, piece: Piece) {
       case 'mud': b.mud(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.drag); break;
       case 'pool': b.pool(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.depth, piece.skip); break;
       case 'geyser': b.geyser(piece.x, piece.y, piece.h, piece.period, piece.phase); break;
+      case 'trampoline': b.trampoline(piece.x, piece.y, piece.w, piece.tension); break;
+      case 'turnstile': b.turnstile(piece.x, piece.y, piece.arms, piece.r, piece.mode as 0 | 1, piece.period, piece.phase); break;
+      case 'targets': b.targets(piece.x, piece.y, piece.count, piece.reset); break;
+      case 'vortex': b.vortex(piece.x, piece.y, piece.r, piece.spin, piece.hole); break;
+      case 'platform': b.platform(piece.ax, piece.ay, piece.bx, piece.by, piece.w, piece.travel, piece.pause, piece.phase); break;
     }
   } finally {
     b.flip = false;
@@ -565,6 +614,7 @@ export function buildTrackFromDef(value: unknown): Track {
     itemBoxes: b.itemBoxes,
     ramps: b.bodies.filter((body) => !!meta(body).surface),
     buckets: b.buckets,
+    targetBanks: b.targetBanks,
     pegCount: b.pegCount,
     gate,
     startY,
@@ -773,6 +823,59 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
         c: vec(raw.c, `${at}.c`, problems),
         b: vec(raw.b, `${at}.b`, problems),
         n: raw.n === undefined ? undefined : Math.round(number(raw.n, `${at}.n`, 2, 64, problems)),
+        ...body,
+      };
+    case 'trampoline':
+      return {
+        t: 'trampoline',
+        x: number(raw.x, `${at}.x`, 0, W, problems),
+        y: real(raw.y, `${at}.y`, problems),
+        w: number(raw.w, `${at}.w`, 60, 400, problems),
+        tension: number(raw.tension, `${at}.tension`, 0.5, 3, problems),
+        ...body,
+      };
+    case 'turnstile':
+      return {
+        t: 'turnstile',
+        x: number(raw.x, `${at}.x`, 0, W, problems),
+        y: real(raw.y, `${at}.y`, problems),
+        arms: number(raw.arms, `${at}.arms`, 2, 5, problems),
+        r: number(raw.r, `${at}.r`, 30, 160, problems),
+        mode: number(raw.mode, `${at}.mode`, 0, 1, problems),
+        period: number(raw.period, `${at}.period`, 0, 60000, problems),
+        phase: real(raw.phase, `${at}.phase`, problems),
+        ...body,
+      };
+    case 'targets':
+      return {
+        t: 'targets',
+        x: number(raw.x, `${at}.x`, 0, W, problems),
+        y: real(raw.y, `${at}.y`, problems),
+        count: number(raw.count, `${at}.count`, 3, 5, problems),
+        reset: number(raw.reset, `${at}.reset`, 1000, 30000, problems),
+        ...body,
+      };
+    case 'vortex':
+      return {
+        t: 'vortex',
+        x: number(raw.x, `${at}.x`, 0, W, problems),
+        y: real(raw.y, `${at}.y`, problems),
+        r: number(raw.r, `${at}.r`, 60, 300, problems),
+        spin: number(raw.spin, `${at}.spin`, 0.5, 4, problems),
+        hole: number(raw.hole, `${at}.hole`, 16, 80, problems),
+        ...body,
+      };
+    case 'platform':
+      return {
+        t: 'platform',
+        ax: number(raw.ax, `${at}.ax`, 0, W, problems),
+        ay: real(raw.ay, `${at}.ay`, problems),
+        bx: number(raw.bx, `${at}.bx`, 0, W, problems),
+        by: real(raw.by, `${at}.by`, problems),
+        w: number(raw.w, `${at}.w`, 40, 300, problems),
+        travel: number(raw.travel, `${at}.travel`, 800, 20000, problems),
+        pause: number(raw.pause, `${at}.pause`, 0, 10000, problems),
+        phase: real(raw.phase, `${at}.phase`, problems),
         ...body,
       };
     case 'loop':
@@ -1225,5 +1328,13 @@ function pieceYs(piece: Piece): number[] {
       return [piece.pivot[1] + piece.chain];
     case 'bucket':
       return [piece.y];
+    case 'trampoline':
+    case 'turnstile':
+    case 'targets':
+      return [piece.y - 60, piece.y + 60];
+    case 'vortex':
+      return [piece.y - piece.r, piece.y + piece.r];
+    case 'platform':
+      return [Math.min(piece.ay, piece.by) - 20, Math.max(piece.ay, piece.by) + 20];
   }
 }

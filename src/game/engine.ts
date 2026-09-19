@@ -107,6 +107,10 @@ export interface Marble {
   magnetGrabAt?: number;
   /** MB-10E: last clock the mud squelched for this marble (cue debounce). */
   mudSquelchAt?: number;
+  /** MB-10F: per-marble trampoline cooldown so the spring fires once per landing. */
+  trampAt?: number;
+  /** MB-10F: last clock the vortex funnel whooshed this marble through the centre hole. */
+  vortexDropAt?: number;
   trail: { x: number; y: number }[];
   pegs: number;
   gridSlot: number;
@@ -582,6 +586,56 @@ export class Game {
       case 'loopExit':
         this.setLoopStage(m, 0);
         break;
+      case 'trampoline': {
+        // land on the net: the harder you come down, the higher you spring back.
+        if (!md.trampoline) break;
+        const v = Body.getVelocity(m.body);
+        const fromAbove = m.body.position.y < other.position.y - 4;
+        if (!fromAbove || v.y < 2.5) break;
+        if (this.time - (m.trampAt ?? -1e9) < 350) break; // one spring per landing
+        m.trampAt = this.time;
+        const st = m.info.stats;
+        const weight = st.weight ?? 5, bounce = st.bounce ?? 5;
+        const k = Math.min(2.2, (0.55 + bounce * 0.06)) * md.trampoline.tension * Math.max(0.18, 1.35 - weight * 0.105);
+        const anvil = this.time < m.anvilUntil ? 0.2 : 1;
+        const vy = Math.min(24, v.y * k) * anvil;
+        Body.setVelocity(m.body, { x: v.x * 0.92, y: -vy });
+        md.tramp = { depth: Math.min(1, v.y / 14) }; // skin sag read by render
+        if (m.finishedAt === null) {
+          this.sfx('boing', m, other.position.x, other.position.y);
+          this.emit({ kind: 'sound', cue: v.y > 10 ? 'boing' : 'boing' });
+        }
+        break;
+      }
+      case 'turnstile': {
+        // ratchet: one eased step per shove, debounced; guests replay from the event.
+        const ts = md.turnstile;
+        if (!ts || ts.mode !== 0) break;
+        if (ts.stepAt >= 0 && this.time - ts.stepAt < 380) break;
+        const v = Body.getVelocity(m.body);
+        if (Math.hypot(v.x, v.y) < 1.2) break;
+        ts.stepIndex++;
+        ts.stepAt = this.time;
+        this.emit({ kind: 'turnstile', i: this.track.bodies.indexOf(other), steps: ts.stepIndex, at: ts.stepAt });
+        this.sfx('crank', m, other.position.x, other.position.y);
+        this.emit({ kind: 'sound', cue: 'crank' });
+        break;
+      }
+      case 'target': {
+        // a pin drops on any firm touch; the bank loop re-arms it after resetMs.
+        const tg = md.target;
+        if (!tg || tg.dropAt >= 0) break;
+        const v = Body.getVelocity(m.body);
+        if (Math.hypot(v.x, v.y) < 0.3) break;
+        tg.dropAt = this.time;
+        other.isSensor = true;
+        const bank = this.track.targetBanks[tg.bank];
+        if (bank) bank.downAt[tg.slot] = this.time;
+        this.emit({ kind: 'targets', i: this.track.bodies.indexOf(other), down: 1, at: this.time });
+        this.sfx('ding', m, other.position.x, other.position.y);
+        this.emit({ kind: 'sound', cue: 'ding' });
+        break;
+      }
       case 'hoop': {
         const v = Body.getVelocity(m.body);
         const speed = Math.hypot(v.x, v.y);
@@ -1581,6 +1635,65 @@ export class Game {
           if (this.time < m.anvilUntil) up *= 0.35;
           const v = Body.getVelocity(m.body);
           Body.setVelocity(m.body, { x: v.x, y: Math.min(v.y, v.y - up) });
+        }
+      }
+    }
+
+    // ---------------- MB-10F: set pieces ----------------
+    // Drop-target banks: re-arm pins, and the lane is "open" while every pin is down. All state
+    // is the pinned dropAt clocks (events carry those), so hosts and guests play the same film.
+    for (const bank of this.track.targetBanks) {
+      let allDown = true;
+      for (let k = 0; k < bank.count; k++) {
+        const pin = bank.pins[k];
+        const pmd = meta(pin);
+        if (!pmd.target) continue;
+        if (pmd.target.dropAt >= 0 && this.time - pmd.target.dropAt > bank.resetMs) {
+          pmd.target.dropAt = -1;
+          pin.isSensor = false;
+          bank.downAt[k] = -1;
+          this.emit({ kind: 'targets', i: this.track.bodies.indexOf(pin), down: 0, at: this.time });
+        }
+        if (pmd.target.dropAt < 0) allDown = false;
+      }
+      if (allDown && bank.openedAt < 0) {
+        bank.openedAt = this.time;
+        this.sfx('bonus', this.player, bank.pins[0].position.x, bank.pins[0].position.y);
+        this.emit({ kind: 'sound', cue: 'bonus' });
+      } else if (!allDown) bank.openedAt = -1;
+    }
+    // Vortex funnels: studio bowl. Orbit tangentially; heavy marbles sink sooner; the centre
+    // hole drops you out with your arrival speed — pure field, so guests see the same drift.
+    if (hasElement(this.track, 'vortex')) {
+      for (const body of elementBodies(this.track, 'vortex')) {
+        const md = meta(body);
+        const vo = md.vortex;
+        if (!vo) continue;
+        for (const m of this.marbles) {
+          if (m.finishedAt !== null || m.frozen || m.hold) continue;
+          if (m.ghostUntil > this.time) continue; // Ghost falls straight through the spiral
+          const p = m.body.position;
+          const dx = vo.cx - p.x, dy = vo.cy - p.y;
+          const d = Math.hypot(dx, dy);
+          if (d < 1 || d > vo.r) continue;
+          const v = Body.getVelocity(m.body);
+          const st = m.info.stats;
+          const weight = st.weight ?? 5, speed = Math.hypot(v.x, v.y);
+          // tangential shove scales with how fast you arrive (speed keeps you circling)
+          const tx = -dy / d, ty = dx / d;
+          const spin_ = vo.spin * (0.55 + Math.min(1, speed / 14));
+          const inward = 0.09 * (0.6 + weight * 0.11) * (1 - d / vo.r + 0.25);
+          Body.setVelocity(m.body, {
+            x: v.x + tx * spin_ * 0.09 + (dx / d) * inward,
+            y: v.y + ty * spin_ * 0.09 + (dy / d) * inward,
+          });
+          if (d < vo.holeR && this.time - (m.vortexDropAt ?? -1e9) > 900) {
+            m.vortexDropAt = this.time;
+            Body.setVelocity(m.body, { x: v.x * 0.5, y: Math.max(9, v.y) });
+            Body.setPosition(m.body, { x: vo.cx, y: vo.cy + vo.r + 40 });
+            this.sfx('whoosh', m, vo.cx, vo.cy);
+            this.emit({ kind: 'sound', cue: 'whoosh' });
+          }
         }
       }
     }

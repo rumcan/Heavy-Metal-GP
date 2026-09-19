@@ -129,7 +129,13 @@ function pieceXs(piece: Piece): number[] {
       return [(piece as unknown as { a: readonly [number, number] }).a[0], (piece as unknown as { b: readonly [number, number] }).b[0]];
     case 'magnet':
     case 'geyser':
+    case 'trampoline':
+    case 'turnstile':
+    case 'targets':
+    case 'vortex':
       return [(piece as unknown as { x: number }).x];
+    case 'platform':
+      return [(piece as unknown as { ax: number }).ax, (piece as unknown as { bx: number }).bx];
   }
 }
 

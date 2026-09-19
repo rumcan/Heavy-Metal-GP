@@ -100,10 +100,25 @@ function replayPiece(b: Builder, piece: Piece): void {
         b.crusher(piece.x, piece.y, piece.w, piece.travel, piece.period, piece.floor, piece.phase);
         break;
       case 'boulder':
-        b.boulder(piece.pts.map(([x, y]) => [x, y] as [number, number]), piece.r, piece.interval, piece.rest, piece.phase);
+        b.boulder(piece.pts.map(([x, y]: [number, number]) => [x, y] as [number, number]), piece.r, piece.interval, piece.rest, piece.phase);
         break;
       case 'mace':
         b.mace(piece.x, piece.y, piece.arm, piece.arc, piece.sweep, piece.rest, piece.phase, piece.r);
+        break;
+      case 'trampoline':
+        b.trampoline(piece.x, piece.y, piece.w, piece.tension);
+        break;
+      case 'turnstile':
+        b.turnstile(piece.x, piece.y, piece.arms, piece.r, piece.mode as 0 | 1, piece.period, piece.phase);
+        break;
+      case 'targets':
+        b.targets(piece.x, piece.y, piece.count, piece.reset);
+        break;
+      case 'vortex':
+        b.vortex(piece.x, piece.y, piece.r, piece.spin, piece.hole);
+        break;
+      case 'platform':
+        b.platform(piece.ax, piece.ay, piece.bx, piece.by, piece.w, piece.travel, piece.pause, piece.phase);
         break;
       // ---- MB-10C ----
       case 'wheel':
@@ -207,6 +222,7 @@ export function buildEditorTrack(def: TrackDef): { track: Track | null; bodyToPi
       theme: themeFor(def.theme),
       decor: b.decor,
       wreckers: b.wreckers,
+    targetBanks: b.targetBanks,
     };
     return { track, bodyToPiece, error: null };
   } catch (error) {

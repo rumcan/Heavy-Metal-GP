@@ -147,6 +147,18 @@ export const PALETTE: PaletteGroup[] = [
       { id: 'geyser', t: 'geyser', label: 'Geyser vent', sprite: 'geyser', hint: 'Bubbles for a beat, then blasts upward on a timer. Park on it and get chucked. All on the race clock.' },
     ],
   },
+  {
+    id: 'setpieces',
+    label: 'Big set pieces',
+    note: 'Nets, turnstiles, targets, funnels and ferries',
+    tiles: [
+      { id: 'trampoline', t: 'trampoline', label: 'Trampoline net', sprite: 'trampoline', hint: 'A stretchy net over a gully. Land hard, spring high; bounce doubles it, heavy barely springs.' },
+      { id: 'turnstile', t: 'turnstile', label: 'Turnstile diverter', sprite: 'turnstile', hint: 'Arms on a ratchet (or free spin on a period) reshuffling who comes out left and right.' },
+      { id: 'targets', t: 'targets', label: 'Drop-target bank', sprite: 'targets', hint: 'A row of pinball pins blocking the lane. Knock every pin and the lane is open — pins re-arm on a timer.' },
+      { id: 'vortex', t: 'vortex', label: 'Vortex funnel', sprite: 'vortex', hint: 'A spiral funnel: speed keeps you circling, weight sinks you to the drain. Exits rewrite the order.' },
+      { id: 'platform', t: 'platform', label: 'Moving platform', sprite: 'platform', hint: 'A shuttling ferry pad. Catch its window or take the low road — timing decides the jump.' },
+    ],
+  },
 ];
 
 /** Every tile, flat — for looking one up by piece type. */

@@ -216,6 +216,16 @@ export function defaultPiece(type: PieceType, at: Point, snap = false): Piece {
     case 'geyser': {
       return { t: 'geyser', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, h: 300, period: 3800, phase: 0 };
     }
+    case 'trampoline':
+      return { t: 'trampoline', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, w: 175, tension: 1.2 };
+    case 'turnstile':
+      return { t: 'turnstile', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, arms: 4, r: 78, mode: 0, period: 0, phase: 0 };
+    case 'targets':
+      return { t: 'targets', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, count: 4, reset: 5600 };
+    case 'vortex':
+      return { t: 'vortex', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, r: 175, spin: 1.4, hole: 34 };
+    case 'platform':
+      return { t: 'platform', ax: snap ? snapVal(cx - 70) : cx - 70, ay: snap ? snapVal(cy) : cy, bx: snap ? snapVal(cx + 70) : cx + 70, by: snap ? snapVal(cy) : cy, w: 130, travel: 2400, pause: 1600, phase: 0 };
     default:
       // Exhaustiveness: TypeScript ensures all PieceType are covered.
       throw new Error(`defaultPiece: unknown piece type ${(type as string)}`);

@@ -941,6 +941,22 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
       case 'geyser':
         if (!b.isSensor) drawGeyser(ctx, b, md, game, t);
         break;
+      // ---- MB-10F: big set pieces ----
+      case 'trampoline':
+        drawTrampoline(ctx, b, md, game, t);
+        break;
+      case 'turnstile':
+        drawTurnstile(ctx, b, md, game, t);
+        break;
+      case 'target':
+        drawTargets(ctx, b, md, game, t);
+        break;
+      case 'vortex':
+        if (b.isSensor) drawVortex(ctx, b, md, game, t);
+        break;
+      case 'platform':
+        drawPlatform(ctx, b, md, game, t);
+        break;
       default:
         break;
     }
@@ -2597,6 +2613,148 @@ function drawGeyser(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnTyp
     ctx.beginPath(); ctx.arc(0, -12 - beep * 12, 2.6, 0, Math.PI * 2); ctx.fill();
   }
   ctx.restore();
+}
+
+
+// ---------------- MB-10F: big set pieces ----------------
+
+function drawTrampoline(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, _t: number) {
+  const tp = md.trampoline;
+  if (!tp) return;
+  const sag = md.tramp?.depth ?? 0;
+  ctx.save();
+  ctx.translate(b.position.x, b.position.y);
+  // wooden frame ends
+  ctx.fillStyle = '#78350f';
+  ctx.fillRect(-tp.half - 10, -4, 10, 14);
+  ctx.fillRect(tp.half, -4, 10, 14);
+  // the net: a catenary that deepens when it takes a landing
+  ctx.strokeStyle = '#d4a04a';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  const dip = 3 + sag * 16;
+  ctx.moveTo(-tp.half, 0);
+  ctx.quadraticCurveTo(0, dip * 2, tp.half, 0);
+  ctx.stroke();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(212,160,74,0.6)';
+  for (let k = 1; k < 6; k++) {
+    const xk = -tp.half + (2 * tp.half * k) / 6;
+    ctx.beginPath();
+    ctx.moveTo(xk, 0);
+    ctx.quadraticCurveTo(xk * 0.5, dip, xk * -0.5 * -1 + xk * 0.18, dip);
+    ctx.stroke();
+  }
+  if (drawSprite(ctx, 'trampoline', -tp.half - 12, -18, tp.half * 2 + 24, 30)) { /* frame art above */ }
+  ctx.restore();
+  void b;
+}
+
+function drawTurnstile(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, _t: number) {
+  const ts = md.turnstile;
+  if (!ts) return;
+  ctx.save();
+  ctx.translate(b.position.x, b.position.y);
+  ctx.rotate(b.angle);
+  // hub
+  ctx.fillStyle = '#44403c';
+  ctx.beginPath(); ctx.arc(0, 0, 9, 0, Math.PI * 2); ctx.fill();
+  // blades (art shows two; the physical bar matches two; the rest are painted)
+  for (let k = 0; k < ts.arms; k++) {
+    ctx.save();
+    ctx.rotate((k / ts.arms) * Math.PI);
+    ctx.strokeStyle = k < 2 ? '#8a5a2e' : 'rgba(138,90,46,0.55)';
+    ctx.lineWidth = k < 2 ? 11 : 10;
+    ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-ts.r, 0); ctx.lineTo(ts.r, 0); ctx.stroke();
+    ctx.restore();
+  }
+  ctx.fillStyle = '#b45309';
+  ctx.beginPath(); ctx.arc(0, 0, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  void b;
+}
+
+function drawTargets(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
+  const tg = md.target;
+  if (!tg) return;
+  const p = b.position;
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  const down = tg.dropAt >= 0;
+  if (!down) {
+    // standing pin: red face, cream cap
+    ctx.fillStyle = '#b91c1c';
+    ctx.fillRect(-9, -13, 18, 14);
+    ctx.fillStyle = '#fde68a';
+    ctx.fillRect(-9, -13, 18, 4);
+    ctx.strokeStyle = '#450a0a';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-9, -13, 18, 14);
+  } else {
+    // down: fold flat with a soft settle wobble right after the hit
+    const age = Math.min(1, (t - tg.dropAt) / 200);
+    ctx.fillStyle = 'rgba(185,28,28,0.35)';
+    ctx.fillRect(-9, -4 + age * 2, 18, 5);
+  }
+  ctx.restore();
+}
+
+function drawVortex(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
+  const vo = md.vortex;
+  if (!vo) return;
+  ctx.save();
+  ctx.translate(vo.cx, vo.cy);
+  // spiral: three packets of dash-arcs spinning on the clock
+  for (let k = 0; k < 3; k++) {
+    ctx.save();
+    ctx.rotate((t / 900) * Math.PI * 2 * (0.8 + k * 0.25) * (k % 2 ? -1 : 1) + (k * Math.PI * 2) / 3);
+    ctx.strokeStyle = ['rgba(125,211,252,0.5)', 'rgba(167,139,250,0.45)', 'rgba(244,114,182,0.4)'][k];
+    ctx.lineWidth = 5 - k;
+    ctx.beginPath();
+    const r0 = vo.holeR + (vo.r - vo.holeR) * (1 - k * 0.22);
+    ctx.arc(0, 0, r0, 0.8, Math.PI * 2 - 1.6);
+    ctx.stroke();
+    ctx.restore();
+  }
+  // the drain: dark ring that gulps
+  ctx.fillStyle = '#0c0a09';
+  ctx.beginPath(); ctx.arc(0, 0, vo.holeR, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#e8813a';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(0, 0, vo.holeR + 2, 0, Math.PI * 2); ctx.stroke();
+  if (drawSprite(ctx, 'vortex', -vo.r * 0.75, -vo.r * 0.55, vo.r * 1.5, vo.r * 0.9)) { /* bowl art over the field */ }
+  ctx.restore();
+  void b;
+}
+
+function drawPlatform(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
+  const mo = md.motion;
+  if (!mo || mo.mode !== 'platform') return;
+  const p = b.position;
+  // the rail between its endpoints (the winch route)
+  ctx.save();
+  ctx.strokeStyle = 'rgba(120,113,108,0.5)';
+  ctx.setLineDash([6, 6]);
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(mo.a.x, mo.a.y + 10); ctx.lineTo(mo.b.x, mo.b.y + 10); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.translate(p.x, p.y);
+  const w = b.bounds.max.x - b.bounds.min.x;
+  if (!drawSprite(ctx, 'platform', -w / 2, -18, w, 26)) {
+    // wooden plank with iron shoes + chain loops
+    ctx.fillStyle = '#8a5a2e';
+    ctx.fillRect(-w / 2, -8, w, 16);
+    ctx.fillStyle = '#b45309';
+    ctx.fillRect(-w / 2, -8, w, 4);
+    ctx.strokeStyle = '#3f2a14';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-w / 2, -8, w, 16);
+    ctx.strokeStyle = '#57534e';
+    ctx.beginPath(); ctx.moveTo(-w / 3, -8); ctx.lineTo(-w / 3, -26); ctx.moveTo(w / 3, -8); ctx.lineTo(w / 3, -26); ctx.stroke();
+  }
+  ctx.restore();
+  void t;
 }
 
 function drawScoop(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {

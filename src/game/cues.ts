@@ -80,6 +80,11 @@ export const SOUND_EVENTS = [
   'steam',
   'gurgle',
   'zap',
+  // MB-10F
+  'crank',
+  'ding',
+  'bonus',
+  'whoosh',
 ] as const;
 
 /** One named cue. The wire carries these, so the list is the contract. */

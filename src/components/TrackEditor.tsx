@@ -174,7 +174,7 @@ function lowestPieceY(def: TrackDef): number {
         y = p.y + p.travel + 44;
         break;
       case 'boulder':
-        y = Math.max(...p.pts.map((q) => q[1]));
+        y = Math.max(...p.pts.map((q: [number, number]) => q[1]));
         break;
       case 'mace':
         y = p.y + p.arm + p.r;

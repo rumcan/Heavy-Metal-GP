@@ -18,6 +18,8 @@ export type SoundType =
   | 'bang' | 'twang' | 'snap' | 'boing'
   // MB-10E: fields — the geyser hiss, the mud squelch, the magnet arc
   | 'steam' | 'gurgle' | 'zap'
+  // MB-10F: set pieces — the turnstile crank, the target drop, the gate bonus, the funnel whoosh
+  | 'crank' | 'ding' | 'bonus' | 'whoosh'
   // story mode UI: dialogue tick and chapter/act sting
   | 'blip' | 'sting';
 
@@ -36,7 +38,7 @@ const MUTE_KEY = 'heavy-metal-gp:muted';
 // Peggle-style rising run: a major scale that keeps climbing while the streak lasts
 const SCALE = [0, 2, 4, 5, 7, 9, 11];
 const STREAK_WINDOW = 1600;
-const MIN_GAP: Partial<Record<SoundType, number>> = { peg: 25, bump: 60, thud: 90, clack: 70, crack: 90, clang: 80, hoop: 80, spring: 120, blip: 26, cheer: 500, rumble: 250, creak: 200, click: 60, shriek: 220, grind: 180, slam: 320, splash: 200, groan: 300, whirr: 400, bang: 400, twang: 200, snap: 150, boing: 250, steam: 600, gurgle: 280, zap: 500 };
+const MIN_GAP: Partial<Record<SoundType, number>> = { peg: 25, bump: 60, thud: 90, clack: 70, crack: 90, clang: 80, hoop: 80, spring: 120, blip: 26, cheer: 500, rumble: 250, creak: 200, click: 60, shriek: 220, grind: 180, slam: 320, splash: 200, groan: 300, whirr: 400, bang: 400, twang: 200, snap: 150, boing: 250, steam: 600, gurgle: 280, zap: 500, crank: 320, ding: 90, bonus: 900, whoosh: 420 };
 
 class RaceAudio {
   private ctx: AudioContext | null = null;
@@ -164,6 +166,10 @@ class RaceAudio {
       }
       case 'twang': return this.tone(t, 240 + Math.random() * 60, 0.28, 'sawtooth', 0.3 * vol, pan, 110); // rubber band
       case 'snap': { this.noiseHit(t, 0.05, 2600, 0.35 * vol, pan, 'bandpass'); return this.tone(t, 320, 0.07, 'square', 0.2 * vol, pan, 140); }
+      case 'crank': { this.tone(t, 90, 0.16, 'square', 0.22 * vol, pan, 70); return this.tone(t + 0.05, 140, 0.14, 'square', 0.18 * vol, pan, 110); }
+      case 'ding': { return this.tone(t, 1250, 0.09, 'triangle', 0.22 * vol, pan, 960); }
+      case 'bonus': { this.tone(t, 660, 0.1, 'triangle', 0.24 * vol, pan, 500); this.tone(t + 0.09, 880, 0.1, 'triangle', 0.24 * vol, pan, 640); return this.tone(t + 0.18, 1180, 0.16, 'triangle', 0.26 * vol, pan, 760); }
+      case 'whoosh': { return this.noiseHit(t, 0.22, 900, 0.22 * vol, pan, 'bandpass'); }
       case 'boing': { this.tone(t, 180, 0.12, 'sine', 0.3 * vol, pan, 420); return this.tone(t + 0.1, 320, 0.1, 'sine', 0.2 * vol, pan, 520); }
       case 'blip': return this.tone(t, 1500 + Math.random() * 220, 0.028, 'square', 0.07, 0);
       case 'sting': return this.sting(t);

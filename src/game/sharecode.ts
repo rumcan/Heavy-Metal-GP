@@ -30,7 +30,8 @@ const PIECE_TYPES = ['ramp','ice','curve','loop','hoop','wrecker','pad','boost',
   // MB-10D: launchers
   'cannon','catapult','flipper','sling','scoop',
   // MB-10E: fields and surfaces
-  'wind','magnet','mud','pool','geyser'] as const;
+  'wind','magnet','mud','pool','geyser',
+  'trampoline','turnstile','targets','vortex','platform'] as const;
 type PieceTypeName = typeof PIECE_TYPES[number];
 const PIECE_TO_ID = Object.fromEntries(PIECE_TYPES.map((t,i)=>[t,i])) as Record<PieceTypeName, number>;
 
@@ -402,6 +403,37 @@ function encodeBinary(def: TrackDef): Uint8Array {
         writeUVarint(out, Math.round(p.phase));
         break;
       }
+      // MB-10F: set pieces
+      case 'trampoline': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, Math.round(p.w)); writeUVarint(out, Math.round(p.tension * 100));
+        break;
+      }
+      case 'turnstile': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, Math.round(p.arms)); writeUVarint(out, Math.round(p.r));
+        writeUVarint(out, Math.round(p.mode)); writeUVarint(out, Math.round(p.period));
+        writeUVarint(out, Math.round(p.phase));
+        break;
+      }
+      case 'targets': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, Math.round(p.count)); writeUVarint(out, Math.round(p.reset));
+        break;
+      }
+      case 'vortex': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, Math.round(p.r)); writeUVarint(out, Math.round(p.spin * 100));
+        writeUVarint(out, Math.round(p.hole));
+        break;
+      }
+      case 'platform': {
+        writeUVarint(out, Math.round(p.ax)); writeUVarint(out, Math.round(p.ay));
+        writeUVarint(out, Math.round(p.bx)); writeUVarint(out, Math.round(p.by));
+        writeUVarint(out, Math.round(p.w)); writeUVarint(out, Math.round(p.travel));
+        writeUVarint(out, Math.round(p.pause)); writeUVarint(out, Math.round(p.phase));
+        break;
+      }
     }
   }
   return new Uint8Array(out);
@@ -698,6 +730,39 @@ function decodeBinary(bytes: Uint8Array): TrackDef {
         const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), h = readUVarint(bytes, pos);
         const period = readUVarint(bytes, pos), phase = readUVarint(bytes, pos);
         p = { t:'geyser', x, y, h, period, phase, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'trampoline': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), w = readUVarint(bytes, pos);
+        const tension = readUVarint(bytes, pos) / 100;
+        p = { t:'trampoline', x, y, w, tension, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'turnstile': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), arms = readUVarint(bytes, pos);
+        const r = readUVarint(bytes, pos), mode = readUVarint(bytes, pos);
+        const period = readUVarint(bytes, pos), phase = readUVarint(bytes, pos);
+        p = { t:'turnstile', x, y, arms, r, mode, period, phase, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'targets': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), count = readUVarint(bytes, pos);
+        const reset = readUVarint(bytes, pos);
+        p = { t:'targets', x, y, count, reset, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'vortex': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), r = readUVarint(bytes, pos);
+        const spin = readUVarint(bytes, pos) / 100, hole = readUVarint(bytes, pos);
+        p = { t:'vortex', x, y, r, spin, hole, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'platform': {
+        const ax = readUVarint(bytes, pos), ay = readUVarint(bytes, pos);
+        const bx = readUVarint(bytes, pos), by = readUVarint(bytes, pos);
+        const w = readUVarint(bytes, pos), travel = readUVarint(bytes, pos);
+        const pause = readUVarint(bytes, pos), phase = readUVarint(bytes, pos);
+        p = { t:'platform', ax, ay, bx, by, w, travel, pause, phase, ...(flip?{flip}:{}) };
         break;
       }
       default: throw new ShareCodeError(`Unknown piece type ${t}`);

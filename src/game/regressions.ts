@@ -53,6 +53,7 @@ function fixture(obstacles: Matter.Body[], finishY = 1000): Track {
     startY: 116, finishY, gate, segments: [{ name: 'Test fixture', y: 0, h: finishY }],
     spinners: [], itemBoxes: [], buckets: [], pegCount: { orange: 0, total: 0 },
     ramps: obstacles.filter((body) => !!meta(body).surface), theme: DEFAULT_PROFILE.theme, decor: [], wreckers: [],
+    targetBanks: [],
   };
 }
 
@@ -353,6 +354,63 @@ add('MB-10E fields: every field fires and nobody drowns', 'Race safety', async (
     ensure((cues[need] ?? 0) > 0, `Field cue '${need}' never fired across the three seeds.`);
   }
   return `3 seeds on the fields ground; cues ${JSON.stringify({ steam: cues.steam ?? 0, gurgle: cues.gurgle ?? 0, zap: cues.zap ?? 0, splash: cues.splash ?? 0 })}`;
+});
+
+add('MB-10F set pieces: every big toy fires and nobody is penned', 'Race safety', async () => {
+  // Proving-ground circuit: each MB-10F set piece once on tuned geometry (mirrored in
+  // scripts/mb10f-sanity.mjs). Asserts the wire events move too: target pins drop and
+  // re-arm, the turnstile ratchets, the vortex drops.
+  const def = {
+    v: 1, name: 'MB-10F proving ground', seed: 11, theme: 'classic', height: 3100,
+    pieces: [
+      { t: 'ramp', a: [0, 40], b: [300, 160] },
+      { t: 'trampoline', x: 390, y: 260, w: 175, tension: 1.3 },
+      { t: 'ramp', a: [60, 340], b: [880, 450] },
+      { t: 'ramp', a: [540, 170], b: [880, 300] },
+      { t: 'ramp', a: [0, 520], b: [470, 710] },
+      { t: 'turnstile', x: 455, y: 686, arms: 4, r: 78, mode: 0, period: 0, phase: 0 },
+      { t: 'ramp', a: [470, 710], b: [180, 880] },
+      { t: 'turnstile', x: 200, y: 856, arms: 3, r: 88, mode: 1, period: 4200, phase: 400 },
+      { t: 'ramp', a: [180, 880], b: [880, 1040] },
+      { t: 'ramp', a: [0, 1110], b: [300, 1250] },
+      { t: 'ramp', a: [300, 1250], b: [520, 1266] },
+      { t: 'targets', x: 370, y: 1260, count: 4, reset: 5600 },
+      { t: 'ramp', a: [520, 1276], b: [890, 1410] },
+      { t: 'ramp', a: [0, 1500], b: [880, 1780] },
+      { t: 'vortex', x: 560, y: 1660, r: 175, spin: 1.4, hole: 34 },
+      { t: 'ramp', a: [0, 1910], b: [880, 2050] },
+      { t: 'ramp', a: [0, 2150], b: [380, 2310] },
+      { t: 'ramp', a: [560, 2310], b: [880, 2460] },
+      { t: 'platform', ax: 405, ay: 2346, bx: 535, by: 2346, w: 130, travel: 2400, pause: 1600, phase: 0 },
+      { t: 'ramp', a: [60, 2540], b: [890, 2640] },
+      { t: 'ramp', a: [0, 2700], b: [890, 3010] },
+    ],
+  };
+  buildTrackFromDef(def); // throws on a schema validator bug before the race even starts
+  const events: Record<string, number> = {};
+  for (const seed of [7, 9001, 424242]) {
+    const game = new Game(seed, roster(seed), { def, recovery: true, effects: false, aiItems: false, wireEvents: true });
+    try {
+      game.openGate();
+      let t = 0;
+      while (!game.allFinished() && t < 360000) {
+        game.step(1000 / 60);
+        for (const e of game.drainRaceEvents()) {
+          events[e.kind] = (events[e.kind] ?? 0) + 1;
+          if (e.kind === 'sound' && e.cue) events['cue:' + e.cue] = (events['cue:' + e.cue] ?? 0) + 1;
+        }
+        t += 1000 / 60;
+      }
+      ensure(game.allFinished(), `Seed ${seed} left the field waiting past 360s.`);
+    } finally { game.destroy(); }
+  }
+  for (const need of ['targets', 'turnstile']) {
+    ensure((events[need] ?? 0) > 0, `Event '${need}' never fired across the three seeds.`);
+  }
+  for (const need of ['cue:boing', 'cue:whoosh']) {
+    ensure((events[need] ?? 0) > 0, `Cue '${need}' never fired across the three seeds.`);
+  }
+  return `3 seeds on the set pieces; events ${JSON.stringify(Object.fromEntries(Object.entries(events).filter(([k]) => ['targets', 'turnstile', 'cue:boing', 'cue:whoosh', 'cue:crank', 'cue:ding', 'cue:bonus'].includes(k))))}`;
 });
 
 add('Three heats use one seed and advance the championship once', 'Championship', async () => {

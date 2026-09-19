@@ -217,6 +217,18 @@ export function rotatePiece(piece: Piece, rad: number, c: Point): Piece {
       const [x, y] = at(piece.x, piece.y);
       return { ...piece, x, y };
     }
+    case 'trampoline':
+    case 'turnstile':
+    case 'targets':
+    case 'vortex': {
+      const [x, y] = at(piece.x, piece.y);
+      return { ...piece, x, y };
+    }
+    case 'platform': {
+      const [ax, ay] = at(piece.ax, piece.ay);
+      const [bx, by] = at(piece.bx, piece.by);
+      return { ...piece, ax, ay, bx, by };
+    }
     case 'bucket':
       // Always spans the pipe at a fixed height.
       return piece;

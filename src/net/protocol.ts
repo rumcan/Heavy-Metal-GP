@@ -606,6 +606,22 @@ export interface SlingEvent {
   i: number;
 }
 
+/** MB-10F. A turnstile took a shove: guests set the same step so their eased ratchet matches. */
+export interface TurnstileEvent {
+  kind: 'turnstile';
+  i: number;
+  steps: number;
+  at: number;
+}
+
+/** MB-10F. A drop-target pin changed state (1 = dropped, 0 = re-armed); the bank gate derives from the pin set. */
+export interface TargetsEvent {
+  kind: 'targets';
+  i: number;
+  down: number;
+  at: number;
+}
+
 export type RaceEvent =
   | PegEvent
   | CrateEvent
@@ -622,10 +638,12 @@ export type RaceEvent =
   | SeesawEvent
   | BridgeEvent
   | FlipperEvent
-  | SlingEvent;
+  | SlingEvent
+  | TurnstileEvent
+  | TargetsEvent;
 
 /** Every event kind, in wire order. `validateMessage` rejects anything else. */
-export const RACE_EVENT_KINDS = ['peg', 'crate', 'box', 'oil', 'freeze', 'shock', 'item', 'finish', 'sound', 'switch', 'trapdoor', 'hold', 'seesaw', 'bridge', 'flipper', 'sling'] as const;
+export const RACE_EVENT_KINDS = ['peg', 'crate', 'box', 'oil', 'freeze', 'shock', 'item', 'finish', 'sound', 'switch', 'trapdoor', 'hold', 'seesaw', 'bridge', 'flipper', 'sling', 'turnstile', 'targets'] as const;
 
 /**
  * host → server → everyone. What happened since the last frame.
@@ -1642,6 +1660,16 @@ function validateEvent(value: unknown): ProtocolError | null {
       return body(e.i);
     }
     case 'sling': {
+      return body(e.i);
+    }
+    case 'turnstile': {
+      if (!isInt(e.steps, 0, 1_000_000)) return bad('Turnstile event has a bad step counter.');
+      if (typeof e.at !== 'number' || !Number.isFinite(e.at) || e.at < 0) return bad('Turnstile event has no step clock.');
+      return body(e.i);
+    }
+    case 'targets': {
+      if (!(e.down === 0 || e.down === 1)) return bad('Targets event must say whether the pin dropped or re-armed.');
+      if (typeof e.at !== 'number' || !Number.isFinite(e.at) || e.at < 0) return bad('Targets event has no state clock.');
       return body(e.i);
     }
     default:
