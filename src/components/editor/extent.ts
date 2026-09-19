@@ -1,11 +1,11 @@
 /**
  * #71. What a piece occupies along x, and the translations that keep it inside the pipe.
  *
- * Three callers need the same answer: placement (`defaults.ts`) has to fit the geometry it just
- * generated, moving (`handles.ts`) has to translate a piece or a whole selection without reshaping
- * it, and validation (`validate.ts`) has to report coordinates that fall outside 0..W. Keeping the
- * list of stored x coordinates in one place means a new piece type cannot be fixed in one of those
- * three and forgotten in the others.
+ * Two callers need the same answer: the handle drags in `handles.ts`, which have to slide a piece
+ * without reshaping it, and validation (`validate.ts`), which has to report coordinates outside
+ * 0..W. Keeping the list of stored x coordinates in one place means a new piece type cannot be
+ * handled in one of them and forgotten in the other. Whole-piece and group translations — including
+ * the slide a placement applies — live in `translation.ts`, which owns the coordinate mapping.
  *
  * Only the *stored* coordinates matter here — the ones `validateTrackDef` range-checks — because
  * those are what a share code carries and what the race replays. Sprite padding is a drawing
@@ -101,11 +101,6 @@ export function xExtent(piece: Piece): XExtent | null {
   return extentOf(pieceXs(piece));
 }
 
-/** The combined extent of several pieces — what a multi-selection occupies. */
-export function groupXExtent(pieces: readonly Piece[]): XExtent | null {
-  return extentOf(pieces.flatMap(pieceXs));
-}
-
 function extentOf(xs: readonly number[]): XExtent | null {
   let min = Infinity;
   let max = -Infinity;
@@ -118,34 +113,13 @@ function extentOf(xs: readonly number[]): XExtent | null {
 }
 
 /**
- * The x translations that keep `extent` inside 0..W, or null when no translation can: a piece wider
- * than the track is out of range wherever it goes, so its shape wins and the validator reports it.
- * `0` is always inside the range of an in-range extent, so callers can lean on that.
- */
-export function deltaRange(extent: XExtent | null): { lo: number; hi: number } | null {
-  if (!extent) return null;
-  if (extent.max - extent.min > W) return null;
-  return { lo: -extent.min, hi: W - extent.max };
-}
-
-/**
- * The part of `dx` an extent can actually absorb: everything up to the wall, never more. Clamping
- * the *delta* rather than each coordinate is what keeps a moved piece the same shape it was.
+ * The part of a *stored-space* delta an extent can actually absorb: everything up to the wall, never
+ * more. Clamping the delta rather than each coordinate is what keeps a moved piece the same shape it
+ * was. Screen-space moves (which flipped pieces reverse) go through `fitGroupTranslation`; this is
+ * for the handle drags, which work in the piece's own coordinates.
  */
 export function clampDeltaToExtent(extent: XExtent | null, dx: number): number {
-  const range = deltaRange(extent);
-  if (!range || !Number.isFinite(dx)) return dx;
-  return Math.max(range.lo, Math.min(range.hi, dx));
-}
-
-/**
- * The single translation that brings an out-of-range extent back inside 0..W — the shortest one, so
- * a click near an edge nudges the piece in instead of throwing it across the track. Zero when the
- * extent already fits, and (as with `deltaRange`) no answer at all for an over-wide extent.
- */
-export function fitDelta(extent: XExtent | null): number {
-  if (!extent) return 0;
-  if (extent.max > W) return W - extent.max;
-  if (extent.min < 0) return -extent.min;
-  return 0;
+  if (!extent || !Number.isFinite(dx)) return dx;
+  if (extent.max - extent.min > W) return dx;
+  return Math.max(-extent.min, Math.min(W - extent.max, dx));
 }

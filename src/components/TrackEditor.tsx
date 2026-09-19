@@ -59,10 +59,10 @@ import { SNAP, clampCamera, formatUnits, formatZoom, newRig, rigCenter, rigFit, 
 import type { CameraRig, Point } from './editor/camera';
 import { PALETTE, tileFor } from './editor/palette';
 import { defaultPiece } from './editor/defaults';
-import { getTemplates, saveTemplate } from './editor/templates';
+import { getTemplates, saveTemplate, snapshotTemplate, placeTemplate } from './editor/templates';
 import { History } from './editor/history';
 import { buildEditorTrack } from './editor/build';
-import { applyHandle, movePieces, mirrorPiece, offsetPiece } from './editor/handles';
+import { applyHandle, movePieces, mirrorPiece } from './editor/handles';
 import { applyPlacementSettings } from './editor/pieceSettings';
 import { ROTATE_STEP_DEG, rotateSelection } from './editor/rotate';
 import { FINISH_H, START_H } from '../game/track';
@@ -229,7 +229,7 @@ function ensureHeight(def: TrackDef): TrackDef {
 
 export default function TrackEditor({ seed, profile, name, driver, onExit, onCommunity }: Props) {
   const [publishOpen, setPublishOpen] = useState(false);
-  const [templateSaveOpen, setTemplateSaveOpen] = useState(false);
+  const [templateSnapshot, setTemplateSnapshot] = useState<ReturnType<typeof snapshotTemplate> | null>(null);
   const [circuit, setCircuit] = useState<Circuit>(() => {
     const draft = loadDraftSync();
     if (draft) return { def: draft, build: 0 };
@@ -423,27 +423,11 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
         const tpl = getTemplates().find(t => t.id === armed);
         if (!tpl || tpl.pieces.length === 0) return;
         
-        // Use the first piece as the anchor
-        const anchor = tpl.pieces[0];
-        // Snap the drop position if grid is on
-        let dropX = world.x;
-        let dropY = world.y;
-        if (grid) {
-          dropX = Math.round(dropX / 25) * 25;
-          dropY = Math.round(dropY / 25) * 25;
+        const toAdd = placeTemplate(tpl, world, grid);
+        if (!toAdd) {
+          setDraftMsg('This template cannot fit inside the track without changing its layout.');
+          return;
         }
-        const anchorX = 'x' in anchor ? anchor.x : ('a' in anchor ? anchor.a[0] : 0);
-        const anchorY = 'y' in anchor ? anchor.y : ('a' in anchor ? anchor.a[1] : 0);
-        const dx = dropX - anchorX;
-        const dy = dropY - anchorY;
-
-        // One shared delta for the whole stamp, so the set-piece keeps its shape and the spacing
-        // between its pieces survives a drop near a wall (#71).
-        const toAdd = movePieces(
-          tpl.pieces.map(p => JSON.parse(JSON.stringify(p)) as Piece),
-          dx,
-          dy,
-        );
         const startLen = circuit.def.pieces.length;
         const select = toAdd.map((_, i) => startLen + i);
         commit((def) => {
@@ -530,37 +514,16 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
   }, [selected, pushHistory]);
 
   const handleSaveTemplate = useCallback(() => {
-    if (selected.length < 2) return;
-    setTemplateSaveOpen(true);
-  }, [selected]);
+    const pieces = selected.map(i => circuit.def.pieces[i]).filter((p): p is Piece => !!p);
+    if (pieces.length < 2) return;
+    setTemplateSnapshot(snapshotTemplate(pieces));
+  }, [selected, circuit.def.pieces]);
 
   const submitTemplateSave = useCallback((name: string, sprite: string) => {
-    const pieces = selected.map(i => JSON.parse(JSON.stringify(circuit.def.pieces[i])));
-    
-    // Find visual bounds to center the template
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const idx of selected) {
-      const b = built.pieceBounds[idx];
-      if (!b) continue;
-      minX = Math.min(minX, b.min.x);
-      minY = Math.min(minY, b.min.y);
-      maxX = Math.max(maxX, b.max.x);
-      maxY = Math.max(maxY, b.max.y);
-    }
-    
-    if (minX !== Infinity) {
-      const cx = (minX + maxX) / 2;
-      const cy = (minY + maxY) / 2;
-      // Unclamped on purpose: a saved template stores its pieces as offsets around the origin, so
-      // half of it is meant to sit at negative x (#71).
-      for (let i = 0; i < pieces.length; i++) {
-        pieces[i] = offsetPiece(pieces[i], -cx, -cy);
-      }
-    }
-    
-    saveTemplate({ name, sprite, pieces });
-    setTemplateSaveOpen(false);
-  }, [selected, circuit.def.pieces, built.pieceBounds]);
+    if (!templateSnapshot || templateSnapshot.pieces.length < 2) return;
+    saveTemplate({ name, sprite, ...templateSnapshot });
+    setTemplateSnapshot(null);
+  }, [templateSnapshot]);
 
   const handleDuplicate = useCallback(() => {
     if (selected.length === 0) return;
@@ -855,9 +818,13 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
     onCommunity?.();
   }, [circuit.def, onCommunity]);
 
+  const editorModalOpen = settingsOpen || templateSnapshot !== null || publishOpen || rules || showNew || confirmClear;
+
   // Keyboard: delete, duplicate, undo/redo, nudge, mirror, escape clears selection / disarms
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Child-owned modals (including coach marks) must also own their keys.
+      if (editorModalOpen || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       if (testing) {
         // While test drive is active its own canvas owns Esc.  We only
         // handle Esc here as a fallback if the test canvas lost focus.
@@ -867,7 +834,6 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
         }
         return;
       }
-      if (settingsOpen) return;
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
@@ -958,7 +924,7 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [settingsOpen, testing, selected, circuit.def.pieces, grid, pushHistory, handleDelete, handleDuplicate, handleMirror, handleRotate, handleNudge, handleUndo, handleRedo]);
+  }, [editorModalOpen, testing, selected, circuit.def.pieces, grid, pushHistory, handleDelete, handleDuplicate, handleMirror, handleRotate, handleNudge, handleUndo, handleRedo]);
 
   const editName = useCallback(
     (value: string) => {
@@ -1273,7 +1239,7 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
         </Dialog>
       )}
       {publishOpen && <PublishDialog def={circuit.def} onClose={() => setPublishOpen(false)} onViewCommunity={onCommunity ? () => { setPublishOpen(false); handleCommunity(); } : undefined} />}
-      {templateSaveOpen && <TemplateSaveDialog onClose={() => setTemplateSaveOpen(false)} onSave={submitTemplateSave} defaultSprite={(PALETTE.flatMap(g => g.tiles).find(t => t.t === circuit.def.pieces[selected[0]]?.t)?.sprite) || 'rail-wood'} />}
+      {templateSnapshot && <TemplateSaveDialog onClose={() => setTemplateSnapshot(null)} onSave={submitTemplateSave} defaultSprite={(PALETTE.flatMap(g => g.tiles).find(t => t.t === templateSnapshot.pieces[0]?.t)?.sprite) || 'rail-wood'} />}
       <CoachMarks def={circuit.def} testing={testing} validating={validating} canShare={!!validation?.canShare} armed={armed} onClose={() => setCoachForced(false)} forceOpen={coachForced} />
     </div>
   );

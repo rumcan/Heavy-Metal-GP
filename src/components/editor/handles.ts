@@ -13,7 +13,8 @@
 import type { Piece } from '../../game/trackdef';
 import { SNAP } from './camera';
 import { W } from '../../game/track';
-import { clampDeltaToExtent, deltaRange, xExtent } from './extent';
+import { clampDeltaToExtent, xExtent } from './extent';
+import { fitGroupTranslation, translatePiece } from './translation';
 import { applyRotateHandle, hasFreeRotation, rotateHandlePoint } from './rotate';
 
 export interface Handle {
@@ -831,9 +832,7 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
  * that is what the endpoint handles are for.
  */
 export function movePiece(piece: Piece, dx: number, dy: number): Piece {
-  // A flipped piece is drawn mirrored, so moving it right on screen means moving its stored x left.
-  const stored = piece.flip ? -dx : dx;
-  return translatePiece(piece, clampDeltaToExtent(xExtent(piece), stored), dy);
+  return translatePiece(piece, fitGroupTranslation([piece], dx) ?? dx, dy);
 }
 
 /**
@@ -842,147 +841,10 @@ export function movePiece(piece: Piece, dx: number, dy: number): Piece {
  * per-piece clamp, the piece nearest the wall stopped while the others slid on and sheared the group.
  */
 export function movePieces(pieces: readonly Piece[], dx: number, dy: number): Piece[] {
-  const applied = sharedDelta(pieces, dx);
-  return pieces.map((piece) => translatePiece(piece, piece.flip ? -applied : applied, dy));
-}
-
-/**
- * Translate a piece with no wall check at all. For storing a saved template's pieces as offsets
- * around the origin, where coordinates outside 0..W are the point — a template is a bag of shapes,
- * not a map, and clamping it here would freeze it against the wall instead of centring it (#71).
- */
-export function offsetPiece(piece: Piece, dx: number, dy: number): Piece {
-  return translatePiece(piece, piece.flip ? -dx : dx, dy);
-}
-
-/** The part of `dx` every piece of a group can absorb at once. */
-function sharedDelta(pieces: readonly Piece[], dx: number): number {
-  let lo = -Infinity;
-  let hi = Infinity;
-  for (const piece of pieces) {
-    const range = deltaRange(xExtent(piece));
-    // No stored x (the bucket), or wider than the track: it cannot constrain the group.
-    if (!range) continue;
-    if (piece.flip) {
-      lo = Math.max(lo, -range.hi);
-      hi = Math.min(hi, -range.lo);
-    } else {
-      lo = Math.max(lo, range.lo);
-      hi = Math.min(hi, range.hi);
-    }
-  }
-  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return dx;
   // Contradictory limits mean something is already out of range: keep the shapes and let validation
   // report it rather than quietly reshaping the group.
-  if (lo > hi) return dx;
-  return Math.max(lo, Math.min(hi, dx));
-}
-
-/** Translate every stored coordinate of a piece. The delta is assumed to be one the piece can absorb. */
-function translatePiece(piece: Piece, dx: number, dy: number): Piece {
-  switch (piece.t) {
-    case 'ramp':
-    case 'ice':
-      return { ...piece, a: [piece.a[0] + dx, piece.a[1] + dy], b: [piece.b[0] + dx, piece.b[1] + dy] };
-    case 'curve':
-      return {
-        ...piece,
-        a: [piece.a[0] + dx, piece.a[1] + dy],
-        c: [piece.c[0] + dx, piece.c[1] + dy],
-        b: [piece.b[0] + dx, piece.b[1] + dy],
-      };
-    case 'loop':
-      return { ...piece, x: piece.x + dx, bottom: piece.bottom + dy };
-    case 'hoop':
-      return { ...piece, x: piece.x + dx, y: piece.y + dy };
-    case 'wrecker':
-      return { ...piece, pivot: [piece.pivot[0] + dx, piece.pivot[1] + dy] };
-    case 'pad':
-      return { ...piece, x: piece.x + dx, y: piece.y + dy };
-    case 'boost':
-      return { ...piece, x: piece.x + dx, y: piece.y + dy };
-    case 'spinner':
-      return { ...piece, x: piece.x + dx, y: piece.y + dy };
-    case 'breakable':
-    case 'wall':
-    case 'block':
-    // ---- MB-10A ----
-    case 'barricade':
-    case 'crumble':
-    case 'trapdoor':
-    case 'switch':
-      return { ...piece, x: piece.x + dx, y: piece.y + dy };
-    // ---- MB-10B ----
-    case 'crusher':
-    case 'mace':
-      return { ...piece, x: piece.x + dx, y: piece.y + dy };
-    case 'blade':
-      return { ...piece, pivot: [piece.pivot[0] + dx, piece.pivot[1] + dy] as [number, number] };
-    case 'saw':
-      return {
-        ...piece,
-        a: [piece.a[0] + dx, piece.a[1] + dy] as [number, number],
-        b: [piece.b[0] + dx, piece.b[1] + dy] as [number, number],
-      };
-    case 'boulder':
-      return { ...piece, pts: piece.pts.map(([x, y]) => [x + dx, y + dy] as [number, number]) };
-    case 'tunnel':
-      return { ...piece, x: piece.x + dx, y: piece.y + dy, exit: [piece.exit[0] + dx, piece.exit[1] + dy] as [number, number] };
-    case 'peg':
-    case 'ppeg':
-      return { ...piece, x: piece.x + dx, y: piece.y + dy };
-    case 'itembox':
-      return { ...piece, x: piece.x + dx, y: piece.y + dy };
-    // ---- MB-10C ----
-    case 'wheel':
-    case 'seesaw':
-      return { ...piece, x: (piece as unknown as { x: number }).x + dx, y: (piece as unknown as { y: number }).y + dy } as Piece;
-    // ---- MB-10D ----
-    case 'cannon':
-    case 'catapult':
-    case 'flipper':
-    case 'sling':
-      return { ...piece, x: (piece as unknown as { x: number }).x + dx, y: (piece as unknown as { y: number }).y + dy } as Piece;
-    case 'scoop': {
-      const sc = piece;
-      return {
-        ...sc,
-        x: sc.x + dx,
-        y: sc.y + dy,
-        ...(sc.exit ? { exit: [sc.exit[0] + dx, sc.exit[1] + dy, sc.exit[2]] as [number, number, number] } : {}),
-      } as Piece;
-    }
-    case 'wind':
-    case 'mud':
-    case 'pool': {
-      return {
-        ...piece,
-        a: [piece.a[0] + dx, piece.a[1] + dy] as [number, number],
-        b: [piece.b[0] + dx, piece.b[1] + dy] as [number, number],
-      } as Piece;
-    }
-    case 'magnet':
-    case 'geyser':
-    case 'trampoline':
-    case 'turnstile':
-    case 'targets':
-    case 'vortex':
-      return { ...piece, x: piece.x + dx, y: piece.y + dy } as Piece;
-    case 'platform':
-      return { ...piece, ax: piece.ax + dx, ay: piece.ay + dy, bx: piece.bx + dx, by: piece.by + dy } as Piece;
-    case 'screw':
-    case 'conveyor':
-    case 'bridge': {
-      const p2 = piece as unknown as { a: readonly [number, number]; b: readonly [number, number] };
-      return {
-        ...piece,
-        a: [p2.a[0] + dx, p2.a[1] + dy] as [number, number],
-        b: [p2.b[0] + dx, p2.b[1] + dy] as [number, number],
-      } as Piece;
-    }
-    case 'bucket':
-      return { ...piece, y: piece.y + dy };
-  }
+  const applied = fitGroupTranslation(pieces, dx) ?? dx;
+  return pieces.map((piece) => translatePiece(piece, applied, dy));
 }
 
 /** Mirror a piece horizontally about the centre line (x → W - x, dir.x → -dir.x, flip toggle). */

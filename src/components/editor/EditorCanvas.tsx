@@ -10,7 +10,7 @@
  * pointer handlers write it) so a drag stays smooth.  Only the throttled
  * status and the React `selected`/`armed` props go through the store.
  */
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { render } from '../../game/render';
 import type { Game } from '../../game/engine';
 import type { Track } from '../../game/track';
@@ -22,7 +22,9 @@ import { hitPieceAt, piecesInBox } from './build';
 import { handlesFor } from './handles';
 import { defaultPiece } from './defaults';
 import { tileFor } from './palette';
-import type { Piece } from '../../game/trackdef';
+import { Builder } from '../../game/track';
+import { replayPiece, type Piece } from '../../game/trackdef';
+import { getTemplates, placeTemplate } from './templates';
 // MB-09 handle knobs — Blizzard style, easily replaceable PNGs
 
 /**
@@ -139,6 +141,9 @@ export default function EditorCanvas(props: Props) {
   const rulerRef = useRef(ruler);
   const statusRef = useRef(onStatus);
   const armedRef = useRef(armed);
+  const armedTemplate = useMemo(() => getTemplates().find(t => t.id === armed), [armed]);
+  const templateRef = useRef(armedTemplate);
+  templateRef.current = armedTemplate;
   const trackRef = useRef(track);
   const b2pRef = useRef(bodyToPiece);
   const pbRef = useRef(pieceBounds);
@@ -543,6 +548,7 @@ export default function EditorCanvas(props: Props) {
     };
 
     const onKey = (event: KeyboardEvent) => {
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       const target = event.target as HTMLElement | null;
       if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return;
       if (event.ctrlKey || event.metaKey || event.altKey) return;
@@ -728,6 +734,7 @@ export default function EditorCanvas(props: Props) {
       ctx.restore();
     };
 
+    let templateGhost: { key: string; bodies: Track['bodies'] | null } | null = null;
     const drawGhost = (ctx: CanvasRenderingContext2D, overlay: OverlayView) => {
       const armedT = armedRef.current;
       const cur = cursor;
@@ -767,6 +774,38 @@ export default function EditorCanvas(props: Props) {
         ctx.stroke();
         for (const pt of pts) dot(pt, 5);
       };
+      if (armedT.startsWith('template-')) {
+        const template = templateRef.current;
+        const key = `${armedT}:${cur.x}:${cur.y}:${gridRef.current}`;
+        if (templateGhost?.key !== key) {
+          const pieces = template ? placeTemplate(template, cur, gridRef.current) : null;
+          const builder = new Builder(0);
+          if (pieces) for (const piece of pieces) replayPiece(builder, piece);
+          templateGhost = { key, bodies: pieces ? builder.bodies : null };
+        }
+        if (templateGhost.bodies) {
+          for (const body of templateGhost.bodies) {
+            ctx.beginPath();
+            body.vertices.forEach((vertex, index) => {
+              const p = toScreen(vertex);
+              if (index === 0) ctx.moveTo(p.x, p.y);
+              else ctx.lineTo(p.x, p.y);
+            });
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+          }
+        } else {
+          // Explicit invalid-placement marker for groups wider than the track.
+          const c = toScreen(cur);
+          ctx.beginPath();
+          ctx.moveTo(c.x - 10, c.y - 10); ctx.lineTo(c.x + 10, c.y + 10);
+          ctx.moveTo(c.x + 10, c.y - 10); ctx.lineTo(c.x - 10, c.y + 10);
+          ctx.stroke();
+        }
+        ctx.restore();
+        return;
+      }
       if (!ghost) {
         dot(s, 6);
         ctx.restore();

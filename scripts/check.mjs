@@ -12,7 +12,7 @@ const commands = [
     // Map builder (MB-01): the track definition format — recording, rebuild identity, validation.
     'tests/trackdef.test.ts',
     // Map builder (MB-02): the editor shell — the camera's maths, the palette, and what the shell paints.
-    'tests/editor-ui.test.ts', 'tests/map-builder-audit.test.ts', 'tests/map-elements-runtime.test.ts', 'tests/mb10e.test.ts', 'tests/mb10f.test.ts',
+    'tests/editor-ui.test.ts', 'tests/editor-templates.test.ts', 'tests/map-builder-audit.test.ts', 'tests/editor-bounds.test.ts', 'tests/map-elements-runtime.test.ts', 'tests/mb10e.test.ts', 'tests/mb10f.test.ts',
     // Map builder (#71): edge placement, moving against a boundary, and the placement prompts' bounds.
     'tests/placement-bounds.test.ts',
     // Ranked racing (RK-01): multi-player Elo, tiers, the stored file and the wire. Pure — no SDK, no DOM.

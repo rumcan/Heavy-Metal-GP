@@ -12,8 +12,7 @@ import type { Piece } from '../../game/trackdef';
 import type { PieceType } from './palette';
 import type { Point } from './camera';
 import { W } from '../../game/track';
-import { fitDelta, xExtent } from './extent';
-import { movePiece } from './handles';
+import { fitGroupTranslation, translatePiece } from './translation';
 
 const SNAP = 25;
 const snapVal = (v: number) => Math.round(v / SNAP) * SNAP;
@@ -35,8 +34,8 @@ function snapPoint(p: Point): Point {
  */
 export function defaultPiece(type: PieceType, at: Point, snap = false): Piece {
   const piece = buildDefault(type, at, snap);
-  const dx = fitDelta(xExtent(piece));
-  return dx === 0 ? piece : movePiece(piece, dx, 0);
+  const dx = fitGroupTranslation([piece], 0) ?? 0;
+  return dx === 0 ? piece : translatePiece(piece, dx, 0);
 }
 
 /** The piece the click describes, before it is fitted into the track. */
