@@ -193,10 +193,10 @@ test('Editor grid: every snap is a whole 25 units, and the lattice keeps up with
 // ══════════════════════════════════════════════════════════════════════════
 
 test('Palette: the ticket\'s groups, every piece a def can store, and the race art', () => {
-  assert.deepEqual(PALETTE.map((g) => g.label), ['Rails', 'Features', 'Pegs', 'Walls', 'Secrets', 'Danger', 'Movers', 'Launchers']);
-  assert.deepEqual(PALETTE.map((g) => g.tiles.length), [4, 7, 5, 2, 7, 6, 6, 6]);
+  assert.deepEqual(PALETTE.map((g) => g.label), ['Rails', 'Features', 'Pegs', 'Walls', 'Secrets', 'Danger', 'Movers', 'Launchers', 'Fields & surfaces', 'Big set pieces']);
+  assert.deepEqual(PALETTE.map((g) => g.tiles.length), [4, 7, 5, 2, 7, 6, 6, 6, 5, 5]);
   const types = [...new Set(TILES.map((tile) => tile.t))].sort();
-  assert.deepEqual(types, ['barricade', 'blade', 'block', 'boost', 'boulder', 'breakable', 'bridge', 'bucket', 'cannon', 'catapult', 'conveyor', 'crumble', 'crusher', 'curve', 'flipper', 'hoop', 'ice', 'itembox', 'loop', 'mace', 'pad', 'peg', 'ppeg', 'ramp', 'saw', 'scoop', 'screw', 'seesaw', 'sling', 'spinner', 'switch', 'trapdoor', 'tunnel', 'wall', 'wheel', 'wrecker'], 'the palette should cover exactly the def format\'s placeable pieces');
+  assert.deepEqual(types, ['barricade', 'blade', 'block', 'boost', 'boulder', 'breakable', 'bridge', 'bucket', 'cannon', 'catapult', 'conveyor', 'crumble', 'crusher', 'curve', 'flipper', 'geyser', 'hoop', 'ice', 'itembox', 'loop', 'mace', 'magnet', 'mud', 'pad', 'peg', 'platform', 'pool', 'ppeg', 'ramp', 'saw', 'scoop', 'screw', 'seesaw', 'sling', 'spinner', 'switch', 'targets', 'trampoline', 'trapdoor', 'tunnel', 'turnstile', 'vortex', 'wall', 'wheel', 'wind', 'wrecker'], 'the palette should cover exactly the def format\'s placeable pieces');
   const ids = TILES.map((tile) => tile.id);
   assert.equal(new Set(ids).size, ids.length, 'two tiles share an id');
   // A piece type may have variants (the Peggle peg colours): the plain tile's id is the bare type and it has no
@@ -211,7 +211,7 @@ test('Palette: the ticket\'s groups, every piece a def can store, and the race a
   assert.equal(tileFor('wrecker')?.label, 'Wrecking ball');
 
   const markup = renderToStaticMarkup(createElement(PiecePalette, { active: 'spinner', onPick() {} }));
-  for (const group of PALETTE) assert.ok(markup.includes(`>${group.label}<`), `the ${group.label} group is missing from the palette`);
+  for (const group of PALETTE) assert.ok(markup.includes(`>${group.label.replace('&', '&amp;')}<`), `the ${group.label} group is missing from the palette`);
   assert.equal((markup.match(/class="palette-tile[ "]/g) ?? []).length, TILES.length, 'a tile did not render');
   assert.equal((markup.match(/<img/g) ?? []).length, TILES.filter((tile) => tile.sprite).length, 'every tile with art should show it');
   assert.ok(markup.includes('class="palette-tile armed" aria-pressed="true"'), 'the armed tile does not announce itself');
@@ -243,7 +243,7 @@ test('Workshop: the shell renders the canvas, the toolbar, the readouts and the 
   for (const chip of ['POINTER OFF THE CIRCUIT', 'VIEW ', 'LENGTH ', 'PIECES', 'NO PIECE ARMED']) assert.ok(markup.includes(chip), `the status bar is missing "${chip}"`);
   assert.ok(markup.includes('>Fit</button>'), 'no fit-to-circuit control');
   // Every palette group came along with the shell.
-  for (const group of PALETTE) assert.ok(markup.includes(`>${group.label}<`), `the ${group.label} group is missing`);
+  for (const group of PALETTE) assert.ok(markup.includes(`>${group.label.replace('&', '&amp;')}<`), `the ${group.label} group is missing`);
 });
 
 test('Workshop: the course map shows the circuit and the camera window', () => {

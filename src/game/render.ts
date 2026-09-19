@@ -3,6 +3,7 @@ import { Game, Marble } from './engine';
 import { hingeTimerState, hingeIsOpen, trapdoorWarn, pistonState, beltDir } from './elements';
 import { meta, W, cannonAim, catapultAngle, flipperAngle } from './track';
 import { MARBLE_RADIUS, ITEM_INFO, skinFor, themeIdFor } from './types';
+import { ballFor, bodyFrame, currentSkin, drawRail, drawSprite, drawStrip, setSkin, sprite } from './sprites';
 import repeatingBgUrl from '../assets/bg/repeating.webp';
 import mineEntranceUrl from '../assets/bg/mine-entrance.webp';
 import mineUrl from '../assets/bg/mine.webp';
