@@ -527,46 +527,6 @@ export class Game {
     });
   }
 
-  private ignoreGoneCrumble(_m: Marble, b: Matter.Body, pair: Matter.Pair): boolean {
-    const md = meta(b);
-    if (md?.kind !== 'crumble') return false;
-    const ratio = (md.hp ?? 1) / (md.maxHp ?? 1);
-    if (ratio >= 0.999) return false;
-
-    const { min, max } = b.bounds;
-    const w = max.x - min.x, h = max.y - min.y;
-    const rows = Math.max(2, Math.round(h / 22));
-    const cols = Math.max(1, Math.round(w / 30));
-
-    let allGone = true;
-    const supports = pair.collision.supports;
-    if (!supports || supports.length === 0) return false;
-
-    for (const contact of supports) {
-      const r = Math.floor((contact.y - min.y) / (h / rows));
-      const c = Math.floor((contact.x - min.x) / (w / cols));
-      if (r >= 0 && r < rows && c >= 0 && c < cols) {
-        const permanent = 1 - ratio;
-        const seed = r * 7 + c;
-        const jitter = ((b.id * 13 + seed * 17) % 31) / 31;
-        const gone = (r + 1) / rows + jitter * 0.35 < permanent * 1.15;
-        if (!gone) {
-          allGone = false;
-          break;
-        }
-      } else {
-        allGone = false;
-        break;
-      }
-    }
-
-    if (allGone) {
-      pair.isActive = false;
-      return true;
-    }
-    return false;
-  }
-
   private onCollisionStart(e: Matter.IEventCollision<Matter.Engine>) {
     for (const pair of e.pairs) {
       const a = pair.bodyA;
@@ -574,11 +534,9 @@ export class Game {
       const ma = this.marbleOf(a);
       const mb = this.marbleOf(b);
       if (ma && !mb) {
-        if (this.ignoreGoneCrumble(ma, b, pair)) continue;
         this.contactSurface(ma, b, pair);
         this.marbleHits(ma, b);
       } else if (mb && !ma) {
-        if (this.ignoreGoneCrumble(mb, a, pair)) continue;
         this.contactSurface(mb, a, pair);
         this.marbleHits(mb, a);
       }
@@ -1182,7 +1140,6 @@ export class Game {
       const m = ma ?? mb;
       const other = ma ? b : a;
       if (!m || (ma && mb) || m.frozen || m.finishedAt !== null || !this.gateOpen) continue;
-      if (this.ignoreGoneCrumble(m, other, pair)) continue;
       const md = meta(other);
       if (!md) continue;
       // MB-10B skins paint contact flashes; reuse the one-shove-per-pass debounce so a marble

@@ -151,3 +151,24 @@ test('Water-wheel speed and ride duration are independent, exact and shareable',
   assert.equal(legacy.pieces[0].t, 'wheel');
   assert.ok(legacy.pieces[0].t === 'wheel' && !legacy.pieces[0].rideMs);
 });
+
+test('Crumbling wall gaps pass marbles through without invisible collision blocks', async () => {
+  const { meta } = await import('../src/game/track');
+  const game = singlePieceGame({ t: 'crumble', x: 450, y: 1500, w: 120, h: 220, tough: 6 });
+  try {
+    game.openGate();
+    const bricks = game.track.bodies.filter(b => meta(b).kind === 'crumble');
+    assert.equal(bricks.length, 40);
+    for (const brick of bricks) if (meta(brick).crumbleTile!.row < 4) game.destroyBody(game.track.bodies.indexOf(brick));
+    assert.equal(bricks.filter(b => meta(b).destroyed).length, 16);
+    Matter.Body.setPosition(game.player.body, { x: 365, y: 1420 });
+    Matter.Body.setVelocity(game.player.body, { x: 12, y: 0 });
+    let farthest = 0;
+    for (let frame = 0; frame < 60; frame++) {
+      game.step(PHYSICS_STEP);
+      farthest = Math.max(farthest, game.player.body.position.x);
+    }
+    assert.ok(farthest > 535, `marble stopped at an empty brick: x=${farthest}`);
+    assert.equal(game.player.recoveries, 0);
+  } finally { game.destroy(); }
+});

@@ -1760,61 +1760,27 @@ function drawBarricade(ctx: CanvasRenderingContext2D, b: Matter.Body, md: Return
 }
 
 /** Weak stone the pack knocks down over the race: bricks, cracks and dust. */
-function drawCrumble(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, game: Game, t: number) {
+function drawCrumble(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, _t: number) {
   const { min, max } = b.bounds;
   const w = max.x - min.x, h = max.y - min.y;
-  const ratio = (md.hp ?? 1) / (md.maxHp ?? 1);
-  // shake while the impact is fresh
-  const since = game.time - (md.hitAt ?? -1e9);
-  const shake = since < 300 ? (1 - since / 300) * 2.2 : 0;
-  ctx.save();
-  if (shake > 0) ctx.translate(Math.sin(t / 16) * shake, Math.cos(t / 19) * shake * 0.6);
   const img = sprite('crumble');
-  const rows = Math.max(2, Math.round(h / 22));
-  const cols = Math.max(1, Math.round(w / 30));
-  const bw = w / cols, bh = h / rows;
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const off = r % 2 ? bw / 2 : 0;
-      const bx = min.x + c * bw + off;
-      if (bx > max.x) continue;
-      // bricks fall away as the wall wears: lowest rows go first, then in from the edges
-      const permanent = 1 - ratio;
-      const gone = (r + 1) / rows + bodyJitter(b, r * 7 + c) * 0.35 < permanent * 1.15;
-      if (gone) {
-        // rubble shadow where a brick used to be
-        ctx.fillStyle = 'rgba(10,14,22,0.5)';
-        ctx.fillRect(bx + 1.5, min.y + r * bh + 1.5, bw - 3, bh - 3);
-        continue;
-      }
-      if (img) {
-        const sw = img.naturalWidth / cols, sh = img.naturalHeight / rows;
-        ctx.drawImage(img, c * sw, r * sh, sw, sh, bx, min.y + r * bh, bw, bh);
-      } else {
-        ctx.fillStyle = r % 2 ? '#7d7466' : '#8d8474';
-        ctx.fillRect(bx + 1.5, min.y + r * bh + 1.5, bw - 3, bh - 3);
-        ctx.strokeStyle = 'rgba(30,26,20,0.6)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(bx + 1.5, min.y + r * bh + 1.5, bw - 3, bh - 3);
-      }
-    }
+  const tile = md.crumbleTile ?? { row: 0, col: 0, rows: 1, cols: 1 };
+  if (img) {
+    const sw = img.naturalWidth / tile.cols, sh = img.naturalHeight / tile.rows;
+    ctx.drawImage(img, tile.col * sw, tile.row * sh, sw, sh, min.x, min.y, w, h);
+  } else {
+    ctx.fillStyle = tile.row % 2 ? '#7d7466' : '#8d8474';
+    ctx.fillRect(min.x, min.y, w, h);
   }
-  // cracks across the survivors
-  if (ratio < 0.999) {
-    ctx.strokeStyle = 'rgba(20,16,12,0.9)';
-    ctx.lineWidth = 1.6;
-    const n = Math.ceil((1 - ratio) * 8);
-    for (let i = 0; i < n; i++) {
-      const sx = min.x + ((i * 37 + 11) % Math.max(10, w - 10)) + 5;
-      const sy = min.y + ((i * 53 + 17) % Math.max(10, h - 10)) + 5;
-      ctx.beginPath();
-      ctx.moveTo(sx, sy);
-      ctx.lineTo(sx + 6, sy + 10);
-      ctx.lineTo(sx - 3 + bodyJitter(b, i) * 8, sy + 20);
-      ctx.stroke();
-    }
+  if ((md.hp ?? 1) < (md.maxHp ?? 1)) {
+    ctx.strokeStyle = '#302a24';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(min.x + w * 0.3, min.y);
+    ctx.lineTo(min.x + w * 0.6, min.y + h * 0.5);
+    ctx.lineTo(min.x + w * 0.4, max.y);
+    ctx.stroke();
   }
-  ctx.restore();
 }
 
 /** Both ends of a cliff burrow: the entrance hole at the sensor, the exit at md.exit, glowing. */

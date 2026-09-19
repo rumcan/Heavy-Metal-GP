@@ -216,6 +216,7 @@ export interface Meta {
   surface?: RampSurface;
   itemDrop?: ItemType;
   destroyed?: boolean;
+  crumbleTile?: { row: number; col: number; rows: number; cols: number };
   /** Rail ends that get an iron cap in the skin; curves only cap their outer ends. */
   caps?: Matter.Vector[];
   /** Wrecking ball swing: pivot, chain length, amplitude (rad), angular speed and phase. */
@@ -692,14 +693,21 @@ export class Builder {
    * counts triple. Ghost phases through without opening it.
    */
   crumble(cx: number, cy: number, w: number, h: number, tough = 6) {
-    const hp = tough * massForWeight(10) * 3.2;
-    const b = Bodies.rectangle(this.X(cx), cy, w, h, {
-      ...STATIC_OPTS, label: 'crumble',
-      collisionFilter: { category: CAT_FRAGILE, mask: 0xffff, group: 0 },
-    });
-    b.plugin = { kind: 'crumble', hp, maxHp: hp, tough } as Meta;
-    this.bodies.push(b);
-    return b;
+    const rows = Math.max(2, Math.round(h / 22));
+    const cols = Math.max(1, Math.round(w / 30));
+    const bw = w / cols, bh = h / rows;
+    const hp = tough * massForWeight(10) * 3.2 / Math.sqrt(rows * cols);
+    let first: Matter.Body | undefined;
+    for (let row = 0; row < rows; row++) for (let col = 0; col < cols; col++) {
+      const b = Bodies.rectangle(this.X(cx - w / 2 + (col + 0.5) * bw), cy - h / 2 + (row + 0.5) * bh, bw, bh, {
+        ...STATIC_OPTS, label: 'crumble',
+        collisionFilter: { category: CAT_FRAGILE, mask: 0xffff, group: 0 },
+      });
+      b.plugin = { kind: 'crumble', hp, maxHp: hp, tough, crumbleTile: { row, col: this.flip ? cols - 1 - col : col, rows, cols } } as Meta;
+      this.bodies.push(b);
+      first ??= b;
+    }
+    return first!;
   }
 
   /**
@@ -2265,3 +2273,4 @@ export function assembleTrack(b: Builder, seed: number, profile: TrackProfile): 
     wreckers: b.wreckers,
   };
 }
+
