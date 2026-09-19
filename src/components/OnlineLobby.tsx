@@ -18,6 +18,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowRight, ArrowUpRight, Check, Copy, Lock, LockOpen } from 'lucide-react';
 import type { RaceRoom } from '../net/transport';
+import { appendChat, canSay, chatLine, chatMessage, offCooldown } from '../net/chat';
+import type { ChatLine } from '../net/chat';
+import LobbyChat from './LobbyChat';
 import {
   canStart,
   circuitIndexOf,
@@ -140,6 +143,18 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
   const [lobbyOpen, setLobbyOpen] = useState(true);
   /** RK-05: the host's word that this lobby is a rated one (absent reads false). */
   const [hostRated, setHostRated] = useState(false);
+  /**
+   * MP-CHAT: the lobby's log.
+   *
+   * A screen-local list, and deliberately not a room state: the room is a
+   * relay, not an archive, and a line somebody typed thirty seconds before
+   * you joined is not a message you were sent. Whoever is in the lobby when
+   * it is said hears it; that is the whole contract.
+   */
+  const [chat, setChat] = useState<ChatLine[]>([]);
+  const chatSeq = useRef(0);
+  /** MP-CHAT: local clock when this screen last sent a line (the cooldown). */
+  const lastSaidAt = useRef(-Infinity);
 
   const isHost = welcome ? welcome.hostId === room.playerId : room.isCreator;
   const seats = (isHost ? grid ?? welcome?.seats : lobbySeats ?? welcome?.seats) ?? [];
@@ -284,6 +299,26 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
     }
   };
 
+  /**
+   * MP-CHAT: say a line, and put it on this screen at once.
+   *
+   * The room relays every line to everybody — this screen included — so the
+   * local copy is printed on the way out and the echo is dropped. The line
+   * appears the instant Enter goes down whether or not the platform's
+   * `broadcast` reaches the speaker, and it never appears twice.
+   */
+  const say = useCallback((text: string): boolean => {
+    if (!canSay(text)) return false;
+    const now = Date.now();
+    // A held Enter is not a conversation. The room would relay every one of
+    // them; this is the courtesy of not asking it to.
+    if (!offCooldown(now, lastSaidAt.current)) return false;
+    lastSaidAt.current = now;
+    setChat((log) => appendChat(log, chatLine(++chatSeq.current, room.playerId, text, now)));
+    link.send(chatMessage(text));
+    return true;
+  }, [link, room.playerId]);
+
   const handle = useCallback((msg: RaceProtocol) => {
     switch (msg.type) {
       case 'welcome': {
@@ -348,6 +383,15 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
           countdownAt: msg.countdownAt,
           rated: latest.current.isHost ? lobbyIsRated(autoStart, raceSettings) : latest.current.hostRated,
         });
+        return;
+      }
+      case 'chat': {
+        // MP-CHAT. The room stamped the author, so the line can be signed
+        // with that driver's own name and livery. Mine comes back as well —
+        // it is already on the screen (see `say`).
+        const from = msg.from;
+        if (!from || from === room.playerId) return;
+        setChat((log) => appendChat(log, chatLine(++chatSeq.current, from, msg.text, Date.now())));
         return;
       }
       case 'reject':
@@ -612,6 +656,16 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
             onToggleAI={toggleBench}
             peers={peers}
           />}
+      </section>
+
+      {/* MP-CHAT: the lobby's own voice. Every driver in the room may talk;
+          nobody outside it ever hears a line. */}
+      <section className="fit-pane lobby-chat-pane" aria-labelledby="lobby-chat-title">
+        <div className="section-topline">
+          <span className="eyebrow" id="lobby-chat-title"><b>04</b> PIT WALL</span>
+          <span className="muted">Everybody</span>
+        </div>
+        <LobbyChat lines={chat} seats={seats} myPlayerId={room.playerId} onSend={say} disabled={seats.length === 0} />
       </section>
     </main>
 

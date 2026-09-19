@@ -373,6 +373,45 @@ export interface StartMsg {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// Chat — drivers talking (MP-CHAT)
+//
+// The one frame a GUEST may say to EVERYBODY. Everything else a guest owns
+// (`intent`, `resync`, `ready`) travels to the host alone, because the host
+// is the simulation and a guest has no business telling a peer what the
+// world looks like. Talk is different: it is not the world, it is the
+// driver, and the host is not the only one allowed to have a mouth.
+//
+// So the ROOM relays it — stamped, like every guest frame, because the SDK
+// hands a client the payload alone and a line with no author is not a
+// conversation. It is never simulated, never replayed and never stored: a
+// driver who joins late simply has not heard it.
+//
+// ADDITIVE, and that is why `PROTOCOL_VERSION` does not move for it: nothing
+// in the simulation reads a line, so a build that has never heard of `chat`
+// refuses it as an unknown type and races on exactly as before (muted), and a
+// room that has never heard of it drops it. A version bump would reload
+// everybody out of a live race to protect a conversation — the wrong trade
+// for a frame that cannot desync a marble.
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * The longest line the wire will carry.
+ *
+ * Long enough for a sentence, short enough that a line is a bubble and not a
+ * paragraph: in a race it is drawn over a marble, and a wall of text over a
+ * ball is not a speech bubble. The lobby input is clamped to the same number,
+ * so what is typed is what travels.
+ */
+export const MAX_CHAT_LENGTH = 120;
+
+/** client → server → everyone. One driver, one line. */
+export interface ChatMsg extends RelayedFrame {
+  type: 'chat';
+  /** The line itself. Trimmed and length-capped by the wire. */
+  text: string;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // Steady state: the 20 Hz frame
 // ══════════════════════════════════════════════════════════════════════════
 
@@ -851,6 +890,7 @@ export type RaceProtocol =
   | LobbyMsg
   | ReadyMsg
   | StartMsg
+  | ChatMsg
   | StateMsg
   | EventsMsg
   | SnapshotMsg
@@ -883,6 +923,7 @@ export const RACE_MESSAGE_TYPES = [
   'lobby',
   'ready',
   'start',
+  'chat',
   'state',
   'events',
   'snapshot',
@@ -1774,6 +1815,16 @@ export function validateMessage(msg: unknown, opts: ValidateOptions = {}): Proto
       return typeof msg.playerId === 'string' && msg.playerId.length > 0 ? null : bad('Kick names no driver.');
     case 'start':
       return isNumber(msg.countdownAt) ? null : bad('Start has no countdown time.');
+    // MP-CHAT. A line is a string, it is not empty, and it is not a speech.
+    // Anything longer than the cap is REFUSED rather than cut: a half-truth
+    // that reads as the whole sentence is worse than a line that never
+    // arrived, and both ends clamp before they send.
+    case 'chat': {
+      if (typeof msg.text !== 'string') return bad('Chat has no line.');
+      if (msg.text.trim().length === 0) return bad('Chat is empty.');
+      if (msg.text.length > MAX_CHAT_LENGTH) return bad(`Chat is longer than ${MAX_CHAT_LENGTH} characters.`);
+      return validateFrom(msg);
+    }
     case 'state':
       return validateState(msg);
     case 'events':

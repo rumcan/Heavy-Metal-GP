@@ -51,6 +51,8 @@ after(() => server.close());
 const OnlinePanel = (await server.ssrLoadModule('/src/components/OnlinePanel.tsx')).default;
 const OnlineLobby = (await server.ssrLoadModule('/src/components/OnlineLobby.tsx')).default;
 const LobbyGrid = (await server.ssrLoadModule('/src/components/LobbyGrid.tsx')).default;
+const LobbyChat = (await server.ssrLoadModule('/src/components/LobbyChat.tsx')).default;
+const RaceBubbles = (await server.ssrLoadModule('/src/components/RaceBubbles.tsx')).default;
 const lobby_ = await server.ssrLoadModule('/src/net/lobby.ts');
 const { dressGrid, fileGarage, rosterOf, setReady } = lobby_ as typeof import('../src/net/lobby');
 const season = (await server.ssrLoadModule('/src/game/season.ts')) as typeof import('../src/game/season');
@@ -149,6 +151,81 @@ test('MP-06 lobby: the guest screen shows the same code, a Ready toggle and no S
   assert.doesNotMatch(html, /Start the race/, 'only the host drops the lights');
   assert.match(html, /Ready/);
   assert.match(html, /Picked by/, 'and the circuit is the host\'s call');
+});
+
+// ── MP-CHAT ───────────────────────────────────────────────────────────────
+// The lobby's pit wall. A component that throws on first paint is a lobby
+// nobody can talk in, and the painting is the one half a static render can
+// prove (no effects run here, so nothing is sent and nothing is received).
+
+const chat = await server.ssrLoadModule('/src/net/chat.ts') as typeof import('../src/net/chat');
+
+test('MP-CHAT lobby: the pit wall is on the screen, with a log, a field and Send', () => {
+  const html = lobby(HOST);
+  assert.match(html, /PIT WALL/, 'the chat is a place in the lobby, not a button in a corner');
+  assert.match(html, /lobby-chat-log/);
+  assert.match(html, /Message the lobby/, 'the field is labelled for a screen reader');
+  assert.match(html, /Send message/);
+  assert.match(html, new RegExp(`maxLength="${chat.MAX_CHAT_LENGTH}"`), 'the field is clamped to what the wire carries');
+  // An empty room is not a conversation yet, and the screen says so rather
+  // than showing a blank panel.
+  assert.match(html, /Nobody has said anything yet/);
+});
+
+test('MP-CHAT lobby: a line is signed with the driver on the grid, and my own says YOU', () => {
+  const seats = grid();
+  const mine = chat.chatLine(1, HOST, 'Boxes at turn three', T0);
+  const theirs = chat.chatLine(2, GUEST, 'Watch the oil', T0 + 1000);
+  const html = renderToStaticMarkup(
+    createElement(LobbyChat, { lines: [mine, theirs], seats, myPlayerId: HOST, onSend: () => true }),
+  );
+  const lines = html.match(/<li class="[^"]*"/g) ?? [];
+  assert.equal(lines.length, 2, 'one row per line, in arrival order');
+  assert.match(html, /YOU/, 'my own line is marked, not just coloured');
+  // The guest files a garage, so their line reads the name the host filed —
+  // the name on the grid, not whatever a frame felt like claiming.
+  assert.match(html, /SPROCKET/);
+  assert.match(html, /Boxes at turn three/);
+  assert.match(html, /Watch the oil/);
+  assert.match(html, /lobby-chat-livery/, 'each line carries the speaker’s livery');
+  // The guest's livery travels with the line, so a name reads in colour.
+  assert.match(html, /#22d3ee/i);
+});
+
+test('MP-CHAT race: a line becomes a bubble over the marble that said it', () => {
+  // Mid-race there is no panel and no scrollback — one bubble per marble,
+  // carrying the seat that the race loop pins it to.
+  const html = renderToStaticMarkup(
+    createElement(RaceBubbles, {
+      bubbles: [
+        { id: 1, seat: 3, text: 'Boxes at turn three', name: 'SPROCKET', color: '#22d3ee' },
+        { id: 2, seat: 0, text: 'Watch the oil', name: 'YOU', color: '#d63e2e' },
+      ],
+    }),
+  );
+  assert.equal((html.match(/class="race-bubble"/g) ?? []).length, 2, 'one bubble per line');
+  // The seat is how the loop finds the marble: it is the marble's own id.
+  assert.match(html, /data-seat="3"/);
+  assert.match(html, /data-seat="0"/);
+  assert.match(html, /Boxes at turn three/);
+  assert.match(html, /YOU/, 'my own bubble says who it is');
+  assert.match(html, /SPROCKET/);
+  // Each bubble is signed in the speaker's livery, so a line reads in colour.
+  assert.match(html, /--team:\s*#22d3ee/i);
+  assert.match(html, /--team:\s*#d63e2e/i);
+  // A bubble is an announcement, not a trap: it never eats a click or a nudge.
+  assert.match(html, /aria-live="polite"/);
+  // An empty race is a race with nothing said.
+  assert.doesNotMatch(renderToStaticMarkup(createElement(RaceBubbles, { bubbles: [] })), /race-bubble"/);
+});
+
+test('MP-CHAT lobby: a voice with no seat still gets a line, just not a name', () => {
+  const seats = grid();
+  const stranger = chat.chatLine(1, 'player-who-left', 'anybody there?', T0);
+  const html = renderToStaticMarkup(createElement(LobbyChat, { lines: [stranger], seats, myPlayerId: HOST, onSend: () => true }));
+  assert.match(html, /anybody there\?/);
+  assert.match(html, /RIVAL/, 'a driver the grid cannot place is a rival, not a blank');
+  assert.doesNotMatch(html, /YOU/);
 });
 
 test('MP-06 lobby: the grid is ten seats — drivers with a face and a livery, machines marked AI', () => {

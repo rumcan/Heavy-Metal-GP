@@ -154,6 +154,29 @@ a guest owns — and the room STAMPS that frame with `from`, because the SDK han
 a client the payload alone, with no sender. A guest cannot forge another seat's
 nudges or file another driver's garage.
 
+**Drivers can talk** (MP-CHAT): one frame, two surfaces. `chat` is the one
+message a GUEST may say to EVERYBODY — every other guest frame travels to the
+host alone, because the host is the simulation and a guest has no business
+telling a peer what the world looks like. Talk is not the world, it is the
+driver, and the host has no more right to a mouth than anybody else. So the room
+relays it to everyone, stamped with its sender like every relayed frame, and
+drops what the wire refuses: a line with nothing in it, and one longer than
+`MAX_CHAT_LENGTH` (a line is cut before it is sent, never on the way — a
+half-sentence that reads as the whole thing is worse than one that never
+arrived). In the lobby that is **Pit wall** under the grid — a bounded log
+(`src/components/LobbyChat.tsx`, sixty lines, newest at the bottom) and a field
+clamped to the same ceiling as the wire. Mid-race there is no panel and no
+scrollback: a line becomes a **speech bubble over the marble that said it**
+(`src/components/RaceBubbles.tsx`), pinned by the race loop in the same frame
+the marble was drawn in — the camera's own transform — one bubble per marble,
+gone after four seconds. `T` opens the compose bar (the button at bottom right
+does too, for a phone), Enter sends, Escape puts it away, and while it is open
+the keyboard belongs to the field and not the marble. The rules live in
+`src/net/chat.ts`: what a line is, how much history a screen keeps, how often a
+driver may talk (a held Enter is not a conversation), and whose voice it is — a
+line is signed from the SEAT TABLE, so the name and livery on it are the ones on
+the grid rather than whatever a frame felt like claiming.
+
 To try it locally, `npm run dev`, then open **two tabs** (a second window or an
 incognito window is the cleanest way to be two players — each tab mints its own
 dev identity, and no sign-in is involved) at:
@@ -163,9 +186,10 @@ http://localhost:5173/
 ```
 
 In one tab, **Online** → **Host game**; the lobby shows a code. In the other,
-**Online** → type the code → **Join with code**. Both drivers press **Ready**,
-the host presses **Start the race**, and both screens count down to the same
-instant. Or skip both: press **Quick race** in each tab and wait — the pair
+**Online** → type the code → **Join with code**. Say hello in **Pit wall** and it
+lands in both tabs; both drivers press **Ready**, the host presses **Start the
+race**, and both screens count down to the same instant — then press **T** (or
+the speech-bubble button) mid-race to talk in bubbles. Or skip both: press **Quick race** in each tab and wait — the pair
 lands in one room and the lights come down by themselves. Vite also starts the
 room sidecar on port `9001` from
 `rundot/realtime.config.json`: that is what makes host and join meet, and it
