@@ -83,13 +83,16 @@ export default function StoryScene({
     [scene.choice, flags],
   );
 
+  const isLastLine = index >= lines.length - 1;
+  const showChoice = !!scene.choice && isLastLine && !typing;
+
   const advance = useCallback(() => {
     if (!line) { onDone(null); return; }
     if (shown < line.text.length && !still) { setShown(line.text.length); return; }
     if (index + 1 < lines.length) { setIndex(index + 1); return; }
-    if (options.length) return; // a choice is picked, never tapped past
+    if (showChoice) return; // a choice is displayed, wait for player to pick
     onDone(null);
-  }, [line, shown, still, index, lines.length, options.length, onDone]);
+  }, [line, shown, still, index, lines.length, showChoice, onDone]);
 
   const pick = useCallback((option: ChoiceOption) => {
     uiSound('blip');
@@ -98,7 +101,7 @@ export default function StoryScene({
 
   // Number keys pick a choice.
   useEffect(() => {
-    if (!options.length) return;
+    if (!showChoice || !options.length) return;
     const down = (event: KeyboardEvent) => {
       const n = Number(event.key);
       if (!Number.isInteger(n) || n < 1 || n > options.length) return;
@@ -107,20 +110,20 @@ export default function StoryScene({
     };
     window.addEventListener('keydown', down);
     return () => window.removeEventListener('keydown', down);
-  }, [options, pick]);
+  }, [showChoice, options, pick]);
 
   // Opening a scene: the reveal sting for scenes that ask for one.
   useEffect(() => {
     if (scene.sting) uiSound('sting');
   }, [scene.id, scene.sting]);
 
-  // Auto-advance once the line has finished typing and nothing has to be chosen.
+  // Auto-advance once the line has finished typing and no choice is active.
   useEffect(() => {
-    if (!autoAdvance || typing || !line || options.length) return;
+    if (!autoAdvance || typing || !line || showChoice) return;
     const wait = still ? 1800 : Math.max(AUTO_MIN, text.length * AUTO_PER_CHAR);
     const id = window.setTimeout(advance, wait);
     return () => window.clearTimeout(id);
-  }, [autoAdvance, typing, line, options.length, still, text.length, advance]);
+  }, [autoAdvance, typing, line, showChoice, still, text.length, advance]);
 
   // Keyboard: Space/Enter advance (held = fast-forward), Escape skips.
   useEffect(() => {
@@ -254,7 +257,7 @@ export default function StoryScene({
             {isActive && <div className="scene-bubble">
               <p className={`story-text ${direction ? 'is-direction' : ''}`} aria-live="polite">
                 {typing ? text.slice(0, shown) : text}
-                {!typing && !options.length && <span className="story-caret"> ▸</span>}
+                {!typing && !showChoice && <span className="story-caret"> ▸</span>}
               </p>
             </div>}
           </div>;
@@ -263,14 +266,14 @@ export default function StoryScene({
       {prop && <div className="story-prop" key={prop}><img src={storyProp(prop)} alt="" draggable={false} /></div>}
     </div>
 
-    {scene.choice && !typing && <div className="story-panel">
-      <div className="story-choices" role="group" aria-label={scene.choice.prompt}>
-        <p className="story-choice-prompt">{scene.choice.prompt}</p>
+    {showChoice && <div className="story-panel">
+      <div className="story-choices" role="group" aria-label={scene.choice!.prompt}>
+        <p className="story-choice-prompt">{scene.choice!.prompt}</p>
         {options.map((option, i) => <button key={option.set} type="button" className="story-choice" onClick={() => pick(option)}>
           {option.label}<kbd>{i + 1}</kbd>
         </button>)}
       </div>
     </div>}
-    <div className="story-hint">{typing ? 'Hold to speed up' : options.length ? 'Choose your line' : 'Tap or press Space'}</div>
+    <div className="story-hint">{typing ? 'Hold to speed up' : showChoice ? 'Choose your line' : 'Tap or press Space'}</div>
   </div>;
 }

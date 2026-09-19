@@ -50,14 +50,14 @@ body { min-width: 0; }
 .champ-fit .event-pane { order: 1; }
 .champ-fit .standings-column { order: 2; }
 .champ-fit .results-pane { order: 3; }
-.champ-fit .next-event, .champ-fit .gp-scoreboard, .champ-fit .season-calendar { margin: 0; padding: 0; border: 0; background: none; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.champ-fit .next-event, .champ-fit .gp-scoreboard, .champ-fit .season-calendar { margin: 0; padding: 0; border: 0; background: none; display: flex; flex-direction: column; gap: 10px; min-height: 0; flex-shrink: 0; }
 .champ-fit .next-event { flex: 1; }
 .champ-fit .next-event .circuit-canvas-wrap { min-height: 180px; flex: 1 1 auto; }
 .champ-fit .next-gp-title h2 { font-size: 26px; margin: 0; }
 .champ-fit .next-gp-title p { margin: 4px 0 0; }
 .champ-fit .champion-banner { margin: 0; padding: 14px; gap: 14px; }
 .champ-fit .paddock-loadout { margin: 0; padding: 8px 0 0; border-bottom: 0; border-top: 1px solid var(--line); flex-wrap: wrap; gap: 8px; }
-.champ-fit .your-standing { margin-top: 6px; }
+.champ-fit .your-standing { margin-top: 6px; padding: 14px 16px; border-radius: 6px; border: 1px solid var(--kit-steel-line); }
 .champ-fit .champ-table td, .champ-fit .champ-table th { padding-block: 5px; }
 .setup-readout { margin-right: auto; }
 .setup-readout p { margin: 2px 0 0; font-family: var(--mono); font-size: 12px; }
@@ -151,7 +151,7 @@ body { min-width: 0; }
   .fit-actions .launch-button { min-width: 0; flex: 1; padding-inline: 12px; font-size: 13px; }
   .fit-actions .button-secondary { padding-inline: 10px; }
   .champ-fit .standing-driver small, .champ-fit .your-standing p { display: none; }
-  .champ-fit .your-standing { margin-top: 0; padding-block: 8px; }
+  .champ-fit .your-standing { margin-top: 0; padding: 10px 14px; }
   .garage-fit .stat-control p { font-size: 10px; }
   .driver-grid { gap: 4px; }
   .driver-grid li { padding: 2px 8px 2px 3px; }
@@ -181,7 +181,7 @@ body { min-width: 0; }
 @media (max-height: 820px) {
   .champ-fit .standing-driver small, .champ-fit .your-standing p { display: none; }
   .champ-fit .champ-table td, .champ-fit .champ-table th { padding-block: 3px; }
-  .champ-fit .your-standing { margin-top: 0; padding-block: 6px; }
+  .champ-fit .your-standing { margin-top: 0; padding: 8px 12px; }
 }
 
 /* ---------- race zoom ---------- */

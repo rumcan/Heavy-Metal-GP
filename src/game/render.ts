@@ -1087,18 +1087,8 @@ function drawSidesStatic(ctx: CanvasRenderingContext2D, game: Game, viewTop: num
       ctx.scale(-1, 1);
     }
     // everything below is authored for the left side (track to the right, x = 0 is the wall)
-    if (currentSkin()) {
-      // Art themes: the same plain cliff face continues outwards at the same size and light, so the side reads
-      // as one rock wall rather than a darker, blown-up copy behind the edge.
-      drawSkinRock(ctx, STATIC_X0, viewTop, viewBottom);
-    } else {
-      const rw = 300, rh = rw * rock.naturalHeight / rock.naturalWidth;
-      for (let y = Math.floor(viewTop / rh) * rh; y < viewBottom; y += rh) {
-        for (let x = STATIC_X0 - rw; x < -200; x += rw) ctx.drawImage(rock, x, y, rw, rh);
-      }
-      ctx.fillStyle = 'rgba(6,16,36,0.45)';
-      ctx.fillRect(STATIC_X0, viewTop, -200 - STATIC_X0, viewBottom - viewTop);
-    }
+    // Every theme: a tileable cliff face out from the wall, fading to solid dark brown (the column hides the seam).
+    drawSkinRock(ctx, STATIC_X0, viewTop, viewBottom);
     // above ground: cliffs, scaffold towers and balconies; underground: mine walls
     const ug = undergroundY(game);
     ctx.save();
@@ -1107,7 +1097,9 @@ function drawSidesStatic(ctx: CanvasRenderingContext2D, game: Game, viewTop: num
     ctx.clip();
     const edge = side === 1 && cliffR ? cliffR : cliffL;
     const cw = 300, chh = cw * edge.naturalHeight / edge.naturalWidth;
-    for (let y = Math.floor(viewTop / chh) * chh; y < viewBottom; y += chh) {
+    // every theme (goblin art too) now has a two-sided cliff column that hides the seam to the rock behind it
+    if (sprite('cliff-column')) drawSkinColumn(ctx, viewTop, viewBottom);
+    else for (let y = Math.floor(viewTop / chh) * chh; y < viewBottom; y += chh) {
       if (side === 1 && cliffR) {
         // the right-hand art already faces left; undo the mirror for it
         ctx.save();
@@ -1136,7 +1128,10 @@ function drawSidesStatic(ctx: CanvasRenderingContext2D, game: Game, viewTop: num
       ctx.drawImage(img, -bw - 60, seg.y + 30, bw, bh);
     });
     ctx.restore();
-    if (viewBottom > ug) {
+    if (viewBottom > ug && currentSkin() && sprite('cliff-column')) {
+      // art themes keep the same cliff column all the way down
+      drawSkinColumn(ctx, Math.max(viewTop, ug), viewBottom);
+    } else if (viewBottom > ug) {
       const mh = 680;
       for (let k = Math.max(0, Math.floor((viewTop - ug) / mh)); ug + k * mh < viewBottom; k++) {
         // mostly miners and skeleton guards, sometimes bare rock
@@ -1150,24 +1145,50 @@ function drawSidesStatic(ctx: CanvasRenderingContext2D, game: Game, viewTop: num
   }
 }
 
-/** Width the side cliffs are drawn at; the edge column and the rock behind it share it so they line up. */
+/** Width one tile of the art-theme cliff face is drawn at. */
 const CLIFF_W = 300;
+/** Colour the far rock fades into (world-space gradient, so static layer and zoomed-out outer parts agree). */
+const ROCK_DARK = '#1b120c';
+// The fade finishes inside the baked static layer (which ends at STATIC_X0 = -400), so it never cuts off.
+const FADE_NEAR = -250, FADE_FAR = -405;
+
 /**
- * Art themes: plain cliff columns from the wall outwards to `fromX` (left side, x < 0), aligned with the edge
- * column (drawn at x = -CLIFF_W + 10), so the whole side is one continuous rock face.
+ * Art themes, left side (x < 0): the tileable cliff face from the wall out to `fromX`, then a fade to dark brown
+ * that is solid by FADE_FAR. The tile grid and the gradient are anchored in world space so pieces drawn in
+ * different passes line up. The vertical cliff column is drawn over the seam by `drawSkinColumn`.
  */
 function drawSkinRock(ctx: CanvasRenderingContext2D, fromX: number, top: number, bottom: number) {
-  const img = sprite('cliff-left');
-  if (!img) return;
-  const h = CLIFF_W * img.naturalHeight / img.naturalWidth;
-  for (let x = -CLIFF_W + 10 - CLIFF_W; x + CLIFF_W > fromX; x -= CLIFF_W - 2) {
-    for (let y = Math.floor(top / h) * h; y < bottom; y += h) ctx.drawImage(img, x, y, CLIFF_W, h + 1);
+  const img = sprite('cliff-face') ?? sprite('rock-fill');
+  if (img) {
+    const h = CLIFF_W * img.naturalHeight / img.naturalWidth;
+    for (let x = -CLIFF_W; x + CLIFF_W > Math.max(fromX, FADE_FAR - CLIFF_W); x -= CLIFF_W - 1) {
+      for (let y = Math.floor(top / h) * h; y < bottom; y += h) ctx.drawImage(img, x, y, CLIFF_W, h + 1);
+    }
   }
+  const g = ctx.createLinearGradient(FADE_NEAR, 0, FADE_FAR, 0);
+  g.addColorStop(0, 'rgba(27,18,12,0)');
+  g.addColorStop(1, ROCK_DARK);
+  ctx.fillStyle = g;
+  ctx.fillRect(Math.max(fromX, FADE_FAR), top, FADE_NEAR - Math.max(fromX, FADE_FAR), bottom - top);
+  if (fromX < FADE_FAR) {
+    ctx.fillStyle = ROCK_DARK;
+    ctx.fillRect(fromX, top, FADE_FAR - fromX, bottom - top);
+  }
+}
+
+/** The vertical cliff column (hard rock edges on both sides) along the wall, in front of the face tiles. */
+function drawSkinColumn(ctx: CanvasRenderingContext2D, top: number, bottom: number) {
+  const img = sprite('cliff-column');
+  if (!img) return;
+  // where the art's solid rock ends on its right, as a share of its width (measured from each source image)
+  const coreRight = ({ worg: 0.81, dwarven: 0.85 } as Record<string, number>)[currentSkin() ?? ''] ?? 0.86;
+  const w = 440, h = w * img.naturalHeight / img.naturalWidth;
+  const x = 18 - w * coreRight;
+  for (let y = Math.floor(top / h) * h; y < bottom; y += h) ctx.drawImage(img, x, y, w, h + 1);
 }
 
 /** Beyond the baked static layer (zoomed far out): keep the rock face going instead of flat darkness. */
 function drawSkinRockOuter(ctx: CanvasRenderingContext2D, viewLeft: number, viewRight: number, top: number, bottom: number) {
-  if (!currentSkin()) return;
   for (const side of [0, 1] as const) {
     const reach = side === 0 ? -viewLeft : viewRight - W;
     if (reach <= -STATIC_X0) continue;
@@ -1176,7 +1197,7 @@ function drawSkinRockOuter(ctx: CanvasRenderingContext2D, viewLeft: number, view
     ctx.beginPath();
     ctx.rect(-reach - 10, top, reach + STATIC_X0 + 12, bottom - top);
     ctx.clip();
-    drawSkinRock(ctx, -reach - CLIFF_W, top, bottom);
+    drawSkinRock(ctx, -reach - 20, top, bottom);
     ctx.restore();
   }
 }
@@ -1379,7 +1400,7 @@ function bakeChunk(game: Game, index: number, res: number): HTMLCanvasElement {
  * demand; at most one extra chunk ahead of the camera is pre-baked per frame so crossing a boundary does not hitch.
  */
 function drawStaticLayer(ctx: CanvasRenderingContext2D, game: Game, viewTop: number, viewBottom: number) {
-  const artReady = STATIC_ART.every((n) => !!sprite(n));
+  const artReady = STATIC_ART.every((n) => !!sprite(n)) && (!currentSkin() || (!!sprite('cliff-column') && !!sprite('cliff-face')));
   if (!artReady || typeof document === 'undefined') {
     paintStatic(ctx, game, viewTop, viewBottom);
     return;
