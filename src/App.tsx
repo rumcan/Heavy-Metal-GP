@@ -17,13 +17,21 @@ import {
   listRejoinableRooms,
   NO_ROOM_SERVER_MESSAGE,
   promptLogin,
-  autoMatch,
   readActiveMatch,
   writeActiveMatch,
   type ActiveMatchMemo,
   type RaceRoom,
 } from './net/transport';
 import type { RaceProtocol } from './net/transport';
+import { rankedQueue } from './net/ranked-queue';
+import { isLadderAvailable, rankStore } from './net/rankstore';
+import type { RankLadder } from './net/rankstore';
+import { RankRuntime, raceRankSession } from './net/rank-runtime';
+import { rankBoardFrom } from './net/rating';
+import type { RankBoard, RankState, RaceVerdict } from './net/rating';
+import { chipOf, chipOfWire, rankedViewFor } from './game/rank-view';
+import type { RankChipLookup, RankedRaceView } from './game/rank-view';
+import LadderDialog from './components/LadderDialog';
 import type { RaceLink } from './net/session';
 import { HOST_LEFT_REASON } from './net/protocol';
 import type { WelcomeMsg } from './net/protocol';
@@ -118,6 +126,21 @@ export default function App() {
   const [peers, setPeers] = useState<PeerPresence[]>([]);
   /** The host's player id, from the room's own welcome. */
   const [hostId, setHostId] = useState<string | null>(null);
+
+  // ---- ranked (RK-05) ------------------------------------------------------
+  /** This driver's own rating file, and the room's board of everyone's. */
+  const [rank, setRank] = useState<RankState | null>(null);
+  const [board, setBoard] = useState<RankBoard>({});
+  /** The race-time half (RK-03). One per room; held in a ref, not render state. */
+  const runtimeRef = useRef<RankRuntime | null>(null);
+  /** True when the race that is running (or just finished) counts. */
+  const [rankedRace, setRankedRace] = useState(false);
+  /** The room's verdict on the race, once it has filed one. */
+  const [rankResult, setRankResult] = useState<{ verdict: RaceVerdict; stored: boolean } | null>(null);
+  /** The ladder panel: open, and what the board answered. */
+  const [ladderOpen, setLadderOpen] = useState(false);
+  const [ladder, setLadder] = useState<RankLadder | null>(null);
+  const [ladderLoading, setLadderLoading] = useState(false);
   /**
    * MP-09: the room's greeting, kept across a race. "Race again" returns to the
    * lobby, and a room only greets on a join — without this the lobby would come
@@ -142,7 +165,22 @@ export default function App() {
     setGreeting(null);
     setHostLeft(null);
     setMpError(null);
+    // RK-05: the verdict belonged to the room that just closed.
+    setRankResult(null);
+    setRankedRace(false);
     setPhase('menu');
+  }, []);
+
+  /**
+   * RK-05: this driver's own rating file, read once when the page mounts. The
+   * garage header prints it before any room exists, and `findRace` reads it
+   * again on the way into the queue — a rating that moved in another tab must
+   * not steer THIS search, which is why the queue asks for it fresh.
+   */
+  useEffect(() => {
+    let live = true;
+    void rankStore().loadState().then((state) => { if (live) setRank(state); });
+    return () => { live = false; };
   }, []);
 
   /**
@@ -151,6 +189,63 @@ export default function App() {
    * one that has registered itself. The room is subscribed ONCE, below.
    */
   const link = useMemo<RaceLink>(() => ({ send: (msg: RaceProtocol) => room?.send(msg), onMessage: null, onPlayerLeft: null }), [room]);
+
+  /**
+   * RK-03, wired (RK-05): one `RankRuntime` per ROOM, built the moment a
+   * socket exists so this driver's rating is published while the lobby fills —
+   * a chip on every seat is worth more before the lights than after them.
+   *
+   * It is torn down with the room (`room` is the dependency), and the roster
+   * and ratedness are handed over at the start, when the lobby has settled
+   * both (`setRoster` / `setRated`).
+   */
+  useEffect(() => {
+    if (!room) { runtimeRef.current = null; setBoard({}); return; }
+    const rt = new RankRuntime({
+      session: raceRankSession(link, room.playerId),
+      store: rankStore(),
+      // Fired once the verdict has been folded into this driver's own file.
+      onVerdict: (verdict) => {
+        setRank(verdict.state);
+        setRankResult({ verdict, stored: runtimeRef.current?.outcome?.stored ?? true });
+      },
+    });
+    runtimeRef.current = rt;
+    void rt.start();
+  }, [room, link]);
+
+  /** RK-05: a seat's chip — this driver's own file where it is theirs, else the room's board. */
+  const rankOf = useCallback<RankChipLookup>((playerId) => {
+    if (room && playerId === room.playerId && rank) return chipOf(rank);
+    return board[playerId] ? chipOfWire(board[playerId]) : null;
+  }, [room, rank, board]);
+
+  /**
+   * RK-05: the ladder panel. The board is read through the store (the one door
+   * to the platform's leaderboard) at the moment it opens, and every way the
+   * read can fail is a state the panel prints: no board behind this page, no
+   * answer, an empty board, rows.
+   */
+  const openLadder = useCallback(() => {
+    setLadderOpen(true);
+    setLadderLoading(true);
+    void rankStore().loadLadder(50)
+      .then((result) => setLadder(result))
+      .catch(() => setLadder(null))
+      .finally(() => setLadderLoading(false));
+  }, []);
+
+
+  /**
+   * RK-05: fold a board update into BOTH copies of it — the runtime's (which a
+   * verdict is computed from) and React's (which the chips are painted from).
+   * Merged, never replaced: a partial update must not erase a driver's number.
+   */
+  const applyBoard = useCallback((ratings: Parameters<typeof rankBoardFrom>[0]) => {
+    const next = rankBoardFrom(ratings);
+    runtimeRef.current?.applyBoard(next);
+    setBoard((prev) => ({ ...prev, ...next }));
+  }, []);
 
   /**
    * MP-08: the room's OWN voice is this app's business, not a screen's — a drop
@@ -165,7 +260,25 @@ export default function App() {
     if (msg.type === 'welcome') {
       setHostId(msg.hostId);
       setGreeting(msg);
+      // RK-05: the greeting carries the room's rating board (RK-03), so the
+      // first look at a lobby already shows the numbers that are known.
+      if (msg.ratings?.length) applyBoard(msg.ratings);
       link.onMessage?.(msg);
+      return;
+    }
+    // RK-03 (RK-05): the room's board, relayed whenever a driver publishes.
+    // A driver's own number feeds the seats' chips; a race is rated from the
+    // same board, so it is kept whole rather than per-seat.
+    if (msg.type === 'ratingUpdate') {
+      if (msg.ratings?.length) applyBoard(msg.ratings);
+      return;
+    }
+    // RK-03: the room's verdict on a race. It is the ONLY thing that moves a
+    // rating — the clients recompute the arithmetic from the same board and
+    // classification the room stamped — and it never goes down to the race
+    // screen, which has its own `results` (the classification) to draw.
+    if (msg.type === 'result') {
+      void runtimeRef.current?.handleResult(msg);
       return;
     }
     // Room full, race under way, host gone, or this driver taken off a grid.
@@ -286,25 +399,40 @@ export default function App() {
   }, [explain]);
 
   /**
-   * AUTO MATCH MAKING: join an open auto lobby, or open one and host it. The
-   * platform answers in a moment, so "searching" is a short, explained state.
+   * AUTO MATCH MAKING (RK-04): the RANKED queue. The search starts in this
+   * driver's rank bucket and widens a rung at a time until it finds whoever is
+   * waiting — so "searching" is a state a player can sit in, counting the
+   * windows, with Cancel under it (a queue that gave up would be guessing at a
+   * pool it cannot see).
+   *
+   * The rating comes off the driver's own file (`rankStore().loadState()`,
+   * fresh 1000 for a player who has never raced), read once when the button is
+   * pressed. A room that lands here is a matchmade room, which is the fact
+   * RK-03's rated wire hangs off; a lobby opened by hand is not.
    */
   const findRace = useCallback(async () => {
     if (isOfflineMockRealtime()) { setMpError(NO_ROOM_SERVER_MESSAGE); return; }
     setMpError(null);
     setMpBusy(true);
+    // The ladder is this driver's own rating, read once from their file (a
+    // fresh 1000 for a driver who has never raced). The read comes BEFORE the
+    // "searching" state goes up, so Cancel always has a search to stop.
+    const { rating } = await rankStore().loadState();
     setSearch({ windows: 0 });
-    const token = { cancelled: false };
-    searchRef.current = { cancel: () => { token.cancelled = true; } };
+    let cancelled = false;
+    const search = rankedQueue(rating, { onWindowClosed: (windows) => setSearch({ windows }) });
+    searchRef.current = { cancel: () => { cancelled = true; search.cancel(); } };
     try {
-      const next = await autoMatch();
-      if (token.cancelled) { next.leave(); setMpError('Auto Match Making cancelled.'); return; }
+      const next = await search.find();
+      if (!next) { setMpError('Auto Match Making cancelled.'); return; }
       void writeActiveMatch({ roomCode: next.roomCode, at: Date.now() });
       setQuick(true);
       setRoom(next);
       setPhase('lobby');
     } catch (err) {
-      if (!token.cancelled) setMpError(await explain(err));
+      // A cancelled search resolves `null` rather than throwing, so anything
+      // that reaches here is the platform's own failure and belongs on screen.
+      if (!cancelled) setMpError(await explain(err));
     } finally {
       setMpBusy(false);
       setSearch(null);
@@ -341,6 +469,13 @@ export default function App() {
   const startOnlineRace = useCallback(async (race: OnlineRaceStart) => {
     setOnline(race);
     setPayout(null);
+    // RK-05: the lights are about to go out, so the lobby's two late decisions
+    // are handed to the rating runtime — the grid it files a claim from, and
+    // whether this lobby is a RATED one (Quick race, no house-rule power-ups).
+    runtimeRef.current?.setRoster(race.seats.map((seat) => ({ slot: seat.slot, playerId: seat.playerId, isAI: seat.isAI })));
+    runtimeRef.current?.setRated(race.rated === true);
+    setRankedRace(race.rated === true);
+    setRankResult(null);
     setRaceKey((k) => k + 1);
     const code = (race.settings as unknown as { customCode?: string })?.customCode;
     if (code) {
@@ -364,6 +499,26 @@ export default function App() {
     [online, link],
   );
   const onlineRoster = useMemo(() => (online ? rosterOf(online.seats, online.localSeat) : []), [online]);
+
+  /**
+   * RK-05: what the results screen may say about the rating — this driver's own
+   * line (badge, new number, signed delta, tier callout) plus a row per rated
+   * human for the table. Null for a race with no room behind it (every offline
+   * heat): the panel only exists where a rating can move.
+   */
+  const rankView = useMemo<RankedRaceView | null>(() => {
+    if (!online) return null;
+    const names: Record<string, string> = {};
+    for (const seat of online.seats) if (!seat.isAI && seat.playerId) names[seat.playerId] = seat.name;
+    return rankedViewFor({
+      verdict: rankResult?.verdict ?? null,
+      rated: rankedRace,
+      stored: rankResult?.stored,
+      names,
+      seats: online.seats.map((seat) => ({ slot: seat.slot, playerId: seat.playerId })),
+      current: rank ? chipOf(rank) : null,
+    });
+  }, [online, rankResult, rankedRace, rank]);
   const onlineGrid = useMemo(() => (online ? gridOrderOf(online.seats) : []), [online]);
 
   const publishAccount = useCallback((next: RacerAccount) => {
@@ -389,8 +544,34 @@ export default function App() {
    * with. A race that never reached a classification — the host left, the
    * results never came — pays nothing at all.
    */
+  /**
+   * RK-03 (RK-05): HOST only — the flag has fallen, so claim the classification.
+   *
+   * This is the ONE place a race's rating is set in motion: the room checks the
+   * claim against what it saw, stamps it with its own clock and board, and
+   * broadcasts `result` to every seat (this one included), which is what
+   * `onRoomFrame` folds in. The guests do nothing here — they have no
+   * standing to say who crossed the line.
+   *
+   * The classification arrives as the results screen's rows (seat order), so it
+   * is re-sorted into finishing order and handed over in `claimFinish`'s shape.
+   * `durationSec` is the last finisher's time: the ladder board bounds a race by
+   * its length, and a race everyone DNF'd is a second.
+   */
+  const claimRanked = useCallback((rows: readonly HeatResult[]) => {
+    const runtime = runtimeRef.current;
+    if (!runtime || !online?.isHost) return;
+    const byRank = [...rows].sort((a, b) => a.rank - b.rank);
+    const order = byRank.map((row) => row.id);
+    const times: (number | null)[] = [];
+    for (const row of byRank) times[row.id] = row.time;
+    const last = byRank.reduce((ms, row) => Math.max(ms, row.time ?? 0), 0);
+    runtime.claimFinish({ order, times }, Math.max(1, Math.round(last / 1000)));
+  }, [online]);
+
   const settleOnline = useCallback((rows: HeatResult[], kit?: Inventory) => {
     if (!online) return;
+    claimRanked(rows);
     const mine = rows.find((row) => row.id === online.localSeat);
     if (!mine) return;
     const raceId = onlineRaceId(room?.roomCode ?? 'race', online.countdownAt);
@@ -399,7 +580,7 @@ export default function App() {
     // What you came home with is what you have: spent is spent, picked is kept.
     publishAccount(kit ? { ...paid.account, inventory: normalizeInventory(kit) } : paid.account);
     setPayout(paid.payout);
-  }, [online, publishAccount, room]);
+  }, [online, publishAccount, room, claimRanked]);
 
   /** `isCustom`: the heat ran on a player-built track (pays 30%). Quick races pass the Garage pick; a championship heat its round's track. */
   const awardWinnings = (results: HeatResult[], isCustom = !!customTrackDef) => {
@@ -417,6 +598,16 @@ export default function App() {
           lobby and the race alike. */}
       {peers.length > 0 && !hostGone && <PeerStrip peers={peers} hostId={hostId} now={now} />}
       {hostGone && <HostLeftOverlay message={hostGone} onLeave={leaveRoom} />}
+      {/* RK-05: the ladder. It rides above every phase — the garage header and
+          the lobby both open it, and a climb is worth checking mid-evening. */}
+      {ladderOpen && <LadderDialog
+        ladder={ladder}
+        loading={ladderLoading}
+        available={isLadderAvailable()}
+        mine={rank ? chipOf(rank) : chipOfWire(null)}
+        onRetry={openLadder}
+        onClose={() => setLadderOpen(false)}
+      />}
       {shopOpen && <PitShop account={account} onBuy={buy} onClose={() => setShopOpen(false)} />}
       {whatsNew && phase === 'menu' && <WhatsNew onClose={closeWhatsNew} onWorkshop={() => { closeWhatsNew(); setPhase('editor'); }} />}
     </>
@@ -503,6 +694,8 @@ export default function App() {
   if (phase === 'menu' || phase === 'retune') {
     return withShop(
       <SetupScreen
+        rank={rank ? chipOf(rank) : null}
+        onRank={openLadder}
         stats={stats}
         onStats={setStats}
         color={color}
@@ -573,6 +766,8 @@ export default function App() {
         onStart={startOnlineRace}
         link={link}
         autoStart={quick}
+        rankOf={rankOf}
+        onRank={openLadder}
         peers={peers}
         greeting={greeting}
         error={mpError}
@@ -681,6 +876,7 @@ export default function App() {
         payout={payout}
         onShop={openShop}
         online={onlineView}
+        rating={rankView}
       />,
     );
   }

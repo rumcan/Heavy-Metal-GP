@@ -117,6 +117,13 @@ export function isLobbyUnavailable(err: unknown): boolean {
  *
  * If the lobby we land on refuses us (closed by its host, full, or racing), a
  * fresh lobby is opened instead of retrying the same one.
+ *
+ * RK-04 moved the Online panel's Auto Match Making onto the RANKED queue
+ * (`rankedQueue` in `src/net/ranked-queue.ts`) — a search that widens by rank
+ * has to be able to sit in the pool for a window, which only `matchmakeRoom`
+ * does. This call stays because it is the casual half of the same idea and the
+ * panel's other door (RK-05 decides what it is labelled): no searching, no
+ * rank, an instant room to race in, and a code a friend can type.
  */
 export async function autoMatch(): Promise<RaceRoom> {
   try {
@@ -137,7 +144,18 @@ export interface QuickMatchOptions {
   matchmakeTimeoutMs?: number;
   /** How often to poll the pool while waiting (default 1s). */
   pollIntervalMs?: number;
+  /**
+   * RK-04 (#58): the similar-rank SEARCH WINDOW, as a bucket index from
+   * `searchBucket` (`src/net/rating.ts`). The pool has no range operator — a
+   * "within N points" search is expressed as `rank: <bucket>` and the caller
+   * widens the bucket over time. `null`/absent = Any rank: `MATCH_CRITERIA`
+   * alone.
+   */
+  rankBucket?: number | null;
 }
+
+/** The criteria key carrying a similar-rank search window (`searchBucket`). */
+export const RANK_CRITERIA_KEY = 'rank';
 
 /**
  * How long ONE matchmake request waits before the SDK gives up on it: it sends
@@ -184,10 +202,21 @@ export function isMatchmakeWindowExpired(err: unknown): boolean {
  * `isMatchmakeWindowExpired` says the window closed.
  */
 export function quickMatch(opts: QuickMatchOptions = {}): Promise<RaceRoom> {
+  const { rankBucket, ...rest } = opts;
+  // A plain search asks for the room type's own criteria only, so it can join
+  // ANY waiting room — including one a similar-rank searcher created (the pool
+  // requires the room to satisfy every requested key, not to match exactly).
+  // That asymmetry is what makes the widening ladder safe: its last rung is
+  // always "any rank", and it can see everyone. A rank-bucketed search is the
+  // narrow half of the same rule: it asks for rooms tagged with its bucket, so
+  // it does NOT see an any-rank room until the ladder widens there.
+  const criteria: Record<string, string | number> = rankBucket == null
+    ? { ...MATCH_CRITERIA }
+    : { ...MATCH_CRITERIA, [RANK_CRITERIA_KEY]: rankBucket };
   return realtime().matchmakeRoom<RaceProtocol>(ROOM_TYPE, {
-    criteria: { ...MATCH_CRITERIA },
-    matchmakeTimeoutMs: opts.matchmakeTimeoutMs ?? MATCHMAKE_WINDOW_MS,
-    pollIntervalMs: opts.pollIntervalMs,
+    criteria,
+    matchmakeTimeoutMs: rest.matchmakeTimeoutMs ?? MATCHMAKE_WINDOW_MS,
+    pollIntervalMs: rest.pollIntervalMs,
   });
 }
 
@@ -292,6 +321,21 @@ export async function writePlayerValue(key: string, value: string): Promise<bool
   }
 }
 
+/**
+ * True when the SDK exposes a per-player store here at all — the FIRST of the
+ * two questions `rankstore.ts` asks before it claims a driver can be rated.
+ *
+ * Cheap and synchronous on purpose (no round-trip, no write): the rating
+ * surfaces ask this while rendering. It answers "is there a bucket behind this
+ * page", not "did the bucket take the last write" — that second fact is only
+ * knowable when a write happens, and it comes back from `writePlayerValue`'s
+ * own return value rather than being cached, because a cached failure is a
+ * screen that can never recover.
+ */
+export function hasPlayerStorage(): boolean {
+  return playerStorage() !== null;
+}
+
 /** Clear a stored per-player value; `false` when there was nothing to clear. */
 export async function clearPlayerValue(key: string): Promise<boolean> {
   const store = playerStorage();
@@ -329,6 +373,187 @@ export async function writeActiveMatch(memo: ActiveMatchMemo | null): Promise<vo
     return;
   }
   await writePlayerValue(ACTIVE_MATCH_KEY, JSON.stringify(memo));
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// MP-01's scope note said "the ladder/rating helpers are RK-02". THIS is them,
+// behind the same one-file seam (RK-02).
+//
+// Two platform services the rating system needs, both reached HERE and nowhere
+// else: the per-player key/value store (`appStorage` — the rating file, which
+// no other seat can read or write) and the leaderboard (the public ladder).
+//
+// The wrappers follow the house rules already set in this file:
+//
+//   - NOTHING THROWS. A rating read that fails falls back to a fresh file, and
+//     a ladder submit that fails must not take a racing game's results screen
+//     down with it. Every function below resolves.
+//   - The BETA surface is duck-typed, never imported by shape. `appStorage` is
+//     probed the way `isOfflineMockRealtime` probes the mock, because a host
+//     that lacks it would otherwise look exactly like a storage bug (writes
+//     that vanish, reads that are always `null`).
+//   - NO `localStorage`: RUN.world blocks it, so the policy of where a rating
+//     is kept — RUN storage or nothing — lives in `src/net/rankstore.ts`.
+// ══════════════════════════════════════════════════════════════════════════
+
+/** The stored rating file (`appStorage`, per-player, cloud-backed, RK-01's shape). */
+export const RANK_STORAGE_KEY = 'heavy-metal-gp:rank:v1';
+
+/** The once-only guard: the last room result this client filed. */
+export const RANK_FILED_KEY = 'heavy-metal-gp:rank:filed:v1';
+
+/** The ladder's leaderboard mode, declared in `rundot/leaderboard.config.json`. */
+export const LADDER_MODE = 'ranked';
+
+/**
+ * One row of the public ladder, as the ladder panel prints it. A slice of the
+ * SDK's `LeaderboardEntry`: the panel needs the name's rank, the name and the
+ * number, and a `profileId` to recognise this player's own row in it.
+ */
+export interface LadderEntry {
+  profileId: string;
+  username: string;
+  rating: number;
+  rank: number;
+  isSeed?: boolean;
+}
+
+export interface LadderResult {
+  entries: LadderEntry[];
+  /** This player's own row, when the board knows them. */
+  mine: { rank: number; rating: number } | null;
+  total: number;
+}
+
+/** What a ladder submission did, as the results screen needs it. */
+export interface LadderSubmitResult {
+  accepted: boolean;
+  rank: number | null;
+  /** Why a submission was refused (keep-best, rate limit, bounds). */
+  reason: string | null;
+}
+
+/**
+ * The SDK's leaderboard API, or null when there is no board behind this page.
+ *
+ * Probed rather than imported: `RundotGameAPI.leaderboard` is the SDK
+ * singleton's own property, and reading it here keeps every BETA leaderboard
+ * assumption in one place. A host older than the leaderboard API gets `null`
+ * and the panel says so in one line.
+ */
+function leaderboard(): {
+  submitScore(params: Record<string, unknown>): Promise<unknown>;
+  getPagedScores(params: Record<string, unknown>): Promise<unknown>;
+} | null {
+  try {
+    const api = RundotGameAPI as unknown as { leaderboard?: Record<string, unknown> };
+    const board = api.leaderboard as
+      | { submitScore?: unknown; getPagedScores?: unknown }
+      | undefined;
+    if (!board || typeof board.submitScore !== 'function' || typeof board.getPagedScores !== 'function') {
+      return null;
+    }
+    return board as {
+      submitScore(params: Record<string, unknown>): Promise<unknown>;
+      getPagedScores(params: Record<string, unknown>): Promise<unknown>;
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * True when a ladder exists behind this page at all. The panel asks this
+ * BEFORE it asks for rows, so "no board" and "an empty board" are never
+ * confused: one is a line of text, the other looks like nobody plays this game.
+ */
+export function isLadderAvailable(): boolean {
+  return leaderboard() !== null;
+}
+
+/**
+ * Read the ladder. Never throws: an unreachable or unconfigured board resolves
+ * `null`, and the panel says so rather than showing an empty table.
+ *
+ * The board is keep-best, so a row's score is a PEAK rating — the ladder shows
+ * the best a driver has been, while their own file holds where they are now.
+ * That is the honest pairing (see the epic's decision), and it is why `mine`
+ * carries the board's number rather than a local one.
+ */
+export async function readLadder(limit = 20): Promise<LadderResult | null> {
+  const board = leaderboard();
+  if (!board) return null;
+  try {
+    const page = (await board.getPagedScores({ mode: LADDER_MODE, limit })) as {
+      entries?: { profileId?: unknown; username?: unknown; score?: unknown; rank?: unknown; isSeed?: unknown }[];
+      playerRank?: unknown;
+      totalEntries?: unknown;
+    } | null;
+    const entries: LadderEntry[] = (page?.entries ?? []).flatMap((e) => {
+      if (!e || typeof e.score !== 'number' || !Number.isFinite(e.score)) return [];
+      return [{
+        profileId: typeof e.profileId === 'string' ? e.profileId : '',
+        username: typeof e.username === 'string' && e.username.length > 0 ? e.username : 'A racer',
+        rating: Math.round(e.score),
+        rank: typeof e.rank === 'number' && Number.isFinite(e.rank) ? e.rank : 0,
+        isSeed: e.isSeed === true ? true : undefined,
+      }];
+    });
+    const playerRank = typeof page?.playerRank === 'number' && Number.isFinite(page.playerRank)
+      ? page.playerRank
+      : null;
+    return {
+      entries,
+      // The board's own row for this player. Its score is not carried by
+      // `playerRank` alone, so it is read off `mine`'s entry when the board
+      // lists one — and left at 0 when this page of the ladder does not
+      // include it (a driver outside the top 20).
+      mine: playerRank === null
+        ? null
+        : { rank: playerRank, rating: entries.find((e) => e.rank === playerRank)?.rating ?? 0 },
+      total: typeof page?.totalEntries === 'number' && Number.isFinite(page.totalEntries)
+        ? page.totalEntries
+        : entries.length,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Submit this driver's rating to the ladder. Never throws.
+ *
+ * The board is keep-best, so a LOWER submission is accepted:false and changes
+ * nothing — which is exactly right for a rating that must also be able to fall:
+ * the private file is the truth, the public board is the best it has been. A
+ * rate-limited or out-of-bounds submission is likewise not an error the player
+ * needs to see; it is a reason string the results screen may mention in a line.
+ */
+export async function submitLadderScore(params: {
+  rating: number;
+  durationSec: number;
+  metadata?: Record<string, unknown>;
+}): Promise<LadderSubmitResult> {
+  const board = leaderboard();
+  if (!board) return { accepted: false, rank: null, reason: 'no board behind this page' };
+  try {
+    const result = (await board.submitScore({
+      score: Math.round(params.rating),
+      // The board's own floor is one second (see the config): a result filed
+      // with no clock still counts as a race rather than being refused as
+      // instant.
+      duration: Math.max(1, Math.round(params.durationSec)),
+      mode: LADDER_MODE,
+      metadata: params.metadata,
+    })) as { accepted?: unknown; rank?: unknown; reason?: unknown } | null;
+    return {
+      accepted: result?.accepted === true,
+      rank: typeof result?.rank === 'number' && Number.isFinite(result.rank) ? result.rank : null,
+      reason: typeof result?.reason === 'string' ? result.reason : null,
+    };
+  } catch (err) {
+    return { accepted: false, rank: null, reason: err instanceof Error ? err.message : null };
+  }
 }
 
 /**

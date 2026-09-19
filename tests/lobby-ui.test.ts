@@ -63,6 +63,13 @@ const Notices = await server.ssrLoadModule('/src/components/PeerNotices.tsx');
 const PeerStrip = Notices.PeerStrip;
 const HostLeftOverlay = Notices.default;
 const { foldPeer, AI_TAKEOVER_MS } = (await server.ssrLoadModule('/src/net/presence.ts')) as typeof import('../src/net/presence');
+// RK-05: the rank surfaces — a chip, the ladder panel, and the results band.
+const RankChipModule = await server.ssrLoadModule('/src/components/RankChip.tsx');
+const RankChip = RankChipModule.default;
+const LadderDialog = (await server.ssrLoadModule('/src/components/LadderDialog.tsx')).default;
+const RaceResults = (await server.ssrLoadModule('/src/components/RaceResults.tsx')).default;
+const rankView = (await server.ssrLoadModule('/src/game/rank-view.ts')) as typeof import('../src/game/rank-view');
+const rating = (await server.ssrLoadModule('/src/net/rating.ts')) as typeof import('../src/net/rating');
 
 const T0 = 1_700_000_000_000;
 
@@ -97,22 +104,25 @@ const lobby = (playerId: string) => renderToStaticMarkup(
   createElement(OnlineLobby, { room: fakeRoom(playerId), garage, circuitIndex: 2, onCircuit() {}, onLeave() {}, onStart() {}, link, error: null, onError() {} }),
 );
 
-test('MP-06 lobby: the panel offers host, join and Auto Match Making, and asks for six characters', () => {
+test('MP-06 lobby: the panel offers host, join and the ranked queue, and asks for six characters', () => {
   const html = renderToStaticMarkup(createElement(OnlinePanel, { busy: false, error: null, onHost() {}, onJoin() {}, onQuick() {} }));
   assert.match(html, /Host game/);
   assert.match(html, /Join with code/);
-  assert.match(html, /Auto Match Making/);
+  assert.match(html, /Quick race/);
   assert.match(html, /maxlength="6"/i, 'the code field takes six characters, no more');
   assert.match(html, /Room code/);
   // Up to six players per race, and AI drivers fill the rest.
   assert.match(html, /Up to six players per race/);
 });
 
-test('MP-07 lobby: an Auto Match Making search says what it is doing, and can be cancelled', () => {
+test('MP-07 lobby: a ranked search says what it is doing, and can be cancelled', () => {
   const html = renderToStaticMarkup(createElement(OnlinePanel, { busy: true, error: null, onHost() {}, onJoin() {}, onQuick() {}, searching: true, windows: 2, onCancelSearch() {} }));
-  // Says what is happening: looking for a lobby, or you'll host your own.
-  assert.match(html, /Looking for an open lobby/);
-  assert.match(html, /be its host/);
+  // Says what is happening: a rank-matched search that widens until it finds
+  // anybody (RK-04 — the queue, not an open lobby), and since RK-05 says which
+  // door is rated.
+  assert.match(html, /Looking for another driver/);
+  assert.match(html, /Quick race · ranked/);
+  assert.match(html, /widens until it finds anyone/);
   assert.match(html, /Cancel/, 'and the search can be given up on');
   // The host and join doors stay shut while a search is in flight: two rooms
   // at once is two seats, and one of them is a ghost.
@@ -225,4 +235,161 @@ test('Playtest lobby: the host can take AI off the grid; a guest cannot', () => 
 
 test('Playtest lobby: an AI power-ups switch is on the lobby', () => {
   assert.match(lobby(HOST), /AI drivers use power-ups/);
+});
+
+// ── RK-05 ─────────────────────────────────────────────────────────────────
+// The rank surfaces are painted here, the same way the lobby is: a badge is an
+// `img` with a bundled URL, so "the chip renders the right plate" is a fact
+// about markup. The MODELS behind them (which tier, which delta, which of the
+// three results states) are `tests/rank-view.test.ts`'s business, without a
+// browser — this half only proves the surfaces PAINT.
+
+/** A results row, in the shape the race screen hands over. */
+const row = (id: number, rank: number, time: number | null) => ({ id, rank, time, pegs: id });
+
+/** A rating band's view, built the way App builds it. */
+function ratedView(state: 'settled' | 'pending' | 'unrated') {
+  const verdict = rating.rateRaceOutcome({
+    self: { playerId: HOST, state: { rating: 1042, matches: 8, wins: 4, losses: 4, season: 's1' } },
+    board: [{ playerId: HOST, rating: 1042, games: 8 }, { playerId: GUEST, rating: 1010, games: 4 }],
+    order: [{ playerId: HOST, finished: true }, { playerId: GUEST, finished: true }],
+  });
+  return rankView.rankedViewFor({
+    verdict: state === 'settled' ? verdict : null,
+    rated: state !== 'unrated',
+    names: { [GUEST]: 'Sprocket' },
+    seats: [{ slot: 0, playerId: HOST }, { slot: 1, playerId: GUEST }],
+    current: rankView.chipOf({ rating: 1042, matches: 8 }),
+  });
+}
+
+test('RK-05 chip: a badge, a tier and a number — and an honest blank when there is none', () => {
+  const html = renderToStaticMarkup(createElement(RankChip, { model: rankView.chipOf({ rating: 1462, matches: 14 }) }));
+  assert.match(html, /data-tier="steel"/, 'the plate the tier wears');
+  assert.match(html, /assets\/ui\/rank\/steel\.png/, 'and it is the BUNDLED art, not a URL fetched at paint time');
+  assert.match(html, /Steel/);
+  assert.match(html, />1462</);
+  assert.match(html, /alt=""/, 'decorative: the tier name beside it is what a screen reader reads');
+
+  // A seat the room has not heard from: no number, and it says so.
+  const unknown = renderToStaticMarkup(createElement(RankChip, { model: rankView.chipOfWire(null) }));
+  assert.match(unknown, /no rating yet/);
+  assert.match(unknown, /data-tier="unranked"/);
+  assert.match(unknown, /assets\/ui\/rank\/unranked\.png/);
+
+  // A compact chip is the same chip with the tier name hidden, not dropped.
+  const compact = renderToStaticMarkup(createElement(RankChip, { model: rankView.chipOf({ rating: 1288, matches: 3 }), compact: true }));
+  assert.match(compact, /class="sr-only">Iron</, 'the name is still in the accessibility tree');
+});
+
+test('RK-05 lobby: every human seat shows its rank, and the AI shows none', () => {
+  const seats = grid();
+  const chips: Record<string, { key: string; label: string; rating: number; games: number }> = {
+    [HOST]: rankView.chipOf({ rating: 1462, matches: 14 }),
+    [GUEST]: rankView.chipOfWire({ rating: 1010, games: 4 }),
+  };
+  const html = renderToStaticMarkup(createElement(LobbyGrid, {
+    seats,
+    roster: rosterOf(seats, 0),
+    myPlayerId: HOST,
+    isHost: true,
+    rankOf: (playerId: string) => chips[playerId] ?? null,
+  }));
+  assert.equal((html.match(/<span class="rank-chip /g) ?? []).length, 2, 'one chip per human seat, and none for the eight machines');
+  assert.match(html, /data-tier="steel"/);
+  assert.match(html, /data-tier="scrap"/, 'a 1010 with four races is Scrap, not Unranked');
+  assert.match(html, />1462</);
+  assert.match(html, />1010</);
+
+  // No lookup, no chips: an older caller paints the grid it always did.
+  const bare = renderToStaticMarkup(createElement(LobbyGrid, { seats, roster: rosterOf(seats, 0), myPlayerId: HOST, isHost: true }));
+  assert.doesNotMatch(bare, /rank-chip/);
+});
+
+test('RK-05 lobby: the room says which door it was — ranked or friendly', () => {
+  const html = lobby(HOST);
+  assert.match(html, /FRIENDLY/, 'a lobby opened by hand is friendly, and says so');
+  assert.doesNotMatch(html, /RANKED/);
+});
+
+test('RK-05 panel: the quick-race door is Ranked, the code doors are Friendly', () => {
+  const html = renderToStaticMarkup(createElement(OnlinePanel, { busy: false, error: null, onHost() {}, onJoin() {}, onQuick() {} }));
+  assert.match(html, /Quick race<small>· Ranked<\/small>/, 'the queue is the rated door, and says so');
+  assert.match(html, /Host game<small>· Friendly<\/small>/);
+  assert.match(html, /Join with code<small>· Friendly<\/small>/);
+  assert.match(html, /rated door/, 'and the panel explains what the difference costs');
+});
+
+test('RK-05 ladder: the panel prints the board, its own card, and every way it can be empty', () => {
+  const mine = rankView.chipOf({ rating: 1042, matches: 11 });
+  const open = (props: Record<string, unknown>) => renderToStaticMarkup(createElement(LadderDialog, {
+    ladder: null, loading: false, available: true, mine, onRetry() {}, onClose() {}, ...props,
+  }));
+
+  // No board behind this page (a dev room, a signed-out player): one line, not
+  // an empty ladder that reads as "nobody plays this game".
+  const unavailable = open({ available: false });
+  assert.match(unavailable, /not reachable from this page/);
+  assert.match(unavailable, /Your card/);
+  assert.match(unavailable, /1042/, 'the driver still sees their own number');
+
+  assert.match(open({ loading: true }), /Reading the board/);
+  assert.match(open({}), /did not answer/);
+  assert.match(open({ ladder: { entries: [], mine: null, total: 0 } }), /Nobody has filed a rating yet/);
+
+  // The board itself: place, name, tier and number; then this driver's card and
+  // where it sits.
+  const listed = open({
+    ladder: {
+      entries: [
+        { profileId: 'p1', username: 'Brakka', rating: 1830, rank: 1 },
+        { profileId: 'p2', username: 'Sprocket', rating: 1290, rank: 2 },
+      ],
+      mine: { rank: 7, rating: 1042 },
+      total: 41,
+    },
+  });
+  assert.match(listed, /data-rank="1"/);
+  assert.match(listed, /Brakka/);
+  assert.match(listed, /data-tier="heavy-metal"/, '1830 wears the top plate');
+  assert.match(listed, /data-tier="iron"/, '1290 is Iron');
+  assert.match(listed, /rank 7 of 41/);
+  assert.match(listed, /TOP 50/);
+});
+
+test('RK-05 results: the band prints the delta, the badge and the tier callout', () => {
+  const results = [row(0, 1, 91_000), row(1, 2, 93_000), row(2, 3, null)];
+  const roster = rosterOf(grid(), 0);
+  const settled = renderToStaticMarkup(createElement(RaceResults, {
+    results, roster, title: 'Test circuit', subtitle: 'ONLINE', actions: [{ label: 'Race again', onClick() {} }],
+    championship: false, rating: ratedView('settled'),
+  }));
+  assert.match(settled, /RATING/, 'the table grows a column only when a rating moved');
+  assert.match(settled, /rank-delta/);
+  assert.match(settled, /results-ranking-badge/);
+  assert.match(settled, /of 2 rated drivers/);
+  assert.match(settled, /PLACEMENT RACE/, 'eleven races in is still placement');
+
+  // While the room is still filing: work in progress, never a +0.
+  const pending = renderToStaticMarkup(createElement(RaceResults, {
+    results, roster, title: 'Test circuit', subtitle: 'ONLINE', actions: [{ label: 'Race again', onClick() {} }],
+    championship: false, rating: ratedView('pending'),
+  }));
+  assert.match(pending, /Filed with the room/);
+  assert.doesNotMatch(pending, /rank-delta/, 'no numbers are invented while the room has not agreed');
+
+  // A friendly race: the band says nothing moved, and the table has no column.
+  const unrated = renderToStaticMarkup(createElement(RaceResults, {
+    results, roster, title: 'Test circuit', subtitle: 'ONLINE', actions: [{ label: 'Race again', onClick() {} }],
+    championship: false, rating: ratedView('unrated'),
+  }));
+  assert.match(unrated, /friendly race/i);
+  assert.match(unrated, /UNRATED/);
+
+  // And an offline heat — no room, no rating — is the results screen it always was.
+  const offline = renderToStaticMarkup(createElement(RaceResults, {
+    results, roster, title: 'Quick race', subtitle: 'SINGLE HEAT', actions: [{ label: 'Race again', onClick() {} }], championship: false,
+  }));
+  assert.doesNotMatch(offline, /results-ranking/);
+  assert.doesNotMatch(offline, />RATING</);
 });

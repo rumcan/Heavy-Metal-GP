@@ -12,6 +12,8 @@ import PhysicsLab from './PhysicsLab';
 import OnlinePanel from './OnlinePanel';
 import RulesDialog from './RulesDialog';
 import WalletButton from './WalletButton';
+import RankChip from './RankChip';
+import type { RankChipModel } from '../game/rank-view';
 import LoadoutPreview from './LoadoutPreview';
 import TrackThumbnail from './editor/TrackThumbnail';
 import { loadTracksSync } from '../game/tracks';
@@ -58,6 +60,12 @@ interface Props {
   rejoin?: { roomCode: string } | null;
   onRejoin?: () => void;
   onDismissRejoin?: () => void;
+  /**
+   * RK-05: this driver's own rank, and the ladder behind it. The garage header
+   * prints the badge and the number; tapping either opens the ladder panel.
+   */
+  rank?: RankChipModel | null;
+  onRank?: () => void;
   /** MB-02: the Workshop (track editor) — reachable from the header, beside Garage and Championship. */
   onWorkshop?: () => void;
   /** Open Community tracks. */
@@ -77,7 +85,7 @@ export default function SetupScreen(props: Props) {
   const { stats, onStats, color, onColor, rivals, onRerollRivals, seed, onNewSeed, onStart, onStartSeason, onContinueSeason, seasonMode, onBackToSeason, circuitIndex, onCircuit } = props;
   const { account, onShop, portrait, onPortrait, onStartStory, storyInProgress } = props;
   const { mpBusy = false, mpError = null, onHostGame, onJoinGame, onQuickGame, searching = false, windows = 0, onCancelSearch, rejoin = null, onRejoin, onDismissRejoin } = props;
-  const { onWorkshop } = props;
+  const { onWorkshop, rank = null, onRank } = props;
   const [pane, setPane] = useState<'circuit' | 'driver' | 'grid'>('driver');
   const [mode, setMode] = useState<'season' | 'quick' | 'online'>('season');
   const [dialog, setDialog] = useState<'rules' | 'lab' | null>(null);
@@ -107,7 +115,15 @@ export default function SetupScreen(props: Props) {
         {props.onCommunity && <button onClick={props.onCommunity}>Community</button>}
         <button onClick={() => setDialog('rules')}>How to play</button>
       </nav>
-      <div className="header-tools">{onWorkshop && <button className="icon-button mobile-only" onClick={onWorkshop} aria-label="Workshop" title="Workshop — build your own circuit"><Hammer size={17} /></button>}{props.onCommunity && <button className="icon-button mobile-only" onClick={props.onCommunity} aria-label="Community tracks" title="Community tracks"><Users size={17} /></button>}<button className="icon-button mobile-only" onClick={() => setDialog('rules')} aria-label="How to play"><CircleHelp size={17} /></button>{import.meta.env.DEV && <button className="text-button lab-link" onClick={() => setDialog('lab')}><FlaskConical size={16} /><span>Physics lab</span></button>}<WalletButton credits={account.credits} onClick={onShop} /></div>
+      <div className="header-tools">{onWorkshop && <button className="icon-button mobile-only" onClick={onWorkshop} aria-label="Workshop" title="Workshop — build your own circuit"><Hammer size={17} /></button>}{props.onCommunity && <button className="icon-button mobile-only" onClick={props.onCommunity} aria-label="Community tracks" title="Community tracks"><Users size={17} /></button>}<button className="icon-button mobile-only" onClick={() => setDialog('rules')} aria-label="How to play"><CircleHelp size={17} /></button>{/* RK-05: the rank badge and rating live in the garage header — the one row
+          every player sees before they pick a door. Tapping it opens the ladder. */}
+        {rank && <button
+          className="rank-button"
+          onClick={onRank}
+          aria-label={`Rank: ${rank.label}${rank.rating != null ? `, ${rank.rating} rating` : ', unranked'} — open the ladder`}
+          title="Your rank — open the ladder"
+        ><RankChip model={rank} compact /></button>}
+        {import.meta.env.DEV && <button className="text-button lab-link" onClick={() => setDialog('lab')}><FlaskConical size={16} /><span>Physics lab</span></button>}<WalletButton credits={account.credits} onClick={onShop} /></div>
     </header>
 
     <main className="fit-main garage-fit">
@@ -168,7 +184,13 @@ export default function SetupScreen(props: Props) {
       </section>
 
       <section className="fit-pane tuning-panel" data-pane-id="driver" aria-labelledby="tuning-title">
-        <div className="section-topline"><span className="eyebrow"><b>02</b> YOUR GOBLIN</span><button className="icon-button" onClick={() => onStats({ weight: 5, speed: 5, bounce: 5 })} aria-label="Reset stats to balanced"><RotateCcw size={15} /></button></div>
+        <div className="section-topline"><span className="eyebrow"><b>02</b> YOUR GOBLIN</span>
+          {/* RK-05: the phone home for the rank badge. The header row has no room
+              for it at 375 px (three icon buttons and the wallet already fill it),
+              and the pane's own title line does — so the same chip lives here and
+              CSS shows exactly one of the two at any width. */}
+          {rank && <button className="rank-button rank-button-inline" onClick={onRank} aria-label={`Rank: ${rank.label} — open the ladder`} title="Your rank — open the ladder"><RankChip model={rank} compact /></button>}
+          <button className="icon-button" onClick={() => onStats({ weight: 5, speed: 5, bounce: 5 })} aria-label="Reset stats to balanced"><RotateCcw size={15} /></button></div>
         <div className="driver-identity">
           <button className="icon-button" onClick={() => onPortrait((portrait + PLAYER_PORTRAIT_COUNT - 1) % PLAYER_PORTRAIT_COUNT)} aria-label="Previous driver"><ChevronLeft size={18} /></button>
           <Portrait className="driver-portrait" marble={roster[0]} mood="happy" size={96} alt={DRIVER_NAMES[portrait]} />

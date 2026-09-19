@@ -41,9 +41,11 @@ import {
   MAX_BODY_INDEX,
   MAX_EVENTS_PER_FRAME,
   MAX_LOOP_STAGE,
+  MAX_RATED_DRIVERS,
   MAX_SNAPSHOT_CHUNKS,
   PROTOCOL_VERSION,
   RACE_MESSAGE_TYPES,
+  MAX_RATING_ROWS,
   SEQ_MODULO,
   SNAPSHOT_CHUNK_CHARS,
   SnapshotAssembler,
@@ -59,6 +61,9 @@ import {
   packedStateLength,
   packState,
   readMessage,
+  readRankBoard,
+  readRankedOrder,
+  readRankWire,
   rejectionFor,
   unpackState,
   validateMessage,
@@ -195,6 +200,22 @@ const VALID: RaceProtocol[] = [
   // join time arrives before the page has subscribed to anything, so the page
   // asks for another one.
   { type: 'hello' },
+  // RK-03: the rated wire. A driver's own rating, the room's board, the host's
+  // classification, and the room's filed result.
+  { type: 'playerRating', playerId: 'player-host', rating: 1184, games: 7, joinToken: 'join-1' },
+  { type: 'ratingUpdate', ratings: [{ playerId: 'player-host', rating: 1184, games: 7 }] },
+  { type: 'ratingUpdate', ratings: [] },
+  { type: 'resultClaim', order: [{ playerId: 'player-host', finished: true }, { playerId: 'player-guest', finished: false }], durationSec: 42, rated: true },
+  {
+    type: 'result',
+    order: [{ playerId: 'player-host', finished: true }, { playerId: 'player-guest', finished: false, left: true }],
+    ratings: [{ playerId: 'player-host', rating: 1184, games: 7 }],
+    reason: 'finish',
+    rated: true,
+    durationSec: 42,
+    departedIds: ['player-guest'],
+    at: 1_700_000_000_000,
+  },
 ];
 
 /** Static and dynamic import specifiers of a source file (comments cannot fake one). */
@@ -474,6 +495,50 @@ test('MP-02 validation: results cannot put one marble in two places', () => {
   assert.equal(check({ ...results, order: [] }), null);
 });
 
+test('RK-03 validation: the rated wire, and every way it can lie', () => {
+  // A rating is the one number a player is allowed to be wrong about: a low one
+  // is CLAMPED to the floor rather than refused, and the reader is what the room
+  // and the client both use.
+  assert.deepEqual(readRankWire({ playerId: 'p1', rating: 12, games: 3 }), { playerId: 'p1', rating: 100, games: 3 });
+  assert.deepEqual(readRankWire({ playerId: 'p1', rating: 1184.4, games: 3.7 }), { playerId: 'p1', rating: 1184, games: 3 });
+  assert.equal(readRankWire({ rating: 1000, games: 0 }), null, 'a board row nobody can be named by');
+  assert.equal(readRankBoard([{ playerId: 'p1', rating: 1, games: 0 }, null]), null, 'one bad row spoils the board');
+
+  const rating = { type: 'playerRating', playerId: 'p1', rating: 1000, games: 0, joinToken: 't' };
+  assert.equal(check(rating), null);
+  assert.equal(check({ ...rating, playerId: '' })?.code, 'malformed');
+  assert.equal(check({ ...rating, rating: 'high' })?.code, 'malformed');
+  assert.equal(check({ ...rating, games: -1 })?.code, 'malformed');
+  assert.equal(check({ ...rating, joinToken: '' })?.code, 'malformed', 'a publish with no token cannot be recognised again');
+
+  assert.equal(check({ type: 'ratingUpdate', ratings: [] }), null);
+  assert.equal(check({ type: 'ratingUpdate', ratings: new Array(MAX_RATING_ROWS + 1).fill({ playerId: 'p1', rating: 1000, games: 0 }) })?.code, 'malformed');
+
+  // A classification: one row per rated human, nobody twice, and only human ids.
+  const row = { playerId: 'p1', finished: true };
+  assert.deepEqual(readRankedOrder([row, { playerId: 'p2', finished: false, left: true }]), [row, { playerId: 'p2', finished: false, left: true }]);
+  assert.deepEqual(readRankedOrder([{ playerId: 'p2', finished: false, left: false }]), [{ playerId: 'p2', finished: false }], '`left:false` is not a mark');
+  assert.equal(readRankedOrder([row, row]), null, 'the same driver twice would be counted twice');
+  assert.equal(readRankedOrder([{ playerId: '', finished: true }]), null);
+  assert.equal(readRankedOrder([{ playerId: 'p1', finished: 'yes' }]), null);
+  assert.equal(readRankedOrder(new Array(MAX_RATED_DRIVERS + 1).fill(row)), null, 'six human seats, no more');
+
+  const claim = { type: 'resultClaim', order: [row], durationSec: 42, rated: true };
+  assert.equal(check(claim), null);
+  assert.equal(check({ ...claim, durationSec: -1 })?.code, 'malformed');
+  assert.equal(check({ ...claim, rated: 'yes' })?.code, 'malformed', 'the room’s rules are a flag, not a word');
+
+  const result = {
+    type: 'result', order: [row], ratings: [], reason: 'finish', rated: true, durationSec: 42, at: 1_700_000_000_000,
+  };
+  assert.equal(check(result), null);
+  assert.equal(check({ ...result, reason: 'win' })?.code, 'malformed', 'a race is finished or forfeited, not won');
+  assert.equal(check({ ...result, rated: undefined })?.code, 'malformed', 'every result says whether it counted');
+  assert.equal(check({ ...result, at: -1 })?.code, 'malformed', 'the room’s stamp is a wall clock');
+  assert.equal(check({ ...result, departedIds: ['p1', ''] })?.code, 'malformed');
+  assert.equal(check({ ...result, ratings: [{ playerId: 'p1' }] })?.code, 'malformed');
+});
+
 test('MP-02 validation: presence and refusal', () => {
   assert.equal(check({ type: 'peerStatus', playerId: 'p1', status: 'disconnected' }), null);
   assert.equal(check({ type: 'peerStatus', playerId: '', status: 'disconnected' })?.code, 'malformed');
@@ -721,9 +786,12 @@ test('MP-02 purity: the protocol imports nothing the room bundle may not have', 
       `src/net/protocol.ts must not import ${forbidden} (imports: ${imports.join(', ')})`,
     );
   }
-  // The two game modules it does import are the pure ones — and nothing else
-  // at all, so the room bundle cannot grow by accident.
-  assert.deepEqual([...new Set(imports)].sort(), ['../game/cues', '../game/types']);
+  // The modules it does import are the pure ones — and nothing else at all, so
+  // the room bundle cannot grow by accident. RK-03 added `./rating`: the
+  // arithmetic (RK-01) is pure, SDK-free and DOM-free by construction, which is
+  // the same reason the wire can name its `RaceEntry` / `RankWire` shapes
+  // instead of re-declaring them and drifting.
+  assert.deepEqual([...new Set(imports)].sort(), ['../game/cues', '../game/types', './rating']);
 });
 
 test('MP-02 purity: the two game modules the protocol imports are pure too', () => {

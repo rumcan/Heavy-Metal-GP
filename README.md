@@ -112,13 +112,17 @@ seed — and `RaceScreen` runs the race through a `RaceSession`
 (`src/net/session.ts`), which is either the host's simulation or the guest's
 picture of it. The same screen, the same HUD, one prop's difference.
 
-**Quick race is a loop, not a request.** The SDK's `matchmakeRoom` is a bounded
+**Quick race is a loop, not a request** — and, since RK-05, the RATED door:
+**Host game** and **Join with code** are labelled Friendly and move nothing.
+The SDK's `matchmakeRoom` is a bounded
 window: it waits, and when the window closes it rejects and drops the ticket.
 `src/net/matchmake.ts` is the "keep looking" part — it asks again after a pause,
 counts the windows it has burned through for the "still looking" line, lets the
 player cancel (the in-flight request can still land, so a room that arrives after
 a cancel is left rather than left holding a seat), and passes a real failure —
 access denied, no room server — straight to the player instead of spinning on it.
+Since RK-04 it also asks for a WIDER rank each time a window closes; the ladder
+it walks is under [Ranked racing](#ranked-racing).
 Whoever the platform pairs first is the host. A quick lobby has no Ready button
 and no Start button: everybody is ready by sitting down, the host takes the
 circuit from the room's seed (never `Math.random()` — a republished lobby must
@@ -206,6 +210,199 @@ and exit with `EADDRINUSE`; restart `npm run dev` if that happens. A deliberate
 leave is held for the room's 30-second reconnect grace before the other seat
 sees the player leave — that is the platform's seat hold, and the room already
 announces the drop (`peerStatus`) with the countdown attached.
+
+## Ranked racing
+
+Quick race matchmaking shipped with MP-07; what ranks the drivers is the
+**RK-01..RK-06 epic**, a port of HexMatch's RANK-01 — **RK-01 through RK-05 are
+in**, with only the ranked E2E sweep (RK-06) left. `src/net/rating.ts` is the pure half: an Elo number, the tier it
+names, and the arithmetic that moves it. It imports nothing at all — no RUN
+SDK, no DOM, no clock — so the client, the room and the unit suite can all read
+the same answers out of it.
+
+A race is rated as a FIELD, not as a duel. Every two rated HUMANS in it are a
+head-to-head result (ahead beats behind), each driver's K is divided by
+`(humans − 1)` — so a full six-marble race moves a rating about as much as one
+duel, and an even six-driver race pays its winner exactly what an even duel
+pays — and every pair cancels, so while a field shares one K its deltas sum to
+zero and the ladder does not inflate. AI marbles are never on the board and are
+not in the classification the ladder reads: a marble nobody is steering cannot
+be farmed for rating.
+
+The rules a scoreboard needs: a DNF ranks below every finisher, two DNFs tie at
+half a point each, and a driver who LEFT is a DNF however the classification
+read — HexMatch's leaver rule, kept, because MP-08 hands a quitter's marble to
+the AI and that marble can still roll home, and paying it would be paying
+people to quit. Crossing the line and *then* closing the tab is not leaving:
+that is a finished race, and the room is what tells the two apart. A driver the
+room never heard from is read as a fresh 1000 rather than dropped out of the
+arithmetic, so a silent seat cannot quietly turn everyone else's race into a
+duel. Provisional drivers (the first ten rated races) move at K=40, established
+ones at K=16, the floor is 100 and there is no ceiling. The tiers use
+HexMatch's thresholds with this game's names — Scrap, Bronze Bolt, Iron, Steel,
+Gold Gear, Heavy Metal — and `unranked` is a state rather than a band until a
+driver files their first rated race. `searchBucket` (a rating window as a
+matchmaking criterion, since the pool matches by equality) is here too, for
+RK-04.
+
+**Where a rating lives (RK-02).** `src/net/rankstore.ts` is the policy around
+the arithmetic: the storage keys, the once-only guard that stops a reload from
+filing one race twice, and the single call site that writes to the public
+ladder. The file is RUN **player storage** (`appStorage`, per-player and
+cloud-backed — no other seat can read or write it), reached through
+`src/net/transport.ts`, which is still the only module that touches the SDK's
+storage and leaderboard: `readPlayerValue`/`writePlayerValue` already existed
+for the rejoin memo, and `isLadderAvailable`, `readLadder` and
+`submitLadderScore` join them. Every one of them resolves rather than throws,
+because a rating read that fails must fall back to a fresh file and a ladder
+submit that fails must not take a results screen down with it.
+
+A filed race is guarded by a key built from the **room's own stamp and the
+field in finishing order** — stable across both seats and across a reload, and
+different for a rematch in the same room. It is written *before* the rating, so
+a crash between the two loses a move rather than duplicating one. Reading the
+file is equally forgiving: a corrupt, half-written or simply-not-ours record
+falls back to a fresh 1000 instead of throwing on a boot path.
+
+Two of HexMatch's decisions are reversed here, on purpose. There is **no
+`localStorage` mirror**: RUN.world blocks web storage and everything persistent
+in this game already goes through the device cache, so no RUN storage means a
+fresh file and an unrated race rather than a rating kept in a bucket the
+shipped game cannot read. And an **anonymous driver is not rated at all** —
+`ratedRacingAllowed()` is false without a signed-in player and a per-player
+bucket, and the rating surfaces show one line (`SIGN_IN_TO_BE_RANKED`) instead
+of a number that would evaporate. A signed-out player still races; it just does
+not count.
+
+The public ladder is a **keep-best** leaderboard (`rundot/leaderboard.config.json`,
+mode `ranked`, bands 100–4000, all-time), so it shows a driver's PEAK rating
+while their private file holds where they are now — the two are supposed to
+differ, and a lower submission comes back `accepted: false` and changes nothing.
+An unreachable board is `null`, and the panel says so in a line rather than
+showing an empty table that looks like nobody plays this game.
+
+**The race, rated (RK-03).** Four messages join the wire (`PROTOCOL_VERSION` 3):
+a driver publishes **their own** rating (`playerRating` — the relay drops
+anything signed by somebody else, and a re-publish must carry the join token
+the seat first filed), the room relays the whole board back (`ratingUpdate`,
+and in the welcome, so a lobby shows numbers before the lights), the host files
+the classification when the flag falls (`resultClaim`), and the room broadcasts
+the one result it will ever carry (`result`). No rating NUMBERS travel as
+opinions: the result carries the room's board and the room's classification, and
+every client recomputes `rateRace` from that pair, so two seats cannot disagree
+about what a race did.
+
+`src/rooms/RaceRoom.ts` gained the room's half: the board it has been told, one
+result per room (the once-only guard is set *before* the broadcast), and the
+fact no client has — **who was still there**. A seat that empties during a live
+race is a DNF in the filed classification however the marble finished (MP-08
+hands it to the AI, and that AI can roll home), which is HexMatch's leaver rule
+carried into a race. A race is **rated only when it was created by matchmaking
+and raced without house-rule power-ups**: the host declares the first on its
+claim (it is the only seat that knows how the room was opened — the room's own
+`metadata` is static config and the matchmaking criteria ride a join ticket the
+room never sees) and the room ANDs in the second, the one rule it can watch for
+itself as it relays the lobby. The result carries the verdict, so every seat
+reads the same flag.
+
+`src/net/rank-runtime.ts` is the client half, ported from HexMatch's
+`RankRuntime`: hold the file, publish it, turn the host's `results` frame into
+the claim (`claimFinish` — human seats only, in the simulation's order, a DNF
+below every finisher), fold the room's `result` back into the driver's own file
+through `rankstore.fileResult`, and give the screen a `RaceVerdict` plus the
+`FiledOutcome` that says whether anything was written. A driver who walks out
+before the flag files **their own** DNF locally (`fileOwnForfeit`, `localOnly`:
+no ladder line — the ladder is written from a result the room witnessed), while
+the survivors' numbers come from the room's own filing. Wiring this into the
+lobby, the HUD and the results screen IS RK-05 (next section down); the store,
+the room and the runtime are covered end to end.
+
+**The quick race is a ranked queue (RK-04).** `src/net/matchmake.ts` grew the
+ladder HexMatch's RANK-01 walks: `RANK_SEARCH_STEPS` are the windows a
+similar-rank search widens through — 75 points for six seconds, then 200, then
+400, then Any rank at eight seconds each — and `rankRungs(rating)` turns each
+span into the one thing the pool understands, a bucket index (`searchBucket`).
+One rung is one `quickMatch({ rankBucket, matchmakeTimeoutMs })` — the SDK call
+behind the transport seam — and `src/net/ranked-queue.ts` is the whole wiring,
+whose one caller is the Online panel's Quick race door (RK-05 renamed it from
+Auto Match Making, because it is the rated one): the rating comes off
+the driver's own file (a fresh 1000 for a driver who has never raced, signed in
+or not), the rungs are computed once, and the room that lands is a MATCHMADE
+room, which is the fact RK-03's rated wire hangs off.
+
+Widening is safe because of an asymmetry in the pool's criteria rule, kept
+verbatim from HexMatch's comment: the pool requires a room to satisfy every key
+a request asks for, not to match exactly — so a plain search sees ANY waiting
+room, including a ranked one's, while a ranked search only sees rooms tagged
+with its own bucket. That is why the ladder's LAST rung asks for no rank at all:
+a driver who has waited out the tight windows can see, and be seen by, everyone.
+The ladder is walked ONCE — after it the search stays at Any rank for as long as
+the driver leaves it running, because a window closing means widen and look
+again, never "no rival found". Cancel is the only exit: it bumps the token the
+loop checks after every await, and a pair that lands anyway is left rather than
+sat in.
+
+Two facts about the dev sidecar are worth knowing before reading the tests: its
+`matchmake` action falls through to `joinOrCreate`, so it answers every request
+instantly with a room — a lone searcher is never left waiting on a window, and
+no browser spec here can watch one close. So the WIDENING is proven against a
+pool model in `tests/matchmake.test.ts` (two drivers 600 points apart, each
+widening rung by rung until the Any-rank search joins the other's still-narrow
+room), and the two-browser spec proves the other half: a seeded rank file
+reaches the wire, two ratings that round into one bucket are paired into one
+lobby with no code typed, and two a tier apart are not.
+
+**The ranked surfaces (RK-05).** Ratings are worthless if a driver cannot see
+them, so the number, the badge that names it and the delta it moved by are on
+the screens a player already uses. `src/game/rank-badge.ts` is HexMatch's
+`rank-badge.ts`, ported: one Vite import per tier, so a badge is a bundled asset
+with a hashed URL and no fetch at paint time. The plates are DERIVED, never
+hand-edited — `tools/make-rank-badges.mjs` knocks the dark ground out of the one
+painted medallion in `assets/ui/rank/medallion-master.png`, re-metals the same
+luminance per tier, and draws the tier's marks (one riveted star per band, in
+ladder order; `unranked` is the bare medal) into the blank disc. `RANK_TIERS`,
+the tool's table and the PNGs on disk are checked against each other by
+`tests/rating.test.ts`, so a renamed tier is a failing test rather than a blank
+square in a lobby.
+
+`src/game/rank-view.ts` is the half that is not markup: a `RankChipModel`
+(a badge key, a label, a rating or an honest `null`) for the garage header, a
+lobby seat and a ladder row, and `rankedViewFor()` which decides what the
+results screen may say — `pending` while the room is still filing (never a `+0`,
+which a player would believe), `unrated` with the reason (`alone` for a rated
+lobby nobody else rated, `room` for a friendly one), or `settled` with a row per
+rated human, this driver's own delta, and the tier callouts. The components
+(`RankChip`, `RankResults`, `LadderDialog`) only paint it. The lobby's seats show
+a chip per HUMAN — a rival's number comes off the room's board, the driver's own
+off their file, and an AI seat gets none rather than an unranked medal that would
+read as a player.
+
+Ratedness travels with the lobby now. It is decided by the DOOR — Quick race is
+matchmade, a code is a friendly — plus the lobby's rules, and only the host
+knows both, so the host puts `rated` on the `lobby` frame and everyone reads it
+(the same claim the room ANDs with what it can see before any result is filed).
+Which is why the panel labels its doors: **Quick race · Ranked** beside **Host
+game · Friendly** and **Join with code · Friendly**. The ladder panel reads
+`rankStore().loadLadder(50)` — the top of the public board plus the driver's own
+card — and it degrades in one line when there is no board behind the page
+(`isLadderAvailable`), because an empty table reads as "nobody plays this game".
+
+**The sweep (RK-06).** `tests/e2e-mp/mp-ranked-race.e2e.spec.ts` is the only
+place a rated race is raced to the flag, because a race takes minutes and the
+dev sidecar's rooms outlive the run that opened them. Two seeded drivers queue,
+the host drops the lights, and when the panel comes up both screens' per-human
+deltas are read BY NAME off the results tables and compared seat for seat: one
+driver gains, the other pays, and the badge that follows the new number is the
+same badge on both screens. Each driver's rating file is then read raw (number
+and race count) and compared with what their own band printed, before and after
+a full page reload — a race that had been filed twice would show up as a moved
+number or a bumped counter, and it does not. The same file carries the ranked
+half of HexMatch's rejoin spec: a guest who walks out of a LIVE rated race keeps
+their row on the survivor's results — a DNF, negative delta — while the seat
+that stayed is credited with the win and moves up. The room-side half of that is
+`tests/rank-runtime.test.ts`'s three-human leaver test: the host's own summary
+says the leaver FINISHED (the AI drove the marble home), and it is the room's
+`left` mark, reaching every survivor identically, that makes them a DNF.
 
 ## Credits And The Pit Shop
 
@@ -327,7 +524,71 @@ funnels, traps, out-of-bounds recovery, freeze/oil timing, anvil mass, stat budg
 inventory consumption, effect expiry and championship points. Economy tests in
 `tests/economy.test.ts` cover purchases, insufficient funds, capped inventory,
 corrupt saves, payout amounts and duplicate-payout prevention.
-`tests/multiplayer.test.ts` covers the transport seam: that exactly one client
+`tests/rating.test.ts` covers the rating (RK-01): HexMatch's RANK-01 tests
+ported to a race, plus the two claims the epic's acceptance names outright — a
+two-human race equals a duel exactly, pair for pair, and a six-driver race's
+deltas sum to zero apart from rounding. It also sweeps every finishing place to
+show that finishing higher never pays less; checks that a DNF ranks below every
+finisher, that two DNFs tie, and that a leaver counts as a DNF even when the
+classification lists them as a finisher; keeps AI seats off the board and files
+nothing for a solo race; round-trips the stored file, clamps a hostile record
+and refuses somebody else's JSON; checks the wire's clamping and its
+fresh-1000 default for a driver the room never heard from; and pins the tier
+table — contiguous bands, the top one open-ended, HexMatch's thresholds.
+`tests/rank-runtime.test.ts` covers the rated race (RK-03) end to end, with no
+mocks in the middle: the real room (`tests/room-harness.ts`) between the real
+`RankRuntime` and the real `createRankStore(io)` — one store per seat. It pins
+the acceptance list: a rating published for another driver is dropped, a
+re-publish must carry the seat's own join token, the host's claim is filed once
+and only after the lights, a guest cannot claim, a claim cannot invent a driver,
+a driver who walked out is a DNF in the room's own filed classification,
+house-rule power-ups make a race unrated, and a race the room did not rate
+writes nothing at all. Its headline test is the epic's second acceptance: three
+seats, three histories, one room — including a guest that never saw a board —
+and every driver's own row is exactly the row the other two seats were shown.
+The leaver case is closed the same way: a survivor's verdict shows the driver
+who walked out as a DNF with a negative delta, and no ladder line, because the
+room witnessed the abandonment and the quitter did not.
+`tests/matchmake.test.ts` covers the matchmaking loop (MP-07) and, since RK-04,
+the ladder: a pool model with RUN's criteria rule, two drivers of a similar
+rating matched on the tightest rung, two of very different ratings widening rung
+by rung until the Any-rank search joins the other's room, and the ladder walked
+once — after the last rung the search stays at Any rank for as long as it takes.
+The browser half is `tests/e2e-mp/mp-ranked.e2e.spec.ts`: it seeds each player's
+rating file (a dev page's mock `appStorage` is a namespaced corner of
+`localStorage`, which is what the harness writes) and watches the pairing with a
+real room in the middle. `tests/e2e-mp/mp-rank-ui.e2e.spec.ts` (RK-05) is the
+visual half: a seeded file reaches the garage header, the ladder panel opens on
+it and degrades in one line without a leaderboard, and two ranked drivers in one
+lobby each show their own badge and number — re-checked at 375 px, where the
+badge moves out of the header row and into the driver pane rather than pushing
+the wallet off the edge, and every seat row keeps its chip inside its own box.
+`tests/rank-view.test.ts` covers the rank surfaces' models (RK-05): which tier
+and badge a rating names, that a seat the room never heard from prints an honest
+blank instead of a guessed 1000, and the three states of the results panel —
+pending (no numbers), unrated (with `alone` and `room` told apart) and settled
+(one row per rated human, seat-to-player joined for the table's own numbering,
+promotion only on a band change, a refused write said out loud, a leaver's row a
+forfeit).
+`tests/e2e-mp/mp-ranked-race.e2e.spec.ts` (RK-06) is the slow one, and it earns
+it: two browsers queue, race a full heat to the flag, and the two results screens
+are compared row by row — matching deltas, matching badges, one file that moved
+once and stays put across a reload. It also races the abandonment direction,
+where the survivor is the one whose number moves.
+`tests/rankstore.test.ts` covers where a rating lives (RK-02) by driving the
+real chain — `rankstore` → `transport` → the RUN SDK's own in-memory backends,
+with the browser globals stubbed the way `tests/multiplayer.test.ts` stubs them.
+No module mocking: a rating file round-trips through `appStorage`; a corrupt,
+half-written or foreign record falls back to a fresh 1000; a bucket that refuses
+the write loses the number and says so (`stored: false`) without wedging the
+session; an anonymous driver is refused rating and given the sign-in line; a win
+files, writes and publishes, and a loss writes through; one race counts once
+however many times the result arrives, while a rematch is a new key; a race that
+was not rated is a no-op; a leaver's own seat files locally with no ladder write
+and no guard key; an unreachable ladder, and a keep-best refusal, both leave the
+race end intact; and `rundot/leaderboard.config.json` is checked against the
+fields the SDK's own board config requires, so a typo fails here rather than at
+deploy. `tests/multiplayer.test.ts` covers the transport seam: that exactly one client
 module may import the SDK's realtime API (and one server module the room
 server), that the room registration and the transport agree on the room type,
 criteria and capacity, and the room-code, matchmaking-expiry and access-denied

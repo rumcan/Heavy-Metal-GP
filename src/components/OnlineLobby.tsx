@@ -42,6 +42,19 @@ import { ITEM_INFO, ITEM_TYPES } from '../game/types';
 import type { ItemType } from '../game/types';
 import { UNLIMITED_ITEM } from '../net/protocol';
 import Brand from './Brand';
+import RankChip from './RankChip';
+import type { RankChipLookup } from '../game/rank-view';
+
+/**
+ * RK-05: is this lobby a RATED one? The host's answer: they came in through
+ * Quick race (not a code), and no house-rule power-ups are set. It travels in
+ * `lobby` so a guest who joined a matchmade room by its code is rated in the
+ * same race as everybody else — and the ROOM still ANDs it with the rules it
+ * can see for itself before any rating moves (`ResultMsg.rated`).
+ */
+export function lobbyIsRated(autoStart: boolean, settings: Pick<RaceSettings, 'items'>): boolean {
+  return autoStart && settings.items === undefined;
+}
 
 /** What App needs to launch an online race once the lights are armed. */
 export interface OnlineRaceStart {
@@ -51,6 +64,8 @@ export interface OnlineRaceStart {
   localSeat: number;
   isHost: boolean;
   countdownAt: number;
+  /** RK-05: true when this is a RATED race (see `lobbyIsRated`). */
+  rated?: boolean;
 }
 
 interface Props {
@@ -73,6 +88,10 @@ interface Props {
   autoStart?: boolean;
   /** MP-08: drivers the room is holding a seat for. */
   peers?: readonly PeerPresence[];
+  /** RK-05: a seat's rank chip, from this driver's file or the room's board. */
+  rankOf?: RankChipLookup;
+  /** RK-05: open the ladder panel (the header's badge in the lobby). */
+  onRank?: () => void;
   /**
    * MP-09: the room's last greeting, remembered by App across a race so that
    * "Race again" can put the same drivers back in the same lobby. A room only
@@ -98,7 +117,7 @@ function buildSettings(circuit: number, items: Partial<Record<ItemType, number>>
 /** Charges a host can set per power-up: none, a few, or unlimited. */
 const HOUSE_STEPS = [0, 1, 2, 3, 5, UNLIMITED_ITEM];
 
-export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onLeave, onStart, link, autoStart = false, peers, greeting = null, error, onError }: Props) {
+export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onLeave, onStart, link, autoStart = false, peers, rankOf, onRank, greeting = null, error, onError }: Props) {
   const [welcome, setWelcome] = useState<WelcomeMsg | null>(greeting);
   /** The host's own copy of the grid (guests read the host's out of `lobby`). */
   const [grid, setGrid] = useState<Seat[] | null>(null);
@@ -119,6 +138,8 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
   const [open, setOpen] = useState(true);
   /** Guests: the host's open flag, from the last `lobby`. */
   const [lobbyOpen, setLobbyOpen] = useState(true);
+  /** RK-05: the host's word that this lobby is a rated one (absent reads false). */
+  const [hostRated, setHostRated] = useState(false);
 
   const isHost = welcome ? welcome.hostId === room.playerId : room.isCreator;
   const seats = (isHost ? grid ?? welcome?.seats : lobbySeats ?? welcome?.seats) ?? [];
@@ -129,6 +150,12 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
   const roster = seats.length ? rosterOf(seats, localSeat) : [];
   const blocked = canStart(seats) ? null : startBlockedReason(seats);
   const amReady = seats.find((s) => s.playerId === room.playerId)?.ready === true;
+  /**
+   * RK-05: rated — the host decides it (`lobbyIsRated`), everyone reads it. The
+   * host's own answer wins over the frame it published, so the label and the
+   * claim cannot disagree on the machine that files.
+   */
+  const rated = isHost ? lobbyIsRated(autoStart, settings) : hostRated;
 
   /**
    * MP-08: joining a race that is ALREADY RUNNING.
@@ -168,6 +195,7 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
       isHost: false,
       // The lights are out and have been: build the world and get in.
       countdownAt: Date.now(),
+      rated: hostRated,
     });
   }, [lobbySettings, onError, onLeave, onStart, room.playerId]);
 
@@ -176,8 +204,8 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
   const filed = useRef(new Map<string, SeatGarage>());
   const readies = useRef(new Map<string, boolean>());
   // Everything the message handler needs, without re-subscribing on every render.
-  const latest = useRef({ welcome, grid, lobbySeats, isHost, circuit: circuitIndex, items, open, benched, aiItems });
-  latest.current = { welcome, grid, lobbySeats, isHost, circuit: circuitIndex, items, open, benched, aiItems };
+  const latest = useRef({ welcome, grid, lobbySeats, isHost, circuit: circuitIndex, items, open, benched, aiItems, hostRated });
+  latest.current = { welcome, grid, lobbySeats, isHost, circuit: circuitIndex, items, open, benched, aiItems, hostRated };
   /** The host's full rules for a circuit: the circuit plus any power-up house rules. */
   const hostSettings = (circuitId: number): RaceSettings => {
     const l = latest.current;
@@ -226,8 +254,9 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
   /** Host only: keep the grid and tell everybody what it looks like. */
   const publish = useCallback((next: Seat[], circuitId: number) => {
     setGrid(next);
-    link.send({ type: 'lobby', seats: next, settings: hostSettings(circuitId), open: latest.current.open });
-  }, [link]);
+    const settings = hostSettings(circuitId);
+    link.send({ type: 'lobby', seats: next, settings, open: latest.current.open, rated: lobbyIsRated(autoStart, settings) });
+  }, [autoStart, link]);
 
   /** Host picks a custom track — encode to share code (5 KB, fits frame) and publish. */
   const pickCustomTrack = async (trackId: string | null) => {
@@ -282,6 +311,7 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
           }
         }
         setLobbyOpen(msg.open !== false);
+        setHostRated(msg.rated === true);
         // The host answers a re-greeting with the grid (MP-08) — which is the
         // last thing a returning driver was waiting for.
         joinLive(msg.seats);
@@ -308,13 +338,15 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
         const grid_ = latest.current.isHost
           ? latest.current.grid ?? base.seats
           : latest.current.lobbySeats ?? base.seats;
+        const raceSettings = latest.current.isHost ? hostSettings(latest.current.circuit) : lobbySettings ?? base.settings;
         onStart({
           seed: base.seed,
           seats: grid_,
-          settings: latest.current.isHost ? hostSettings(latest.current.circuit) : lobbySettings ?? base.settings,
+          settings: raceSettings,
           localSeat: seatOfPlayer(grid_, room.playerId) ?? 0,
           isHost: latest.current.isHost,
           countdownAt: msg.countdownAt,
+          rated: latest.current.isHost ? lobbyIsRated(autoStart, raceSettings) : latest.current.hostRated,
         });
         return;
       }
@@ -405,6 +437,8 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
   };
   const isOpen = isHost ? open : lobbyOpen;
   const humans = seats.filter((s) => !s.isAI).length;
+  /** This driver's own chip, for the lobby header (the ladder is one tap away). */
+  const myChip = rankOf?.(room.playerId) ?? { key: 'unranked', label: 'Unrated', rating: null, games: 0 };
 
   const copyCode = async () => {
     try {
@@ -422,7 +456,7 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
     ? isHost
       ? humans < 2
         ? isOpen
-          ? 'You are the host. Waiting for drivers — anyone using Auto Match Making lands in your lobby. Set the circuit and power-ups meanwhile.'
+          ? 'You are the host of a RANKED race. Waiting for drivers — anyone using Quick race lands in your lobby. Set the circuit meanwhile; house-rule power-ups make the race unrated.'
           : 'Lobby closed. Open it again to let drivers join.'
         : `${humans} drivers in. ${isOpen ? 'More can still join — ' : 'Lobby closed — '}start the race when you are ready.`
       : `You joined an auto match. The host sets the circuit and power-ups and starts the race.${isOpen ? '' : ' The lobby is closed to new drivers.'}`
@@ -432,7 +466,8 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
     <header className="app-header">
       <Brand />
       <div className="header-tools">
-        <span className="eyebrow">{autoStart ? 'AUTO MATCH' : isHost ? 'HOSTING' : 'JOINED'} <span className="muted">/ {seats.filter((s) => !s.isAI).length} DRIVERS</span></span>
+        <span className="eyebrow">{rated ? 'RANKED' : autoStart ? 'QUICK RACE' : isHost ? 'HOSTING' : 'JOINED'} <span className="muted">/ {seats.filter((s) => !s.isAI).length} DRIVERS</span></span>
+        {onRank && <button className="rank-button rank-button-lobby" onClick={onRank} aria-label="Your rank — open the ladder" title="Your rank — open the ladder"><RankChip model={myChip} compact /></button>}
         <button className="text-button" onClick={onLeave}>Leave <ArrowUpRight size={15} /></button>
       </div>
     </header>
@@ -440,7 +475,7 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
     <main className="fit-main lobby-fit">
       {/* The room code, big and first: HexMatch's lobby pattern, sized to be read across a room. */}
       <section className="lobby-code-card" aria-labelledby="lobby-code-title">
-        <span className="eyebrow">{isHost ? 'YOUR ROOM CODE' : 'ROOM CODE'}{autoStart ? ' · AUTO MATCH MAKING' : ''}</span>
+        <span className="eyebrow">{isHost ? 'YOUR ROOM CODE' : 'ROOM CODE'}{rated ? ' · RANKED' : autoStart ? ' · QUICK RACE' : ' · FRIENDLY'}</span>
         <h2 id="lobby-code-title">{autoStart ? (isHost ? 'Your lobby is live — you are the host' : 'Match found — you are in') : isHost ? 'Invite your rivals' : 'You are in'}</h2>
         <div className="lobby-code">
           <b aria-label={`Room code ${(room.roomCode || '').split('').join(' ')}`}>{room.roomCode || '······'}</b>
@@ -571,6 +606,7 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
             roster={roster}
             myPlayerId={room.playerId}
             isHost={isHost}
+            rankOf={rankOf}
             onKick={(playerId) => link.send({ type: 'kick', playerId })}
             benched={settings.benched ?? []}
             onToggleAI={toggleBench}

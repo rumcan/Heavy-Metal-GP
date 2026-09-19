@@ -23,6 +23,7 @@ import InventoryToolbar from './InventoryToolbar';
 import RaceMinimap from './RaceMinimap';
 import RaceResults from './RaceResults';
 import type { RaceAction } from './RaceResults';
+import type { RankedRaceView } from '../game/rank-view';
 import StoryRaceOverlay from './story/StoryRace';
 import type { StoryRaceProps } from './story/StoryRace';
 export type { RaceAction } from './RaceResults';
@@ -54,6 +55,14 @@ interface Props {
    * a `Game`, it just no longer steps it.
    */
   online?: OnlineRace;
+  /**
+   * RK-05: the ranked outcome of an online race — badge, delta and tier
+   * callouts on the results, and a rating row per rated human. Absent (every
+   * offline heat, and a race with no room behind it) means no rating panel:
+   * nothing can have moved. Null inside an online race means the panel is not
+   * a rated one, which is itself worth printing.
+   */
+  rating?: RankedRaceView | null;
 }
 
 /** What an online race needs that an offline one does not. */
@@ -88,7 +97,7 @@ interface Hud {
   viewTop: number; viewBottom: number;
 }
 
-export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef, title, subtitle, onExit, onFinished, actions, championship = false, inventory, credits, onInventoryChange, payout, onShop, isCustom = false, story, online }: Props) {
+export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef, title, subtitle, onExit, onFinished, actions, championship = false, inventory, credits, onInventoryChange, payout, onShop, isCustom = false, story, online, rating = null }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef<Game | null>(null);
   /** MP-06: the online session, when there is one. The host's simulation or the guest's picture. */
@@ -492,7 +501,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       </div><InventoryToolbar unlimited={online?.settings.items} inventory={hud.inventory} remaining={hud.remaining} selected={selected} blocked={paused || hud.finished || preStart || hud.frozen || !!results} coolingDown={hud.coolingDown} onUse={deploy} />
     </footer>
     {paused && !results && <Dialog titleId="pause-title" onClose={() => { setConfirmExit(false); setPause(false); }} className="pause-dialog"><span className="eyebrow"><Timer size={15} /> {confirmExit ? 'RACE CONTROL' : 'TIME OUT'}</span><h2 id="pause-title">{confirmExit ? 'Leaving the grid?' : 'A quick pit stop.'}</h2><p className="dialog-intro">{confirmExit ? 'This heat will not be scored or paid. Used items stay spent; unused items and pickups stay in your inventory. Previous results are safe.' : 'The clock, every marble, and all item timers are paused. Your next move can wait.'}</p><div className="pause-actions"><button className="button-primary" onClick={() => { setConfirmExit(false); setPause(false); }}><Play size={17} />Back to the race</button><button className="button-secondary" onClick={confirmExit ? onExit : () => setConfirmExit(true)}>{confirmExit ? 'Leave heat' : 'Return to paddock'}<ChevronRight size={16} /></button></div></Dialog>}
-    {results && <RaceResults results={results} roster={roster} title={title} subtitle={subtitle} actions={actions} championship={championship} payout={payout} credits={credits} onShop={onShop} isCustom={isCustom} />}
+    {results && <RaceResults results={results} roster={roster} title={title} subtitle={subtitle} actions={actions} championship={championship} payout={payout} credits={credits} onShop={onShop} isCustom={isCustom} rating={rating} />}
   </div>;
 }
 
