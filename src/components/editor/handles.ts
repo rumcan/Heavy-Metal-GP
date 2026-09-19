@@ -254,6 +254,30 @@ function baseHandles(piece: Piece): Handle[] {
         { id: 'len', x: piece.x + piece.len / 2, y: piece.y, cursor: 'ew-resize', label: 'Plank length' },
       ];
     }
+    // ---- MB-10D ----
+    case 'cannon':
+    case 'sling': {
+      // Aim fan / facing are property fields; the collar drags as one point.
+      return [{ id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' }];
+    }
+    case 'catapult': {
+      // Pivot moves; the arm-end drag sets the length.
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Pivot' },
+        { id: 'len', x: piece.x + (piece.dir === 0 ? -1 : 1) * piece.len * 0.7, y: piece.y + piece.len * 0.7, cursor: 'ew-resize', label: 'Arm length' },
+      ];
+    }
+    case 'flipper': {
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Pivot' },
+        { id: 'len', x: piece.x + (piece.side === 0 ? 1 : -1) * piece.len, y: piece.y, cursor: 'ew-resize', label: 'Bat length' },
+      ];
+    }
+    case 'scoop': {
+      const out: Handle[] = [{ id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Pocket' }];
+      if (piece.exit) out.push({ id: 'exit', x: piece.exit[0], y: piece.exit[1], cursor: 'crosshair', label: 'Subway exit' });
+      return out;
+    }
     case 'peg':
     case 'ppeg': {
       return [
@@ -597,6 +621,35 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       }
       return piece;
     }
+    // ---- MB-10D ----
+    case 'cannon':
+    case 'sling': {
+      if (handleId === 'move') return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
+      return piece;
+    }
+    case 'catapult': {
+      if (handleId === 'move') return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
+      if (handleId === 'len') {
+        const len = Math.max(120, Math.min(400, Math.hypot(withSnap(to.x, sx) - piece.x, to.y - piece.y) / 1.2));
+        return { ...piece, len: sx ? snapVal(len) : len };
+      }
+      return piece;
+    }
+    case 'flipper': {
+      if (handleId === 'move') return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
+      if (handleId === 'len') {
+        const len = Math.max(70, Math.min(180, Math.abs(withSnap(to.x, sx) - piece.x)));
+        return { ...piece, len: sx ? snapVal(len) : len };
+      }
+      return piece;
+    }
+    case 'scoop': {
+      if (handleId === 'move') return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
+      if (handleId === 'exit' && piece.exit) {
+        return { ...piece, exit: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx), piece.exit[2]] as [number, number, number] };
+      }
+      return piece;
+    }
     case 'peg': {
       if (handleId === 'move') return { ...piece, x: withSnap(to.x, sx), y: withSnap(to.y, sx) };
       if (handleId === 'r') {
@@ -687,6 +740,21 @@ export function movePiece(piece: Piece, dx: number, dy: number): Piece {
     case 'wheel':
     case 'seesaw':
       return { ...piece, x: clampX((piece as unknown as { x: number }).x + dx), y: (piece as unknown as { y: number }).y + dy } as Piece;
+    // ---- MB-10D ----
+    case 'cannon':
+    case 'catapult':
+    case 'flipper':
+    case 'sling':
+      return { ...piece, x: clampX((piece as unknown as { x: number }).x + dx), y: (piece as unknown as { y: number }).y + dy } as Piece;
+    case 'scoop': {
+      const sc = piece;
+      return {
+        ...sc,
+        x: clampX(sc.x + dx),
+        y: sc.y + dy,
+        ...(sc.exit ? { exit: [clampX(sc.exit[0] + dx), sc.exit[1] + dy, sc.exit[2]] as [number, number, number] } : {}),
+      } as Piece;
+    }
     case 'screw':
     case 'conveyor':
     case 'bridge': {
@@ -762,6 +830,25 @@ export function mirrorPiece(piece: Piece): Piece {
       return { ...piece, x: mx((piece as unknown as { x: number }).x), dir: (piece.t === 'wheel' ? (piece.dir === 1 ? 0 : 1) : 0) } as Piece;
     case 'seesaw':
       return { ...piece, x: mx((piece as unknown as { x: number }).x) } as Piece;
+    // ---- MB-10D ----
+    case 'cannon': {
+      // The whole aim fan maps θ → 180−θ, swapping the range ends.
+      return { ...piece, x: mx(piece.x), aimMin: (180 - piece.aimMax + 360) % 360, aimMax: (180 - piece.aimMin + 360) % 360 };
+    }
+    case 'catapult':
+      // Mirroring flips the throw sense, like the wheel's spin.
+      return { ...piece, x: mx((piece as unknown as { x: number }).x), dir: (piece.dir === 1 ? 0 : 1) } as Piece;
+    case 'flipper':
+      return { ...piece, x: mx((piece as unknown as { x: number }).x), side: (piece.side === 1 ? 0 : 1) } as Piece;
+    case 'sling':
+      return { ...piece, x: mx(piece.x), facing: (180 - piece.facing + 360) % 360 };
+    case 'scoop':
+      return {
+        ...piece,
+        x: mx(piece.x),
+        deg: (180 - piece.deg + 360) % 360,
+        ...(piece.exit ? { exit: [mx((piece.exit as [number, number, number])[0]), (piece.exit as [number, number, number])[1], (piece.exit as [number, number, number])[2]] as [number, number, number] } : {}),
+      };
     case 'screw':
     case 'conveyor':
     case 'bridge': {

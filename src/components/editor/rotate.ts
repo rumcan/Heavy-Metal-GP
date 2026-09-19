@@ -166,6 +166,32 @@ export function rotatePiece(piece: Piece, rad: number, c: Point): Piece {
       const p2 = piece as unknown as { a: Vec; b: Vec };
       return { ...piece, a: turn(p2.a, c, cos, sin), b: turn(p2.b, c, cos, sin) } as Piece;
     }
+    // ---- MB-10D ----
+    case 'cannon': {
+      // Centre moves; the whole aim fan turns with the world.
+      const [x, y] = at(piece.x, piece.y);
+      const d = (rad * 180) / Math.PI;
+      const wrap = (v: number) => ((v % 360) + 360) % 360;
+      return { ...piece, x, y, aimMin: wrap(piece.aimMin + d), aimMax: wrap(piece.aimMax + d) };
+    }
+    case 'catapult':
+    case 'flipper': {
+      const [x, y] = at(piece.x, piece.y);
+      return { ...piece, x, y };
+    }
+    case 'sling': {
+      const [x, y] = at(piece.x, piece.y);
+      const facing = (((piece.facing + (rad * 180) / Math.PI) % 360) + 360) % 360;
+      return { ...piece, x, y, facing };
+    }
+    case 'scoop': {
+      const [x, y] = at(piece.x, piece.y);
+      const deg = (((piece.deg + (rad * 180) / Math.PI) % 360) + 360) % 360;
+      return {
+        ...piece, x, y, deg,
+        ...(piece.exit ? { exit: turn(piece.exit as unknown as Vec, c, cos, sin) as unknown as [number, number, number] } : {}),
+      };
+    }
     case 'peg':
     case 'ppeg':
     case 'itembox': {

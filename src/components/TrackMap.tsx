@@ -12,7 +12,7 @@ const COLORS = {
   bg: '#0c1520', grid: 'rgba(255,255,255,0.04)', wall: '#56657a', wood: '#c98a4b', ice: '#8fd3ff', curve: '#d99a5a',
   blue: '#3b82f6', orange: '#f97316', item: '#a855f7', bumper: '#e0453a', loop: '#f2b36b', hoop: '#ff8a3d',
   boost: '#e0453a', spinner: '#f5c542', wrecker: '#9aa6b2', pad: '#b690ff', crate: '#b87a3e', block: '#7c8ba0', itembox: '#f5c542', bucket: '#34d399',
-  danger: '#f87171', mover: '#7dd3fc',
+  danger: '#f87171', mover: '#7dd3fc', launcher: '#fbbf24',
 };
 
 function drawPiece(ctx: CanvasRenderingContext2D, p: Piece, k: number) {
@@ -171,6 +171,55 @@ function drawPiece(ctx: CanvasRenderingContext2D, p: Piece, k: number) {
       ctx.quadraticCurveTo((X(p.a[0]) + X(p.b[0])) / 2, Y(Math.max(p.a[1], p.b[1]) + p.slack * 2), X(p.b[0]), Y(p.b[1]));
       ctx.stroke();
       ctx.restore();
+      break;
+    }
+
+    // ---- MB-10D: launchers and pinball read as amber machinery ----
+    case 'cannon': {
+      // collar dot with an aim-fan wedge
+      dot(p.x, p.y, 10, COLORS.launcher);
+      const lo = (Math.min(p.aimMin, p.aimMax) * Math.PI) / 180;
+      const hi = (Math.max(p.aimMin, p.aimMax) * Math.PI) / 180;
+      line(p.x, p.y, p.x + Math.cos(lo) * 58, p.y + Math.sin(lo) * 58, COLORS.launcher, Math.max(1, 2 * k));
+      line(p.x, p.y, p.x + Math.cos(hi) * 58, p.y + Math.sin(hi) * 58, COLORS.launcher, Math.max(1, 2 * k));
+      break;
+    }
+    case 'catapult': {
+      // pivot dot + resting arm line
+      dot(p.x, p.y, 8, COLORS.launcher);
+      const restRad = ((p.dir === 0 ? 135 : 45) * Math.PI) / 180;
+      line(p.x, p.y, p.x + Math.cos(restRad) * p.len, p.y + Math.sin(restRad) * p.len, COLORS.launcher, Math.max(1.5, 3 * k));
+      break;
+    }
+    case 'flipper': {
+      dot(p.x, p.y, 5, COLORS.launcher);
+      const restRad = ((p.side === 0 ? 8 : 172) * Math.PI) / 180;
+      line(p.x, p.y, p.x + Math.cos(restRad) * p.len, p.y + Math.sin(restRad) * p.len, COLORS.launcher, Math.max(1.5, 4 * k));
+      break;
+    }
+    case 'sling': {
+      // a wedge pointing away from the kick direction
+      const fa = (p.facing * Math.PI) / 180;
+      const s = p.size * 0.4;
+      ctx.save();
+      ctx.strokeStyle = COLORS.launcher;
+      ctx.lineWidth = Math.max(1, 2 * k);
+      ctx.beginPath();
+      ctx.moveTo(X(p.x + Math.cos(fa + 2.6) * s), Y(p.y + Math.sin(fa + 2.6) * s));
+      ctx.lineTo(X(p.x + Math.cos(fa - 2.6) * s), Y(p.y + Math.sin(fa - 2.6) * s));
+      ctx.lineTo(X(p.x - Math.cos(fa) * s * 0.7), Y(p.y - Math.sin(fa) * s * 0.7));
+      ctx.closePath();
+      ctx.stroke();
+      ctx.restore();
+      break;
+    }
+    case 'scoop': {
+      dot(p.x, p.y, 7, COLORS.launcher);
+      if (p.exit) line(p.x, p.y + 8, p.exit[0], p.exit[1], COLORS.launcher, Math.max(1, 1.5 * k));
+      else {
+        const ea = ((p.deg ?? 270) * Math.PI) / 180;
+        line(p.x, p.y, p.x + Math.cos(ea) * 30, p.y + Math.sin(ea) * 30, COLORS.launcher, Math.max(1, 2 * k));
+      }
       break;
     }
   }

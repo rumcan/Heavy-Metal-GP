@@ -59,7 +59,8 @@ export type { RaceEntry, RankWire };
  * lobby/ready/start, 20 Hz packed `state`, `events`, chunked `snapshot`,
  * `intent`, `resync`, `results`, presence and the hard refusal on mismatch.
  */
-export const PROTOCOL_VERSION = 3; // 3: the rated wire (rating board, result claim, the room's result); also carries MB-10 mover rides and dynamic state (hold.of, seesaw, bridge)
+export const PROTOCOL_VERSION = 4; // 3: the rated wire (rating board, result claim, the room's result);
+// 4: MB-10 launchers (cannon/catapult/scoop holds, flipper firedAt, sling flash) and the movers' dynamic state
 
 /**
  * Realtime WS frame cap in bytes. Mirrors the SDK's `MAX_BROADCAST_BYTES`
@@ -556,13 +557,14 @@ export interface TrapdoorEvent {
 /**
  * MB-10A. A marble is hidden inside an element until `until` (host clock). `of` names the
  * carrier: a cliff `tunnel` draw is hidden start-to-end; a water-`wheel` bucket ride or a
- * `screw` lift transit stays visible on screen (MB-10C).
+ * `screw` lift transit stays visible on screen (MB-10C); a `cannon` load, a `catapult` spoon
+ * hold or a `scoop` kickback keeps the rider parked at the machine until the shot (MB-10D).
  */
 export interface HoldEvent {
   kind: 'hold';
   seat: number;
   until: number;
-  of?: 'tunnel' | 'wheel' | 'screw';
+  of?: 'tunnel' | 'wheel' | 'screw' | 'cannon' | 'catapult' | 'scoop';
 }
 
 /**
@@ -588,6 +590,22 @@ export interface BridgeEvent {
   sag: number[];
 }
 
+/**
+ * MB-10D. A flipper snapped: `at` is the host clock of the swing start; guests set their
+ * copy's firedAt so their bat reposes through the same swing between position frames.
+ */
+export interface FlipperEvent {
+  kind: 'flipper';
+  i: number;
+  at: number;
+}
+
+/** MB-10D. A slingshot face tossed a marble; guests redraw the band flash (physics is theirs anyway). */
+export interface SlingEvent {
+  kind: 'sling';
+  i: number;
+}
+
 export type RaceEvent =
   | PegEvent
   | CrateEvent
@@ -602,10 +620,12 @@ export type RaceEvent =
   | TrapdoorEvent
   | HoldEvent
   | SeesawEvent
-  | BridgeEvent;
+  | BridgeEvent
+  | FlipperEvent
+  | SlingEvent;
 
 /** Every event kind, in wire order. `validateMessage` rejects anything else. */
-export const RACE_EVENT_KINDS = ['peg', 'crate', 'box', 'oil', 'freeze', 'shock', 'item', 'finish', 'sound', 'switch', 'trapdoor', 'hold', 'seesaw', 'bridge'] as const;
+export const RACE_EVENT_KINDS = ['peg', 'crate', 'box', 'oil', 'freeze', 'shock', 'item', 'finish', 'sound', 'switch', 'trapdoor', 'hold', 'seesaw', 'bridge', 'flipper', 'sling'] as const;
 
 /**
  * host → server → everyone. What happened since the last frame.
@@ -1604,7 +1624,7 @@ function validateEvent(value: unknown): ProtocolError | null {
     }
     case 'hold': {
       if (typeof e.until !== 'number' || !Number.isFinite(e.until) || e.until < 0) return bad('Hold event has no release time.');
-      if (e.of !== undefined && !['tunnel', 'wheel', 'screw'].includes(e.of as string)) return bad('Hold event names no carrier this build knows.');
+      if (e.of !== undefined && !['tunnel', 'wheel', 'screw', 'cannon', 'catapult', 'scoop'].includes(e.of as string)) return bad('Hold event names no carrier this build knows.');
       return seat(e.seat);
     }
     case 'seesaw': {
@@ -1615,6 +1635,13 @@ function validateEvent(value: unknown): ProtocolError | null {
     case 'bridge': {
       if (!Array.isArray(e.sag) || e.sag.length < 1 || e.sag.length > 12) return bad('Bridge event has a malformed sag chain.');
       for (const s of e.sag) if (typeof s !== 'number' || !Number.isFinite(s) || Math.abs(s) > 400) return bad('Bridge event has a plank out of range.');
+      return body(e.i);
+    }
+    case 'flipper': {
+      if (typeof e.at !== 'number' || !Number.isFinite(e.at) || e.at < 0) return bad('Flipper event has no swing clock.');
+      return body(e.i);
+    }
+    case 'sling': {
       return body(e.i);
     }
     default:

@@ -86,6 +86,11 @@ const CUE_SOUND: Record<CueName, SoundType> = {
   splash: 'splash',
   groan: 'groan',
   whirr: 'whirr',
+  // MB-10D launchers
+  bang: 'bang',
+  twang: 'twang',
+  snap: 'snap',
+  boing: 'boing',
 };
 
 /** One line of the classification, in the shape the results screen already reads. */

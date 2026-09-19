@@ -3,6 +3,7 @@ import { Game } from './engine';
 import { PHYSICS_STEP, rampSurface } from './physics';
 import { CALENDAR, gpSeed, newSeason, recordHeat, computeStandings, computeTeamStandings, gridSlots } from './season';
 import { DEFAULT_PROFILE, generateTrack, meta, W } from './track';
+import { buildTrackFromDef } from './trackdef';
 import type { Track } from './track';
 import { AI_COLORS, AI_NAMES, adjustStat, mulberry32, randomStats, statsToPhysics, emptyInventory, ITEM_TYPES, ITEM_INFO } from './types';
 import type { MarbleInfo, MarbleStats, Inventory } from './types';
@@ -229,6 +230,65 @@ add('Procedural tracks preserve all signature features', 'Race safety', async ()
     for (const body of track.ramps) ensure(meta(body).surface!.normal.y < 0, 'Ramp surface is inverted.');
   }
   return '24 seeds; correct ramp normals and all three signature sectors';
+});
+
+add('MB-10D launchers: the whole field rides every toy', 'Race safety', async () => {
+  // The proving-ground circuit: each MB-10D piece exactly once on its tuned geometry (felt
+  // segment positions, mirrored in scripts/mb10d-sanity.mjs). Exercises the TrackDef schema,
+  // the validator, the builders, the holds and their releases as one machine.
+  const def = {
+    v: 1, name: 'MB-10D proving ground', seed: 11, theme: 'classic', height: 3300,
+    pieces: [
+      { t: 'ramp', a: [0, 40], b: [200, 140] },
+      { t: 'ramp', a: [0, 150], b: [150, 200] }, { t: 'ramp', a: [150, 250], b: [360, 320] },
+      { t: 'cannon', x: 220, y: 256, aimMin: 290, aimMax: 310, power: 12.5, auto: 1500, phase: 0 },
+      { t: 'ramp', a: [350, 240], b: [560, 300] }, { t: 'ramp', a: [560, 300], b: [880, 560] },
+      { t: 'ramp', a: [360, 320], b: [480, 380] }, { t: 'ramp', a: [480, 380], b: [890, 590] },
+      { t: 'ramp', a: [0, 650], b: [150, 880] }, { t: 'ramp', a: [150, 880], b: [330, 980] },
+      { t: 'catapult', x: 430, y: 790, len: 240, reload: 1200, dir: 0 },
+      { t: 'ramp', a: [310, 920], b: [520, 990] }, { t: 'ramp', a: [520, 990], b: [880, 1090] },
+      { t: 'ramp', a: [160, 970], b: [470, 1060] }, { t: 'ramp', a: [470, 1060], b: [890, 1170] },
+      { t: 'ramp', a: [0, 1220], b: [260, 1310] }, { t: 'ramp', a: [260, 1310], b: [440, 1395] },
+      { t: 'flipper', x: 560, y: 1418, side: 0, len: 124, strength: 1.45, timer: 0, phase: 0 },
+      { t: 'ramp', a: [440, 1440], b: [720, 1530] }, { t: 'ramp', a: [720, 1530], b: [890, 1690] },
+      { t: 'flipper', x: 740, y: 1546, side: 1, len: 112, strength: 2.4, timer: 1600, phase: 300 },
+      { t: 'ramp', a: [0, 1760], b: [300, 1848] },
+      { t: 'wall', x: 276, y: 1980, w: 12, h: 280 }, { t: 'wall', x: 560, y: 1980, w: 12, h: 280 },
+      { t: 'ramp', a: [300, 2040], b: [420, 2110] },
+      { t: 'sling', x: 470, y: 2100, size: 125, facing: 225, strength: 4 },
+      { t: 'sling', x: 380, y: 2220, size: 125, facing: 305, strength: 4 },
+      { t: 'ramp', a: [340, 2270], b: [890, 2340] },
+      { t: 'ramp', a: [0, 2260], b: [260, 2330] }, { t: 'ramp', a: [260, 2330], b: [450, 2410] },
+      { t: 'ramp', a: [450, 2410], b: [640, 2480] },
+      { t: 'scoop', x: 545, y: 2453, deg: 279, hold: 700 },
+      { t: 'ramp', a: [640, 2480], b: [890, 2720] },
+      { t: 'scoop', x: 300, y: 2680, deg: 276, hold: 800, exit: [420, 2740, 1400] },
+      { t: 'ramp', a: [240, 2760], b: [890, 2800] },
+      { t: 'ramp', a: [0, 2860], b: [400, 3030] }, { t: 'ramp', a: [400, 3030], b: [890, 3180] },
+    ],
+  };
+  buildTrackFromDef(def); // throws on a schema validator bug before the race even starts
+  const totals: Record<string, number> = {};
+  for (const seed of [7, 9001, 424242]) {
+    const game = new Game(seed, roster(seed), { def, recovery: true, effects: false, aiItems: false, wireEvents: true });
+    try {
+      game.openGate();
+      let t = 0;
+      while (!game.allFinished() && t < 240000) {
+        game.step(1000 / 60);
+        for (const e of game.drainRaceEvents()) {
+          if (e.kind === 'hold') totals['hold:' + (e.of ?? 'tunnel')] = (totals['hold:' + (e.of ?? 'tunnel')] ?? 0) + 1;
+          if (e.kind === 'flipper' || e.kind === 'sling') totals[e.kind] = (totals[e.kind] ?? 0) + 1;
+        }
+        t += 1000 / 60;
+      }
+      ensure(game.allFinished(), `Seed ${seed} left the field waiting past 240s.`);
+    } finally { game.destroy(); }
+  }
+  for (const need of ['hold:cannon', 'hold:catapult', 'hold:scoop', 'flipper', 'sling']) {
+    ensure((totals[need] ?? 0) > 0, `Launcher ${need} never fired across the three seeds.`);
+  }
+  return `3 seeds on the proving ground; rides ${JSON.stringify(totals)}`;
 });
 
 add('Three heats use one seed and advance the championship once', 'Championship', async () => {

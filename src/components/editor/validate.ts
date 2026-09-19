@@ -106,6 +106,16 @@ function pieceXs(piece: Piece): number[] {
     case 'conveyor':
     case 'bridge':
       return [(piece as unknown as { a: readonly [number, number] }).a[0], (piece as unknown as { b: readonly [number, number] }).b[0]];
+    // ---- MB-10D ----
+    case 'cannon':
+    case 'catapult':
+    case 'flipper':
+    case 'sling':
+      return [(piece as unknown as { x: number }).x];
+    case 'scoop': {
+      const p = piece as unknown as { x: number; exit?: [number, number, number] };
+      return p.exit ? [p.x, p.exit[0]] : [p.x];
+    }
     case 'tunnel':
       return [piece.x, piece.exit[0]];
     case 'wrecker':
@@ -154,6 +164,17 @@ function pieceYs(piece: Piece): number[] {
       return [Math.min(piece.a[1], piece.b[1]), Math.max(piece.a[1], piece.b[1])];
     case 'bridge':
       return [Math.min(piece.a[1], piece.b[1]), Math.max(piece.a[1], piece.b[1]) + piece.slack + 40];
+    // ---- MB-10D ----
+    case 'cannon':
+      return [piece.y - 40, piece.y];
+    case 'catapult':
+      return [piece.y, piece.y + piece.len * 0.8];
+    case 'flipper':
+      return [piece.y - piece.len, piece.y + 20];
+    case 'sling':
+      return [piece.y - 0.9 * piece.size, piece.y + 0.9 * piece.size];
+    case 'scoop':
+      return piece.exit ? [piece.y, piece.exit[1]] : [piece.y - 220, piece.y];
     default: {
       const p = piece as { y: number };
       return [p.y];

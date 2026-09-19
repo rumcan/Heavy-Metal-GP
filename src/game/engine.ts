@@ -1,6 +1,6 @@
 import Matter from 'matter-js';
-import { generateTrack, meta, Track, CAT_MARBLE, CAT_WALL, CAT_SENSOR, CAT_LOOP_UP, CAT_LOOP_CLOSE, CAT_FRAGILE, CAT_DANGER, W, bridgePlankPose } from './track';
-import { elementBodies, updateElements, hingeTimerState, pendulumOmega, slideDir, pistonState, rollAt, pathAt, beltDir } from './elements';
+import { generateTrack, meta, Track, CAT_MARBLE, CAT_WALL, CAT_SENSOR, CAT_LOOP_UP, CAT_LOOP_CLOSE, CAT_FRAGILE, CAT_DANGER, W, bridgePlankPose, cannonAim, catapultAngle, flipperAngle } from './track';
+import { elementBodies, hasElement, updateElements, hingeTimerState, pendulumOmega, slideDir, pistonState, rollAt, pathAt, beltDir } from './elements';
 import { TrackDefError, buildTrackFromDef } from './trackdef';
 import { ItemType, MarbleInfo, MARBLE_RADIUS, statsToPhysics, mulberry32, TrackProfile, normalizeInventory, ITEM_TYPES, ITEM_INFO, MAX_ITEM_STACK } from './types';
 import type { Inventory } from './types';
@@ -119,6 +119,10 @@ export interface Marble {
   crushedUntil: number;
   /** Debounce so one crusher docking registers one pin per marble. */
   crushMarkAt: number;
+  /** MB-10D: per-marble slingshot cooldown so a resting marble isn't machine-gunned. */
+  slingAt?: number;
+  /** MB-10D: last flipper kick clock, so one swing delivers one swat per marble. */
+  flipperKickAt?: number;
 }
 
 export interface OilSlick {
@@ -137,7 +141,7 @@ export interface OilSlick {
  * fields are host-side only.
  */
 export interface Hold {
-  kind: 'tunnel' | 'wheel' | 'screw';
+  kind: 'tunnel' | 'wheel' | 'screw' | 'cannon' | 'catapult' | 'scoop';
   until: number;
   /** Clocked at `until - transit`; the glide runs from then on. Host-only on the wire. */
   transit?: number;
@@ -793,6 +797,43 @@ export class Game {
         this.emit({ kind: 'hold', seat: m.info.id, until, of: 'screw' });
         break;
       }
+      // ---- MB-10D: launchers and pinball ----
+      case 'cannon': {
+        // Only the capture mouth loads (the collar itself is solid); the elementState scan also
+        // calls this, because a marble that parked on the collar while it was occupied earns a load.
+        if (!other.isSensor) break;
+        this.tryLoadCannon(m, other);
+        break;
+      }
+
+      case 'catapult': {
+        // Only the spoon catches (the arm is a solid blur while it swings); the elementState scan
+        // shares this so a marble resting in the bowl while it was occupied still gets its fling.
+        if (!other.isSensor) break;
+        this.tryLoadCatapult(m, other);
+        break;
+      }
+      case 'scoop': {
+        this.tryLoadScoop(m, other);
+        break;
+      }
+      case 'sling': {
+        // The rubber face shoves back along its set normal, scaled by the marble's bounce stat.
+        if (!md.sling) break;
+        const side = (m.body.position.x - other.position.x) * md.sling.facing.x + (m.body.position.y - other.position.y) * md.sling.facing.y;
+        if (side < -6) break; // came around the frame — only the band face is springy
+        if (this.time < (m.slingAt ?? -1e9) + 900) break;
+        m.slingAt = this.time;
+        const bnc = 0.7 + 0.09 * (m.info.stats.bounce ?? 5);
+        const k = md.sling.strength * bnc;
+        const v = Body.getVelocity(m.body);
+        Body.setVelocity(m.body, { x: v.x + md.sling.facing.x * k, y: v.y + md.sling.facing.y * k });
+        md.sling.flashAt = this.time;
+        this.emit({ kind: 'sling', i: this.indexOf(other) });
+        this.sfx('twang', m, other.position.x, other.position.y);
+        this.emit({ kind: 'sound', cue: 'twang' });
+        break;
+      }
       case 'bridge': {
         // Bounce marbles bounce the planks: a little downward shove the spring chain answers.
         const imp = 0.4 + (m.info.stats.bounce ?? 5) * 0.18;
@@ -1345,8 +1386,185 @@ export class Game {
         m.stuckTime = 0;
       }
     }
+    // MB-10D launcher catch-up scans: contact START misses a marble that crept into the mouth
+    // while the launcher was busy. Once it's free, the next frame claims the parked marble — this
+    // is also the AI's guarantee that a launcher never leaves somebody waiting forever.
+    if (hasElement(this.track, 'cannon')) {
+      for (const body of elementBodies(this.track, 'cannon')) {
+        if (!body.isSensor) continue;
+        const md = meta(body);
+        if (!md.cannon || md.cannon.loaded) continue;
+        for (const m of this.marbles) {
+          if (m.hold || m.frozen || m.finishedAt !== null) continue;
+          if (Math.hypot(m.body.position.x - body.position.x, m.body.position.y - body.position.y) <= 52) { this.tryLoadCannon(m, body); break; }
+        }
+      }
+    }
+    if (hasElement(this.track, 'catapult')) {
+      for (const body of elementBodies(this.track, 'catapult')) {
+        if (!body.isSensor) continue;
+        const md = meta(body);
+        if (!md.catapult || md.catapult.loadedAt !== null) continue;
+        for (const m of this.marbles) {
+          if (m.hold || m.frozen || m.finishedAt !== null) continue;
+          if (Math.hypot(m.body.position.x - body.position.x, m.body.position.y - body.position.y) <= 46) { this.tryLoadCatapult(m, body); break; }
+        }
+      }
+    }
+    if (hasElement(this.track, 'scoop')) {
+      for (const body of elementBodies(this.track, 'scoop')) {
+        const md = meta(body);
+        if (!md.scoop || md.scoop.loadedAt !== null) continue;
+        for (const m of this.marbles) {
+          if (m.hold || m.frozen || m.finishedAt !== null) continue;
+          if (Math.hypot(m.body.position.x - body.position.x, m.body.position.y - body.position.y) <= 40) { this.tryLoadScoop(m, body); break; }
+        }
+      }
+    }
+
+    // MB-10D flippers: timer program and (any) marble resting on the bat fires the snap; while
+    // the bat is swinging it shoves every marble it sweeps through with its angular velocity.
+    // All state is the firedAt clock, so guests replay the identical pose from the event stream.
+    if (hasElement(this.track, 'flipper')) {
+      for (const bat of elementBodies(this.track, 'flipper')) {
+        const md = meta(bat);
+        const fl = md.flipper;
+        if (!fl) continue;
+        const ready = this.time - fl.firedAt > fl.swingMs + fl.dropMs;
+        // timer mode: fire on the seeded period
+        if (fl.periodMs > 0 && ready) {
+          const age = (((this.time + fl.phaseMs) % fl.periodMs) + fl.periodMs) % fl.periodMs;
+          if (age < dt) {
+            fl.firedAt = this.time;
+            this.emit({ kind: 'flipper', i: this.track.bodies.indexOf(bat), at: fl.firedAt });
+            this.sfx('snap', this.player, fl.px, fl.py);
+            this.emit({ kind: 'sound', cue: 'snap' });
+          }
+        }
+        // sensor: a marble lounging on the resting bat is asking for it
+        if (ready && this.time - fl.firedAt > 160) {
+          const a = fl.restA;
+          const ux = Math.cos(a), uy = Math.sin(a);
+          for (const m of this.marbles) {
+            if (m.finishedAt !== null || m.frozen || m.hold) continue;
+            const rx = m.body.position.x - fl.px, ry = m.body.position.y - fl.py;
+            const along = rx * ux + ry * uy;
+            if (along < 8 || along > fl.len + 10) continue;
+            const across = Math.abs(-rx * uy + ry * ux);
+            if (across > 24) continue;
+            fl.firedAt = this.time;
+            this.emit({ kind: 'flipper', i: this.track.bodies.indexOf(bat), at: fl.firedAt });
+            this.sfx('snap', this.player, fl.px, fl.py);
+            this.emit({ kind: 'sound', cue: 'snap' });
+            break;
+          }
+        }
+        // swing contact: transfer the bat's angular velocity to whatever it sweeps through
+        const swingAge = this.time - fl.firedAt;
+        if (swingAge >= 0 && swingAge < fl.swingMs) {
+          const k = swingAge / fl.swingMs;
+          const a = flipperAngle(fl, this.time);
+          const ux = Math.cos(a), uy = Math.sin(a);
+          // d(angle)/dt at the eased swing: 2k * (swingA - restA) / swingMs — rad/ms
+          const omega = ((fl.swingA - fl.restA) * 2 * k) / fl.swingMs;
+          const sign = Math.sign(fl.swingA - fl.restA) || 1;
+          for (const m of this.marbles) {
+            if (m.finishedAt !== null || m.frozen || m.hold) continue;
+            if (this.time < (m.flipperKickAt ?? -1e9) + 150) continue;
+            const rx = m.body.position.x - fl.px, ry = m.body.position.y - fl.py;
+            const along = rx * ux + ry * uy;
+            if (along < 10 || along > fl.len + 6) continue;
+            const across = -rx * uy + ry * ux;
+            if (Math.abs(across) > 26) continue;
+            // surface velocity of the contact point: omega × r; only scoop marbles on the moving face
+            const vPerp = omega * along;
+            if (across * sign < 0 && Math.abs(vPerp) > 0.6) {
+              m.flipperKickAt = this.time;
+              // bounce stat adds rebound; heavy metal barely moves (same mass gate as the crusher)
+              const heavy = Math.min(1.35, Math.max(0.2, 3.2 / Math.max(1, m.body.mass)));
+              const bnc = 0.75 + 0.06 * (m.info.stats.bounce ?? 5);
+              const kick = Math.abs(vPerp) * 16.667 * 0.16 * fl.strength * heavy * bnc;
+              const dir = { x: -uy * sign, y: ux * sign };
+              const v = Body.getVelocity(m.body);
+              Body.setVelocity(m.body, { x: v.x + dir.x * kick, y: v.y + dir.y * kick });
+              this.effects.push({ type: 'ring', x: m.body.position.x, y: m.body.position.y, ttl: 10, maxTtl: 10, color: '#a5f3fc' });
+              this.sfx('spring', m, m.body.position.x, m.body.position.y);
+            }
+          }
+        }
+      }
+    }
     // MB-10B maces: a Shockwave within range jams the sweeper for two seconds (and guests replay
     // the same decision from the shock event they receive).
+  }
+
+  /** MB-10D cannon loading, shared by the mouth sensor contact and the elementState catch-up scan. */
+  private tryLoadCannon(m: Marble, mouth: Matter.Body) {
+    const md = meta(mouth);
+    if (m.hold || m.frozen || m.finishedAt !== null || !md.cannon || md.cannon.loaded || this.time < m.tunnelSafeUntil) return;
+    if (Math.hypot(m.body.position.x - mouth.position.x, m.body.position.y - mouth.position.y) > 52) return;
+    const cn = md.cannon;
+    // seeded wait, then the shot: AIs take their time; the player pulls the trigger early (step()).
+    const fireAt = this.time + cn.autoMs + this.rng() * 500;
+    cn.loaded = { seat: m.info.id, at: this.time, fireAt };
+    m.hold = { kind: 'cannon', until: fireAt, at: this.time, body: mouth, transit: 0 };
+    m.body.isSensor = true;
+    Body.setPosition(m.body, { x: mouth.position.x, y: mouth.position.y });
+    Body.setVelocity(m.body, { x: 0, y: 0 });
+    Body.setAngularVelocity(m.body, 0);
+    m.trail = [];
+    this.sfx('clang', m, mouth.position.x, mouth.position.y);
+    this.emit({ kind: 'sound', cue: 'crate' });
+    this.emit({ kind: 'hold', seat: m.info.id, until: fireAt, of: 'cannon' });
+  }
+
+  /** MB-10D catapult loading, shared by the spoon sensor and the catch-up scan. */
+  private tryLoadCatapult(m: Marble, spoon: Matter.Body) {
+    const md = meta(spoon);
+    if (m.hold || m.frozen || m.finishedAt !== null || !md.catapult || md.catapult.loadedAt !== null || this.time < m.tunnelSafeUntil) return;
+    if (Math.hypot(m.body.position.x - spoon.position.x, m.body.position.y - spoon.position.y) > 46) return;
+    const ct = md.catapult;
+    ct.loadedAt = this.time;
+    ct.firedAt = null;
+    const until = this.time + ct.reloadMs + ct.swingMs;
+    m.hold = { kind: 'catapult', until, at: this.time, body: spoon, transit: 0 };
+    m.body.isSensor = true;
+    Body.setPosition(m.body, { x: ct.px + Math.cos(ct.restA) * ct.len, y: ct.py + Math.sin(ct.restA) * ct.len });
+    Body.setVelocity(m.body, { x: 0, y: 0 });
+    Body.setAngularVelocity(m.body, 0);
+    m.trail = [];
+    this.sfx('bucket', m, spoon.position.x, spoon.position.y);
+    this.emit({ kind: 'sound', cue: 'bucket' });
+    this.emit({ kind: 'hold', seat: m.info.id, until, of: 'catapult' });
+  }
+
+  /** MB-10D scoop swallowing, shared by the pocket sensor and the catch-up scan. */
+  private tryLoadScoop(m: Marble, pocket: Matter.Body) {
+    const md = meta(pocket);
+    if (m.hold || m.frozen || m.finishedAt !== null || !md.scoop || md.scoop.loadedAt !== null || this.time < m.tunnelSafeUntil) return;
+    if (Math.hypot(m.body.position.x - pocket.position.x, m.body.position.y - pocket.position.y) > 40) return;
+    const sc = md.scoop;
+    sc.loadedAt = this.time;
+    sc.seat = m.info.id;
+    let until: number;
+    if (md.exit) {
+      const transit = md.transit ?? 900;
+      until = this.time + transit;
+      sc.fireAt = until;
+      m.hold = { kind: 'scoop', until, at: this.time, transit, from: { x: pocket.position.x, y: pocket.position.y }, body: pocket, exit: md.exit };
+    } else {
+      until = this.time + sc.holdMs;
+      sc.fireAt = until;
+      m.hold = { kind: 'scoop', until, at: this.time, body: pocket, transit: 0 };
+    }
+    m.body.isSensor = true;
+    Body.setPosition(m.body, { x: pocket.position.x, y: pocket.position.y });
+    Body.setVelocity(m.body, { x: 0, y: 0 });
+    Body.setAngularVelocity(m.body, 0);
+    m.trail = [];
+    this.sfx('rumble', m, pocket.position.x, pocket.position.y);
+    this.emit({ kind: 'sound', cue: 'rumble', seat: m.info.id });
+    this.emit({ kind: 'hold', seat: m.info.id, until, of: 'scoop' });
   }
 
   /** Let a held marble go: tunnels pop out of the exit hole, buckets tip at the release angle, screws hand off at the tube end. */
@@ -1364,7 +1582,71 @@ export class Game {
       const sense = Math.sign(hold.arc.omega) || 1;
       exit = { x: px, y: py, dir: { x: -Math.sin(a) * sense, y: Math.cos(a) * sense }, speed: Math.max(2.6, Math.abs(hold.arc.omega) * hold.arc.r * 16.667 + 0.8) };
       safe = 1100;
+    } else if (hold.kind === 'cannon') {
+      // MB-10D: the barrel fires along wherever the aim fan is AT this clock — guests don't need
+      // the shot because their copy glides positions from the frames; `until` was the contract.
+      const md = hold.body ? meta(hold.body) : null;
+      const mo = md?.motion, cn = md?.cannon;
+      if (mo?.mode !== 'aim' || !cn) return;
+      const a = cannonAim(mo, this.time);
+      // weight stats 1..10 → heavy flies shorter (issue rule)
+      const massF = 1.35 - (m.info.stats.weight ?? 5) * 0.05;
+      const sp = Math.max(3.5, cn.power * massF);
+      const dir = { x: Math.cos(a), y: Math.sin(a) };
+      const mx = mo.pivot.x + dir.x * (cn.len + 16), my = mo.pivot.y + dir.y * (cn.len + 16);
+      exit = { x: mx, y: my, dir, speed: sp };
+      safe = 850;
+      cn.loaded = null;
+      cn.lastFiredAt = this.time;
+      this.sfx('bang', m, mx, my);
+      this.emit({ kind: 'sound', cue: 'bang' });
+      this.effects.push({ type: 'debris', x: mx, y: my, ttl: 22, maxTtl: 22, color: '#fcd34d', particles: this.makeParticles(mx, my, 10, 3.2) });
+      this.shake = Math.max(this.shake, 6);
+    } else if (hold.kind === 'catapult') {
+      // MB-10D: the arm whips to the release angle; the rider leaves with the arm-tip velocity,
+      // taxed by weight (bouncy marbles gain a little height on the way out).
+      const md = hold.body ? meta(hold.body) : null;
+      const ct = md?.catapult;
+      if (!ct) return;
+      const vTip = (Math.abs(ct.releaseA - ct.restA) / ct.swingMs) * ct.len * 16.667;
+      const massF = 1.3 - (m.info.stats.weight ?? 5) * 0.045;
+      const lift = 1 + ((m.info.stats.bounce ?? 5) - 5) * 0.03;
+      // clamped into the speed-cap neighbourhood so the arc the launch draws survives the cap
+      const sp = Math.max(8, Math.min(13, vTip * 0.28 * massF)) * Math.max(0.85, Math.min(1.15, lift));
+      const a = ct.releaseA;
+      const dir = { x: Math.cos(a), y: Math.sin(a) };
+      const mx = ct.px + dir.x * (ct.len + 10), my = ct.py + dir.y * (ct.len + 10);
+      exit = { x: mx, y: my, dir, speed: sp };
+      safe = 850;
+      ct.loadedAt = null;
+      ct.firedAt = this.time;
+      ct.lastFiredAt = this.time;
+      this.sfx('boing', m, mx, my);
+      this.emit({ kind: 'sound', cue: 'boing' });
+      this.effects.push({ type: 'ring', x: mx, y: my, ttl: 14, maxTtl: 14, color: '#fda4af' });
+    } else if (hold.kind === 'scoop' && !hold.exit) {
+      // MB-10D kickback: spring the marble back out along the set angle + seeded jitter.
+      const md = hold.body ? meta(hold.body) : null;
+      const sc = md?.scoop;
+      if (!sc) return;
+      const jit = (this.rng() * 2 - 1) * ((17 * Math.PI) / 180); // ±17° between 253° and 287°
+      const a = sc.deg + jit;
+      const dir = { x: Math.cos(a), y: Math.sin(a) };
+      const p = m.body.position;
+      exit = { x: p.x + dir.x * 34, y: p.y + dir.y * 34, dir, speed: 7.6 };
+      safe = 750;
+      sc.loadedAt = null;
+      sc.fireAt = null;
+      sc.seat = null;
+      this.sfx('boing', m, p.x, p.y);
+      this.emit({ kind: 'sound', cue: 'boing' });
+      this.effects.push({ type: 'ring', x: p.x, y: p.y, ttl: 12, maxTtl: 12, color: '#fde047' });
     } else {
+      // scoop-with-subway shares the generic glide: clear the pocket bookkeeping as it leaves.
+      if (hold.kind === 'scoop') {
+        const md = hold.body ? meta(hold.body) : null;
+        if (md?.scoop) { md.scoop.loadedAt = null; md.scoop.fireAt = null; md.scoop.seat = null; }
+      }
       if (!hold.exit) return;
       exit = hold.exit;
       if (hold.kind === 'screw') safe = 800;
@@ -1827,6 +2109,11 @@ export class Game {
       // screen (draw + minimap skip it), but the wire positions stay continuous so nobody watches
       // a teleport. At the end of the ride it's released at the exit with the set velocity.
       if (m.hold) {
+        // MB-10D: a human at the nudge pulls the cannon's hair trigger.
+        if (m.hold.kind === 'cannon') {
+          const input = this.humanInput.get(m.info.id)?.nudge ?? (m === this.player ? this.nudge : 0);
+          if (input !== 0) m.hold.until = this.time;
+        }
         if (this.time >= m.hold.until) {
           this.releaseHold(m);
         } else if (m.hold.kind === 'wheel' && m.hold.arc) {
@@ -1834,6 +2121,24 @@ export class Game {
           const arc = m.hold.arc;
           const a = arc.omega * (this.time - (m.hold.at ?? this.time)) + arc.fromA;
           Body.setPosition(m.body, { x: arc.x + Math.cos(a) * arc.r, y: arc.y + Math.sin(a) * arc.r });
+          continue;
+        } else if (m.hold.kind === 'cannon' && m.hold.body) {
+          // MB-10D: breathe in the breech — the barrel keeps drawing its aim fan; the marble rides inside.
+          const md = meta(m.hold.body);
+          const mo = md.motion, cn = md.cannon;
+          if (mo?.mode === 'aim' && cn) {
+            const a = cannonAim(mo, this.time);
+            Body.setPosition(m.body, { x: mo.pivot.x + Math.cos(a) * cn.len * 0.55, y: mo.pivot.y + Math.sin(a) * cn.len * 0.55 });
+          }
+          continue;
+        } else if (m.hold.kind === 'catapult' && m.hold.body) {
+          // MB-10D: the marble rides the spoon along the arm's reposed swing.
+          const md = meta(m.hold.body);
+          const ct = md.catapult;
+          if (ct) {
+            const a = catapultAngle(ct, this.time);
+            Body.setPosition(m.body, { x: ct.px + Math.cos(a) * ct.len, y: ct.py + Math.sin(a) * ct.len });
+          }
           continue;
         } else {
           const transit = m.hold.transit ?? 900;

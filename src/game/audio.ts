@@ -14,6 +14,8 @@ export type SoundType =
   | 'shriek' | 'grind' | 'slam'
   // MB-10C: movers — the bucket splash/dunk, the timber groan, the screw hum
   | 'splash' | 'groan' | 'whirr'
+  // MB-10D: launchers — the cannon blast, the sling band, the flipper snap, the kickback spring
+  | 'bang' | 'twang' | 'snap' | 'boing'
   // story mode UI: dialogue tick and chapter/act sting
   | 'blip' | 'sting';
 
@@ -32,7 +34,7 @@ const MUTE_KEY = 'heavy-metal-gp:muted';
 // Peggle-style rising run: a major scale that keeps climbing while the streak lasts
 const SCALE = [0, 2, 4, 5, 7, 9, 11];
 const STREAK_WINDOW = 1600;
-const MIN_GAP: Partial<Record<SoundType, number>> = { peg: 25, bump: 60, thud: 90, clack: 70, crack: 90, clang: 80, hoop: 80, spring: 120, blip: 26, cheer: 500, rumble: 250, creak: 200, click: 60, shriek: 220, grind: 180, slam: 320, splash: 200, groan: 300, whirr: 400 };
+const MIN_GAP: Partial<Record<SoundType, number>> = { peg: 25, bump: 60, thud: 90, clack: 70, crack: 90, clang: 80, hoop: 80, spring: 120, blip: 26, cheer: 500, rumble: 250, creak: 200, click: 60, shriek: 220, grind: 180, slam: 320, splash: 200, groan: 300, whirr: 400, bang: 400, twang: 200, snap: 150, boing: 250 };
 
 class RaceAudio {
   private ctx: AudioContext | null = null;
@@ -152,6 +154,15 @@ class RaceAudio {
         this.noiseHit(t, 0.32, 420, 0.65 * vol, pan, 'lowpass');
         return this.tone(t, 68, 0.42, 'sine', 0.55 * vol, pan, 34);
       }
+      // MB-10D launchers
+      case 'bang': {
+        // black powder: a big noise burst over a sub drop
+        this.noiseHit(t, 0.5, 1200, 0.85 * vol, pan, 'lowpass');
+        return this.tone(t, 70, 0.4, 'sine', 0.7 * vol, pan, 34);
+      }
+      case 'twang': return this.tone(t, 240 + Math.random() * 60, 0.28, 'sawtooth', 0.3 * vol, pan, 110); // rubber band
+      case 'snap': { this.noiseHit(t, 0.05, 2600, 0.35 * vol, pan, 'bandpass'); return this.tone(t, 320, 0.07, 'square', 0.2 * vol, pan, 140); }
+      case 'boing': { this.tone(t, 180, 0.12, 'sine', 0.3 * vol, pan, 420); return this.tone(t + 0.1, 320, 0.1, 'sine', 0.2 * vol, pan, 520); }
       case 'blip': return this.tone(t, 1500 + Math.random() * 220, 0.028, 'square', 0.07, 0);
       case 'sting': return this.sting(t);
     }

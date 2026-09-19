@@ -1,9 +1,8 @@
 import Matter from 'matter-js';
 import { Game, Marble } from './engine';
 import { hingeTimerState, hingeIsOpen, trapdoorWarn, pistonState, beltDir } from './elements';
-import { meta, W } from './track';
+import { meta, W, cannonAim, catapultAngle, flipperAngle } from './track';
 import { MARBLE_RADIUS, ITEM_INFO, skinFor, themeIdFor } from './types';
-import { ballFor, bodyFrame, currentSkin, drawRail, drawSprite, drawStrip, setSkin, sprite } from './sprites';
 import repeatingBgUrl from '../assets/bg/repeating.webp';
 import mineEntranceUrl from '../assets/bg/mine-entrance.webp';
 import mineUrl from '../assets/bg/mine.webp';
@@ -909,6 +908,22 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
         break;
       case 'conveyor':
         drawConveyor(ctx, b, md, game, t);
+        break;
+      // ---- MB-10D: launchers and pinball ----
+      case 'cannon':
+        if (!b.isSensor) drawCannon(ctx, b, md, game, t);
+        break;
+      case 'catapult':
+        if (!b.isSensor) drawCatapult(ctx, b, md, game, t);
+        break;
+      case 'flipper':
+        drawFlipper(ctx, b, md, t);
+        break;
+      case 'sling':
+        drawSling(ctx, b, md, game, t);
+        break;
+      case 'scoop':
+        drawScoop(ctx, b, md, game, t);
         break;
       default:
         break;
@@ -2258,6 +2273,194 @@ function drawMinimap(ctx: CanvasRenderingContext2D, game: Game, cw: number, ch: 
  * hub body's angle (set by the shared spin motion), so host and guest draw the same pose; the
  * drizzle marks it as wet unless the venue runs it dry. Buckets with riders get a highlight.
  */
+// ==================== MB-10D: launchers and pinball skins ====================
+
+/**
+ * Cannon: a winched barrel on a little mount; the aim fan sweeps on the race clock and the
+ * breech glows while loaded. Falls back to pure goblin vector when the kit art misses.
+ */
+function drawCannon(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnType<typeof meta>, game: Game, t: number) {
+  const mo = md.motion;
+  const cn = md.cannon;
+  if (!mo || mo.mode !== 'aim' || !cn) return;
+  const P = mo.pivot;
+  const a = cannonAim(mo, game.time);
+  // mount
+  ctx.save();
+  ctx.translate(P.x, P.y);
+  ctx.fillStyle = '#44403c';
+  ctx.beginPath(); ctx.moveTo(-16, 14); ctx.lineTo(0, -8); ctx.lineTo(16, 14); ctx.closePath(); ctx.fill();
+  // aim fan rails (subtle)
+  ctx.strokeStyle = 'rgba(214,211,209,0.25)';
+  ctx.setLineDash([3, 6]);
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(mo.minA) * cn.len, Math.sin(mo.minA) * cn.len); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(mo.maxA) * cn.len, Math.sin(mo.maxA) * cn.len); ctx.stroke();
+  ctx.setLineDash([]);
+  // barrel
+  ctx.rotate(a);
+  if (!drawSprite(ctx, 'cannon', 0, -11, cn.len + 10, 24)) {
+    ctx.fillStyle = '#78350f';
+    ctx.fillRect(0, -9, cn.len, 18);
+    ctx.fillStyle = '#a16207';
+    for (let x = 10; x < cn.len; x += 16) ctx.fillRect(x, -9, 3, 18);
+    ctx.fillStyle = '#44403c';
+    ctx.fillRect(cn.len - 8, -11, 8, 22);
+  }
+  // breech glow while loaded
+  if (cn.loaded) {
+    const pulse = 0.55 + 0.45 * Math.sin(t / 90);
+    ctx.fillStyle = `rgba(252,211,77,${0.5 * pulse})`;
+    ctx.beginPath(); ctx.arc(-2, 0, 10, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+  // blast flash off the muzzle for a beat after the shot
+  if (cn.lastFiredAt && game.time - cn.lastFiredAt < 180) {
+    const k = 1 - (game.time - cn.lastFiredAt) / 180;
+    const mx = P.x + Math.cos(a) * (cn.len + 8), my = P.y + Math.sin(a) * (cn.len + 8);
+    if (!drawSprite(ctx, 'blast', mx - 22, my - 22, 44, 44)) {
+      ctx.globalAlpha = k;
+      ctx.fillStyle = '#fcd34d';
+      ctx.beginPath(); ctx.arc(mx, my, 8 + (1 - k) * 22, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+/**
+ * Catapult: a trebuchet frame with the arm reposing on its state clocks; the spoon cup rides
+ * the tip and the frame shows a release flash for a beat after the throw.
+ */
+function drawCatapult(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnType<typeof meta>, game: Game, _t: number) {
+  const ct = md.catapult;
+  if (!ct) return;
+  const a = catapultAngle(ct, game.time);
+  const P = { x: ct.px, y: ct.py };
+  ctx.save();
+  // A-frame stand
+  ctx.strokeStyle = '#78350f';
+  ctx.lineWidth = 7;
+  ctx.beginPath(); ctx.moveTo(P.x - 26, P.y + 34); ctx.lineTo(P.x, P.y - 6); ctx.lineTo(P.x + 26, P.y + 34); ctx.stroke();
+  ctx.strokeStyle = '#451a03';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(P.x - 34, P.y + 34); ctx.lineTo(P.x + 34, P.y + 34); ctx.stroke();
+  // arm with spoon
+  ctx.translate(P.x, P.y);
+  ctx.rotate(a);
+  if (!drawSprite(ctx, 'catapult', 0, -7, ct.len + 22, 26)) {
+    ctx.fillStyle = '#92610f';
+    ctx.fillRect(0, -5, ct.len, 10);
+    ctx.strokeStyle = '#451a03';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(0, -5, ct.len, 10);
+    // spoon cup at the tip
+    ctx.fillStyle = '#5b3a12';
+    ctx.beginPath();
+    ctx.arc(ct.len, 0, 15, 0, Math.PI, false);
+    ctx.fill();
+  }
+  ctx.restore();
+  // release flash
+  if (ct.lastFiredAt && game.time - ct.lastFiredAt < 160) {
+    const k = 1 - (game.time - ct.lastFiredAt) / 160;
+    ctx.globalAlpha = k * 0.7;
+    ctx.strokeStyle = '#fda4af';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(P.x, P.y, 30 + (1 - k) * 30, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+}
+
+/** Flipper: a lacquered bat on a brass pivot, pose read from its firedAt clock. */
+function drawFlipper(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnType<typeof meta>, t: number) {
+  const fl = md.flipper;
+  if (!fl) return;
+  const a = flipperAngle(fl, t);
+  ctx.save();
+  ctx.translate(fl.px, fl.py);
+  ctx.rotate(a);
+  if (!drawSprite(ctx, 'flipper', 2, -8, fl.len, 16)) {
+    ctx.fillStyle = '#9f1239';
+    ctx.strokeStyle = '#4c0519';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(0, -6, fl.len, 12, 6);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#fda4af';
+    ctx.fillRect(fl.len - 12, -6, 10, 12);
+  }
+  ctx.restore();
+  // pivot cap
+  ctx.fillStyle = '#b45309';
+  ctx.beginPath(); ctx.arc(fl.px, fl.py, 7, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#fde68a';
+  ctx.beginPath(); ctx.arc(fl.px, fl.py, 3, 0, Math.PI * 2); ctx.fill();
+}
+
+/** Slingshot kicker: a rubber-banded wedge on the wall; the band snaps back for a beat after a kick. */
+function drawSling(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnType<typeof meta>, game: Game, _t: number) {
+  const sl = md.sling;
+  if (!sl) return;
+  const fa = Math.atan2(sl.facing.y, sl.facing.x);
+  const c = _b.position;
+  const flash = game.time - sl.flashAt < 260;
+  ctx.save();
+  ctx.translate(c.x, c.y);
+  ctx.rotate(fa + Math.PI); // artwork faces along the kick normal
+  if (!drawSprite(ctx, 'sling', -30, -34, 60, 68)) {
+    ctx.fillStyle = '#713f12';
+    ctx.strokeStyle = '#422006';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(-26, -22); ctx.lineTo(26, -22); ctx.lineTo(0, 26); ctx.closePath(); ctx.fill(); ctx.stroke();
+  }
+  // the rubber band
+  const snap = flash ? 6 : 0;
+  ctx.strokeStyle = flash ? '#fef08a' : '#dc2626';
+  ctx.lineWidth = flash ? 6 : 4;
+  ctx.beginPath();
+  ctx.moveTo(-26 - snap, -18);
+  ctx.quadraticCurveTo(0, -10 - snap * 2, 26 + snap, -18);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** Scoop: a brass pocket lip with a chevron showing the kick direction; dimmed while it holds a rider. */
+function drawScoop(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
+  const sc = md.scoop;
+  if (!sc) return;
+  const p = b.position;
+  const busy = sc.loadedAt !== null;
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.globalAlpha = busy ? 0.65 : 1;
+  if (!drawSprite(ctx, 'scoop', -20, -12, 40, 24)) {
+    ctx.fillStyle = '#0c0a09';
+    ctx.beginPath(); ctx.ellipse(0, 0, 18, 10, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#b45309';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.ellipse(0, 0, 18, 10, 0, Math.PI, 0, false); ctx.stroke();
+  }
+  // direction chevrons (or the subway portal)
+  if (md.exit) {
+    const bob = Math.sin(t / 300) * 2;
+    ctx.strokeStyle = '#7dd3fc';
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(-12, 8 + bob); ctx.lineTo(12, 8 + bob); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-8, 20 - bob); ctx.lineTo(8, 20 - bob); ctx.stroke();
+  } else {
+    const pulse = 0.6 + 0.4 * Math.sin(t / 260);
+    ctx.rotate(sc.deg);
+    ctx.strokeStyle = `rgba(253,224,71,${pulse})`;
+    ctx.lineWidth = 4;
+    for (let i = 0; i < 2; i++) {
+      const o = 16 + i * 10;
+      ctx.beginPath(); ctx.moveTo(-8, -o); ctx.lineTo(0, -o - 7); ctx.lineTo(8, -o); ctx.stroke();
+    }
+  }
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
 function drawWheel(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, game: Game, t: number) {
   const motion = md.motion;
   if (!motion || motion.mode !== 'spin' || !md.wheel) return;

@@ -16,7 +16,7 @@
  * renderer reads the same bodies (and the same clock helpers) for what it draws.
  */
 import Matter from 'matter-js';
-import { meta } from './track';
+import { meta, catapultAngle, flipperAngle } from './track';
 import type { Kind, Meta, Motion, Track } from './track';
 
 const { Body } = Matter;
@@ -293,6 +293,25 @@ export function updateElement(body: Matter.Body, time: number, dt: number): void
         body, maceTip(motion, sweepAngleFrom(k, motion)), true);
       return;
     }
+    // ---- MB-10D: catapult arm and flipper bat — kinematic pose from their state clocks ----
+    case 'catapult': {
+      const ct = md.catapult;
+      if (!ct) return;
+      const a = catapultAngle(ct, time);
+      (Body.setAngle as unknown as (b: Matter.Body, a: number, u: boolean) => void)(body, a, true);
+      (Body.setPosition as unknown as (b: Matter.Body, p: Matter.Vector, u: boolean) => void)(
+        body, { x: ct.px + Math.cos(a) * ct.len / 2, y: ct.py + Math.sin(a) * ct.len / 2 }, true);
+      return;
+    }
+    case 'flipper': {
+      const fl = md.flipper;
+      if (!fl) return;
+      const a = flipperAngle(fl, time);
+      (Body.setAngle as unknown as (b: Matter.Body, a: number, u: boolean) => void)(body, a, true);
+      (Body.setPosition as unknown as (b: Matter.Body, p: Matter.Vector, u: boolean) => void)(
+        body, { x: fl.px + Math.cos(a) * fl.len / 2, y: fl.py + Math.sin(a) * fl.len / 2 }, true);
+      return;
+    }
     default:
       return;
   }
@@ -313,6 +332,9 @@ export function updateElements(track: Track, time: number, dt: number): void {
   for (const body of elementBodies(track, 'boulder')) updateElement(body, time, dt);
   for (const body of elementBodies(track, 'mace')) updateElement(body, time, dt);
   for (const body of elementBodies(track, 'wheel')) updateElement(body, time, dt);
+  // MB-10D
+  for (const body of elementBodies(track, 'catapult')) updateElement(body, time, dt);
+  for (const body of elementBodies(track, 'flipper')) updateElement(body, time, dt);
 }
 
 // ---------------------------------------------------------------- warnings (skins read these)

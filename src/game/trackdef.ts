@@ -93,13 +93,25 @@ export interface ConveyorPiece extends PieceBase { t: 'conveyor'; a: Vec; b: Vec
 export interface SeesawPiece extends PieceBase { t: 'seesaw'; x: number; y: number; len: number; lim: number; damp: number }
 /** Rope bridge chain: `planks` slats between anchors `a` and `b` with rope `slack`. Dynamic. */
 export interface BridgePiece extends PieceBase { t: 'bridge'; a: Vec; b: Vec; planks: number; slack: number }
+// ---- MB-10D: launchers and pinball ----
+/** Goblin cannon: capture collar at (x, y); barrel aim oscillates `aimMin..aimMax` deg (canvas; 270 = up), `power` px/step muzzle speed, `auto` ms hold before the shot. */
+export interface CannonPiece extends PieceBase { t: 'cannon'; x: number; y: number; aimMin: number; aimMax: number; power: number; auto: number; phase: number }
+/** Catapult: pivot stand at (x, y), throw arm `len`; rests `reload` ms with a load, then whips through the release angle. `dir` 0 throws right. Kinematic pose; dynamic load state. */
+export interface CatapultPiece extends PieceBase { t: 'catapult'; x: number; y: number; len: number; reload: number; dir: 0 | 1 }
+/** Pinball flipper: pivot (x, y), bat `len`, sensor-triggered, or every `timer` ms when set (0 = sensor only). `side` 0 pivots left. */
+export interface FlipperPiece extends PieceBase { t: 'flipper'; x: number; y: number; side: 0 | 1; len: number; strength: number; timer: number; phase: number }
+/** Slingshot kicker: rubber triangle `size` px at (x, y), face normal `facing` deg, impulse `strength` px/step scaled by bounce. */
+export interface SlingPiece extends PieceBase { t: 'sling'; x: number; y: number; size: number; facing: number; strength: number }
+/** Scoop / kickback hole: pocket at (x, y) holds a marble `hold` ms, kicks it along `deg` (seeded jitter); optional `exit` = subway chute link [x, y, transitMs]. */
+export interface ScoopPiece extends PieceBase { t: 'scoop'; x: number; y: number; deg: number; hold: number; exit?: [number, number, number] }
 
 export type Piece =
   | RampPiece | CurvePiece | IcePiece | LoopPiece | HoopPiece | WreckerPiece | PadPiece | BoostPiece
   | SpinnerPiece | BreakablePiece | PegPiece | PPegPiece | ItemBoxPiece | BucketPiece | WallPiece | BlockPiece
   | BarricadePiece | TunnelPiece | CrumblePiece | TrapdoorPiece | SwitchPiece
   | BladePiece | SawPiece | CrusherPiece | BoulderPiece | MacePiece
-  | WheelPiece | ScrewPiece | ConveyorPiece | SeesawPiece | BridgePiece;
+  | WheelPiece | ScrewPiece | ConveyorPiece | SeesawPiece | BridgePiece
+  | CannonPiece | CatapultPiece | FlipperPiece | SlingPiece | ScoopPiece;
 
 export interface TrackDef {
   v: 1;
@@ -325,6 +337,41 @@ class DefRecorder extends Builder {
     );
   }
 
+  override cannon(cx: number, cy: number, aimMinDeg = 292, aimMaxDeg = 330, power = 9, autoMs = 1700, phaseMs = 0) {
+    return this.capture(
+      () => super.cannon(cx, cy, aimMinDeg, aimMaxDeg, power, autoMs, phaseMs),
+      () => ({ t: 'cannon', x: cx, y: cy, aimMin: aimMinDeg, aimMax: aimMaxDeg, power, auto: autoMs, phase: phaseMs, flip: this.mirrored }),
+    );
+  }
+
+  override catapult(px: number, py: number, len = 230, reloadMs = 1400, dir: 0 | 1 = 0) {
+    return this.capture(
+      () => super.catapult(px, py, len, reloadMs, dir),
+      () => ({ t: 'catapult', x: px, y: py, len, reload: reloadMs, dir, flip: this.mirrored }),
+    );
+  }
+
+  override flipper(x: number, y: number, side: 0 | 1 = 0, len = 120, strength = 1.4, periodMs = 0, phaseMs = 0) {
+    return this.capture(
+      () => super.flipper(x, y, side, len, strength, periodMs, phaseMs),
+      () => ({ t: 'flipper', x, y, side, len, strength, timer: periodMs, phase: phaseMs, flip: this.mirrored }),
+    );
+  }
+
+  override sling(x: number, y: number, size = 90, facingDeg = 245, strength = 4) {
+    return this.capture(
+      () => super.sling(x, y, size, facingDeg, strength),
+      () => ({ t: 'sling', x, y, size, facing: facingDeg, strength, flip: this.mirrored }),
+    );
+  }
+
+  override scoop(x: number, y: number, ejectDeg = 270, holdMs = 800, exit?: [number, number, number]) {
+    return this.capture(
+      () => super.scoop(x, y, ejectDeg, holdMs, exit),
+      () => ({ t: 'scoop', x, y, deg: ejectDeg, hold: holdMs, exit, flip: this.mirrored }),
+    );
+  }
+
   override seesaw(px: number, py: number, len = 300, limDeg = 22, damp = 0.9) {
     return this.capture(
       () => super.seesaw(px, py, len, limDeg, damp),
@@ -408,6 +455,12 @@ function replayPiece(b: Builder, piece: Piece) {
       case 'conveyor': b.conveyor(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.v, piece.flipMs || undefined, piece.dir); break;
       case 'seesaw': b.seesaw(piece.x, piece.y, piece.len, piece.lim, piece.damp); break;
       case 'bridge': b.ropeBridge(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.planks, piece.slack); break;
+      // ---- MB-10D launchers and pinball ----
+      case 'cannon': b.cannon(piece.x, piece.y, piece.aimMin, piece.aimMax, piece.power, piece.auto, piece.phase); break;
+      case 'catapult': b.catapult(piece.x, piece.y, piece.len, piece.reload, piece.dir); break;
+      case 'flipper': b.flipper(piece.x, piece.y, piece.side, piece.len, piece.strength, piece.timer, piece.phase); break;
+      case 'sling': b.sling(piece.x, piece.y, piece.size, piece.facing, piece.strength); break;
+      case 'scoop': b.scoop(piece.x, piece.y, piece.deg, piece.hold, piece.exit); break;
     }
   } finally {
     b.flip = false;
@@ -927,6 +980,71 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
         slack: number(raw.slack, `${at}.slack`, 8, 90, problems),
         ...body,
       };
+    // ---- MB-10D ----
+    case 'cannon':
+      return {
+        t: 'cannon',
+        x: number(raw.x, `${at}.x`, 0, W, problems),
+        y: real(raw.y, `${at}.y`, problems),
+        aimMin: number(raw.aimMin, `${at}.aimMin`, 0, 360, problems),
+        aimMax: number(raw.aimMax, `${at}.aimMax`, 0, 360, problems),
+        power: number(raw.power, `${at}.power`, 5, 14, problems),
+        auto: number(raw.auto, `${at}.auto`, 0, 5000, problems),
+        phase: real(raw.phase, `${at}.phase`, problems),
+        ...body,
+      };
+    case 'catapult':
+      return {
+        t: 'catapult',
+        x: number(raw.x, `${at}.x`, 0, W, problems),
+        y: real(raw.y, `${at}.y`, problems),
+        len: number(raw.len, `${at}.len`, 120, 400, problems),
+        reload: number(raw.reload, `${at}.reload`, 600, 3000, problems),
+        dir: (raw.dir === 0 || raw.dir === 1 ? raw.dir : (problems.add(`${at}.dir must be 0 or 1.`), 0 as 0 | 1)),
+        ...body,
+      };
+    case 'flipper':
+      return {
+        t: 'flipper',
+        x: number(raw.x, `${at}.x`, 0, W, problems),
+        y: real(raw.y, `${at}.y`, problems),
+        side: (raw.side === 0 || raw.side === 1 ? raw.side : (problems.add(`${at}.side must be 0 or 1.`), 0 as 0 | 1)),
+        len: number(raw.len, `${at}.len`, 70, 180, problems),
+        strength: number(raw.strength, `${at}.strength`, 0.5, 3, problems),
+        timer: number(raw.timer, `${at}.timer`, 0, 5000, problems),
+        phase: real(raw.phase, `${at}.phase`, problems),
+        ...body,
+      };
+    case 'sling':
+      return {
+        t: 'sling',
+        x: number(raw.x, `${at}.x`, 0, W, problems),
+        y: real(raw.y, `${at}.y`, problems),
+        size: number(raw.size, `${at}.size`, 40, 180, problems),
+        facing: number(raw.facing, `${at}.facing`, 0, 360, problems),
+        strength: number(raw.strength, `${at}.strength`, 1, 9, problems),
+        ...body,
+      };
+    case 'scoop':
+      return {
+        t: 'scoop',
+        x: number(raw.x, `${at}.x`, 0, W, problems),
+        y: real(raw.y, `${at}.y`, problems),
+        deg: number(raw.deg, `${at}.deg`, 0, 360, problems),
+        hold: number(raw.hold, `${at}.hold`, 400, 1200, problems),
+        ...(raw.exit !== undefined
+          ? {
+              exit: (Array.isArray(raw.exit) && raw.exit.length === 3
+                ? [
+                    number(raw.exit[0], `${at}.exit[0]`, 0, W, problems),
+                    real(raw.exit[1], `${at}.exit[1]`, problems),
+                    number(raw.exit[2], `${at}.exit[2]`, 600, 6000, problems),
+                  ]
+                : (problems.add(`${at}.exit must be [x, y, transitMs].`), [0, 0, 900])) as [number, number, number],
+            }
+          : {}),
+        ...body,
+      };
     default:
       problems.add(`${at}.t is unknown piece type ${JSON.stringify(raw.t)}.`);
       return null;
@@ -964,6 +1082,17 @@ function pieceYs(piece: Piece): number[] {
       return [Math.min(piece.a[1], piece.b[1]), Math.max(piece.a[1], piece.b[1])];
     case 'seesaw':
       return [piece.y, piece.y + 40];
+    // ---- MB-10D ----
+    case 'cannon':
+      return [piece.y - 40, piece.y];
+    case 'catapult':
+      return [piece.y, piece.y + piece.len * 0.8];
+    case 'flipper':
+      return [piece.y - piece.len, piece.y + 20];
+    case 'sling':
+      return [piece.y - 0.9 * piece.size, piece.y + 0.9 * piece.size];
+    case 'scoop':
+      return piece.exit ? [piece.y, piece.exit[1]] : [piece.y - 220, piece.y];
     case 'hoop':
     case 'spinner':
     case 'breakable':

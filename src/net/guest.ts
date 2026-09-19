@@ -643,9 +643,30 @@ export class RaceGuest {
       case 'hold': {
         // A marble went into an element. The host glides it from now on; the `until` is on the
         // host clock, which we mirror. A tunnel ride is hidden start-to-end; a wheel bucket or
-        // screw transit stays on screen — the position frames draw the ride.
+        // screw transit stays on screen — the position frames draw the ride. MB-10D launcher
+        // holds (cannon/catapult/scoop) park the rider at the machine until the same clock says go.
         const m = marbles[event.seat];
-        if (m) m.hold = { kind: event.of ?? 'tunnel', until: event.until };
+        if (m) {
+          m.hold = { kind: event.of ?? 'tunnel', until: event.until };
+          // mirror the machine's own bookkeeping so its skin lights up for us too
+          if ((event.of === 'cannon' || event.of === 'catapult' || event.of === 'scoop') && m.hold.kind !== 'tunnel') {
+            m.hold.at = this.game.time;
+          }
+        }
+        break;
+      }
+      // MB-10D: a flipper snapped — set the local copy's firedAt so it replays the same swing.
+      case 'flipper': {
+        const bat = this.bodyAt(event.i);
+        const fl = bat ? meta(bat).flipper : undefined;
+        if (fl) fl.firedAt = event.at;
+        break;
+      }
+      // MB-10D: a slingshot face tossed someone — redraw the band flash on our copy.
+      case 'sling': {
+        const tri = this.bodyAt(event.i);
+        const sl = tri ? meta(tri).sling : undefined;
+        if (sl) sl.flashAt = this.game.time;
         break;
       }
       // MB-10C: dynamic mover state — set the truth, `Game.ageEffects` blends the pose in.

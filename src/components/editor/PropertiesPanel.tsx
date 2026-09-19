@@ -426,6 +426,70 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
           <NumField label="Slack" value={piece.slack} min={8} max={90} step={2} onValue={(v) => update({ slack: clampNum(v, 8, 90) } as unknown as Piece)} />
         </>
       )}
+
+      {/* ---- MB-10D: launchers and pinball ---- */}
+
+      {piece.t === 'cannon' && (
+        <>
+          <NumField label="X" value={piece.x} min={0} max={W} onValue={(v) => update({ x: clampNum(v, 0, W) } as unknown as Piece)} />
+          <NumField label="Y" value={piece.y} onValue={(v) => update({ y: v } as unknown as Piece)} />
+          <NumField label="Aim min (deg, 270 = up)" value={piece.aimMin} min={0} max={360} step={1} onValue={(v) => update({ aimMin: clampNum(v, 0, 360) } as unknown as Piece)} />
+          <NumField label="Aim max (deg)" value={piece.aimMax} min={0} max={360} step={1} onValue={(v) => update({ aimMax: clampNum(v, 0, 360) } as unknown as Piece)} />
+          <NumField label="Power" value={piece.power} min={5} max={14} step={0.5} onValue={(v) => update({ power: clampNum(v, 5, 14) } as unknown as Piece)} />
+          <NumField label="Auto-fire (ms)" value={piece.auto} min={0} max={5000} step={100} onValue={(v) => update({ auto: Math.round(clampNum(v, 0, 5000)) } as unknown as Piece)} />
+          <NumField label="Aim phase (ms)" value={piece.phase} step={100} onValue={(v) => update({ phase: v } as unknown as Piece)} />
+        </>
+      )}
+
+      {piece.t === 'catapult' && (
+        <>
+          <NumField label="Pivot X" value={piece.x} min={0} max={W} onValue={(v) => update({ x: clampNum(v, 0, W) } as unknown as Piece)} />
+          <NumField label="Pivot Y" value={piece.y} onValue={(v) => update({ y: v } as unknown as Piece)} />
+          <NumField label="Arm length" value={piece.len} min={120} max={400} step={10} onValue={(v) => update({ len: clampNum(v, 120, 400) } as unknown as Piece)} />
+          <NumField label="Reload (ms)" value={piece.reload} min={600} max={3000} step={100} onValue={(v) => update({ reload: Math.round(clampNum(v, 600, 3000)) } as unknown as Piece)} />
+          <NumField label="Direction (0 throws right)" value={piece.dir} min={0} max={1} step={1} onValue={(v) => update({ dir: (v >= 1 ? 1 : 0) as 0 | 1 } as unknown as Piece)} />
+        </>
+      )}
+
+      {piece.t === 'flipper' && (
+        <>
+          <NumField label="Pivot X" value={piece.x} min={0} max={W} onValue={(v) => update({ x: clampNum(v, 0, W) } as unknown as Piece)} />
+          <NumField label="Pivot Y" value={piece.y} onValue={(v) => update({ y: v } as unknown as Piece)} />
+          <NumField label="Side (0 pivots left)" value={piece.side} min={0} max={1} step={1} onValue={(v) => update({ side: (v >= 1 ? 1 : 0) as 0 | 1 } as unknown as Piece)} />
+          <NumField label="Bat length" value={piece.len} min={70} max={180} step={5} onValue={(v) => update({ len: clampNum(v, 70, 180) } as unknown as Piece)} />
+          <NumField label="Strength" value={piece.strength} min={0.5} max={3} step={0.1} onValue={(v) => update({ strength: clampNum(v, 0.5, 3) } as unknown as Piece)} />
+          <NumField label="Timer (ms, 0 = sensor only)" value={piece.timer} min={0} max={5000} step={100} onValue={(v) => update({ timer: Math.round(clampNum(v, 0, 5000)) } as unknown as Piece)} />
+          <NumField label="Phase (ms)" value={piece.phase} step={100} onValue={(v) => update({ phase: v } as unknown as Piece)} />
+        </>
+      )}
+
+      {piece.t === 'sling' && (
+        <>
+          <NumField label="X" value={piece.x} min={0} max={W} onValue={(v) => update({ x: clampNum(v, 0, W) } as unknown as Piece)} />
+          <NumField label="Y" value={piece.y} onValue={(v) => update({ y: v } as unknown as Piece)} />
+          <NumField label="Size" value={piece.size} min={40} max={180} step={5} onValue={(v) => update({ size: clampNum(v, 40, 180) } as unknown as Piece)} />
+          <NumField label="Facing (deg)" value={piece.facing} min={0} max={360} step={5} onValue={(v) => update({ facing: (((v % 360) + 360) % 360) } as unknown as Piece)} />
+          <NumField label="Strength" value={piece.strength} min={1} max={9} step={0.5} onValue={(v) => update({ strength: clampNum(v, 1, 9) } as unknown as Piece)} />
+        </>
+      )}
+
+      {piece.t === 'scoop' && (
+        <>
+          <NumField label="X" value={piece.x} min={0} max={W} onValue={(v) => update({ x: clampNum(v, 0, W) } as unknown as Piece)} />
+          <NumField label="Y" value={piece.y} onValue={(v) => update({ y: v } as unknown as Piece)} />
+          <NumField label="Eject (deg, 270 = up)" value={piece.deg} min={0} max={360} step={5} onValue={(v) => update({ deg: (((v % 360) + 360) % 360) } as unknown as Piece)} />
+          <NumField label="Hold (ms)" value={piece.hold} min={400} max={1200} step={50} onValue={(v) => update({ hold: Math.round(clampNum(v, 400, 1200)) } as unknown as Piece)} />
+          {piece.exit ? (
+            <>
+              <NumField label="Subway exit X" value={piece.exit[0]} min={0} max={W} onValue={(v) => update({ exit: [clampNum(v, 0, W), piece.exit![1], piece.exit![2]] as [number, number, number] } as unknown as Piece)} />
+              <NumField label="Subway exit Y" value={piece.exit[1]} onValue={(v) => update({ exit: [piece.exit![0], v, piece.exit![2]] as [number, number, number] } as unknown as Piece)} />
+              <NumField label="Transit (ms)" value={piece.exit[2]} min={600} max={6000} step={100} onValue={(v) => update({ exit: [piece.exit![0], piece.exit![1], Math.round(clampNum(v, 600, 6000))] as [number, number, number] } as unknown as Piece)} />
+            </>
+          ) : (
+            <p className="hint">Subway: drag the exit handle into place with the move tool, or leave unset for a kickback.</p>
+          )}
+        </>
+      )}
     </div>
   );
 }

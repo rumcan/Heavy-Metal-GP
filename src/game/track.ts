@@ -66,7 +66,13 @@ export type Kind =
   | 'screw'
   | 'conveyor'
   | 'seesaw'
-  | 'bridge';
+  | 'bridge'
+  // MB-10D: launchers and pinball
+  | 'cannon'
+  | 'catapult'
+  | 'flipper'
+  | 'sling'
+  | 'scoop';
 
 /**
  * MB-10 element framework. A kinematic driver for the moving pieces: a body's pose is a pure
@@ -155,6 +161,15 @@ export type Motion =
     restMs: number;
     phaseMs: number;
     r: number;
+  }
+  /** MB-10D cannon: the barrel angle oscillates between minA and maxA (canvas rad from +x). */
+  | {
+    mode: 'aim';
+    pivot: Matter.Vector;
+    minA: number;
+    maxA: number;
+    periodMs: number;
+    phaseMs: number;
   };
 
 export type PegColor = 'blue' | 'orange' | 'green';
@@ -243,6 +258,17 @@ export interface Meta {
   syncAt?: number;
   /** MB-10C guest-side bridge chain target (head plank): plank sags from the last bridge event. */
   sagTarget?: number[];
+  // ---- MB-10D: launchers and pinball ----
+  /** Cannon: barrel length, muzzle speed, auto-fire delay, and the loaded marble's seat + clocks. */
+  cannon?: { len: number; power: number; autoMs: number; loaded: { seat: number; at: number; fireAt: number } | null; lastFiredAt?: number };
+  /** Catapult: arm program + static pivot; loadedAt/firedAt are host-set on capture, mirrored by the hold event. */
+  catapult?: { px: number; py: number; len: number; restA: number; releaseA: number; swingMs: number; reloadMs: number; dropMs: number; loadedAt: number | null; firedAt: number | null; lastFiredAt?: number };
+  /** Flipper: bat geometry (rest/swing angles from the static pivot, canvas rad), strength, timer mode, trigger clock. */
+  flipper?: { px: number; py: number; side: 1 | -1; len: number; strength: number; restA: number; swingA: number; swingMs: number; dropMs: number; periodMs: number; phaseMs: number; firedAt: number; lastAuto: number };
+  /** Slingshot kicker: unit facing, impulse strength (px/step), skin flash clock. */
+  sling?: { facing: Matter.Vector; strength: number; flashAt: number };
+  /** Scoop: eject angle (canvas rad), hold time, seeded occupancy; exit (down a subway) when linked. */
+  scoop?: { deg: number; holdMs: number; loadedAt: number | null; fireAt: number | null; seat: number | null };
   sagAt?: number;
 }
 
@@ -872,6 +898,124 @@ export class Builder {
     }
     return out;
   }
+
+  // ---------- MB-10D: launchers and pinball ----------
+
+  /**
+   * A goblin cannon: a collar the pack rolls into; the barrel keeps swinging its aim (pure clock),
+   * and after a seeded beat it fires the rider across the course. Heavy marbles fly shorter —
+   * the shot speed scales down with weight.
+   */
+  cannon(cx: number, cy: number, aimMinDeg = 292, aimMaxDeg = 330, power = 9, autoMs = 1700, phaseMs = 0) {
+    const pivot = { x: this.X(cx), y: cy };
+    // mirror the course: the whole aim fan maps θ → 180−θ, swapping the range ends
+    const mirror = (deg: number) => ((180 - deg) % 360 + 360) % 360;
+    const lo = this.flip ? mirror(aimMaxDeg) : aimMinDeg;
+    const hi = this.flip ? mirror(aimMinDeg) : aimMaxDeg;
+    const md: Meta = {
+      kind: 'cannon',
+      motion: { mode: 'aim', pivot, minA: (lo * Math.PI) / 180, maxA: (hi * Math.PI) / 180, periodMs: 2600, phaseMs },
+      cannon: { len: 74, power, autoMs, loaded: null },
+    };
+    const collar = Bodies.circle(pivot.x, pivot.y + 6, 16, { ...STATIC_OPTS, label: 'cannon', restitution: 0.2, friction: 0.01 });
+    collar.plugin = md;
+    this.bodies.push(collar);
+    const mouth = Bodies.circle(pivot.x, pivot.y, 38, { ...SENSOR_OPTS, label: 'cannon' });
+    mouth.plugin = md;
+    this.bodies.push(mouth);
+    return collar;
+  }
+
+  /**
+   * A catapult: land in the spoon and after `reloadMs` the arm whips through to the release angle,
+   * throwing the rider to the high ledge. `dir` 0 throws right (mirrored on a flipped course).
+   */
+  catapult(px: number, py: number, len = 230, reloadMs = 1400, dir: 0 | 1 = 0) {
+    const pivot = { x: this.X(px), y: py };
+    const right = this.flip ? dir === 1 : dir === 0;
+    const restA = ((right ? 135 : 45) * Math.PI) / 180;
+    const releaseA = ((right ? 300 : 240) * Math.PI) / 180;
+    const md: Meta = {
+      kind: 'catapult',
+      catapult: { px: pivot.x, py: pivot.y, len, restA, releaseA, swingMs: 240, reloadMs, dropMs: 700, loadedAt: null, firedAt: null },
+    };
+    const P = { x: pivot.x + Math.cos(restA) * len * 0.5, y: pivot.y + Math.sin(restA) * len * 0.5 };
+    const arm = Bodies.rectangle(P.x, P.y, len, 10, { ...STATIC_OPTS, label: 'catapult', angle: restA, restitution: 0.15, friction: 0.001, chamfer: { radius: 3 } });
+    arm.plugin = md;
+    this.bodies.push(arm);
+    // the spoon: a catch cup at the resting tip
+    const tip = { x: pivot.x + Math.cos(restA) * len, y: pivot.y + Math.sin(restA) * len };
+    const spoon = Bodies.circle(tip.x, tip.y, 28, { ...SENSOR_OPTS, label: 'catapult' });
+    spoon.plugin = md;
+    this.bodies.push(spoon);
+    return arm;
+  }
+
+  /**
+   * A pinball flipper: `side` 0 = pivot on the left (bat points right, swats up-right),
+   * 1 = pivot right. Fires when a marble rolls onto the bat, or every `periodMs` if set (timer mode).
+   */
+  flipper(x: number, y: number, side: 0 | 1 = 0, len = 120, strength = 1.4, periodMs = 0, phaseMs = 0) {
+    const pivot = { x: this.X(x), y };
+    const left = this.flip ? side === 1 : side === 0;
+    const sd = (left ? 1 : -1) as 1 | -1;
+    // left flipper: bat runs right at rest (8°), snaps up to -46°. Right flipper mirrors.
+    const restA = (left ? 8 : 172) * Math.PI / 180;
+    const swingA = (left ? -46 : 226) * Math.PI / 180;
+    const P = { x: pivot.x + Math.cos(restA) * len * 0.5, y: pivot.y + Math.sin(restA) * len * 0.5 };
+    const bat = Bodies.rectangle(P.x, P.y, len, 12, { ...STATIC_OPTS, label: 'flipper', angle: restA, restitution: 0.25, friction: 0.001, chamfer: { radius: 4 } });
+    bat.plugin = {
+      kind: 'flipper',
+      flipper: { px: pivot.x, py: pivot.y, side: sd, len, strength, restA, swingA, swingMs: 110, dropMs: 550, periodMs, phaseMs, firedAt: -1e9, lastAuto: 0 },
+    } as Meta;
+    this.bodies.push(bat);
+    return bat;
+  }
+
+  /**
+   * A slingshot kicker: a rubber-banded triangle on the chute wall; face contact fires the marble
+   * along `facingDeg` scaled by its bounce stat. Solid body with a sensor flash face.
+   */
+  sling(x: number, y: number, size = 90, facingDeg = 245, strength = 4) {
+    const cx = this.X(x);
+    const mirrored = this.flip ? ((180 - facingDeg) % 360 + 360) % 360 : facingDeg;
+    const fa = (mirrored * Math.PI) / 180;
+    const facing = { x: Math.cos(fa), y: Math.sin(fa) };
+    // right triangle: the hypotenuse is the rubber face, normal along `facing`
+    const nx = -facing.y, ny = facing.x;
+    const bx = cx - facing.x * size * 0.36, by = y - facing.y * size * 0.36;
+    const tri = Bodies.fromVertices(bx, by, [[
+      { x: bx - nx * size * 0.55 - facing.x * size * 0.18, y: by - ny * size * 0.55 - facing.y * size * 0.18 },
+      { x: bx + nx * size * 0.55 - facing.x * size * 0.18, y: by + ny * size * 0.55 - facing.y * size * 0.18 },
+      { x: bx + facing.x * size * 0.32, y: by + facing.y * size * 0.32 },
+    ]], { ...STATIC_OPTS, label: 'sling', restitution: 0.4, friction: 0.001 });
+    tri.plugin = { kind: 'sling', sling: { facing, strength, flashAt: -1e9 } } as Meta;
+    this.bodies.push(tri);
+    return tri;
+  }
+
+  /**
+   * A scoop / kickback hole: a pocket in the floor swallows one marble, holds it `holdMs`, then
+   * kicks it back out along `ejectDeg` (seeded jitter). With a subway link the rider instead
+   * dives down a hidden chute to `exit` — reuse of the tunnel hold/transit.
+   */
+  scoop(x: number, y: number, ejectDeg = 270, holdMs = 800, exit?: [number, number, number]) {
+    const cx = this.X(x);
+    const mirrored = this.flip ? ((180 - ejectDeg) % 360 + 360) % 360 : ejectDeg;
+    const md: Meta = { kind: 'scoop', scoop: { deg: (mirrored * Math.PI) / 180, holdMs, loadedAt: null, fireAt: null, seat: null } };
+    if (exit) {
+      const ex = { x: this.X(exit[0]), y: exit[1] };
+      md.exit = { x: ex.x, y: ex.y, dir: { x: 0, y: 1 }, speed: 3.6 };
+      md.transit = exit[2];
+      const out = Bodies.circle(ex.x, ex.y, 30, { ...SENSOR_OPTS, label: 'wall' });
+      out.plugin = { kind: 'wall' } as Meta;
+      this.bodies.push(out);
+    }
+    const pocket = Bodies.circle(cx, y, 26, { ...SENSOR_OPTS, label: 'scoop' });
+    pocket.plugin = md;
+    this.bodies.push(pocket);
+    return pocket;
+  }
 }
 
 // ---------------- MB-10C pose helpers (shared host / guest / skin) ----------------
@@ -886,6 +1030,47 @@ export function bridgeRestY(anchor: Matter.Vector[], slack: number, idx: number,
 export function bridgeRestX(anchor: Matter.Vector[], idx: number, n: number): number {
   const t = (idx + 0.5) / n;
   return anchor[0].x + (anchor[1].x - anchor[0].x) * t;
+}
+
+// ---------------- MB-10D pose helpers (shared host / guest / skin) ----------------
+
+/** Cannon barrel aim at clock `t`: oscillates between minA and maxA on a sine. */
+export function cannonAim(motion: Extract<Motion, { mode: 'aim' }>, t: number): number {
+  const mid = (motion.minA + motion.maxA) / 2;
+  const half = (motion.maxA - motion.minA) / 2;
+  return mid + half * Math.sin((2 * Math.PI * ((t + motion.phaseMs) % motion.periodMs)) / motion.periodMs);
+}
+
+/** Catapult arm angle at clock `t`: parked at rest unless a load has set the swing going. */
+export function catapultAngle(ct: NonNullable<Meta['catapult']>, t: number): number {
+  if (ct.loadedAt === null) return ct.restA;
+  const swingStart = ct.loadedAt + ct.reloadMs;
+  if (t < swingStart) return ct.restA;
+  const firedAt = ct.firedAt ?? swingStart + ct.swingMs;
+  if (t <= firedAt) {
+    const k = Math.min(1, (t - swingStart) / ct.swingMs);
+    // whip: mostly late — the arm accelerates into the release
+    const e = k * k * (3 - 2 * k);
+    return ct.restA + (ct.releaseA - ct.restA) * e;
+  }
+  // throw done: the empty arm drops back to rest
+  const k = Math.min(1, (t - firedAt) / ct.dropMs);
+  if (k >= 1) { return ct.restA; }
+  const e = k * k * (3 - 2 * k);
+  return ct.releaseA + (ct.restA - ct.releaseA) * e;
+}
+
+/** Flipper bat angle at clock `t`: ease up on the snap, ease back down. */
+export function flipperAngle(fl: NonNullable<Meta['flipper']>, t: number): number {
+  const dt = t - fl.firedAt;
+  if (dt < 0 || dt > fl.swingMs + fl.dropMs) return fl.restA;
+  if (dt <= fl.swingMs) {
+    const k = dt / fl.swingMs;
+    return fl.restA + (fl.swingA - fl.restA) * (k * k);
+  }
+  const k = (dt - fl.swingMs) / fl.dropMs;
+  const e = k * k * (3 - 2 * k);
+  return fl.swingA + (fl.restA - fl.swingA) * e;
 }
 
 /** Pose (position + angle) of one bridge plank, given every plank's current sag offset. */
@@ -1410,6 +1595,111 @@ const segRopeCrossing: Seg = (b, y) => {
   return 480;
 };
 
+// ================= MB-10D: launchers and pinball =================
+
+/**
+ * Cannon Run: the pack rolls down into a goblin cannon pit. Whoever rolls in gets aimed up-right
+ * and fired onto the high shelf; anyone just passing behind the collar drops to the catch ramp
+ * and rejoins at the same bottom-right. The shelf and the catch lane both flute to the exit —
+ * a trap it is not.
+ */
+const segCannonRun: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  b.ramp(0, y + 30, 150, y + 80);
+  // collar trench + catch floor for marbles that simply walk past the mouth
+  b.ramp(150, y + 130, 360, y + 200);
+  b.cannon(220, y + 136, 288, 306, 11.5 + b.rng() * 1.5, 1400 + b.rng() * 500, b.rng() * 2000);
+  // the high shelf the shot lands on
+  b.ramp(350, y + 120, 560, y + 180);
+  b.ramp(560, y + 180, W - 20, y + 440);
+  // the catch lane underneath — walk-throughs and short shots land here, fluting to the out
+  b.ramp(360, y + 200, 480, y + 260);
+  b.ramp(480, y + 260, W - 10, y + 470);
+  return 520;
+};
+
+/**
+ * Catapult Ledge: a bowl drops the pack into the spoon; after a beat the arm whips and throws its
+ * rider up-right onto the shelf. Marbles that never owned the spoon roll through the bowl and
+ * take the low lane; both flutes meet at the bottom-right out.
+ */
+const segCatapultLedge: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  b.ramp(0, y + 30, 150, y + 240);
+  b.ramp(150, y + 240, 330, y + 340);
+  // spoon rest tip sits near (260, y + 320), right above the bowl floor
+  b.catapult(430, y + 150, 240, 1100 + b.rng() * 500, 0);
+  // the shelf the fling lands on — staged into the throw's wing (see mb10d-sanity), then on to the out
+  b.ramp(310, y + 280, 520, y + 350);
+  b.ramp(520, y + 350, W - 20, y + 450);
+  // the bowl's through lane — rises to graze the resting spoon so every passer earns a fling
+  b.ramp(160, y + 330, 470, y + 420);
+  b.ramp(470, y + 420, W - 10, y + 530);
+  return 550;
+};
+
+/**
+ * Flipper Alley: a resting flipper grows out of the chute lip. Roll onto the bat and the sensor
+ * swats you across the gap; a bouncy marble rebounds high, a heavy one barely hops — and the gap
+ * floor itself slides down-right, so nothing dogs the bat. A pinball machine, never a trap.
+ */
+const segFlipperAlley: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  b.ramp(0, y + 30, 260, y + 120);
+  b.ramp(260, y + 120, 440, y + 205);
+  b.flipper(560, y + 228, 0, 116 + b.rng() * 16, 1.3 + b.rng() * 0.3, 0, 0);
+  // the gap floor slides across regardless
+  b.ramp(440, y + 250, 720, y + 340);
+  b.ramp(720, y + 340, W - 10, y + 500);
+  if (b.rng() < 0.5) b.flipper(740, y + 356, 1, 108 + b.rng() * 14, 2.2 + b.rng() * 0.6, 1400 + b.rng() * 600, b.rng() * 1000);
+  return 540;
+};
+
+/**
+ * Sling Chute: a narrow falling chute rubber-banded on both walls. Each face kick punches the
+ * marble across and DOWN the fall — a bouncy marble pachinks between bands and leaves fast,
+ * everyone else just funnels through the middle.
+ */
+const segSlingChute: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  b.ramp(0, y + 30, 300, y + 118);
+  // chute rails (centre-anchored walls)
+  b.wall(276, y + 250, 12, 280);
+  b.wall(560, y + 250, 12, 280);
+  // the slide-in funnel feeds the first band's face, and each band bounces you onto the next
+  b.ramp(300, y + 310, 420, y + 380);
+  b.sling(470, y + 365, 125, 225, 3.6 + b.rng() * 0.8);
+  b.sling(380, y + 485, 125, 305, 3.6 + b.rng() * 0.8);
+  // funnel out
+  b.ramp(340, y + 540, W - 10, y + 615);
+  return 660;
+};
+
+/**
+ * Scoop Subway: a kickback pocket hollowed out of the shelf. The first rider gets swallowed and
+ * kicked back up onto the upper shelf it left; half the builds instead bore a hidden subway that
+ * surfaces at the bottom-right, past the whole shelf. Everyone else rolls the shelf straight on.
+ */
+const segScoopSubway: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  b.ramp(0, y + 30, 260, y + 100);
+  // contiguous shelf — NO void under the pocket: crossers roll over its dimple while it's busy
+  b.ramp(260, y + 100, 450, y + 180);
+  b.ramp(450, y + 180, 640, y + 250);
+  const subway = b.rng() < 0.5;
+  if (subway) {
+    // swallow-and-glide to the bottom-right exit
+    b.scoop(545, y + 223, 276, 700, [400, y + 450, 1300 + b.rng() * 500]);
+  } else {
+    // kickback: it pops you back up onto the shelf behind
+    b.scoop(545, y + 223, 279, 600 + b.rng() * 400);
+  }
+  b.ramp(640, y + 250, W - 10, y + 430);
+  // the subway surfaces here; its floor slides into the same out
+  if (subway) b.ramp(240, y + 460, W - 10, y + 520);
+  return 560;
+};
+
 const POOL: { seg: Seg; name: string; weight: number }[] = [
   { seg: segZigzag, name: 'Zigzag Pipes', weight: 2 },
   { seg: segFunnel, name: 'Funnel', weight: 2 },
@@ -1439,6 +1729,12 @@ const POOL: { seg: Seg; name: string; weight: number }[] = [
   { seg: segBeltway, name: 'Beltway', weight: 0.5 },
   { seg: segTeeterCrossing, name: 'Teeter Crossing', weight: 0.45 },
   { seg: segRopeCrossing, name: 'Rope Crossing', weight: 0.5 },
+  // MB-10D: launchers and pinball — cameos, like the movers
+  { seg: segCannonRun, name: 'Cannon Run', weight: 0.4 },
+  { seg: segCatapultLedge, name: 'Catapult Ledge', weight: 0.4 },
+  { seg: segFlipperAlley, name: 'Flipper Alley', weight: 0.45 },
+  { seg: segSlingChute, name: 'Sling Chute', weight: 0.45 },
+  { seg: segScoopSubway, name: 'Scoop Subway', weight: 0.4 },
 ];
 
 export const DEFAULT_PROFILE: TrackProfile = {

@@ -185,6 +185,22 @@ export function defaultPiece(type: PieceType, at: Point, snap = false): Piece {
       const y = snap ? snapVal(cy) : cy;
       return { t: 'bridge', a: [x - 180, y] as [number, number], b: [Math.min(W - 40, x + 180), y] as [number, number], planks: 8, slack: 34 };
     }
+    // ---- MB-10D ----
+    case 'cannon': {
+      return { t: 'cannon', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, aimMin: 288, aimMax: 314, power: 12, auto: 1600, phase: 0 };
+    }
+    case 'catapult': {
+      return { t: 'catapult', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, len: 230, reload: 1400, dir: 0 };
+    }
+    case 'flipper': {
+      return { t: 'flipper', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, side: 0, len: 120, strength: 1.4, timer: 0, phase: 0 };
+    }
+    case 'sling': {
+      return { t: 'sling', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, size: 90, facing: 245, strength: 4 };
+    }
+    case 'scoop': {
+      return { t: 'scoop', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, deg: 270, hold: 800 };
+    }
     default:
       // Exhaustiveness: TypeScript ensures all PieceType are covered.
       throw new Error(`defaultPiece: unknown piece type ${(type as string)}`);

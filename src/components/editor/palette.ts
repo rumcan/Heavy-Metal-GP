@@ -122,6 +122,19 @@ export const PALETTE: PaletteGroup[] = [
       { id: 'bridge', t: 'bridge', label: 'Rope bridge', sprite: 'bridge', hint: 'A sagging plank chain between two anchors. The pack dips it; bouncy balls bounce it.' },
     ],
   },
+  {
+    id: 'launchers',
+    label: 'Launchers',
+    note: 'Cannons, catapults and pinball',
+    tiles: [
+      { id: 'cannon', t: 'cannon', label: 'Goblin cannon', sprite: 'cannon', hint: 'Swallows a marble and fires it along the swinging aim fan. Heavy flies shorter; the player can nudge to fire early.' },
+      { id: 'catapult', t: 'catapult', label: 'Catapult', sprite: 'catapult', hint: 'A spoon cradle on a long arm. Land in it, wait for the reload, fly up to the shelf.' },
+      { id: 'flipper', t: 'flipper', label: 'Flipper (left)', sprite: 'flipper', hint: 'A pinball bat pivoted on the left. Rest on it and it snaps you up-right — or set a timer.' },
+      { id: 'flipper-right', t: 'flipper', label: 'Flipper (right)', sprite: 'flipper', preset: { side: 1 }, hint: 'The right-handed bat: snaps marbles up-left.' },
+      { id: 'sling', t: 'sling', label: 'Slingshot kicker', sprite: 'sling', hint: 'A rubber-banded wall wedge. Face contact fires the marble through the kick direction; bounce stat adds punch.' },
+      { id: 'scoop', t: 'scoop', label: 'Scoop', sprite: 'scoop', hint: 'A kickback hole in the floor. Swallows a marble, kicks it back out along the chevrons — or link a subway exit.' },
+    ],
+  },
 ];
 
 /** Every tile, flat — for looking one up by piece type. */
