@@ -2,7 +2,9 @@ import * as storage from '../game/storage';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { nudgeOf } from '../game/controls';
-import { ArrowLeft, ArrowRight, Pause, Play, Flag, ChevronRight, FastForward, Timer, Gauge, Coins, Snowflake, ZoomIn, ZoomOut, Volume2, VolumeX } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Pause, Play, Flag, ChevronRight, FastForward, Timer, Gauge, Coins, MessageCircle, Snowflake, ZoomIn, ZoomOut, Volume2, VolumeX } from 'lucide-react';
+import { CHAT_BUBBLE_MS, canSay, chatMessage, MAX_CHAT_LENGTH, offCooldown, speakerOf, trimChatText } from '../net/chat';
+import type { ChatMsg } from '../net/protocol';
 import { raceAudio } from '../game/audio';
 import { Game } from '../game/engine';
 import { RaceSession } from '../net/session';
@@ -21,6 +23,8 @@ import Brand from './Brand';
 import Dialog from './Dialog';
 import InventoryToolbar from './InventoryToolbar';
 import RaceMinimap from './RaceMinimap';
+import RaceBubbles from './RaceBubbles';
+import type { SpeechBubble } from './RaceBubbles';
 import RaceResults from './RaceResults';
 import type { RaceAction } from './RaceResults';
 import type { RankedRaceView } from '../game/rank-view';
@@ -126,6 +130,29 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
   const [toast, setToast] = useState<{ message: string; color: string } | null>(null);
   const [results, setResults] = useState<HeatResult[] | null>(null);
   const [mapTrack, setMapTrack] = useState<Track | null>(null);
+  // ── MP-CHAT: race talk, as a bubble over the marble that said it ─────────
+  /**
+   * Mid-race a line is a BUBBLE, not a log: it rides over its own marble and
+   * clears itself a few seconds later. No scrollback and no panel — nobody is
+   * reading a conversation while they are driving, and the lobby is where a
+   * conversation lives.
+   */
+  const [bubbles, setBubbles] = useState<SpeechBubble[]>([]);
+  const [composing, setComposing] = useState(false);
+  const [draft, setDraft] = useState('');
+  /** Read by the keyboard handler, which is installed once per race. */
+  const composingRef = useRef(false);
+  composingRef.current = composing;
+  const bubbleSeq = useRef(0);
+  const bubbleTimers = useRef(new Set<number>());
+  /** The layer the bubbles sit in — the loop pins them to their marbles. */
+  const bubbleLayer = useRef<HTMLDivElement>(null);
+  /** MP-CHAT: local clock when this driver last spoke (the cooldown). */
+  const lastSaidAt = useRef(-Infinity);
+  /** MP-CHAT: whose voice this screen is, so its own echo is not printed twice. */
+  const myPlayerId = online?.seats.find((seat) => seat.slot === online.localSeat)?.playerId ?? '';
+  /** Read by the room's message handler, which is subscribed once per race. */
+  const chatSink = useRef<(msg: ChatMsg) => void>(() => {});
   const initialInventory = useRef(normalizeInventory(inventory));
   const inventoryCallback = useRef(onInventoryChange);
   inventoryCallback.current = onInventoryChange;
@@ -149,6 +176,81 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
     if (session) session.useItem(item);
     else gameRef.current?.usePlayerItem(item);
   }, []);
+
+  /**
+   * MP-CHAT: put a line over a marble.
+   *
+   * One bubble per marble: a second line from the same driver REPLACES the
+   * first rather than stacking above it, because two bubbles over one ball is
+   * a rendering problem and the newest line is the one worth reading. The
+   * expiry is a timer, not the race clock — a bubble clears on wall time
+   * whether the race is running, paused or over.
+   */
+  const showBubble = useCallback((from: string, text: string) => {
+    const speaker = speakerOf(onlineRef.current?.seats ?? [], from);
+    // A voice with no marble has nowhere to put a bubble.
+    if (speaker.seat === null) return;
+    const seat = speaker.seat;
+    const mine = seat === onlineRef.current?.localSeat;
+    const id = ++bubbleSeq.current;
+    setBubbles((list) => [...list.filter((b) => b.seat !== seat), { id, seat, text: trimChatText(text), name: mine ? 'YOU' : speaker.name, color: speaker.color }]);
+    const timer = window.setTimeout(() => {
+      bubbleTimers.current.delete(timer);
+      setBubbles((list) => list.filter((b) => b.id !== id));
+    }, CHAT_BUBBLE_MS);
+    bubbleTimers.current.add(timer);
+  }, []);
+
+  // MP-CHAT: the room's frames reach a bubble through this sink. The
+  // subscription lives in the effect below (one per race, like the session).
+  useEffect(() => {
+    chatSink.current = (msg) => {
+      // The ROOM stamped the author, so a line can never be printed under a
+      // name its sender did not own. Mine comes back to me as well — it is
+      // already on the screen, put there by `say` before the round trip.
+      if (!msg.from || msg.from === myPlayerId) return;
+      showBubble(msg.from, msg.text);
+    };
+    const timers = bubbleTimers.current;
+    return () => {
+      for (const timer of timers) window.clearTimeout(timer);
+      timers.clear();
+    };
+  }, [myPlayerId, showBubble]);
+
+  /** MP-CHAT: say a line — to everybody in this race, over my marble. True when it went out. */
+  const say = useCallback((raw: string): boolean => {
+    const link_ = onlineRef.current?.link;
+    const text = trimChatText(raw);
+    if (!link_ || !canSay(text)) return false;
+    const now = Date.now();
+    // A held key is not a sentence. The room would relay every one of them.
+    if (!offCooldown(now, lastSaidAt.current)) return false;
+    lastSaidAt.current = now;
+    link_.send(chatMessage(text));
+    // Printed now rather than on the echo: the room's copy is a round trip
+    // away, and a bubble that lags the key press reads as a dropped line.
+    showBubble(myPlayerId, text);
+    return true;
+  }, [myPlayerId, showBubble]);
+
+  /**
+   * MP-CHAT: the compose bar. `T` opens it, Enter sends, Escape closes — and
+   * while it is open the keyboard belongs to the input, not the marble (the
+   * key handler ignores events from a focused field).
+   */
+  const openCompose = useCallback(() => {
+    if (!onlineRef.current || doneRef.current) return;
+    setDraft('');
+    setComposing(true);
+  }, []);
+  const closeCompose = useCallback(() => { setComposing(false); setDraft(''); }, []);
+  const submitChat = (event: React.FormEvent) => {
+    event.preventDefault();
+    // A line the cooldown swallowed leaves the bar open with the text still in
+    // it, so Enter again a moment later works instead of losing the sentence.
+    if (say(draft)) closeCompose();
+  };
   const setPause = useCallback((value: boolean) => {
     pausedRef.current = value;
     controls.current = { left: false, right: false, touch: 0 };
@@ -192,7 +294,12 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
     gameRef.current = game;
     // Frames from the room go to whichever screen is live. The room is
     // subscribed once (in App); this is the screen raising its hand.
-    if (link) link.onMessage = (msg) => sessionRef.current?.accept(msg);
+    if (link) link.onMessage = (msg) => {
+      sessionRef.current?.accept(msg);
+      // MP-CHAT: talk is not the world, so the session has no business with
+      // it — a line is siphoned off here on its way past the simulation.
+      if (msg.type === 'chat') chatSink.current(msg);
+    };
     doneRef.current = false;
     let toastTimer: ReturnType<typeof setTimeout> | undefined;
     game.onEvent = (message, color = '#d63e2e') => {
@@ -273,10 +380,20 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       // that stopped stepping would take the whole grid with it.
       if (event.code === 'KeyP' && down && !event.repeat) { if (!onlineRef.current) setPause(!pausedRef.current); return; }
       if (event.code === 'Escape' && down && !event.repeat) {
+        // MP-CHAT: a compose bar open is the closer thing to leave — Escape
+        // puts it away before it puts the race away.
+        if (composingRef.current) { closeCompose(); return; }
         if (onlineRef.current) { leaveRace(); return; }
         if (!pausedRef.current) setPause(true);
         return;
       }
+      // MP-CHAT: T opens the compose bar. (Enter would do as well, but Enter
+      // is the key that sends — so one key opens and one key sends.)
+      //
+      // `preventDefault` matters: the bar mounts with the caret already in it,
+      // and without this the same keystroke that opened it types a "t" at the
+      // front of the first line.
+      if (event.code === 'KeyT' && down && !event.repeat && onlineRef.current) { event.preventDefault(); openCompose(); return; }
       if (pausedRef.current) return;
       if (event.code === 'ArrowLeft' || event.code === 'KeyA') controls.current.left = down;
       if (event.code === 'ArrowRight' || event.code === 'KeyD') controls.current.right = down;
@@ -370,6 +487,27 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
         camera.y += (p.y + 115 - camera.y) * (1 - Math.exp(-dt / 150));
         camera.y = halfHeight * 2 >= game.track.height ? game.track.height / 2 : Math.max(halfHeight - 15, Math.min(game.track.height - halfHeight + 15, camera.y));
         render(ctx, game, camera, width, height, pausedRef.current || doneRef.current ? game.time : now, { shake: !reduceMotion, minimap: false });
+        // MP-CHAT: pin every bubble to the marble that said it, in the same
+        // frame the marble was drawn in. World → screen is the camera's own
+        // transform — the one `render` just used — so a bubble cannot drift
+        // out of step with the ball it belongs to.
+        //
+        // Done here rather than in a second React effect because the camera
+        // moves every frame and a bubble that re-rendered that often would
+        // cost more than the whole race HUD.
+        const layer = bubbleLayer.current;
+        if (layer) {
+          for (const node of Array.from(layer.children) as HTMLElement[]) {
+            const marble = game.marbles.find((m) => m.info.id === Number(node.dataset.seat));
+            if (!marble) { node.style.opacity = '0'; continue; }
+            const bx = (marble.body.position.x - camera.x) * camera.scale + width / 2;
+            const by = (marble.body.position.y - camera.y) * camera.scale + height / 2;
+            // 26 is the marble's own radius plus the bubble's tail: the line
+            // sits above the ball, not on top of it.
+            node.style.transform = `translate(${Math.round(bx)}px, ${Math.round(by - 26 * camera.scale)}px) translate(-50%, -100%)`;
+            node.style.opacity = by < 24 || by > height + 40 ? '0' : '1';
+          }
+        }
         const cues = sessionRef.current ? sessionRef.current.drainCues() : game.sounds.splice(0);
         if (cues.length) {
           const listener = { x: camera.x, y: camera.y, halfHeight: height / 2 / camera.scale };
@@ -416,7 +554,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       sessionRef.current = null;
       gameRef.current = null;
     };
-  }, [seed, roster, profile, trackDef, gridOrder, setPause, setZoom, toggleMute, online, useItem]);
+  }, [seed, roster, profile, trackDef, gridOrder, setPause, setZoom, toggleMute, online, useItem, openCompose, closeCompose]);
 
   const byId = (id: number) => roster.find((m) => m.id === id)!;
   const preStart = hud.lights >= 0;
@@ -491,6 +629,31 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       {story && <StoryRaceOverlay story={story} sectorIndex={hud.sectorIndex} live={!results} />}
       {hud.finished && !results && <div className="finish-follow"><Flag size={20} /><div><strong>P{hud.rank} secured.{championship ? ` +${pointsFor(hud.rank)} points.` : ''}</strong><span>Following {hud.following}. {roster.length - hud.finishedCount} marbles still racing.</span></div>{(!online || sessionRef.current?.canFastForward) ? <button className={`button-secondary ${fast > 1 ? 'fast-active' : ''}`} onClick={() => { const next = fast === 1 ? 2 : fast === 2 ? 4 : 1; fastRef.current = next; setFast(next); sessionRef.current?.setSpeed(next); }} aria-label={`Replay speed ${fast}x, click to change`}><FastForward size={16} />{fast === 1 ? 'Fast forward' : `${fast}x speed`}</button> : <span className="finish-follow-note">{sessionRef.current?.isHost ? 'Fast forward unlocks when every driver has finished' : 'The host can fast forward once every driver has finished'}</span>}</div>}
       <div className="race-progress"><span style={{ width: `${hud.progress * 100}%` }} /></div>
+      {/* MP-CHAT: bubbles live in their own layer over the canvas. The loop
+          pins each one to the marble that said it; React only ever adds and
+          removes them. */}
+      <RaceBubbles ref={bubbleLayer} bubbles={bubbles} />
+      {/* MP-CHAT: the mouth. A button as well as a key, because a keyboard
+          shortcut nobody can find is not a feature on a phone. */}
+      {online && !results && <button className="race-chat-open" onClick={composing ? closeCompose : openCompose} aria-pressed={composing} title="Say something to the grid (T)">
+        <MessageCircle size={16} /><kbd>T</kbd>
+      </button>}
+      {online && composing && !results && <form className="race-chat" onSubmit={submitChat}>
+        <input
+          autoFocus
+          value={draft}
+          onChange={(event) => setDraft(event.target.value.slice(0, MAX_CHAT_LENGTH))}
+          onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); closeCompose(); } }}
+          onBlur={closeCompose}
+          placeholder="Say something to the grid"
+          aria-label="Message the grid"
+          maxLength={MAX_CHAT_LENGTH}
+          autoComplete="off"
+        />
+        {/* Keeps the focus (and the caret) in the field, so the click lands
+            as a submit rather than as a blur that closes the bar first. */}
+        <button className="button-secondary" type="submit" onMouseDown={(event) => event.preventDefault()} disabled={!canSay(draft)}>Send</button>
+      </form>}
     </div>
     <footer className="race-dashboard race-cockpit"><div className="race-telemetry">
       <div className="position-readout"><span>POSITION</span><div><strong>P{hud.rank}</strong><span>/ 10</span></div></div>

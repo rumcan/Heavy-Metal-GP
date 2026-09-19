@@ -30,6 +30,7 @@
 // Routing, in one table:
 //
 //   intent / resync / ready   guest  → HOST ONLY  (sendTo hostId, stamped `from`)
+//   chat                      client → EVERYONE   (broadcast, stamped `from`)
 //   kick                      host   → SERVER     (the room evicts the player)
 //   state / events / snapshot host   → EVERYONE   (broadcast)
 //   lobby / start / results   host   → EVERYONE   (broadcast)
@@ -233,6 +234,17 @@ export default class RaceRoom extends GameRoom<RoomProtocol> {
         if (this.hostId !== null && msg.sender.id !== this.hostId) {
           this.sendTo(this.hostId, { ...p, from: msg.sender.id });
         }
+        return;
+      }
+      // client → EVERYONE (MP-CHAT). Talk is the one thing a GUEST may say to
+      // the room rather than to the host: it is not the world, it is the
+      // driver, and the host has no more right to a mouth than anybody else.
+      //
+      // Stamped like every relayed frame, for the same reason: the SDK hands a
+      // client the payload alone, and a line whose author the receiver has to
+      // guess is a line anybody could have written.
+      case 'chat': {
+        this.broadcast({ ...p, from: msg.sender.id });
         return;
       }
       // client → server (MP-10): the greeting sent at join time goes out before

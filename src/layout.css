@@ -187,6 +187,49 @@ body { min-width: 0; }
 /* ---------- race zoom ---------- */
 .race-canvas { touch-action: none; }
 .zoom-controls { position: absolute; left: 16px; bottom: 22px; z-index: 4; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 4px; background: #0d1722ec; border: 1px solid #344758; border-radius: 6px; }
+/* ---------- MP-CHAT: race talk — bubbles over the marbles, one line each ---------- */
+.race-bubbles { position: absolute; inset: 0; z-index: 5; pointer-events: none; overflow: hidden; }
+.race-bubble {
+  position: absolute; top: 0; left: 0; opacity: 0; transition: opacity .14s ease-out;
+  display: flex; flex-direction: column; gap: 1px; max-width: 190px; padding: 5px 9px 6px;
+  background: #060b11ee; border: 1px solid #33445a; border-left: 3px solid var(--team, var(--accent));
+  border-radius: 5px; box-shadow: 0 8px 22px #0009;
+}
+/* The tail: a bubble with no tail is a label sitting on a ball. */
+.race-bubble::after {
+  content: ''; position: absolute; left: 50%; bottom: -5px; width: 8px; height: 8px;
+  transform: translateX(-50%) rotate(45deg);
+  background: #060b11ee; border-right: 1px solid #33445a; border-bottom: 1px solid #33445a;
+}
+.race-bubble b { font-family: var(--display); font-style: italic; font-size: 9px; letter-spacing: .9px; text-transform: uppercase; color: var(--team, #c9d6e2); }
+.race-bubble span { font-size: 11.5px; line-height: 1.3; color: #e7eef5; overflow-wrap: anywhere; }
+
+/* The compose bar: bottom-centre, over the track, and gone the moment it is used. */
+.race-chat {
+  position: absolute; left: 50%; bottom: 74px; z-index: 7; transform: translateX(-50%);
+  display: flex; gap: 6px; width: min(420px, calc(100% - 32px));
+}
+.race-chat input {
+  flex: 1 1 auto; min-width: 0; padding: 9px 11px; border: 1px solid #43556b; border-radius: 5px;
+  background: #0b121ae8; color: #eef3f8; font-size: 13px; font-family: inherit;
+}
+.race-chat input:focus { outline: none; border-color: var(--accent); }
+.race-chat input::placeholder { color: #6b7b8d; }
+.race-chat .button-secondary { flex: none; padding: 8px 12px; font-size: 11px; }
+
+/* The mouth: bottom-right, clear of the zoom cluster and the toast. */
+.race-chat-open {
+  position: absolute; right: 16px; bottom: 22px; z-index: 6;
+  display: flex; align-items: center; gap: 6px; padding: 7px 10px;
+  border: 1px solid #344758; border-radius: 6px; background: #0d1722ec; color: #c9d6e2; cursor: pointer;
+}
+.race-chat-open:hover { border-color: var(--accent); color: #fff; }
+.race-chat-open[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); }
+.race-chat-open kbd {
+  padding: 1px 4px; border: 1px solid #3b4b5d; border-radius: 3px;
+  font: 9px var(--mono); letter-spacing: .5px; color: #93a4b6;
+}
+
 .zoom-controls .icon-button { width: 32px; height: 32px; }
 .zoom-level { border: 0; background: none; color: #c9d6e2; font-family: var(--mono); font-size: 10px; padding: 2px 0; }
 @media (min-width: 980px) { .zoom-controls { left: 232px; } }
@@ -260,13 +303,18 @@ body { min-width: 0; }
 
 /* ---------- lobby layout: code card on top, circuit + power-ups left, grid right ---------- */
 .lobby-page .lobby-fit {
-  grid-template-areas: "code code" "circuit grid" "powerups grid";
-  grid-template-rows: auto auto minmax(0, 1fr);
+  /* MP-CHAT: the pit wall sits under the power-ups, beside the grid.
+     Its row is CAPPED rather than content-sized: a busy chat must not be
+     able to squeeze the power-ups pane off the screen, and a chat with one
+     line in it must not leave a hole. */
+  grid-template-areas: "code code" "circuit grid" "powerups grid" "chat grid";
+  grid-template-rows: auto auto minmax(0, 1fr) minmax(0, 250px);
 }
 .lobby-code-card { grid-area: code; }
 .lobby-page .lobby-circuit { grid-area: circuit; }
 .lobby-page .lobby-powerups { grid-area: powerups; }
 .lobby-page .lobby-grid-pane { grid-area: grid; }
+.lobby-page .lobby-chat-pane { grid-area: chat; }
 .lobby-page .section-topline .muted { font: 9px var(--mono); letter-spacing: 1px; text-transform: uppercase; color: var(--muted); }
 .lobby-page .circuit-selector button strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
@@ -282,7 +330,7 @@ body { min-width: 0; }
 .lobby-powerup-steps button:disabled:not(.selected) { opacity: .45; }
 
 @media (max-width: 900px) {
-  .lobby-page .lobby-fit { grid-template-areas: "code" "circuit" "powerups" "grid"; grid-template-rows: none; }
+  .lobby-page .lobby-fit { grid-template-areas: "code" "circuit" "powerups" "grid" "chat"; grid-template-rows: none; }
 }
 @media (max-width: 760px) {
   /* phones: one scrolling column, nothing clipped, circuits in two rows */
@@ -331,6 +379,31 @@ body { min-width: 0; }
 
 .lobby-grid li.is-benched { opacity: .45; }
 .lobby-grid li.is-benched strong { text-decoration: line-through; }
+/* ---------- MP-CHAT: the lobby's chat ---------- */
+.lobby-chat-pane { min-height: 0; }
+.lobby-chat { display: flex; flex-direction: column; gap: 8px; min-height: 0; height: 100%; }
+.lobby-chat-log {
+  /* Bounded BOTH ways: a log with one line in it still has somewhere to put
+     the next one, and a log with sixty in it cannot squeeze the panes above
+     it off the screen (the power-ups row is the one that would pay). */
+  flex: 1 1 auto; min-height: 96px; max-height: min(220px, 26vh); overflow-y: auto; margin: 0; padding: 8px 9px;
+  list-style: none; display: flex; flex-direction: column; gap: 6px;
+  background: #0a0f15; border: 1px solid var(--line); border-radius: 5px; scrollbar-width: thin;
+}
+.lobby-chat-log li { display: flex; align-items: baseline; gap: 7px; font-size: 12px; line-height: 1.35; color: #dbe4ec; overflow-wrap: anywhere; }
+.lobby-chat-log li b { flex: none; font-family: var(--display); font-style: italic; font-size: 10px; letter-spacing: .8px; color: var(--team, #c9d6e2); }
+.lobby-chat-log li.is-player b { color: var(--accent); }
+.lobby-chat-livery { flex: none; width: 7px; height: 7px; border-radius: 50%; box-shadow: 0 0 0 1px #ffffff22; transform: translateY(-1px); }
+.lobby-chat-empty { color: var(--muted); font-size: 11px; font-style: italic; }
+.lobby-chat-form { display: flex; gap: 6px; }
+.lobby-chat-form input {
+  flex: 1 1 auto; min-width: 0; padding: 9px 11px; border: 1px solid var(--line); border-radius: 5px;
+  background: #0c1219; color: #eef3f8; font-size: 13px;
+}
+.lobby-chat-form input:focus { outline: none; border-color: var(--accent); }
+.lobby-chat-form input::placeholder { color: #5b6878; }
+.lobby-chat-form .button-secondary { flex: none; padding: 8px 11px; }
+
 .lobby-ai-items { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; font-size: 13px; }
 .lobby-ai-items .mode-switch { flex: none; }
 .custom-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 8px; }

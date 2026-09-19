@@ -230,6 +230,62 @@ test('MP-06 relay: a guest cannot forge the stamp', async () => {
   assert.equal((relayed[0] as { from?: string }).from, 'p2', 'the room overwrites what a client claims');
 });
 
+test('MP-CHAT relay: a line reaches EVERYBODY, stamped with whoever said it', async () => {
+  // Talk is the one frame a GUEST may say to the room rather than to the host:
+  // it is not the world, it is the driver, and the host has no more right to a
+  // mouth than anybody else. So it is broadcast — not sent to the host alone
+  // like an intent — and the room stamps it, because the SDK hands a client
+  // the payload alone and a line with no author is not a conversation.
+  const h = setup();
+  await h.protocol.handleCreate();
+  await join(h, 'p1');
+  await join(h, 'p2');
+  h.frames.length = 0;
+
+  await send(h, 'p2', { type: 'chat', text: 'Boxes at turn three' });
+  // One broadcast is the whole room hearing it — the host and the guest both,
+  // which is the difference between talk and an intent (an intent is a single
+  // `sendTo` the host, and nobody else ever sees it).
+  const lines = broadcasts(h.frames).filter((m) => m.type === 'chat');
+  assert.equal(lines.length, 1, 'a line goes out to the room once');
+  assert.equal((lines[0] as { from?: string }).from, 'p2', 'a line carries its author');
+  assert.equal((lines[0] as { text: string }).text, 'Boxes at turn three', 'the line itself survived');
+  // Not sent to the host alone: that would be an intent, not a conversation.
+  assert.deepEqual(sentTo(h.frames, 'p1').filter((m) => m.type === 'chat'), []);
+  // And the HOST may talk too — the relay does not care who is speaking.
+  h.frames.length = 0;
+  await send(h, 'p1', { type: 'chat', text: 'Watch the oil' });
+  assert.equal(broadcasts(h.frames).filter((m) => m.type === 'chat').length, 1);
+  assert.equal((broadcasts(h.frames)[0] as { from?: string }).from, 'p1');
+});
+
+test('MP-CHAT relay: a guest may not sign somebody else’s line', async () => {
+  const h = setup();
+  await h.protocol.handleCreate();
+  await join(h, 'p1');
+  await join(h, 'p2');
+  h.frames.length = 0;
+  // p2 claims to be the host — with no stamp this is a driver putting words
+  // in another driver's mouth, on the one frame nobody vets.
+  await send(h, 'p2', { type: 'chat', text: 'I am the host', from: 'p1' });
+  const lines = broadcasts(h.frames).filter((m) => m.type === 'chat');
+  assert.equal(lines.length, 1);
+  assert.equal((lines[0] as { from?: string }).from, 'p2', 'the room overwrites what a client claims');
+});
+
+test('MP-CHAT relay: the wire refuses a line before the room can relay it', async () => {
+  const h = setup();
+  await h.protocol.handleCreate();
+  await join(h, 'p1');
+  await join(h, 'p2');
+  h.frames.length = 0;
+  // Empty, absent, and long enough to be a speech rather than a line.
+  await send(h, 'p2', { type: 'chat', text: '   ' });
+  await send(h, 'p2', { type: 'chat', text: 'x'.repeat(121) });
+  await send(h, 'p2', { type: 'chat' });
+  assert.deepEqual(h.frames, [], 'the room relays nothing the protocol refuses');
+});
+
 test('MP-06 relay: a kick from the host evicts the player — and only the host may', async () => {
   const h = setup();
   await h.protocol.handleCreate();

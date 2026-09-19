@@ -39,6 +39,7 @@ import {
   HOST_LEFT_REASON,
   MARBLE_COUNT,
   MAX_BODY_INDEX,
+  MAX_CHAT_LENGTH,
   MAX_EVENTS_PER_FRAME,
   MAX_LOOP_STAGE,
   MAX_RATED_DRIVERS,
@@ -173,6 +174,10 @@ const VALID: RaceProtocol[] = [
   { type: 'lobby', seats: SEATS },
   { type: 'ready', ready: true },
   { type: 'start', countdownAt: 1_700_000_000_000 },
+  // MP-CHAT: driver talk — a line as it goes out, and one as it comes back
+  // (the room stamps the author on the way through).
+  { type: 'chat', text: 'Boxes at turn three' },
+  { type: 'chat', text: 'Nice line', from: 'player-guest' },
   STATE,
   EVENTS,
   { type: 'snapshot', id: 3, seq: 41, i: 0, n: 1, data: '{"t":1}' },
@@ -616,6 +621,29 @@ test('MP-06 validation: the room stamps the sender, and nobody else may', () => 
   // speaking for the room (`validateMessage` only reads the field where the
   // room writes it, but the shape is the same test).
   assert.equal(check({ type: 'start', countdownAt: 1, from: 'p2' }), null);
+});
+
+test('MP-CHAT validation: a line is a string, it is not empty, and it is not a speech', () => {
+  assert.equal(check({ type: 'chat', text: 'Boxes at turn three' }), null);
+  assert.equal(check({ type: 'chat', text: 'Nice line', from: 'player-guest' }), null, 'the room stamps the author');
+  // A line is REFUSED rather than cut. A half-sentence that reads as the whole
+  // thing is worse than a line that never arrived, and both ends clamp before
+  // they send — so a frame this long is a client that is not playing by the
+  // rules, and the wire says so.
+  assert.equal(check({ type: 'chat', text: 'x'.repeat(MAX_CHAT_LENGTH) }), null);
+  assert.equal(check({ type: 'chat', text: 'x'.repeat(MAX_CHAT_LENGTH + 1) })?.code, 'malformed');
+  // Nothing to print is not a message.
+  assert.equal(check({ type: 'chat', text: '' })?.code, 'malformed');
+  assert.equal(check({ type: 'chat', text: '   ' })?.code, 'malformed', 'a line of spaces is an empty line');
+  for (const text of [undefined, null, 42, { text: 'hi' }]) {
+    assert.equal(check({ type: 'chat', text })?.code, 'malformed', `${JSON.stringify(text)} is not a line`);
+  }
+  // A line fits the cap with room to spare: talk rides a 20 Hz wire and must
+  // never be the reason a frame is dropped.
+  assert.ok(frameBytes({ type: 'chat', text: 'x'.repeat(MAX_CHAT_LENGTH) }) < 256);
+  // The author is the room's stamp, and only the room's.
+  assert.equal(check({ type: 'chat', text: 'hi', from: 7 })?.code, 'malformed');
+  assert.equal(check({ type: 'chat', text: 'hi', from: '' })?.code, 'malformed');
 });
 
 test('MP-06 validation: a kick names a driver, and the room decides whether it lands', () => {

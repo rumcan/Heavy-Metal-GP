@@ -22,7 +22,10 @@ const commands = [
     'tests/rank-runtime.test.ts',
     // Ranked racing (RK-05): the rank surfaces' view models — the chip's tier and
     // number, and what the results screen may say about a race. Pure, no DOM.
-    'tests/rank-view.test.ts'],
+    'tests/rank-view.test.ts',
+    // MP-CHAT: driver talk — the line, the log, the cooldown and the speaker
+    // (pure), and the two surfaces that paint it (lobby-ui.tsx).
+    'tests/chat.test.ts'],
 ];
 
 for (const args of commands) {
