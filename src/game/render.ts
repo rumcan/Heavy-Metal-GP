@@ -2624,10 +2624,13 @@ function drawTrampoline(ctx: CanvasRenderingContext2D, b: Matter.Body, md: Retur
   const sag = md.tramp?.depth ?? 0;
   ctx.save();
   ctx.translate(b.position.x, b.position.y);
-  // wooden frame ends
-  ctx.fillStyle = '#78350f';
-  ctx.fillRect(-tp.half - 10, -4, 10, 14);
-  ctx.fillRect(tp.half, -4, 10, 14);
+  // wooden posts (painted art, mirrored at the far end); procedural frame if art is missing
+  if (!(drawSprite(ctx, 'trampoline-post-l', -tp.half - 12, -12, 32, 44) &&
+        drawSprite(ctx, 'trampoline-post-r', tp.half + 12, -12, 32, 44))) {
+    ctx.fillStyle = '#78350f';
+    ctx.fillRect(-tp.half - 10, -4, 10, 14);
+    ctx.fillRect(tp.half, -4, 10, 14);
+  }
   // the net: a catenary that deepens when it takes a landing
   ctx.strokeStyle = '#d4a04a';
   ctx.lineWidth = 3;
@@ -2645,7 +2648,6 @@ function drawTrampoline(ctx: CanvasRenderingContext2D, b: Matter.Body, md: Retur
     ctx.quadraticCurveTo(xk * 0.5, dip, xk * -0.5 * -1 + xk * 0.18, dip);
     ctx.stroke();
   }
-  if (drawSprite(ctx, 'trampoline', -tp.half - 12, -18, tp.half * 2 + 24, 30)) { /* frame art above */ }
   ctx.restore();
   void b;
 }
@@ -2656,6 +2658,12 @@ function drawTurnstile(ctx: CanvasRenderingContext2D, b: Matter.Body, md: Return
   ctx.save();
   ctx.translate(b.position.x, b.position.y);
   ctx.rotate(b.angle);
+  // painted rotor art when it matches the arm count (the art is a 4-arm X)
+  if (ts.arms === 4 && drawSprite(ctx, 'turnstile', 0, 0, ts.r * 2 + 16, ts.r * 2 + 16)) {
+    ctx.restore();
+    void b;
+    return;
+  }
   // hub
   ctx.fillStyle = '#44403c';
   ctx.beginPath(); ctx.arc(0, 0, 9, 0, Math.PI * 2); ctx.fill();
@@ -2683,6 +2691,11 @@ function drawTargets(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnTy
   ctx.translate(p.x, p.y);
   const down = tg.dropAt >= 0;
   if (!down) {
+    // standing pin: painted art, base resting on the lane
+    if (drawSprite(ctx, 'target-pin', 0, -9, 19, 25)) {
+      ctx.restore();
+      return;
+    }
     // standing pin: red face, cream cap
     ctx.fillStyle = '#b91c1c';
     ctx.fillRect(-9, -13, 18, 14);
@@ -2705,6 +2718,8 @@ function drawVortex(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnTyp
   if (!vo) return;
   ctx.save();
   ctx.translate(vo.cx, vo.cy);
+  // painted funnel bowl beneath the field animation
+  drawSprite(ctx, 'vortex', 0, 0, vo.r * 2.35, vo.r * 2.35);
   // spiral: three packets of dash-arcs spinning on the clock
   for (let k = 0; k < 3; k++) {
     ctx.save();
@@ -2723,7 +2738,6 @@ function drawVortex(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnTyp
   ctx.strokeStyle = '#e8813a';
   ctx.lineWidth = 3;
   ctx.beginPath(); ctx.arc(0, 0, vo.holeR + 2, 0, Math.PI * 2); ctx.stroke();
-  if (drawSprite(ctx, 'vortex', -vo.r * 0.75, -vo.r * 0.55, vo.r * 1.5, vo.r * 0.9)) { /* bowl art over the field */ }
   ctx.restore();
   void b;
 }
@@ -2741,7 +2755,7 @@ function drawPlatform(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnT
   ctx.setLineDash([]);
   ctx.translate(p.x, p.y);
   const w = b.bounds.max.x - b.bounds.min.x;
-  if (!drawSprite(ctx, 'platform', -w / 2, -18, w, 26)) {
+  if (!drawSprite(ctx, 'platform', 0, -12, w + 10, (w + 10) * 0.43)) {
     // wooden plank with iron shoes + chain loops
     ctx.fillStyle = '#8a5a2e';
     ctx.fillRect(-w / 2, -8, w, 16);
