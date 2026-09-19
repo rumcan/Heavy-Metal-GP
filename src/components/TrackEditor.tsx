@@ -28,6 +28,7 @@ import {
   Ruler,
   ScanSearch,
   Save,
+  Settings,
   Share2,
   Target,
   Trash2,
@@ -254,6 +255,7 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
   const [validating, setValidating] = useState(false);
   const [draftMsg, setDraftMsg] = useState<string | null>(null);
   const [shareMsg, setShareMsg] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [coachForced, setCoachForced] = useState(false);
@@ -874,6 +876,7 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
         }
         return;
       }
+      if (settingsOpen) return;
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
@@ -939,7 +942,7 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [testing, selected, handleDelete, handleDuplicate, handleMirror, handleRotate, handleNudge, handleUndo, handleRedo]);
+  }, [settingsOpen, testing, selected, handleDelete, handleDuplicate, handleMirror, handleRotate, handleNudge, handleUndo, handleRedo]);
 
   const editName = useCallback(
     (value: string) => {
@@ -1103,6 +1106,9 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
               <Redo2 size={14} />
             </button>
             <span className="editbar-sep" />
+            <button className="text-button" onClick={() => setSettingsOpen(true)} disabled={selected.length !== 1} title="Edit the selected piece's size, speed and behaviour" aria-label="Piece settings">
+              <Settings size={15} />Settings
+            </button>
             <button className="text-button" onClick={handleDuplicate} disabled={selected.length === 0} title="Duplicate (Ctrl+D)">
               <Copy size={13} />Duplicate
             </button>
@@ -1228,6 +1234,14 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
         <EditorMap track={track} top={status.top} bottom={status.bottom} onJump={(worldY) => rigCenter(rig, worldY)} />
       </main>
 
+      {settingsOpen && selected.length === 1 && (
+        <Dialog titleId="piece-settings-title" onClose={() => setSettingsOpen(false)} className="piece-settings-dialog">
+          <h2 id="piece-settings-title">{tileFor(circuit.def.pieces[selected[0]]?.t)?.label ?? 'Piece'} settings</h2>
+          <p className="dialog-intro">Changes apply immediately. Close this window to drag the piece or its size handles.</p>
+          <PropertiesPanel selected={selected} pieces={circuit.def.pieces} onChange={handlePropChange} onChangeMany={handleBulkChange} />
+          <button className="button-primary" onClick={() => setSettingsOpen(false)}>Done</button>
+        </Dialog>
+      )}
       {rules && <RulesDialog onClose={() => setRules(false)} />}
       {showNew && <NewTrackDialog onClose={() => setShowNew(false)} onCreate={handleNewTrack} />}
       {confirmClear && (

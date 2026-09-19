@@ -213,6 +213,7 @@ function baseHandles(piece: Piece): Handle[] {
       const my = piece.pts.reduce((s, p) => s + p[1], 0) / piece.pts.length;
       const hs: Handle[] = [
         { id: 'move', x: mx, y: my, cursor: 'move', label: 'Move' },
+        { id: 'r', x: piece.pts[0][0] + piece.r, y: piece.pts[0][1], cursor: 'ew-resize', label: 'Radius' },
         { id: `p${piece.pts.length - 1}`, x: piece.pts[piece.pts.length - 1][0], y: piece.pts[piece.pts.length - 1][1], cursor: 'crosshair', label: 'End' },
       ];
       for (let i = 0; i < piece.pts.length - 1; i++) {
@@ -421,7 +422,7 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
         const dx = withSnap(to.x, sx) - nx;
         const dy = withSnap(to.y, sx) - cy;
         const r = Math.max(40, Math.min(300, Math.hypot(dx, dy)));
-        return { ...piece, r: sx ? snapVal(r) : r };
+        return { ...piece, r: clampNum(withSnap(r, sx), 40, 300) };
       }
       return piece;
     }
@@ -448,7 +449,7 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
         const dx = withSnap(to.x, sx) - px;
         const dy = withSnap(to.y, sx) - py;
         const chain = Math.max(8, Math.min(2000, Math.hypot(dx, dy)));
-        return { ...piece, chain: sx ? snapVal(chain) : chain };
+        return { ...piece, chain: clampNum(withSnap(chain, sx), 8, 2000) };
       }
       if (handleId === 'amp') {
         const [px, py] = piece.pivot;
@@ -494,7 +495,7 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
         const ny = dirY / m;
         const proj = dx * nx + dy * ny;
         const len = Math.max(8, Math.min(4000, proj * 2));
-        return { ...piece, len: sx ? snapVal(len) : len };
+        return { ...piece, len: clampNum(withSnap(len, sx), 8, 4000) };
       }
       return piece;
     }
@@ -566,7 +567,7 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
         const dx = withSnap(to.x, sx) - piece.x;
         const dy = withSnap(to.y, sx) - piece.y;
         const len = Math.max(40, Math.min(400, Math.hypot(dx, dy) / 0.85));
-        return { ...piece, len: sx ? snapVal(len) : len };
+        return { ...piece, len: clampNum(withSnap(len, sx), 40, 400) };
       }
       return piece;
     }
@@ -582,7 +583,7 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       if (handleId === 'len') {
         const dy = withSnap(to.y, sx) - piece.pivot[1];
         const len = Math.max(60, Math.min(600, dy));
-        return { ...piece, len: sx ? snapVal(len) : len };
+        return { ...piece, len: clampNum(withSnap(len, sx), 60, 600) };
       }
       return piece;
     }
@@ -602,7 +603,7 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       if (handleId === 'b') return { ...piece, b: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number] };
       if (handleId === 'r') {
         const r = Math.max(14, Math.min(60, Math.abs(withSnap(to.x, sx) - piece.a[0])));
-        return { ...piece, r: sx ? snapVal(r) : r };
+        return { ...piece, r: clampNum(withSnap(r, sx), 14, 60) };
       }
       return piece;
     }
@@ -610,11 +611,12 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       if (handleId === 'move') return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
       if (handleId === 'travel') {
         const travel = Math.max(30, Math.min(600, withSnap(to.y, sx) - piece.y - 44));
-        return { ...piece, travel: sx ? snapVal(travel) : travel };
+        return { ...piece, travel: clampNum(withSnap(travel, sx), 30, 600) };
       }
       return piece;
     }
     case 'boulder': {
+      if (handleId === 'r') return { ...piece, r: clampNum(withSnap(Math.abs(to.x - piece.pts[0][0]), sx), 12, 60) };
       if (handleId === 'move') {
         const mx = piece.pts.reduce((s, p) => s + p[0], 0) / piece.pts.length;
         const my = piece.pts.reduce((s, p) => s + p[1], 0) / piece.pts.length;
@@ -635,7 +637,7 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       if (handleId === 'move') return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
       if (handleId === 'len') {
         const arm = Math.max(60, Math.min(400, withSnap(to.y, sx) - piece.y - piece.r));
-        return { ...piece, arm: sx ? snapVal(arm) : arm };
+        return { ...piece, arm: clampNum(withSnap(arm, sx), 60, 400) };
       }
       return piece;
     }
@@ -644,7 +646,7 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       if (handleId === 'move') return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
       if (handleId === 'r') {
         const r = Math.max(60, Math.min(200, Math.abs(withSnap(to.x, sx) - piece.x)));
-        return { ...piece, r: sx ? snapVal(r) : r };
+        return { ...piece, r: clampNum(withSnap(r, sx), 60, 200) };
       }
       if (handleId === 'release') {
         // tip-out marker drags around the rim: angle from pivot to pointer
@@ -658,6 +660,10 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
     case 'conveyor':
     case 'bridge': {
       const span = { x: withSnap(to.x, sx), y: withSnap(to.y, sx) };
+      if (piece.t === 'screw' && (handleId === 'a' || handleId === 'b')) {
+        const other = handleId === 'a' ? piece.b : piece.a;
+        if (Math.hypot(clampX(span.x) - other[0], span.y - other[1]) < 1) return piece;
+      }
       if (handleId === 'move') {
         const mx = (piece.a[0] + piece.b[0]) / 2;
         const my = (piece.a[1] + piece.b[1]) / 2;
@@ -677,7 +683,7 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       if (handleId === 'move') return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
       if (handleId === 'len') {
         const len = Math.max(140, Math.min(420, Math.abs(withSnap(to.x, sx) - piece.x) * 2));
-        return { ...piece, len: sx ? snapVal(len) : len };
+        return { ...piece, len: clampNum(withSnap(len, sx), 140, 420) };
       }
       return piece;
     }
@@ -691,7 +697,7 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       if (handleId === 'move') return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
       if (handleId === 'len') {
         const len = Math.max(120, Math.min(400, Math.hypot(withSnap(to.x, sx) - piece.x, to.y - piece.y) / 1.2));
-        return { ...piece, len: sx ? snapVal(len) : len };
+        return { ...piece, len: clampNum(withSnap(len, sx), 120, 400) };
       }
       return piece;
     }
@@ -699,7 +705,7 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       if (handleId === 'move') return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
       if (handleId === 'len') {
         const len = Math.max(70, Math.min(180, Math.abs(withSnap(to.x, sx) - piece.x)));
-        return { ...piece, len: sx ? snapVal(len) : len };
+        return { ...piece, len: clampNum(withSnap(len, sx), 70, 180) };
       }
       return piece;
     }
@@ -715,7 +721,7 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       if (handleId === 'r') {
         const dx = withSnap(to.x, sx) - piece.x;
         const r = Math.max(2, Math.min(100, Math.abs(dx)));
-        return { ...piece, r: sx ? snapVal(r) : r };
+        return { ...piece, r: clampNum(withSnap(r, sx), 2, 100) };
       }
       return piece;
     }
@@ -724,7 +730,7 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       if (handleId === 'r') {
         const dx = withSnap(to.x, sx) - piece.x;
         const r = Math.max(2, Math.min(100, Math.abs(dx)));
-        return { ...piece, r: sx ? snapVal(r) : r };
+        return { ...piece, r: clampNum(withSnap(r, sx), 2, 100) };
       }
       return piece;
     }
@@ -752,7 +758,7 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
     case 'magnet': {
       if (handleId === 'r') {
         const r = Math.max(40, Math.min(400, Math.abs(withSnap(to.x, sx) - piece.x)));
-        return { ...piece, r: sx ? snapVal(r) : r };
+        return { ...piece, r: clampNum(withSnap(r, sx), 40, 400) };
       }
       return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
     }
@@ -769,7 +775,7 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       if (handleId === 'depth') {
         const top = Math.min(piece.a[1], piece.b[1]);
         const depth = Math.max(40, Math.min(300, withSnap(to.y, sx) - top));
-        return { ...piece, depth: sx ? snapVal(depth) : depth };
+        return { ...piece, depth: clampNum(withSnap(depth, sx), 40, 300) };
       }
       const ddx = withSnap(to.x, sx) - (piece.a[0] + piece.b[0]) / 2;
       const ddy = withSnap(to.y, sx) - (piece.a[1] + piece.b[1]) / 2;
@@ -799,7 +805,7 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
     case 'geyser': {
       if (handleId === 'h') {
         const h = Math.max(80, Math.min(600, piece.y - withSnap(to.y, sx)));
-        return { ...piece, h: sx ? snapVal(h) : h };
+        return { ...piece, h: clampNum(withSnap(h, sx), 80, 600) };
       }
       return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
     }
@@ -1016,9 +1022,13 @@ export function mirrorPiece(piece: Piece): Piece {
     case 'platform':
       return { ...piece, ax: mx(piece.bx), ay: piece.by, bx: mx(piece.ax), by: piece.ay } as Piece;
     case 'screw':
+      // The entrance must stay the entrance: swapping ends reverses the lift.
+      return { ...piece, a: [mx(piece.a[0]), piece.a[1]], b: [mx(piece.b[0]), piece.b[1]] };
     case 'conveyor':
+      // Surface tangents are ordered left-to-right, so the belt sense must flip too.
+      return { ...piece, a: [mx(piece.b[0]), piece.b[1]], b: [mx(piece.a[0]), piece.a[1]], dir: piece.dir === 0 ? 1 : 0 };
     case 'bridge': {
-      // Mirroring swaps the two ends (belt direction rides the surface tangent — it flips for free).
+      // The bridge has interchangeable anchors.
       const p2 = piece as unknown as { a: readonly [number, number]; b: readonly [number, number] };
       return {
         ...piece,

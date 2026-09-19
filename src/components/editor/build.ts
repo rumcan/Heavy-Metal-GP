@@ -8,7 +8,7 @@
  * over and reading back its piece index.  That is exactly what the spec
  * asks for: "keep a `bodyIndex → pieceIndex` map when building".
  *
- * The building logic is a copy of `buildTrackFromDef` in
+ * Piece replay is shared with `buildTrackFromDef` in
  * `src/game/trackdef.ts` (MB-01) with the mapping hook added.  It stays in
  * the editor (not in `trackdef.ts`) because the race never needs the map and
  * the def loader's contract is unchanged.  Any change to the start/finish
@@ -19,140 +19,7 @@
 import { Builder, FINISH_H, W, meta, segFinish, segStart } from '../../game/track';
 import type { Track } from '../../game/track';
 import { themeFor } from '../../game/types';
-import type { Piece, TrackDef } from '../../game/trackdef';
-
-function replayPiece(b: Builder, piece: Piece): void {
-  b.flip = piece.flip === true;
-  try {
-    switch (piece.t) {
-      case 'ramp':
-        b.ramp(piece.a[0], piece.a[1], piece.b[0], piece.b[1]);
-        break;
-      case 'curve':
-        b.curve(piece.a[0], piece.a[1], piece.c[0], piece.c[1], piece.b[0], piece.b[1], piece.n ?? 12);
-        break;
-      case 'ice':
-        b.ice(piece.a[0], piece.a[1], piece.b[0], piece.b[1]);
-        break;
-      case 'loop':
-        b.loop(piece.x, piece.bottom, piece.r);
-        break;
-      case 'hoop':
-        b.hoop(piece.x, piece.y, piece.dir[0], piece.dir[1]);
-        break;
-      case 'wrecker':
-        b.wrecker(piece.pivot[0], piece.pivot[1], piece.chain, piece.amp, piece.speed, piece.phase);
-        break;
-      case 'pad':
-        b.pad(piece.x, piece.y, piece.w, piece.dir);
-        break;
-      case 'boost':
-        b.boost(piece.x, piece.y, piece.len, piece.thick, piece.dir[0], piece.dir[1]);
-        break;
-      case 'spinner':
-        b.spinner(piece.x, piece.y, piece.len, piece.speed, piece.angle);
-        break;
-      case 'breakable':
-        b.breakable(piece.x, piece.y, piece.w, piece.h, piece.req);
-        break;
-      case 'peg':
-        b.peg(piece.x, piece.y, piece.r);
-        break;
-      case 'ppeg':
-        b.ppeg(piece.x, piece.y, piece.color, piece.r, piece.item);
-        break;
-      case 'itembox':
-        b.itemBox(piece.x, piece.y);
-        break;
-      case 'bucket':
-        b.bucket(piece.y, piece.phase ?? 0);
-        break;
-      case 'wall':
-        b.wall(piece.x, piece.y, piece.w, piece.h);
-        break;
-      case 'block':
-        b.block(piece.x, piece.y, piece.w, piece.h);
-        break;
-      // ---- MB-10A ----
-      case 'barricade':
-        b.barricade(piece.x, piece.y, piece.w, piece.h, piece.tough);
-        break;
-      case 'crumble':
-        b.crumble(piece.x, piece.y, piece.w, piece.h, piece.tough);
-        break;
-      case 'tunnel':
-        b.tunnel(piece.x, piece.y, piece.exit[0], piece.exit[1], piece.edir[0], piece.edir[1], piece.ms, piece.speed, piece.two === true);
-        break;
-      case 'trapdoor':
-        b.trapdoor(piece.x, piece.y, piece.w, piece.hinge, piece.mode, piece.open, piece.closed, piece.phase, piece.kg, piece.hold);
-        break;
-      case 'switch':
-        b.switchLever(piece.x, piece.y, piece.len, piece.angle, piece.side);
-        break;
-      // ---- MB-10B ----
-      case 'blade':
-        b.blade(piece.pivot[0], piece.pivot[1], piece.len, piece.amp, piece.period, piece.phase, piece.thin);
-        break;
-      case 'saw':
-        b.saw(piece.a[0], piece.a[1], piece.r, [piece.b[0], piece.b[1]], piece.period, piece.spin, piece.phase);
-        break;
-      case 'crusher':
-        b.crusher(piece.x, piece.y, piece.w, piece.travel, piece.period, piece.floor, piece.phase);
-        break;
-      case 'boulder':
-        b.boulder(piece.pts.map(([x, y]: [number, number]) => [x, y] as [number, number]), piece.r, piece.interval, piece.rest, piece.phase);
-        break;
-      case 'mace':
-        b.mace(piece.x, piece.y, piece.arm, piece.arc, piece.sweep, piece.rest, piece.phase, piece.r);
-        break;
-      case 'trampoline':
-        b.trampoline(piece.x, piece.y, piece.w, piece.tension);
-        break;
-      case 'turnstile':
-        b.turnstile(piece.x, piece.y, piece.arms, piece.r, piece.mode as 0 | 1, piece.period, piece.phase);
-        break;
-      case 'targets':
-        b.targets(piece.x, piece.y, piece.count, piece.reset);
-        break;
-      case 'vortex':
-        b.vortex(piece.x, piece.y, piece.r, piece.spin, piece.hole);
-        break;
-      case 'platform':
-        b.platform(piece.ax, piece.ay, piece.bx, piece.by, piece.w, piece.travel, piece.pause, piece.phase);
-        break;
-      // ---- MB-10C ----
-      case 'wheel':
-        b.waterWheel(piece.x, piece.y, piece.r, piece.buckets, piece.rpm, piece.dir, piece.release, piece.phase);
-        break;
-      case 'screw':
-        b.screwLift(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.ms, piece.cap);
-        break;
-      case 'conveyor':
-        b.conveyor(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.v, piece.flipMs || undefined, piece.dir);
-        break;
-      case 'seesaw':
-        b.seesaw(piece.x, piece.y, piece.len, piece.lim, piece.damp);
-        break;
-      case 'bridge':
-        b.ropeBridge(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.planks, piece.slack);
-        break;
-      // ---- MB-10D launchers and pinball ----
-      case 'cannon': b.cannon(piece.x, piece.y, piece.aimMin, piece.aimMax, piece.power, piece.auto, piece.phase); break;
-      case 'catapult': b.catapult(piece.x, piece.y, piece.len, piece.reload, piece.dir); break;
-      case 'flipper': b.flipper(piece.x, piece.y, piece.side, piece.len, piece.strength, piece.timer, piece.phase); break;
-      case 'sling': b.sling(piece.x, piece.y, piece.size, piece.facing, piece.strength); break;
-      case 'scoop': b.scoop(piece.x, piece.y, piece.deg, piece.hold, piece.exit); break;
-      // ---- MB-10E ----
-      case 'wind': b.wind(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.dir, piece.str, piece.pulse, piece.phase); break;
-      case 'magnet': b.magnet(piece.x, piece.y, piece.r, piece.str, piece.period, piece.phase); break;
-      case 'mud': b.mud(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.drag); break;
-      case 'pool': b.pool(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.depth, piece.skip); break;
-      case 'geyser': b.geyser(piece.x, piece.y, piece.h, piece.period, piece.phase); break;
-    }
-  } finally {
-    b.flip = false;
-  }
-}
+import { replayPiece, type TrackDef } from '../../game/trackdef';
 
 export interface EditorBuild {
   track: Track;

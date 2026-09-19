@@ -157,7 +157,7 @@ export function defaultPiece(type: PieceType, at: Point, snap = false): Piece {
         t: 'boulder',
         pts: [
           [x, y] as [number, number],
-          [x + 340, y + 240] as [number, number],
+          [x > W - 80 ? Math.max(40, x - 340) : Math.min(W - 40, x + 340), y + 240] as [number, number],
         ],
         r: 27, interval: 6500, rest: 1400, phase: 0,
       };
@@ -206,7 +206,7 @@ export function defaultPiece(type: PieceType, at: Point, snap = false): Piece {
       return { t: 'scoop', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, deg: 270, hold: 800 };
     }
     case 'wind': {
-      return { t: 'wind', a: [snap ? snapVal(cx - 110) : cx - 110, snap ? snapVal(cy - 2600 * 0.01) : cy - 260], b: [snap ? snapVal(cx + 110) : cx + 110, snap ? snapVal(cy) : cy], dir: 270, str: 0.34, pulse: 2600, phase: 0 };
+      return { t: 'wind', a: [snap ? snapVal(cx - 110) : cx - 110, snap ? snapVal(cy - 260) : cy - 260], b: [snap ? snapVal(cx + 110) : cx + 110, snap ? snapVal(cy) : cy], dir: 270, str: 0.34, pulse: 2600, phase: 0 };
     }
     case 'magnet': {
       return { t: 'magnet', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, r: 170, str: 5, period: 4600, phase: 0 };

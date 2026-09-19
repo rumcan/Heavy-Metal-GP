@@ -376,8 +376,9 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
           <NumField label="Y" value={piece.y} onValue={(v) => update({ y: v } as unknown as Piece)} />
           <NumField label="Radius" value={piece.r} min={60} max={200} step={5} onValue={(v) => update({ r: Math.round(clampNum(v, 60, 200)) } as unknown as Piece)} />
           <NumField label="Buckets" value={piece.buckets} min={4} max={10} step={1} onValue={(v) => update({ buckets: Math.round(clampNum(v, 4, 10)) } as unknown as Piece)} />
-          <NumField label="RPM" value={piece.rpm} min={0.5} max={10} step={0.5} onValue={(v) => update({ rpm: clampNum(v, 0.5, 10) } as unknown as Piece)} />
+          <NumField label="Speed (RPM)" value={piece.rpm} min={0.5} max={10} step={0.5} onValue={(v) => update({ rpm: clampNum(v, 0.5, 10) } as unknown as Piece)} />
           <NumField label="Direction" value={piece.dir} min={0} max={1} step={1} onValue={(v) => update({ dir: (v >= 1 ? 1 : 0) as 0 | 1 } as unknown as Piece)} />
+          <NumField label="Ride time (seconds; 0 = release angle)" value={(piece.rideMs ?? 0) / 1000} min={0} max={60} step={0.1} onValue={(v) => update({ rideMs: Math.round(clampNum(v, 0, 60) * 1000) } as Partial<Piece>)} />
           <NumField label="Tip-out (deg)" value={piece.release} min={20} max={340} step={5} onValue={(v) => update({ release: Math.round(clampNum(v, 20, 340)) } as unknown as Piece)} />
           <NumField label="Phase (ms)" value={piece.phase} step={100} onValue={(v) => update({ phase: v } as unknown as Piece)} />
         </>
@@ -479,6 +480,15 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
           <NumField label="Y" value={piece.y} onValue={(v) => update({ y: v } as unknown as Piece)} />
           <NumField label="Eject (deg, 270 = up)" value={piece.deg} min={0} max={360} step={5} onValue={(v) => update({ deg: (((v % 360) + 360) % 360) } as unknown as Piece)} />
           <NumField label="Hold (ms)" value={piece.hold} min={400} max={1200} step={50} onValue={(v) => update({ hold: Math.round(clampNum(v, 400, 1200)) } as unknown as Piece)} />
+          <label className="prop-field">
+            <span>Mode</span>
+            <select value={piece.exit ? 'subway' : 'kickback'} onChange={(e) => update({
+              exit: e.target.value === 'subway' ? [clampNum(piece.x + 100, 0, W), piece.y, 1400] : undefined,
+            } as Partial<Piece>)}>
+              <option value="kickback">Kickback</option>
+              <option value="subway">Subway</option>
+            </select>
+          </label>
           {piece.exit ? (
             <>
               <NumField label="Subway exit X" value={piece.exit[0]} min={0} max={W} onValue={(v) => update({ exit: [clampNum(v, 0, W), piece.exit![1], piece.exit![2]] as [number, number, number] } as unknown as Piece)} />
@@ -486,7 +496,7 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
               <NumField label="Transit (ms)" value={piece.exit[2]} min={600} max={6000} step={100} onValue={(v) => update({ exit: [piece.exit![0], piece.exit![1], Math.round(clampNum(v, 600, 6000))] as [number, number, number] } as unknown as Piece)} />
             </>
           ) : (
-            <p className="hint">Subway: drag the exit handle into place with the move tool, or leave unset for a kickback.</p>
+            <p className="hint">Choose Subway to add an exit, then drag its handle to set the destination.</p>
           )}
         </>
       )}

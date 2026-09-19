@@ -216,6 +216,7 @@ export interface Meta {
   surface?: RampSurface;
   itemDrop?: ItemType;
   destroyed?: boolean;
+  crumbleTile?: { row: number; col: number; rows: number; cols: number };
   /** Rail ends that get an iron cap in the skin; curves only cap their outer ends. */
   caps?: Matter.Vector[];
   /** Wrecking ball swing: pivot, chain length, amplitude (rad), angular speed and phase. */
@@ -264,7 +265,7 @@ export interface Meta {
   rolled?: number;
   // ---- MB-10C: mechanical movers ----
   /** Water wheel: bucket count, tip-out angle (rad, canvas y-down from +x), bucket occupancy. */
-  wheel?: { buckets: number; release: number; slots: number[] };
+  wheel?: { buckets: number; release: number; rideMs?: number; slots: number[] };
   /** Screw lift: tube endpoints, per-marble transit, capacity queue (clock-times it is busy to). */
   screw?: { a: Matter.Vector; b: Matter.Vector; ms: number; cap: number; seats: { seat: number; until: number }[] };
   /** Conveyor belt: push per step (px), base direction, optional clock flip period. */
@@ -692,14 +693,21 @@ export class Builder {
    * counts triple. Ghost phases through without opening it.
    */
   crumble(cx: number, cy: number, w: number, h: number, tough = 6) {
-    const hp = tough * massForWeight(10) * 3.2;
-    const b = Bodies.rectangle(this.X(cx), cy, w, h, {
-      ...STATIC_OPTS, label: 'crumble',
-      collisionFilter: { category: CAT_FRAGILE, mask: 0xffff, group: 0 },
-    });
-    b.plugin = { kind: 'crumble', hp, maxHp: hp, tough } as Meta;
-    this.bodies.push(b);
-    return b;
+    const rows = Math.max(2, Math.round(h / 22));
+    const cols = Math.max(1, Math.round(w / 30));
+    const bw = w / cols, bh = h / rows;
+    const hp = tough * massForWeight(10) * 3.2 / Math.sqrt(rows * cols);
+    let first: Matter.Body | undefined;
+    for (let row = 0; row < rows; row++) for (let col = 0; col < cols; col++) {
+      const b = Bodies.rectangle(this.X(cx - w / 2 + (col + 0.5) * bw), cy - h / 2 + (row + 0.5) * bh, bw, bh, {
+        ...STATIC_OPTS, label: 'crumble',
+        collisionFilter: { category: CAT_FRAGILE, mask: 0xffff, group: 0 },
+      });
+      b.plugin = { kind: 'crumble', hp, maxHp: hp, tough, crumbleTile: { row, col: this.flip ? cols - 1 - col : col, rows, cols } } as Meta;
+      this.bodies.push(b);
+      first ??= b;
+    }
+    return first!;
   }
 
   /**
@@ -858,7 +866,7 @@ export class Builder {
    * bucket — both share ONE meta object so bucket occupancy is single-source. Kinematic: bucket
    * angles are pure functions of the race clock, host and guest alike.
    */
-  waterWheel(px: number, py: number, r = 110, buckets = 8, rpm = 3, dir: 0 | 1 = 0, releaseDeg = 105, phaseMs = 0) {
+  waterWheel(px: number, py: number, r = 110, buckets = 8, rpm = 3, dir: 0 | 1 = 0, releaseDeg = 105, phaseMs = 0, rideMs?: number) {
     const pivot = { x: this.X(px), y: py };
     // mirror flips the spin sense so the ride direction survives the course mirror
     const sense = (this.flip ? (dir === 0 ? -1 : 1) : (dir === 0 ? 1 : -1)) as 1 | -1;
@@ -867,7 +875,7 @@ export class Builder {
     const shared: Meta = {
       kind: 'wheel',
       motion: { mode: 'spin', pivot, omega, phaseMs, radius: r },
-      wheel: { buckets, release, slots: new Array(buckets).fill(0) },
+      wheel: { buckets, release, rideMs, slots: new Array(buckets).fill(0) },
     };
     const hub = Bodies.circle(pivot.x, pivot.y, 12, { ...STATIC_OPTS, angle: omega * phaseMs, label: 'wheel', restitution: 0.3, friction: 0.01 });
     hub.plugin = shared;
@@ -978,7 +986,9 @@ export class Builder {
     // mirror the course: the whole aim fan maps θ → 180−θ, swapping the range ends
     const mirror = (deg: number) => ((180 - deg) % 360 + 360) % 360;
     const lo = this.flip ? mirror(aimMaxDeg) : aimMinDeg;
-    const hi = this.flip ? mirror(aimMinDeg) : aimMaxDeg;
+    let hi = this.flip ? mirror(aimMinDeg) : aimMaxDeg;
+    // A rotated fan may straddle 0 degrees; retain its clockwise span.
+    if (hi < lo) hi += 360;
     const md: Meta = {
       kind: 'cannon',
       motion: { mode: 'aim', pivot, minA: (lo * Math.PI) / 180, maxA: (hi * Math.PI) / 180, periodMs: 2600, phaseMs },
@@ -2263,3 +2273,4 @@ export function assembleTrack(b: Builder, seed: number, profile: TrackProfile): 
     wreckers: b.wreckers,
   };
 }
+

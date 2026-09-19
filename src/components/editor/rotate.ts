@@ -189,7 +189,7 @@ export function rotatePiece(piece: Piece, rad: number, c: Point): Piece {
       const deg = (((piece.deg + (rad * 180) / Math.PI) % 360) + 360) % 360;
       return {
         ...piece, x, y, deg,
-        ...(piece.exit ? { exit: turn(piece.exit as unknown as Vec, c, cos, sin) as unknown as [number, number, number] } : {}),
+        ...(piece.exit ? { exit: [...turn([piece.exit[0], piece.exit[1]], c, cos, sin), piece.exit[2]] as [number, number, number] } : {}),
       };
     }
     case 'peg':

@@ -527,46 +527,6 @@ export class Game {
     });
   }
 
-  private ignoreGoneCrumble(_m: Marble, b: Matter.Body, pair: Matter.Pair): boolean {
-    const md = meta(b);
-    if (md?.kind !== 'crumble') return false;
-    const ratio = (md.hp ?? 1) / (md.maxHp ?? 1);
-    if (ratio >= 0.999) return false;
-
-    const { min, max } = b.bounds;
-    const w = max.x - min.x, h = max.y - min.y;
-    const rows = Math.max(2, Math.round(h / 22));
-    const cols = Math.max(1, Math.round(w / 30));
-
-    let allGone = true;
-    const supports = pair.collision.supports;
-    if (!supports || supports.length === 0) return false;
-
-    for (const contact of supports) {
-      const r = Math.floor((contact.y - min.y) / (h / rows));
-      const c = Math.floor((contact.x - min.x) / (w / cols));
-      if (r >= 0 && r < rows && c >= 0 && c < cols) {
-        const permanent = 1 - ratio;
-        const seed = r * 7 + c;
-        const jitter = ((b.id * 13 + seed * 17) % 31) / 31;
-        const gone = (r + 1) / rows + jitter * 0.35 < permanent * 1.15;
-        if (!gone) {
-          allGone = false;
-          break;
-        }
-      } else {
-        allGone = false;
-        break;
-      }
-    }
-
-    if (allGone) {
-      pair.isActive = false;
-      return true;
-    }
-    return false;
-  }
-
   private onCollisionStart(e: Matter.IEventCollision<Matter.Engine>) {
     for (const pair of e.pairs) {
       const a = pair.bodyA;
@@ -574,11 +534,9 @@ export class Game {
       const ma = this.marbleOf(a);
       const mb = this.marbleOf(b);
       if (ma && !mb) {
-        if (this.ignoreGoneCrumble(ma, b, pair)) continue;
         this.contactSurface(ma, b, pair);
         this.marbleHits(ma, b);
       } else if (mb && !ma) {
-        if (this.ignoreGoneCrumble(mb, a, pair)) continue;
         this.contactSurface(mb, a, pair);
         this.marbleHits(mb, a);
       }
@@ -854,17 +812,18 @@ export class Game {
         let span = (md.wheel.release - aFrom) * Math.sign(motion.omega);
         span = ((span % tau) + tau) % tau;
         if (span < 0.35) span += tau;
-        const ride = span / Math.abs(motion.omega);
+        const ride = md.wheel.rideMs || span / Math.abs(motion.omega);
         let until = this.time + ride;
         // a bouncy marble can bounce out of a bucket early — the best track kits have feel
-        if ((m.info.stats.bounce ?? 5) >= 8 && this.rng() < 0.3) until = this.time + Math.min(ride * 0.45, 1400);
+        if (!md.wheel.rideMs && (m.info.stats.bounce ?? 5) >= 8 && this.rng() < 0.3) until = this.time + Math.min(ride * 0.45, 1400);
         const tip = Math.abs(motion.omega) * motion.radius * 16.667;
-        const rx = P.x + Math.cos(md.wheel.release) * motion.radius, ry = P.y + Math.sin(md.wheel.release) * motion.radius;
+        const release = md.wheel.rideMs ? aFrom + motion.omega * ride : md.wheel.release;
+        const rx = P.x + Math.cos(release) * motion.radius, ry = P.y + Math.sin(release) * motion.radius;
         const sense2 = Math.sign(motion.omega) || 1;
         m.hold = {
           kind: 'wheel', until, at: this.time,
-          arc: { x: P.x, y: P.y, r: motion.radius, fromA: aFrom, omega: motion.omega, release: md.wheel.release },
-          exit: { x: rx, y: ry, dir: { x: -Math.sin(md.wheel.release) * sense2, y: Math.cos(md.wheel.release) * sense2 }, speed: Math.max(3, tip + 1.2) },
+          arc: { x: P.x, y: P.y, r: motion.radius, fromA: aFrom, omega: motion.omega, release },
+          exit: { x: rx, y: ry, dir: { x: -Math.sin(release) * sense2, y: Math.cos(release) * sense2 }, speed: Math.max(3, tip + 1.2) },
         };
         m.body.isSensor = true;
         Body.setVelocity(m.body, { x: 0, y: 0 });
@@ -1181,7 +1140,6 @@ export class Game {
       const m = ma ?? mb;
       const other = ma ? b : a;
       if (!m || (ma && mb) || m.frozen || m.finishedAt !== null || !this.gateOpen) continue;
-      if (this.ignoreGoneCrumble(m, other, pair)) continue;
       const md = meta(other);
       if (!md) continue;
       // MB-10B skins paint contact flashes; reuse the one-shove-per-pass debounce so a marble
@@ -1278,7 +1236,7 @@ export class Game {
       if (ss.angle > ss.max) { ss.angle = ss.max; if (ss.angVel > 0) ss.angVel = 0; }
       (Body.setAngle as unknown as (b: Matter.Body, a: number, u: boolean) => void)(plank, ss.angle, true);
       // stream the state, throttled — a resting plank barely talks
-      if ((ss.emittedAt === undefined ? -1 : this.time - ss.emittedAt) > (Math.abs(ss.angVel) > 0.0002 ? 150 : 1200) && Math.abs(ss.angle) + Math.abs(ss.angVel * 400) > 0.004) {
+      if ((ss.emittedAt === undefined ? Infinity : this.time - ss.emittedAt) > (Math.abs(ss.angVel) > 0.0002 ? 150 : 1200) && Math.abs(ss.angle) + Math.abs(ss.angVel * 400) > 0.004) {
         ss.emittedAt = this.time;
         this.emit({ kind: 'seesaw', i: this.track.bodies.indexOf(plank), angle: ss.angle, angVel: ss.angVel });
       }

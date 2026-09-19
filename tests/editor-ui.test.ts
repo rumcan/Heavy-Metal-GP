@@ -314,3 +314,13 @@ test('Workshop: the def it opens on is version 1 and JSON-clean', () => {
   assert.equal(def.theme, 'classic', 'Marblehurst runs the classic skin');
   assert.deepEqual(JSON.parse(JSON.stringify(def)), def, 'the editor\'s working def does not survive a JSON round trip');
 });
+
+
+test('Workshop: a fresh scoop offers a subway mode before it has an exit', async () => {
+  const PropertiesPanel = (await server.ssrLoadModule('/src/components/editor/PropertiesPanel.tsx')).default;
+  const piece = { t: 'scoop', x: 450, y: 1500, deg: 270, hold: 800 };
+  const markup = renderToStaticMarkup(createElement(PropertiesPanel, { selected: [0], pieces: [piece], onChange() {} }));
+  assert.match(markup, /<option value="subway">Subway<\/option>/);
+  const linked = renderToStaticMarkup(createElement(PropertiesPanel, { selected: [0], pieces: [{ ...piece, exit: [550, 1500, 1400] }], onChange() {} }));
+  assert.ok(linked.includes('Subway exit X') && linked.includes('Transit (ms)'));
+});
