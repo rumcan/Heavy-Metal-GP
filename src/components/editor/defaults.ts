@@ -157,7 +157,7 @@ export function defaultPiece(type: PieceType, at: Point, snap = false): Piece {
         t: 'boulder',
         pts: [
           [x, y] as [number, number],
-          [x + 340, y + 240] as [number, number],
+          [x > W - 80 ? Math.max(40, x - 340) : Math.min(W - 40, x + 340), y + 240] as [number, number],
         ],
         r: 27, interval: 6500, rest: 1400, phase: 0,
       };

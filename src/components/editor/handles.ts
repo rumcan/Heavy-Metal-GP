@@ -213,6 +213,7 @@ function baseHandles(piece: Piece): Handle[] {
       const my = piece.pts.reduce((s, p) => s + p[1], 0) / piece.pts.length;
       const hs: Handle[] = [
         { id: 'move', x: mx, y: my, cursor: 'move', label: 'Move' },
+        { id: 'r', x: piece.pts[0][0] + piece.r, y: piece.pts[0][1], cursor: 'ew-resize', label: 'Radius' },
         { id: `p${piece.pts.length - 1}`, x: piece.pts[piece.pts.length - 1][0], y: piece.pts[piece.pts.length - 1][1], cursor: 'crosshair', label: 'End' },
       ];
       for (let i = 0; i < piece.pts.length - 1; i++) {
@@ -615,6 +616,7 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       return piece;
     }
     case 'boulder': {
+      if (handleId === 'r') return { ...piece, r: clampNum(withSnap(Math.abs(to.x - piece.pts[0][0]), sx), 12, 60) };
       if (handleId === 'move') {
         const mx = piece.pts.reduce((s, p) => s + p[0], 0) / piece.pts.length;
         const my = piece.pts.reduce((s, p) => s + p[1], 0) / piece.pts.length;

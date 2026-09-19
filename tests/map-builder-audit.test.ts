@@ -113,3 +113,18 @@ test('Mirroring a conveyor reverses horizontal belt motion', () => {
   assert.ok(Math.abs(before.x + after.x) < 1e-9);
   assert.ok(Math.abs(before.y - after.y) < 1e-9);
 });
+
+
+test('Boulders appear at the placement point, keep their route in bounds and expose a radius handle', () => {
+  for (const x of [50, 450, 825, 900]) {
+    const piece = defaultPiece('boulder', { x, y: 1500 }, true);
+    assert.ok(piece.t === 'boulder');
+    assert.deepEqual(piece.pts[0], [x, 1500]);
+    assert.ok(validateTrackDef(defFor(piece)).ok);
+    const track = buildTrackFromDef(defFor(piece));
+    assert.deepEqual(track.bodies.find(b => meta(b).kind === 'boulder')!.position, { x, y: 1500 });
+    assert.ok(handlesFor(piece).some(h => h.id === 'r'));
+    const resized = applyHandle(piece, 'r', { x: x + 55, y: 1500 }, false);
+    assert.ok(resized.t === 'boulder' && resized.r === 55);
+  }
+});
