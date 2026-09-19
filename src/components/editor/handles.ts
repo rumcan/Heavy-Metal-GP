@@ -27,6 +27,7 @@ export interface Handle {
 
 const snapVal = (v: number) => Math.round(v / SNAP) * SNAP;
 const clampX = (x: number) => Math.max(0, Math.min(W, x));
+const clampNum = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 function withSnap(v: number, snap: boolean): number {
   return snap ? snapVal(v) : v;
@@ -143,12 +144,140 @@ function baseHandles(piece: Piece): Handle[] {
     }
     case 'breakable':
     case 'wall':
-    case 'block': {
-      // Rect centred at (x,y). Handles: centre moves, corners resize.
+    case 'block':
+    // ---- MB-10A ----
+    case 'barricade':
+    case 'crumble': {
+      // Rect centred at (x,y). Handles: centre moves, corner resizes.
       return [
         { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
         { id: 'se', x: piece.x + piece.w / 2, y: piece.y + piece.h / 2, cursor: 'nwse-resize', label: 'Size' },
       ];
+    }
+    case 'trapdoor': {
+      // The leaf is thin and hinged; thickness is fixed, so only the width is draggable.
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
+        { id: 'se', x: piece.x + piece.w / 2, y: piece.y + 7, cursor: 'ew-resize', label: 'Width' },
+      ];
+    }
+    case 'tunnel': {
+      // Entrance moves the whole pair; exit/arrow handles reshape the ride.
+      const d = Math.hypot(piece.edir[0], piece.edir[1]) || 1;
+      const ax = piece.exit[0] + (piece.edir[0] / d) * 56;
+      const ay = piece.exit[1] + (piece.edir[1] / d) * 56;
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
+        { id: 'exit', x: piece.exit[0], y: piece.exit[1], cursor: 'crosshair', label: 'Exit hole' },
+        { id: 'dir', x: ax, y: ay, cursor: 'crosshair', label: 'Launch direction' },
+      ];
+    }
+    case 'switch': {
+      // Junction tip moves; blade length along its resting lean resizes.
+      const lean = piece.side === 1 ? -piece.angle : piece.angle;
+      const bx = piece.x + Math.sin(lean) * piece.len * 0.85;
+      const by = piece.y - Math.cos(lean) * piece.len * 0.85;
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
+        { id: 'len', x: bx, y: by, cursor: 'ew-resize', label: 'Blade length' },
+      ];
+    }
+    // ---- MB-10B ----
+    case 'blade': {
+      // Pivot moves; the arc handle sits at the tip of the swing for amplitude.
+      return [
+        { id: 'move', x: piece.pivot[0], y: piece.pivot[1], cursor: 'move', label: 'Pivot' },
+        { id: 'arc', x: piece.pivot[0] + Math.sin(piece.amp) * piece.len, y: piece.pivot[1] + Math.cos(piece.amp) * piece.len, cursor: 'crosshair', label: 'Swing' },
+        { id: 'len', x: piece.pivot[0], y: piece.pivot[1] + piece.len, cursor: 'ns-resize', label: 'Arm length' },
+      ];
+    }
+    case 'saw': {
+      // Slot ends and radius (spin lives in the panel).
+      return [
+        { id: 'move', x: (piece.a[0] + piece.b[0]) / 2, y: (piece.a[1] + piece.b[1]) / 2, cursor: 'move', label: 'Move' },
+        { id: 'a', x: piece.a[0], y: piece.a[1], cursor: 'crosshair', label: 'Slot start' },
+        { id: 'b', x: piece.b[0], y: piece.b[1], cursor: 'crosshair', label: 'Slot end' },
+        { id: 'r', x: piece.a[0] + piece.r, y: piece.a[1], cursor: 'ew-resize', label: 'Radius' },
+      ];
+    }
+    case 'crusher': {
+      // Top moves; the deck handle sets the slam travel.
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
+        { id: 'travel', x: piece.x, y: piece.y + piece.travel + 44, cursor: 'ns-resize', label: 'Travel' },
+      ];
+    }
+    case 'boulder': {
+      // Whole path moves from its midpoint; each waypoint drags.
+      const mx = piece.pts.reduce((s, p) => s + p[0], 0) / piece.pts.length;
+      const my = piece.pts.reduce((s, p) => s + p[1], 0) / piece.pts.length;
+      const hs: Handle[] = [
+        { id: 'move', x: mx, y: my, cursor: 'move', label: 'Move' },
+        { id: `p${piece.pts.length - 1}`, x: piece.pts[piece.pts.length - 1][0], y: piece.pts[piece.pts.length - 1][1], cursor: 'crosshair', label: 'End' },
+      ];
+      for (let i = 0; i < piece.pts.length - 1; i++) {
+        hs.push({ id: `p${i}`, x: piece.pts[i][0], y: piece.pts[i][1], cursor: 'crosshair', label: 'Waypoint' });
+      }
+      return hs;
+    }
+    case 'mace': {
+      // Pivot moves; ball handle at the resting (straight-down) pose sets arm length.
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Pivot' },
+        { id: 'len', x: piece.x, y: piece.y + piece.arm + piece.r, cursor: 'ns-resize', label: 'Arm length' },
+      ];
+    }
+    // ---- MB-10C: movers ----
+    case 'wheel': {
+      // Centre moves; rim handle sets radius; release marker points where buckets tip out.
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Centre' },
+        { id: 'r', x: piece.x + piece.r, y: piece.y, cursor: 'ew-resize', label: 'Radius' },
+        { id: 'release', x: piece.x + Math.cos((piece.release * Math.PI) / 180) * piece.r, y: piece.y + Math.sin((piece.release * Math.PI) / 180) * piece.r, cursor: 'crosshair', label: 'Tip-out angle' },
+      ];
+    }
+    case 'screw':
+    case 'conveyor':
+    case 'bridge': {
+      // Two-point pieces: ends + shared middle drag.
+      const p2 = piece as unknown as { a: readonly [number, number]; b: readonly [number, number] };
+      const labels = piece.t === 'screw' ? ['Tube entry', 'Tube exit'] : piece.t === 'conveyor' ? ['Belt start', 'Belt end'] : ['Anchor A', 'Anchor B'];
+      return [
+        { id: 'move', x: (p2.a[0] + p2.b[0]) / 2, y: (p2.a[1] + p2.b[1]) / 2, cursor: 'move', label: 'Move' },
+        { id: 'a', x: p2.a[0], y: p2.a[1], cursor: 'crosshair', label: labels[0] },
+        { id: 'b', x: p2.b[0], y: p2.b[1], cursor: 'crosshair', label: labels[1] },
+      ];
+    }
+    case 'seesaw': {
+      // Pivot moves; the plank end sets the length.
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Pivot' },
+        { id: 'len', x: piece.x + piece.len / 2, y: piece.y, cursor: 'ew-resize', label: 'Plank length' },
+      ];
+    }
+    // ---- MB-10D ----
+    case 'cannon':
+    case 'sling': {
+      // Aim fan / facing are property fields; the collar drags as one point.
+      return [{ id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' }];
+    }
+    case 'catapult': {
+      // Pivot moves; the arm-end drag sets the length.
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Pivot' },
+        { id: 'len', x: piece.x + (piece.dir === 0 ? -1 : 1) * piece.len * 0.7, y: piece.y + piece.len * 0.7, cursor: 'ew-resize', label: 'Arm length' },
+      ];
+    }
+    case 'flipper': {
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Pivot' },
+        { id: 'len', x: piece.x + (piece.side === 0 ? 1 : -1) * piece.len, y: piece.y, cursor: 'ew-resize', label: 'Bat length' },
+      ];
+    }
+    case 'scoop': {
+      const out: Handle[] = [{ id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Pocket' }];
+      if (piece.exit) out.push({ id: 'exit', x: piece.exit[0], y: piece.exit[1], cursor: 'crosshair', label: 'Subway exit' });
+      return out;
     }
     case 'peg':
     case 'ppeg': {
@@ -164,6 +293,65 @@ function baseHandles(piece: Piece): Handle[] {
       // Only y matters; pivot is centre-x. Handle at (W/2, y).
       return [{ id: 'move', x: W / 2, y: piece.y, cursor: 'ns-resize', label: 'Height' }];
     }
+    // ---- MB-10E ----
+    case 'wind': {
+      const mx = (piece.a[0] + piece.b[0]) / 2, my = (piece.a[1] + piece.b[1]) / 2;
+      const fa = (piece.dir * Math.PI) / 180;
+      return [
+        { id: 'move', x: mx, y: my, cursor: 'move', label: 'Move' },
+        { id: 'a', x: piece.a[0], y: piece.a[1], cursor: 'crosshair', label: 'Corner A' },
+        { id: 'b', x: piece.b[0], y: piece.b[1], cursor: 'crosshair', label: 'Corner B' },
+        { id: 'dir', x: mx + Math.cos(fa) * 56, y: my + Math.sin(fa) * 56, cursor: 'crosshair', label: 'Blow direction' },
+      ];
+    }
+    case 'magnet':
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
+        { id: 'r', x: piece.x + piece.r, y: piece.y, cursor: 'ew-resize', label: 'Radius' },
+      ];
+    case 'mud':
+      return [
+        { id: 'move', x: (piece.a[0] + piece.b[0]) / 2, y: (piece.a[1] + piece.b[1]) / 2, cursor: 'move', label: 'Move' },
+        { id: 'a', x: piece.a[0], y: piece.a[1], cursor: 'crosshair', label: 'Start' },
+        { id: 'b', x: piece.b[0], y: piece.b[1], cursor: 'crosshair', label: 'End' },
+      ];
+    case 'pool': {
+      const top = Math.min(piece.a[1], piece.b[1]);
+      return [
+        { id: 'move', x: (piece.a[0] + piece.b[0]) / 2, y: (piece.a[1] + piece.b[1]) / 2, cursor: 'move', label: 'Move' },
+        { id: 'a', x: piece.a[0], y: piece.a[1], cursor: 'crosshair', label: 'Corner A' },
+        { id: 'b', x: piece.b[0], y: piece.b[1], cursor: 'crosshair', label: 'Corner B' },
+        { id: 'depth', x: piece.b[0], y: top + piece.depth, cursor: 'ns-resize', label: 'Depth' },
+      ];
+    }
+    case 'trampoline':
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
+        { id: 'w', x: piece.x + piece.w / 2, y: piece.y, cursor: 'ew-resize', label: 'Width' },
+      ];
+    case 'turnstile':
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
+        { id: 'r', x: piece.x + piece.r, y: piece.y, cursor: 'ew-resize', label: 'Arm length' },
+      ];
+    case 'targets':
+      return [{ id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' }];
+    case 'vortex':
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
+        { id: 'r', x: piece.x + piece.r, y: piece.y, cursor: 'ew-resize', label: 'Bowl radius' },
+      ];
+    case 'platform':
+      return [
+        { id: 'move', x: (piece.ax + piece.bx) / 2, y: (piece.ay + piece.by) / 2, cursor: 'move', label: 'Move path' },
+        { id: 'a', x: piece.ax, y: piece.ay, cursor: 'crosshair', label: 'End A' },
+        { id: 'b', x: piece.bx, y: piece.by, cursor: 'crosshair', label: 'End B' },
+      ];
+    case 'geyser':
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
+        { id: 'h', x: piece.x, y: piece.y - piece.h, cursor: 'ns-resize', label: 'Blast height' },
+      ];
   }
 }
 
@@ -330,7 +518,10 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
     }
     case 'breakable':
     case 'wall':
-    case 'block': {
+    case 'block':
+    // ---- MB-10A ----
+    case 'barricade':
+    case 'crumble': {
       if (handleId === 'move') return { ...piece, x: withSnap(to.x, sx), y: withSnap(to.y, sx) };
       if (handleId === 'se') {
         const nx = withSnap(to.x, sx);
@@ -338,6 +529,184 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
         const w = Math.max(8, Math.min(W, Math.abs(nx - piece.x) * 2));
         const h = Math.max(8, Math.min(4000, Math.abs(ny - piece.y) * 2));
         return { ...piece, w: sx ? snapVal(w) : w, h: sx ? snapVal(h) : h };
+      }
+      return piece;
+    }
+    case 'trapdoor': {
+      if (handleId === 'move') return { ...piece, x: withSnap(to.x, sx), y: withSnap(to.y, sx) };
+      if (handleId === 'se') {
+        // A trapdoor's thickness is fixed — the corner handle only sets the leaf width.
+        const w = Math.max(40, Math.min(W, Math.abs(withSnap(to.x, sx) - piece.x) * 2));
+        return { ...piece, w: sx ? snapVal(w) : w };
+      }
+      return piece;
+    }
+    case 'tunnel': {
+      if (handleId === 'move') {
+        const nx = clampX(withSnap(to.x, sx));
+        const dx = nx - piece.x;
+        const dy = withSnap(to.y, sx) - piece.y;
+        return { ...piece, x: nx, y: piece.y + dy, exit: [clampX(piece.exit[0] + dx), piece.exit[1] + dy] as [number, number] };
+      }
+      if (handleId === 'exit') {
+        return { ...piece, exit: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number] };
+      }
+      if (handleId === 'dir') {
+        const dx = to.x - piece.exit[0];
+        const dy = to.y - piece.exit[1];
+        const m = Math.hypot(dx, dy);
+        if (m < 4) return piece;
+        return { ...piece, edir: [dx / m, dy / m] as [number, number] };
+      }
+      return piece;
+    }
+    case 'switch': {
+      if (handleId === 'move') return { ...piece, x: withSnap(to.x, sx), y: withSnap(to.y, sx) };
+      if (handleId === 'len') {
+        const dx = withSnap(to.x, sx) - piece.x;
+        const dy = withSnap(to.y, sx) - piece.y;
+        const len = Math.max(40, Math.min(400, Math.hypot(dx, dy) / 0.85));
+        return { ...piece, len: sx ? snapVal(len) : len };
+      }
+      return piece;
+    }
+    // ---- MB-10B ----
+    case 'blade': {
+      if (handleId === 'move') return { ...piece, pivot: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number] };
+      if (handleId === 'arc') {
+        const dx = to.x - piece.pivot[0];
+        const dy = to.y - piece.pivot[1];
+        const amp = Math.max(0.1, Math.min(1.5, Math.atan2(dx, dy)));
+        return { ...piece, amp };
+      }
+      if (handleId === 'len') {
+        const dy = withSnap(to.y, sx) - piece.pivot[1];
+        const len = Math.max(60, Math.min(600, dy));
+        return { ...piece, len: sx ? snapVal(len) : len };
+      }
+      return piece;
+    }
+    case 'saw': {
+      if (handleId === 'move') {
+        const cx = (piece.a[0] + piece.b[0]) / 2;
+        const cy = (piece.a[1] + piece.b[1]) / 2;
+        const dx = withSnap(to.x, sx) - cx;
+        const dy = withSnap(to.y, sx) - cy;
+        return {
+          ...piece,
+          a: [clampX(piece.a[0] + dx), piece.a[1] + dy] as [number, number],
+          b: [clampX(piece.b[0] + dx), piece.b[1] + dy] as [number, number],
+        };
+      }
+      if (handleId === 'a') return { ...piece, a: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number] };
+      if (handleId === 'b') return { ...piece, b: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number] };
+      if (handleId === 'r') {
+        const r = Math.max(14, Math.min(60, Math.abs(withSnap(to.x, sx) - piece.a[0])));
+        return { ...piece, r: sx ? snapVal(r) : r };
+      }
+      return piece;
+    }
+    case 'crusher': {
+      if (handleId === 'move') return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
+      if (handleId === 'travel') {
+        const travel = Math.max(30, Math.min(600, withSnap(to.y, sx) - piece.y - 44));
+        return { ...piece, travel: sx ? snapVal(travel) : travel };
+      }
+      return piece;
+    }
+    case 'boulder': {
+      if (handleId === 'move') {
+        const mx = piece.pts.reduce((s, p) => s + p[0], 0) / piece.pts.length;
+        const my = piece.pts.reduce((s, p) => s + p[1], 0) / piece.pts.length;
+        const dx = withSnap(to.x, sx) - mx;
+        const dy = withSnap(to.y, sx) - my;
+        return { ...piece, pts: piece.pts.map(([x, y]) => [clampX(x + dx), y + dy] as [number, number]) };
+      }
+      if (/^p\d+$/.test(handleId)) {
+        const i = Number(handleId.slice(1));
+        if (i >= 0 && i < piece.pts.length) {
+          const pts = piece.pts.map((p, k) => (k === i ? ([clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number]) : p));
+          return { ...piece, pts };
+        }
+      }
+      return piece;
+    }
+    case 'mace': {
+      if (handleId === 'move') return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
+      if (handleId === 'len') {
+        const arm = Math.max(60, Math.min(400, withSnap(to.y, sx) - piece.y - piece.r));
+        return { ...piece, arm: sx ? snapVal(arm) : arm };
+      }
+      return piece;
+    }
+    // ---- MB-10C ----
+    case 'wheel': {
+      if (handleId === 'move') return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
+      if (handleId === 'r') {
+        const r = Math.max(60, Math.min(200, Math.abs(withSnap(to.x, sx) - piece.x)));
+        return { ...piece, r: sx ? snapVal(r) : r };
+      }
+      if (handleId === 'release') {
+        // tip-out marker drags around the rim: angle from pivot to pointer
+        const deg = ((Math.atan2(to.y - piece.y, to.x - piece.x) * 180) / Math.PI + 360) % 360;
+        const release = Math.max(20, Math.min(340, Math.round(deg)));
+        return { ...piece, release };
+      }
+      return piece;
+    }
+    case 'screw':
+    case 'conveyor':
+    case 'bridge': {
+      const span = { x: withSnap(to.x, sx), y: withSnap(to.y, sx) };
+      if (handleId === 'move') {
+        const mx = (piece.a[0] + piece.b[0]) / 2;
+        const my = (piece.a[1] + piece.b[1]) / 2;
+        const dx = span.x - mx;
+        const dy = span.y - my;
+        return {
+          ...piece,
+          a: [clampX(piece.a[0] + dx), piece.a[1] + dy] as [number, number],
+          b: [clampX(piece.b[0] + dx), piece.b[1] + dy] as [number, number],
+        };
+      }
+      if (handleId === 'a') return { ...piece, a: [clampX(span.x), span.y] as [number, number] };
+      if (handleId === 'b') return { ...piece, b: [clampX(span.x), span.y] as [number, number] };
+      return piece;
+    }
+    case 'seesaw': {
+      if (handleId === 'move') return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
+      if (handleId === 'len') {
+        const len = Math.max(140, Math.min(420, Math.abs(withSnap(to.x, sx) - piece.x) * 2));
+        return { ...piece, len: sx ? snapVal(len) : len };
+      }
+      return piece;
+    }
+    // ---- MB-10D ----
+    case 'cannon':
+    case 'sling': {
+      if (handleId === 'move') return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
+      return piece;
+    }
+    case 'catapult': {
+      if (handleId === 'move') return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
+      if (handleId === 'len') {
+        const len = Math.max(120, Math.min(400, Math.hypot(withSnap(to.x, sx) - piece.x, to.y - piece.y) / 1.2));
+        return { ...piece, len: sx ? snapVal(len) : len };
+      }
+      return piece;
+    }
+    case 'flipper': {
+      if (handleId === 'move') return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
+      if (handleId === 'len') {
+        const len = Math.max(70, Math.min(180, Math.abs(withSnap(to.x, sx) - piece.x)));
+        return { ...piece, len: sx ? snapVal(len) : len };
+      }
+      return piece;
+    }
+    case 'scoop': {
+      if (handleId === 'move') return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
+      if (handleId === 'exit' && piece.exit) {
+        return { ...piece, exit: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx), piece.exit[2]] as [number, number, number] };
       }
       return piece;
     }
@@ -366,6 +735,73 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
     case 'bucket': {
       if (handleId === 'move') return { ...piece, y: withSnap(to.y, sx) };
       return piece;
+    }
+    // ---- MB-10E ----
+    case 'wind': {
+      if (handleId === 'a') return { ...piece, a: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number] };
+      if (handleId === 'b') return { ...piece, b: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number] };
+      if (handleId === 'dir') {
+        const mx = (piece.a[0] + piece.b[0]) / 2, my = (piece.a[1] + piece.b[1]) / 2;
+        const deg = ((Math.round((Math.atan2(to.y - my, to.x - mx) * 180) / Math.PI) % 360) + 360) % 360;
+        return { ...piece, dir: deg };
+      }
+      const ddx = withSnap(to.x, sx) - (piece.a[0] + piece.b[0]) / 2;
+      const ddy = withSnap(to.y, sx) - (piece.a[1] + piece.b[1]) / 2;
+      return { ...piece, a: [clampX(piece.a[0] + ddx), piece.a[1] + ddy], b: [clampX(piece.b[0] + ddx), piece.b[1] + ddy] };
+    }
+    case 'magnet': {
+      if (handleId === 'r') {
+        const r = Math.max(40, Math.min(400, Math.abs(withSnap(to.x, sx) - piece.x)));
+        return { ...piece, r: sx ? snapVal(r) : r };
+      }
+      return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
+    }
+    case 'mud': {
+      if (handleId === 'a') return { ...piece, a: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number] };
+      if (handleId === 'b') return { ...piece, b: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number] };
+      const ddx = withSnap(to.x, sx) - (piece.a[0] + piece.b[0]) / 2;
+      const ddy = withSnap(to.y, sx) - (piece.a[1] + piece.b[1]) / 2;
+      return { ...piece, a: [clampX(piece.a[0] + ddx), piece.a[1] + ddy], b: [clampX(piece.b[0] + ddx), piece.b[1] + ddy] };
+    }
+    case 'pool': {
+      if (handleId === 'a') return { ...piece, a: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number] };
+      if (handleId === 'b') return { ...piece, b: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number] };
+      if (handleId === 'depth') {
+        const top = Math.min(piece.a[1], piece.b[1]);
+        const depth = Math.max(40, Math.min(300, withSnap(to.y, sx) - top));
+        return { ...piece, depth: sx ? snapVal(depth) : depth };
+      }
+      const ddx = withSnap(to.x, sx) - (piece.a[0] + piece.b[0]) / 2;
+      const ddy = withSnap(to.y, sx) - (piece.a[1] + piece.b[1]) / 2;
+      return { ...piece, a: [clampX(piece.a[0] + ddx), piece.a[1] + ddy], b: [clampX(piece.b[0] + ddx), piece.b[1] + ddy] };
+    }
+    case 'trampoline': {
+      if (handleId === 'w') return { ...piece, w: clampNum(Math.abs(withSnap(to.x, sx) - piece.x) * 2, 60, 400) };
+      return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
+    }
+    case 'turnstile': {
+      if (handleId === 'r') return { ...piece, r: clampNum(Math.abs(withSnap(to.x, sx) - piece.x), 30, 160) };
+      return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
+    }
+    case 'targets':
+      return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
+    case 'vortex': {
+      if (handleId === 'r') return { ...piece, r: clampNum(Math.abs(withSnap(to.x, sx) - piece.x), 60, 300) };
+      return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
+    }
+    case 'platform': {
+      if (handleId === 'a') return { ...piece, ax: clampX(withSnap(to.x, sx)), ay: withSnap(to.y, sx) };
+      if (handleId === 'b') return { ...piece, bx: clampX(withSnap(to.x, sx)), by: withSnap(to.y, sx) };
+      const ddx = withSnap(to.x, sx) - (piece.ax + piece.bx) / 2;
+      const ddy = withSnap(to.y, sx) - (piece.ay + piece.by) / 2;
+      return { ...piece, ax: clampX(piece.ax + ddx), ay: piece.ay + ddy, bx: clampX(piece.bx + ddx), by: piece.by + ddy };
+    }
+    case 'geyser': {
+      if (handleId === 'h') {
+        const h = Math.max(80, Math.min(600, piece.y - withSnap(to.y, sx)));
+        return { ...piece, h: sx ? snapVal(h) : h };
+      }
+      return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
     }
   }
 }
@@ -400,12 +836,80 @@ export function movePiece(piece: Piece, dx: number, dy: number): Piece {
     case 'breakable':
     case 'wall':
     case 'block':
+    // ---- MB-10A ----
+    case 'barricade':
+    case 'crumble':
+    case 'trapdoor':
+    case 'switch':
       return { ...piece, x: clampX(piece.x + dx), y: piece.y + dy };
+    // ---- MB-10B ----
+    case 'crusher':
+    case 'mace':
+      return { ...piece, x: clampX(piece.x + dx), y: piece.y + dy };
+    case 'blade':
+      return { ...piece, pivot: [clampX(piece.pivot[0] + dx), piece.pivot[1] + dy] as [number, number] };
+    case 'saw':
+      return {
+        ...piece,
+        a: [clampX(piece.a[0] + dx), piece.a[1] + dy] as [number, number],
+        b: [clampX(piece.b[0] + dx), piece.b[1] + dy] as [number, number],
+      };
+    case 'boulder':
+      return { ...piece, pts: piece.pts.map(([x, y]) => [clampX(x + dx), y + dy] as [number, number]) };
+    case 'tunnel':
+      return { ...piece, x: clampX(piece.x + dx), y: piece.y + dy, exit: [clampX(piece.exit[0] + dx), piece.exit[1] + dy] as [number, number] };
     case 'peg':
     case 'ppeg':
       return { ...piece, x: clampX(piece.x + dx), y: piece.y + dy };
     case 'itembox':
       return { ...piece, x: clampX(piece.x + dx), y: piece.y + dy };
+    // ---- MB-10C ----
+    case 'wheel':
+    case 'seesaw':
+      return { ...piece, x: clampX((piece as unknown as { x: number }).x + dx), y: (piece as unknown as { y: number }).y + dy } as Piece;
+    // ---- MB-10D ----
+    case 'cannon':
+    case 'catapult':
+    case 'flipper':
+    case 'sling':
+      return { ...piece, x: clampX((piece as unknown as { x: number }).x + dx), y: (piece as unknown as { y: number }).y + dy } as Piece;
+    case 'scoop': {
+      const sc = piece;
+      return {
+        ...sc,
+        x: clampX(sc.x + dx),
+        y: sc.y + dy,
+        ...(sc.exit ? { exit: [clampX(sc.exit[0] + dx), sc.exit[1] + dy, sc.exit[2]] as [number, number, number] } : {}),
+      } as Piece;
+    }
+    case 'wind':
+    case 'mud':
+    case 'pool': {
+      return {
+        ...piece,
+        a: [clampX(piece.a[0] + dx), piece.a[1] + dy] as [number, number],
+        b: [clampX(piece.b[0] + dx), piece.b[1] + dy] as [number, number],
+      } as Piece;
+    }
+    case 'magnet':
+    case 'geyser':
+    case 'trampoline':
+    case 'turnstile':
+    case 'targets':
+    case 'vortex':
+      return { ...piece, x: clampX(piece.x + dx), y: piece.y + dy } as Piece;
+    case 'platform':
+      return { ...piece, ax: clampX(piece.ax + dx), ay: piece.ay + dy, bx: clampX(piece.bx + dx), by: piece.by + dy } as Piece;
+    case 'screw':
+    case 'conveyor':
+    case 'bridge': {
+      const p2 = piece as unknown as { a: readonly [number, number]; b: readonly [number, number] };
+      return {
+        ...piece,
+        a: [clampX(p2.a[0] + dx), p2.a[1] + dy] as [number, number],
+        b: [clampX(p2.b[0] + dx), p2.b[1] + dy] as [number, number],
+      } as Piece;
+    }
     case 'bucket':
       return { ...piece, y: piece.y + dy };
   }
@@ -439,12 +943,89 @@ export function mirrorPiece(piece: Piece): Piece {
     case 'breakable':
     case 'wall':
     case 'block':
+    // ---- MB-10A ----
+    case 'barricade':
+    case 'crumble':
       return { ...piece, x: mx(piece.x) };
+    case 'trapdoor':
+      // Mirroring moves the hinge to the other side of the leaf.
+      return { ...piece, x: mx(piece.x), hinge: piece.hinge === 1 ? -1 : 1 };
+    case 'tunnel':
+      return { ...piece, x: mx(piece.x), exit: [mx(piece.exit[0]), piece.exit[1]] as [number, number], edir: [-piece.edir[0], piece.edir[1]] as [number, number] };
+    case 'switch':
+      return { ...piece, x: mx(piece.x), side: piece.side === 1 ? 0 : 1 };
+    // ---- MB-10B ----
+    case 'blade':
+      return { ...piece, pivot: [mx(piece.pivot[0]), piece.pivot[1]] };
+    case 'saw':
+      return { ...piece, a: [mx(piece.a[0]), piece.a[1]] as [number, number], b: [mx(piece.b[0]), piece.b[1]] as [number, number] };
+    case 'crusher':
+    case 'mace':
+      return { ...piece, x: mx(piece.x) };
+    case 'boulder':
+      return { ...piece, pts: piece.pts.map(([x, y]) => [mx(x), y] as [number, number]) };
     case 'peg':
     case 'ppeg':
       return { ...piece, x: mx(piece.x) };
     case 'itembox':
       return { ...piece, x: mx(piece.x) };
+    // ---- MB-10C ----
+    case 'wheel':
+      // Mirroring flips the spin sense so the ride direction survives the course mirror.
+      return { ...piece, x: mx((piece as unknown as { x: number }).x), dir: (piece.t === 'wheel' ? (piece.dir === 1 ? 0 : 1) : 0) } as Piece;
+    case 'seesaw':
+      return { ...piece, x: mx((piece as unknown as { x: number }).x) } as Piece;
+    // ---- MB-10D ----
+    case 'cannon': {
+      // The whole aim fan maps θ → 180−θ, swapping the range ends.
+      return { ...piece, x: mx(piece.x), aimMin: (180 - piece.aimMax + 360) % 360, aimMax: (180 - piece.aimMin + 360) % 360 };
+    }
+    case 'catapult':
+      // Mirroring flips the throw sense, like the wheel's spin.
+      return { ...piece, x: mx((piece as unknown as { x: number }).x), dir: (piece.dir === 1 ? 0 : 1) } as Piece;
+    case 'flipper':
+      return { ...piece, x: mx((piece as unknown as { x: number }).x), side: (piece.side === 1 ? 0 : 1) } as Piece;
+    case 'sling':
+      return { ...piece, x: mx(piece.x), facing: (180 - piece.facing + 360) % 360 };
+    case 'scoop':
+      return {
+        ...piece,
+        x: mx(piece.x),
+        deg: (180 - piece.deg + 360) % 360,
+        ...(piece.exit ? { exit: [mx((piece.exit as [number, number, number])[0]), (piece.exit as [number, number, number])[1], (piece.exit as [number, number, number])[2]] as [number, number, number] } : {}),
+      };
+    case 'wind': {
+      // Swap the ends and steer the blow like every other mirrored angle.
+      const dir = ((180 - piece.dir) % 360 + 360) % 360;
+      return { ...piece, a: [mx(piece.b[0]), piece.b[1]] as [number, number], b: [mx(piece.a[0]), piece.a[1]] as [number, number], dir };
+    }
+    case 'mud':
+    case 'pool':
+      return {
+        ...piece,
+        a: [mx(piece.b[0]), piece.b[1]] as [number, number],
+        b: [mx(piece.a[0]), piece.a[1]] as [number, number],
+      } as Piece;
+    case 'magnet':
+    case 'geyser':
+    case 'trampoline':
+    case 'turnstile':
+    case 'targets':
+    case 'vortex':
+      return { ...piece, x: mx(piece.x) } as Piece;
+    case 'platform':
+      return { ...piece, ax: mx(piece.bx), ay: piece.by, bx: mx(piece.ax), by: piece.ay } as Piece;
+    case 'screw':
+    case 'conveyor':
+    case 'bridge': {
+      // Mirroring swaps the two ends (belt direction rides the surface tangent — it flips for free).
+      const p2 = piece as unknown as { a: readonly [number, number]; b: readonly [number, number] };
+      return {
+        ...piece,
+        a: [mx(p2.b[0]), p2.b[1]] as [number, number],
+        b: [mx(p2.a[0]), p2.a[1]] as [number, number],
+      } as Piece;
+    }
     case 'bucket':
       // Bucket is always centred horizontally — nothing to mirror.
       return piece;

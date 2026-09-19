@@ -73,6 +73,69 @@ function replayPiece(b: Builder, piece: Piece): void {
       case 'block':
         b.block(piece.x, piece.y, piece.w, piece.h);
         break;
+      // ---- MB-10A ----
+      case 'barricade':
+        b.barricade(piece.x, piece.y, piece.w, piece.h, piece.tough);
+        break;
+      case 'crumble':
+        b.crumble(piece.x, piece.y, piece.w, piece.h, piece.tough);
+        break;
+      case 'tunnel':
+        b.tunnel(piece.x, piece.y, piece.exit[0], piece.exit[1], piece.edir[0], piece.edir[1], piece.ms, piece.speed, piece.two === true);
+        break;
+      case 'trapdoor':
+        b.trapdoor(piece.x, piece.y, piece.w, piece.hinge, piece.mode, piece.open, piece.closed, piece.phase, piece.kg, piece.hold);
+        break;
+      case 'switch':
+        b.switchLever(piece.x, piece.y, piece.len, piece.angle, piece.side);
+        break;
+      // ---- MB-10B ----
+      case 'blade':
+        b.blade(piece.pivot[0], piece.pivot[1], piece.len, piece.amp, piece.period, piece.phase, piece.thin);
+        break;
+      case 'saw':
+        b.saw(piece.a[0], piece.a[1], piece.r, [piece.b[0], piece.b[1]], piece.period, piece.spin, piece.phase);
+        break;
+      case 'crusher':
+        b.crusher(piece.x, piece.y, piece.w, piece.travel, piece.period, piece.floor, piece.phase);
+        break;
+      case 'boulder':
+        b.boulder(piece.pts.map(([x, y]: [number, number]) => [x, y] as [number, number]), piece.r, piece.interval, piece.rest, piece.phase);
+        break;
+      case 'mace':
+        b.mace(piece.x, piece.y, piece.arm, piece.arc, piece.sweep, piece.rest, piece.phase, piece.r);
+        break;
+      case 'trampoline':
+        b.trampoline(piece.x, piece.y, piece.w, piece.tension);
+        break;
+      case 'turnstile':
+        b.turnstile(piece.x, piece.y, piece.arms, piece.r, piece.mode as 0 | 1, piece.period, piece.phase);
+        break;
+      case 'targets':
+        b.targets(piece.x, piece.y, piece.count, piece.reset);
+        break;
+      case 'vortex':
+        b.vortex(piece.x, piece.y, piece.r, piece.spin, piece.hole);
+        break;
+      case 'platform':
+        b.platform(piece.ax, piece.ay, piece.bx, piece.by, piece.w, piece.travel, piece.pause, piece.phase);
+        break;
+      // ---- MB-10C ----
+      case 'wheel':
+        b.waterWheel(piece.x, piece.y, piece.r, piece.buckets, piece.rpm, piece.dir, piece.release, piece.phase);
+        break;
+      case 'screw':
+        b.screwLift(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.ms, piece.cap);
+        break;
+      case 'conveyor':
+        b.conveyor(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.v, piece.flipMs || undefined, piece.dir);
+        break;
+      case 'seesaw':
+        b.seesaw(piece.x, piece.y, piece.len, piece.lim, piece.damp);
+        break;
+      case 'bridge':
+        b.ropeBridge(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.planks, piece.slack);
+        break;
     }
   } finally {
     b.flip = false;
@@ -159,6 +222,7 @@ export function buildEditorTrack(def: TrackDef): { track: Track | null; bodyToPi
       theme: themeFor(def.theme),
       decor: b.decor,
       wreckers: b.wreckers,
+    targetBanks: b.targetBanks,
     };
     return { track, bodyToPiece, error: null };
   } catch (error) {

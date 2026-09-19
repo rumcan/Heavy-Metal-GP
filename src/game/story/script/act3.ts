@@ -34,7 +34,7 @@ export const ACT3_CHAPTERS: readonly ChapterDef[] = [
   {
     chapter: 6, act: 3, gp: 5, title: 'Down We Go',
     // "Vex's wrecking crew": more chicanes means more swinging wrecking balls on the night track.
-    weights: { Chicane: 3.2, 'Crack Wall Shortcut': 1.8 },
+    weights: { Chicane: 4.0, 'Crack Wall Shortcut': 1.8 },
     completeFlag: 'smokeyProud',
     ai: [
       { who: 'vex', target: 'player' },

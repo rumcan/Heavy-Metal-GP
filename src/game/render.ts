@@ -1,6 +1,7 @@
 import Matter from 'matter-js';
 import { Game, Marble } from './engine';
-import { meta, W } from './track';
+import { hingeTimerState, hingeIsOpen, trapdoorWarn, pistonState, beltDir } from './elements';
+import { meta, W, cannonAim, catapultAngle, flipperAngle } from './track';
 import { MARBLE_RADIUS, ITEM_INFO, skinFor, themeIdFor } from './types';
 import { ballFor, bodyFrame, currentSkin, drawRail, drawSprite, drawStrip, setSkin, sprite } from './sprites';
 import repeatingBgUrl from '../assets/bg/repeating.webp';
@@ -858,6 +859,105 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
       }
       case 'finish':
         break;
+      // ---- MB-10A: shortcuts and secrets ----
+      case 'barricade':
+        drawBarricade(ctx, b, md);
+        break;
+      case 'crumble':
+        drawCrumble(ctx, b, md, game, t);
+        break;
+      case 'tunnel':
+        drawTunnel(ctx, b, md, t);
+        break;
+      case 'trapdoor':
+        drawTrapdoor(ctx, b, md, game, t);
+        break;
+      case 'switch':
+        drawSwitchBlade(ctx, b, md, game, t);
+        break;
+      case 'switchPad':
+        drawSwitchPad(ctx, b, md, game, t);
+        break;
+      // ---- MB-10B: blades and crushers ----
+      case 'blade':
+        drawBlade(ctx, b, md, t);
+        break;
+      case 'saw':
+        drawSaw(ctx, b, md, t);
+        break;
+      case 'crusher':
+        drawCrusher(ctx, b, md, game, t);
+        break;
+      case 'boulder':
+        drawBoulder(ctx, b, md);
+        break;
+      case 'mace':
+        drawMace(ctx, b, md, game, t);
+        break;
+      // ---- MB-10C: mechanical movers ----
+      case 'wheel':
+        if (!b.isSensor) drawWheel(ctx, b, md, game, t);
+        break;
+      case 'screw':
+        drawScrew(ctx, b, md, t);
+        break;
+      case 'seesaw':
+        drawSeesaw(ctx, b, md);
+        break;
+      case 'bridge':
+        drawBridgePlank(ctx, b, md);
+        break;
+      case 'conveyor':
+        drawConveyor(ctx, b, md, game, t);
+        break;
+      // ---- MB-10D: launchers and pinball ----
+      case 'cannon':
+        if (!b.isSensor) drawCannon(ctx, b, md, game, t);
+        break;
+      case 'catapult':
+        if (!b.isSensor) drawCatapult(ctx, b, md, game, t);
+        break;
+      case 'flipper':
+        drawFlipper(ctx, b, md, t);
+        break;
+      case 'sling':
+        drawSling(ctx, b, md, game, t);
+        break;
+      case 'scoop':
+        drawScoop(ctx, b, md, game, t);
+        break;
+      // ---- MB-10E: fields and surfaces ----
+      case 'wind':
+        if (b.isSensor) drawWind(ctx, b, md, game, t);
+        break;
+      case 'magnet':
+        if (b.isSensor) drawMagnet(ctx, b, md, game, t);
+        break;
+      case 'mud':
+        if (b.isSensor) drawMud(ctx, b, md, game, t);
+        break;
+      case 'pool':
+        if (b.isSensor) drawPool(ctx, b, md, game, t);
+        break;
+      case 'geyser':
+        if (!b.isSensor) drawGeyser(ctx, b, md, game, t);
+        break;
+      // ---- MB-10F: big set pieces ----
+      case 'trampoline':
+        drawTrampoline(ctx, b, md, game, t);
+        break;
+      case 'turnstile':
+        drawTurnstile(ctx, b, md, game, t);
+        break;
+      case 'target':
+        drawTargets(ctx, b, md, game, t);
+        break;
+      case 'vortex':
+        if (b.isSensor) drawVortex(ctx, b, md, game, t);
+        break;
+      case 'platform':
+        drawPlatform(ctx, b, md, game, t);
+        break;
       default:
         break;
     }
@@ -867,6 +967,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
   const sorted = [...game.marbles].sort((a, b) => Number(a.info.isPlayer) - Number(b.info.isPlayer));
   for (const m of sorted) {
     const p = m.body.position;
+    if (m.hold && m.hold.kind === 'tunnel') continue; // hidden inside the cliff (MB-10A); MB-10C movers keep the rider on screen
     if (p.y < viewTop || p.y > viewBottom || game.benched.has(m.info.id)) continue;
     drawMarble(ctx, game, m, t);
   }
@@ -1261,6 +1362,717 @@ function drawTorchGlows(ctx: CanvasRenderingContext2D, game: Game, viewTop: numb
   ctx.globalAlpha = 1;
 }
 
+// ---------------------------------------------------------------------------
+// MB-10A: shortcuts and secrets. Every piece keeps a plain-vector fallback so
+// the track plays before (and without) the PNG kit art; `sprite()` swaps it in.
+// ---------------------------------------------------------------------------
+
+/** A deterministic 0..1 hash per body + salt, so jitter never flickers per-frame. */
+function bodyJitter(b: Matter.Body, salt: number): number {
+  const x = b.position.x * 12.9898 + b.position.y * 78.233 + salt * 37.719;
+  return Math.abs(Math.sin(x) * 43758.5453) % 1;
+}
+
+// ---- MB-10B: blades and crushers — all moving parts drawn per frame from the clock ----
+
+/** Swinging axe blade on its iron arm: pivot hub at the top, blade sweeping with the body angle. */
+function drawBlade(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, t: number) {
+  const motion = md.motion;
+  if (!motion || motion.mode !== 'pendulum') return;
+  const pv = motion.pivot;
+  // swivel mount at the pivot
+  drawSprite(ctx, 'tile-metal', pv.x, pv.y, 26, 14);
+  ctx.fillStyle = '#374151';
+  ctx.beginPath(); ctx.arc(pv.x, pv.y, 5, 0, Math.PI * 2); ctx.fill();
+  // arm + axe head (art points down the arm when angle = 0)
+  const img = sprite('blade');
+  ctx.save();
+  ctx.translate(pv.x, pv.y);
+  ctx.rotate(b.angle + Math.sin(t / 1600) * 0.004);
+  const len = motion.arm;
+  if (img) {
+    const bw = len * 0.58, bh = img.naturalHeight * (len * 1.18) / img.naturalWidth;
+    ctx.drawImage(img, -bw / 2, 0, bw, len * 1.18 > bh ? bh : len * 1.18);
+  } else {
+    // iron arm
+    ctx.fillStyle = '#4b5563';
+    ctx.fillRect(-5, 0, 10, len * 0.78);
+    ctx.strokeStyle = '#1f2937';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-5, 0, 10, len * 0.78);
+    // wedge blade: wide crescent at the tip
+    ctx.beginPath();
+    ctx.moveTo(-len * 0.26, len * 0.66);
+    ctx.lineTo(len * 0.26, len * 0.66);
+    ctx.lineTo(len * 0.2, len);
+    ctx.lineTo(-len * 0.2, len);
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(-len * 0.26, 0, len * 0.26, 0);
+    grad.addColorStop(0, '#9ca3af');
+    grad.addColorStop(0.5, '#e5e7eb');
+    grad.addColorStop(1, '#6b7280');
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.strokeStyle = '#374151';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    // a nick of goblin red at the edge
+    ctx.strokeStyle = '#b3261e';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-len * 0.19, len - 5);
+    ctx.lineTo(len * 0.19, len - 5);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/** Spinning saw disc (red teeth, skull hub), plus the wood-and-iron slot it runs in. */
+function drawSaw(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, t: number) {
+  const motion = md.motion;
+  if (!motion || motion.mode !== 'slide') return;
+  const r = motion.r;
+  // the slot bed (static path), drawn each frame under the disc — cheap: two rails and shadow
+  if (motion.a.x !== motion.b.x || motion.a.y !== motion.b.y) {
+    ctx.save();
+    ctx.strokeStyle = '#52341c';
+    ctx.lineWidth = r * 1.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(motion.a.x, motion.a.y + r * 0.35);
+    ctx.lineTo(motion.b.x, motion.b.y + r * 0.35);
+    ctx.stroke();
+    ctx.strokeStyle = '#2f2012';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(motion.a.x, motion.a.y + r * 0.9);
+    ctx.lineTo(motion.b.x, motion.b.y + r * 0.9);
+    ctx.stroke();
+    ctx.restore();
+  }
+  const spin = t * motion.spinW * 0.06 + motion.phaseMs * 0.01;
+  const img = sprite('saw');
+  if (img) {
+    ctx.save();
+    ctx.translate(b.position.x, b.position.y);
+    ctx.rotate(spin);
+    ctx.drawImage(img, -r * 1.25, -r * 1.25, r * 2.5, r * 2.5);
+    ctx.restore();
+    return;
+  }
+  ctx.save();
+  ctx.translate(b.position.x, b.position.y);
+  ctx.rotate(spin);
+  const teeth = 14;
+  ctx.beginPath();
+  for (let i = 0; i < teeth; i++) {
+    const a = (i / teeth) * Math.PI * 2;
+    const tip = a + Math.PI / teeth * 0.5;
+    ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    ctx.lineTo(Math.cos(tip) * r * 1.22, Math.sin(tip) * r * 1.22);
+  }
+  ctx.closePath();
+  ctx.fillStyle = '#dc2626';
+  ctx.fill();
+  ctx.strokeStyle = '#7f1d1d';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.86, 0, Math.PI * 2);
+  ctx.fillStyle = '#9ca3af';
+  ctx.fill();
+  ctx.strokeStyle = '#4b5563';
+  ctx.stroke();
+  // skull hub
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.3, 0, Math.PI * 2);
+  ctx.fillStyle = '#f3e9cf';
+  ctx.fill();
+  ctx.fillStyle = '#1f2937';
+  ctx.beginPath(); ctx.arc(-r * 0.11, -r * 0.05, r * 0.07, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(r * 0.11, -r * 0.05, r * 0.07, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+/** Crusher piston: housing at the top, hanging stamper; warning glow + shadow while it arms. */
+function drawCrusher(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, game: Game, t: number) {
+  const motion = md.motion;
+  if (!motion || motion.mode !== 'piston') return;
+  const st = pistonState(motion, game.time);
+  const { min, max } = b.bounds;
+  const w = max.x - min.x;
+  const floorY = motion.top.y + 22 + motion.travel + 22;
+  // shadow of the falling plate on the deck, growing with the drop
+  ctx.save();
+  ctx.globalAlpha = 0.16 + st.k * 0.3;
+  ctx.fillStyle = '#0b1120';
+  ctx.beginPath();
+  ctx.ellipse((min.x + max.x) / 2, floorY, w / 2 * (0.5 + st.k * 0.5), 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  // hazard plate at the deck line
+  hazardStripe(ctx, min.x - 12, floorY + 6, w + 24, 12, '#eab308');
+  // housing: iron cylinder the piston drops out of
+  const houseImg = sprite('crusher-house');
+  if (houseImg) {
+    ctx.drawImage(houseImg, min.x - 10, motion.top.y - 58, w + 20, 60);
+  } else {
+    ctx.fillStyle = '#3f4653';
+    ctx.fillRect(min.x - 8, motion.top.y - 56, w + 16, 58);
+    ctx.strokeStyle = '#1f2937';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(min.x - 8, motion.top.y - 56, w + 16, 58);
+    ctx.fillStyle = '#576072';
+    for (let x = min.x; x < max.x - 8; x += 22) ctx.fillRect(x, motion.top.y - 52, 5, 50);
+  }
+  // the stamper block
+  const img = sprite('crusher');
+  const warn = st.warn ? 0.5 + 0.5 * Math.sin(t / 90) : 0;
+  if (img) {
+    ctx.drawImage(img, min.x - 6, min.y - 8, w + 12, (max.y - min.y) + 16);
+  } else {
+    ctx.fillStyle = '#57534e';
+    ctx.fillRect(min.x, min.y, w, max.y - min.y);
+    ctx.strokeStyle = '#292524';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(min.x, min.y, w, max.y - min.y);
+    // iron bands
+    ctx.fillStyle = '#44403c';
+    ctx.fillRect(min.x, min.y + 6, w, 7);
+    ctx.fillRect(min.x, max.y - 13, w, 7);
+    // rivets
+    ctx.fillStyle = '#a8a29e';
+    for (let x = min.x + 10; x < max.x - 6; x += 18) {
+      ctx.beginPath(); ctx.arc(x, min.y + 9.5, 2, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x, max.y - 9.5, 2, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  // warning glow across the bands while the slam arms
+  if (warn > 0) {
+    ctx.save();
+    ctx.globalAlpha = warn * 0.5;
+    ctx.fillStyle = '#ef4444';
+    ctx.fillRect(min.x, min.y + 6, w, 7);
+    ctx.restore();
+  }
+}
+
+/** Boulder with a carved goblin face, spinning with the distance it has rolled. */
+function drawBoulder(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>) {
+  const r = md.radius ?? 27;
+  const img = sprite('boulder');
+  ctx.save();
+  ctx.translate(b.position.x, b.position.y);
+  ctx.rotate(b.angle);
+  if (img) {
+    ctx.drawImage(img, -r * 1.12, -r * 1.12, r * 2.24, r * 2.24);
+  } else {
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    const grad = ctx.createRadialGradient(-r * 0.3, -r * 0.3, r * 0.2, 0, 0, r);
+    grad.addColorStop(0, '#a8a29e');
+    grad.addColorStop(1, '#57534e');
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.strokeStyle = '#44403c';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    // the face: two crater eyes, a jagged grin
+    ctx.fillStyle = '#292524';
+    ctx.beginPath(); ctx.ellipse(-r * 0.32, -r * 0.18, r * 0.14, r * 0.18, 0.2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(r * 0.3, -r * 0.14, r * 0.12, r * 0.16, -0.15, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#292524';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.4, r * 0.36);
+    ctx.quadraticCurveTo(0, r * 0.55, r * 0.38, r * 0.3);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/** Spiked mace ball on its arm; the arm swings with the ball body. Stars while jammed. */
+function drawMace(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, game: Game, t: number) {
+  const motion = md.motion;
+  if (!motion || motion.mode !== 'sweep') return;
+  const pv = motion.pivot;
+  const r = md.radius ?? 24;
+  const stunned = game.time < (md.stunUntil ?? 0);
+  // the arm from pivot to ball
+  ctx.strokeStyle = stunned ? '#7c5f2c' : '#1f2937';
+  ctx.lineWidth = 7;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(pv.x, pv.y);
+  ctx.lineTo(b.position.x, b.position.y);
+  ctx.stroke();
+  ctx.strokeStyle = '#4b5563';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(pv.x, pv.y);
+  ctx.lineTo(b.position.x, b.position.y);
+  ctx.stroke();
+  drawSprite(ctx, 'tile-metal', pv.x, pv.y, 22, 12);
+  ctx.fillStyle = '#9ca3af';
+  ctx.beginPath(); ctx.arc(pv.x, pv.y, 4, 0, Math.PI * 2); ctx.fill();
+  // the ball
+  const img = sprite('mace');
+  if (img) {
+    ctx.save();
+    ctx.translate(b.position.x, b.position.y);
+    ctx.rotate(t * 0.002);
+    ctx.drawImage(img, -r * 1.35, -r * 1.35, r * 2.7, r * 2.7);
+    ctx.restore();
+  } else {
+    ctx.save();
+    ctx.translate(b.position.x, b.position.y);
+    ctx.rotate(t * 0.002);
+    // spikes
+    ctx.fillStyle = '#6b7280';
+    const spikes = 10;
+    for (let i = 0; i < spikes; i++) {
+      const a = (i / spikes) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * r * 0.8, Math.sin(a) * r * 0.8);
+      ctx.lineTo(Math.cos(a + 0.16) * r * 1.42, Math.sin(a + 0.16) * r * 1.42);
+      ctx.lineTo(Math.cos(a + 0.32) * r * 0.8, Math.sin(a + 0.32) * r * 0.8);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    const grad = ctx.createRadialGradient(-r * 0.3, -r * 0.3, r * 0.2, 0, 0, r);
+    grad.addColorStop(0, '#9ca3af');
+    grad.addColorStop(1, '#374151');
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.strokeStyle = '#1f2937';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.restore();
+  }
+  // jam stars while shocked
+  if (stunned) {
+    ctx.fillStyle = '#facc15';
+    for (let i = 0; i < 3; i++) {
+      const a = t / 300 + (i * Math.PI * 2) / 3;
+      const sx = b.position.x + Math.cos(a) * (r + 14), sy = b.position.y - 6 + Math.sin(a) * 6;
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(a);
+      ctx.beginPath();
+      for (let k = 0; k < 4; k++) {
+        const aa = (k / 4) * Math.PI * 2;
+        ctx.lineTo(Math.cos(aa) * 5, Math.sin(aa) * 5);
+        ctx.lineTo(Math.cos(aa + Math.PI / 4) * 1.8, Math.sin(aa + Math.PI / 4) * 1.8);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+}
+
+/** Ramped warning stripes (drawn under crusher decks and machinery beds). */
+function hazardStripe(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string) {
+  ctx.save();
+  ctx.fillStyle = '#1c1917';
+  ctx.fillRect(x, y, w, h);
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+  ctx.fillStyle = color;
+  for (let sx = x - h; sx < x + w + h; sx += 16) {
+    ctx.beginPath();
+    ctx.moveTo(sx, y + h);
+    ctx.lineTo(sx + 8, y);
+    ctx.lineTo(sx + 16, y);
+    ctx.lineTo(sx + 8, y + h);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/** NO ENTRY planks over a tunnel (or any shortcut). Cracks grow as hp drops. */
+function drawBarricade(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>) {
+  const { min, max } = b.bounds;
+  const w = max.x - min.x, h = max.y - min.y;
+  const ratio = (md.hp ?? 1) / (md.maxHp ?? 1);
+  const img = sprite('barricade');
+  if (img) {
+    ctx.drawImage(img, min.x - w * 0.06, min.y - h * 0.08, w * 1.12, h * 1.16);
+  } else {
+    // planks: three crossed boards over a dark opening
+    ctx.fillStyle = 'rgba(5,8,14,0.85)';
+    ctx.fillRect(min.x, min.y, w, h);
+    const planks = Math.max(2, Math.round(h / 16));
+    for (let i = 0; i < planks; i++) {
+      const py = min.y + (i + 0.5) * h / planks;
+      ctx.fillStyle = i % 2 ? '#8a5a33' : '#a06a3c';
+      ctx.fillRect(min.x - 3, py - h / planks / 2 - 2, w + 6, h / planks - 4);
+      ctx.strokeStyle = 'rgba(40,20,8,0.7)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(min.x - 3, py - h / planks / 2 - 2, w + 6, h / planks - 4);
+    }
+    // diagonal brace
+    ctx.strokeStyle = '#7c4f2a';
+    ctx.lineWidth = Math.min(10, w * 0.09);
+    ctx.beginPath();
+    ctx.moveTo(min.x + 4, max.y - 4 - bodyJitter(b, 2) * 3);
+    ctx.lineTo(max.x - 4, min.y + 4);
+    ctx.stroke();
+  }
+  // cracks by wear — tough 1..10 shows up as how many hits this has already shrugged off
+  if (ratio < 0.999) {
+    const n = Math.ceil((1 - ratio) * 7);
+    ctx.strokeStyle = 'rgba(15,10,6,0.85)';
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i < n; i++) {
+      const sx = min.x + ((i * 41 + 13) % Math.max(10, w - 8)) + 4;
+      const sy = min.y + ((i * 29 + 7) % Math.max(10, h - 8)) + 4;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + 7 + bodyJitter(b, i) * 6, sy + 12);
+      ctx.lineTo(sx + 2, sy + 22);
+      ctx.stroke();
+    }
+  }
+  // the sign
+  const sx = b.position.x, sy = b.position.y;
+  const signW = Math.min(64, w * 0.9), signH = 22;
+  ctx.save();
+  if (img) ctx.scale(0.85, 0.85);
+  ctx.translate(img ? sx * 1.176 + 12 : sx, img ? sy * 1.176 : sy);
+  ctx.fillStyle = '#f3e9cf';
+  ctx.strokeStyle = '#422b14';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.roundRect(-signW / 2, -signH / 2, signW, signH, 4);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#b3261e';
+  ctx.font = 'bold 11px system-ui';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('NO ENTRY', 0, 1);
+  ctx.restore();
+}
+
+/** Weak stone the pack knocks down over the race: bricks, cracks and dust. */
+function drawCrumble(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, game: Game, t: number) {
+  const { min, max } = b.bounds;
+  const w = max.x - min.x, h = max.y - min.y;
+  const ratio = (md.hp ?? 1) / (md.maxHp ?? 1);
+  // shake while the impact is fresh
+  const since = game.time - (md.hitAt ?? -1e9);
+  const shake = since < 300 ? (1 - since / 300) * 2.2 : 0;
+  ctx.save();
+  if (shake > 0) ctx.translate(Math.sin(t / 16) * shake, Math.cos(t / 19) * shake * 0.6);
+  const img = sprite('crumble');
+  const rows = Math.max(2, Math.round(h / 22));
+  const cols = Math.max(1, Math.round(w / 30));
+  const bw = w / cols, bh = h / rows;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const off = r % 2 ? bw / 2 : 0;
+      const bx = min.x + c * bw + off;
+      if (bx > max.x) continue;
+      // bricks fall away as the wall wears: lowest rows go first, then in from the edges
+      const permanent = 1 - ratio;
+      const gone = (r + 1) / rows + bodyJitter(b, r * 7 + c) * 0.35 < permanent * 1.15;
+      if (gone) {
+        // rubble shadow where a brick used to be
+        ctx.fillStyle = 'rgba(10,14,22,0.5)';
+        ctx.fillRect(bx + 1.5, min.y + r * bh + 1.5, bw - 3, bh - 3);
+        continue;
+      }
+      if (img) {
+        const sw = img.naturalWidth / cols, sh = img.naturalHeight / rows;
+        ctx.drawImage(img, c * sw, r * sh, sw, sh, bx, min.y + r * bh, bw, bh);
+      } else {
+        ctx.fillStyle = r % 2 ? '#7d7466' : '#8d8474';
+        ctx.fillRect(bx + 1.5, min.y + r * bh + 1.5, bw - 3, bh - 3);
+        ctx.strokeStyle = 'rgba(30,26,20,0.6)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(bx + 1.5, min.y + r * bh + 1.5, bw - 3, bh - 3);
+      }
+    }
+  }
+  // cracks across the survivors
+  if (ratio < 0.999) {
+    ctx.strokeStyle = 'rgba(20,16,12,0.9)';
+    ctx.lineWidth = 1.6;
+    const n = Math.ceil((1 - ratio) * 8);
+    for (let i = 0; i < n; i++) {
+      const sx = min.x + ((i * 37 + 11) % Math.max(10, w - 10)) + 5;
+      const sy = min.y + ((i * 53 + 17) % Math.max(10, h - 10)) + 5;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + 6, sy + 10);
+      ctx.lineTo(sx - 3 + bodyJitter(b, i) * 8, sy + 20);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+/** Both ends of a cliff burrow: the entrance hole at the sensor, the exit at md.exit, glowing. */
+function drawTunnelHole(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, lit: boolean, t: number, dir?: { x: number; y: number }) {
+  if (lit) {
+    const pulse = 0.65 + 0.35 * Math.sin(t / 420 + x);
+    const gr = r * (1.7 + 0.25 * pulse);
+    ctx.save();
+    ctx.globalAlpha = 0.35 + 0.2 * pulse;
+    ctx.drawImage(colorGlow('#f6bf63'), x - gr, y - gr, gr * 2, gr * 2);
+    ctx.restore();
+  }
+  const img = sprite('tunnel');
+  if (img) {
+    const rot = dir ? Math.atan2(dir.y, dir.x) + Math.PI / 2 : 0;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    const s = r * 3.1;
+    ctx.drawImage(img, -s / 2, -s / 2, s, s);
+    ctx.restore();
+  } else {
+    // rubble ring
+    ctx.fillStyle = '#574a39';
+    ctx.beginPath();
+    ctx.arc(x, y, r * 1.24, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#3a3128';
+    ctx.beginPath();
+    ctx.arc(x, y, r * 1.06, 0, Math.PI * 2);
+    ctx.fill();
+    // black hole
+    const g = ctx.createRadialGradient(x, y, r * 0.1, x, y, r);
+    g.addColorStop(0, '#04060a');
+    g.addColorStop(0.8, '#0a0e16');
+    g.addColorStop(1, '#141a26');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.94, 0, Math.PI * 2);
+    ctx.fill();
+    // a faint wood lintel
+    ctx.fillStyle = '#6e4a2a';
+    ctx.fillRect(x - r * 0.8, y - r * 1.02, r * 1.6, 7);
+  }
+  // drifting chevrons out of the exit so the "short way" is telegraphed
+  if (lit && dir) {
+    const dm = Math.hypot(dir.x, dir.y) || 1;
+    const ph = (t / 500) % 1;
+    for (let i = 0; i < 2; i++) {
+      const k = (ph + i / 2) % 1;
+      ctx.strokeStyle = `rgba(252,211,77,${0.15 + 0.5 * (1 - k)})`;
+      ctx.lineWidth = 2.5;
+      const d = 14 + k * 26;
+      const ax = x + (dir.x / dm) * d, ay = y + (dir.y / dm) * d;
+      const pxv = -(dir.y / dm) * 7, pyv = (dir.x / dm) * 7;
+      ctx.beginPath();
+      ctx.moveTo(ax - (dir.x / dm) * 6 - pxv, ay - (dir.y / dm) * 6 - pyv);
+      ctx.lineTo(ax, ay);
+      ctx.lineTo(ax - (dir.x / dm) * 6 + pxv, ay - (dir.y / dm) * 6 + pyv);
+      ctx.stroke();
+    }
+  }
+}
+
+/** A cliff tunnel: entrance hole where the sensor lives, glowing exit hole where marbles pop out. */
+function drawTunnel(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, t: number) {
+  drawTunnelHole(ctx, b.position.x, b.position.y, 34, false, t);
+  if (md.exit) drawTunnelHole(ctx, md.exit.x, md.exit.y, 34, true, t, md.exit.dir);
+}
+
+/** Hinged hatch drawn about its pivot. Timer mode walks a warning lamp; weight mode shows a scale pan. */
+function drawTrapdoor(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, game: Game, t: number) {
+  const motion = md.motion && md.motion.mode === 'hinge' ? md.motion : null;
+  const pivot = motion?.pivot ?? b.position;
+  const len = motion?.len ?? 120;
+  const dirX = motion?.dirX ?? 1;
+  const thick = 12;
+  ctx.save();
+  ctx.translate(pivot.x, pivot.y);
+  ctx.rotate(b.angle);
+  const img = sprite('trapdoor');
+  if (img) {
+    // hinge sits at art's left edge, door extends dirX
+    if (dirX === 1) ctx.drawImage(img, 0, -thick * 1.2, len, thick * 2.4);
+    else { ctx.scale(-1, 1); ctx.drawImage(img, 0, -thick * 1.2, len, thick * 2.4); ctx.scale(-1, 1); }
+  } else {
+    // grating floor: frame + bars
+    const x0 = dirX === 1 ? 0 : -len;
+    ctx.fillStyle = '#4f5a6a';
+    ctx.strokeStyle = '#20262f';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(x0, -thick / 2, len, thick, 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(20,26,34,0.8)';
+    ctx.lineWidth = 1.5;
+    for (let d = x0 + 10; d < x0 + len - 4; d += 12) {
+      ctx.beginPath();
+      ctx.moveTo(d, -thick / 2 + 2);
+      ctx.lineTo(d, thick / 2 - 2);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+  // hinge
+  ctx.fillStyle = '#20262f';
+  ctx.beginPath();
+  ctx.arc(pivot.x, pivot.y, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#8f9aa8';
+  ctx.beginPath();
+  ctx.arc(pivot.x, pivot.y, 2, 0, Math.PI * 2);
+  ctx.fill();
+  // the tell: a little lamp / scale pan beside the hinge
+  const open01 = game.ewma(b);
+  const lx = pivot.x + dirX * -16, ly = pivot.y - 26;
+  if (md.mode === 'weight') {
+    // scale pan with a dial: swings with the easing, labelled with kg
+    ctx.strokeStyle = '#39424f';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(lx, ly + 10);
+    ctx.lineTo(lx, ly - 3);
+    ctx.stroke();
+    ctx.save();
+    ctx.translate(lx, ly - 3);
+    ctx.rotate(open01 * 0.5 * dirX);
+    ctx.fillStyle = '#c3cdd7';
+    ctx.beginPath();
+    ctx.moveTo(-9, 0);
+    ctx.lineTo(9, 0);
+    ctx.lineTo(6, 6);
+    ctx.lineTo(-6, 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = trapdoorWarn(md, game.time) ? '#f87171' : '#9ae6b4';
+    ctx.font = 'bold 9px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${Math.round((md.weightKg ?? 2.4) * 10) / 10}kg`, lx, ly + 16);
+  } else {
+    // clock lamp: green while open, flashing amber while the swing is close, dim otherwise
+    const st = motion ? hingeTimerState(motion, game.time) : null;
+    const isOpen = motion ? hingeIsOpen(motion, b.angle) : false;
+    const warn = st?.warn ?? false;
+    const glow = isOpen ? '#4ade80' : warn && Math.sin(t / 90) > 0 ? '#facc15' : '#93a1b3';
+    ctx.fillStyle = '#39424f';
+    ctx.fillRect(lx - 3, ly - 2, 7, 14);
+    ctx.drawImage(colorGlow(glow), lx - 12, ly - 22, 26, 26);
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(lx + 0.5, ly - 8, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+/** The flip-paddle in the road: fork blade + pivot + lantern; the blade leans toward the live route. */
+function drawSwitchBlade(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, game: Game, t: number) {
+  const pv = md.pivot ?? b.position;
+  const len = md.plateLen ?? 120;
+  const thick = 12;
+  // the blade as the eased physics pose has it: hinge at pivot, tip leaning to the live route
+  ctx.save();
+  ctx.translate(pv.x, pv.y);
+  ctx.rotate(b.angle);
+  const img = sprite('switchplate');
+  if (img) {
+    ctx.drawImage(img, -thick, -len, len, thick * 2);
+  } else {
+    ctx.fillStyle = '#8f4f2c';
+    ctx.strokeStyle = '#3c2412';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(-thick / 2, -len, thick, len, 4);
+    ctx.fill();
+    ctx.stroke();
+    // route arrow toward the tip
+    ctx.fillStyle = 'rgba(255,240,200,0.8)';
+    ctx.font = 'bold 11px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText((md.side ?? 0) === 1 ? '➜' : '⬅', 0, -len * 0.55);
+  }
+  ctx.restore();
+  // pivot post
+  ctx.fillStyle = '#2b3140';
+  ctx.beginPath();
+  ctx.arc(pv.x, pv.y, 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#5b6472';
+  ctx.beginPath();
+  ctx.arc(pv.x, pv.y, 3, 0, Math.PI * 2);
+  ctx.fill();
+  // lantern at the pivot; flares briefly when the pad flips the route (ghost preview for the next marble)
+  const sway = game.time - (md.flippedAt ?? -1e9);
+  const flicker = sway < 700 ? 1 : 0.55 + 0.45 * Math.sin(t / 260 + pv.x);
+  ctx.save();
+  ctx.globalAlpha = 0.5 + 0.5 * flicker;
+  ctx.drawImage(colorGlow('#ffd97a'), pv.x - 26, pv.y - 46, 52, 52);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#f2c14e';
+  ctx.beginPath();
+  ctx.arc(pv.x, pv.y - 20, 5.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#463512';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.restore();
+  if (sway < 900) {
+    // dashed arc between the two resting leans so the flip reads
+    const target = (md.side ?? 0) === 1 ? (md.swingAngle ?? 0.65) : -(md.swingAngle ?? 0.65);
+    const a0 = Math.min(b.angle, target), a1 = Math.max(b.angle, target);
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 0.5 * (1 - sway / 900));
+    ctx.strokeStyle = '#facc15';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 6]);
+    ctx.beginPath();
+    ctx.arc(pv.x, pv.y, len * 0.55, -Math.PI / 2 + a0, -Math.PI / 2 + a1);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+}
+
+/** The trigger paddle above the fork: a little lever sign that flashes when it trips. */
+function drawSwitchPad(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, game: Game, t: number) {
+  const { x, y } = b.position;
+  const pressed = game.time - (md.hitAt ?? -1e9) < 450;
+  ctx.save();
+  ctx.translate(x, y + (pressed ? 2 : 0));
+  ctx.fillStyle = pressed ? '#caa04e' : '#9fb2c6';
+  ctx.strokeStyle = '#2e3743';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(-15, -7, 30, 12, 4);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#2e3743';
+  ctx.beginPath();
+  ctx.arc(0, 0, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  const glow = pressed ? '#fbbf24' : '#8fb4d9';
+  const pulse = pressed ? 1 : 0.55 + 0.3 * Math.sin(t / 380 + x);
+  ctx.save();
+  ctx.globalAlpha = pulse;
+  ctx.drawImage(colorGlow(glow), x - 16, y - 36, 32, 32);
+  ctx.restore();
+  ctx.fillStyle = glow;
+  ctx.font = 'bold 13px system-ui';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('⇄', x, y - 20);
+}
+
 /** Bodies that never move or change; they are baked into the static layer instead of redrawn every frame. */
 const STATIC_KINDS = new Set<string | undefined>(['ramp', 'ice', 'wall', 'loop']);
 const CHUNK_H = 1024;
@@ -1470,6 +2282,7 @@ function drawMinimap(ctx: CanvasRenderingContext2D, game: Game, cw: number, ch: 
   // marbles
   const list = [...game.marbles].sort((a, b) => Number(a.info.isPlayer) - Number(b.info.isPlayer));
   for (const m of list) {
+    if (m.hold && m.hold.kind === 'tunnel') continue; // hidden inside the cliff (MB-10A); MB-10C movers keep the rider on screen
     const yy = my + Math.max(0, Math.min(1, m.body.position.y / H)) * mh;
     const xx = mx + ((m.body.position.x / W) - 0.5) * 14;
     ctx.beginPath();
@@ -1483,4 +2296,740 @@ function drawMinimap(ctx: CanvasRenderingContext2D, game: Game, cw: number, ch: 
     }
   }
   ctx.restore();
+}
+
+
+// ---------------- MB-10C: mechanical movers ----------------
+
+/**
+ * Water wheel: rim, spokes and bucket paddles rotating on the race clock. The skin reads the
+ * hub body's angle (set by the shared spin motion), so host and guest draw the same pose; the
+ * drizzle marks it as wet unless the venue runs it dry. Buckets with riders get a highlight.
+ */
+// ==================== MB-10D: launchers and pinball skins ====================
+
+/**
+ * Cannon: a winched barrel on a little mount; the aim fan sweeps on the race clock and the
+ * breech glows while loaded. Falls back to pure goblin vector when the kit art misses.
+ */
+function drawCannon(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnType<typeof meta>, game: Game, t: number) {
+  const mo = md.motion;
+  const cn = md.cannon;
+  if (!mo || mo.mode !== 'aim' || !cn) return;
+  const P = mo.pivot;
+  const a = cannonAim(mo, game.time);
+  // mount
+  ctx.save();
+  ctx.translate(P.x, P.y);
+  ctx.fillStyle = '#44403c';
+  ctx.beginPath(); ctx.moveTo(-16, 14); ctx.lineTo(0, -8); ctx.lineTo(16, 14); ctx.closePath(); ctx.fill();
+  // aim fan rails (subtle)
+  ctx.strokeStyle = 'rgba(214,211,209,0.25)';
+  ctx.setLineDash([3, 6]);
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(mo.minA) * cn.len, Math.sin(mo.minA) * cn.len); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(mo.maxA) * cn.len, Math.sin(mo.maxA) * cn.len); ctx.stroke();
+  ctx.setLineDash([]);
+  // barrel
+  ctx.rotate(a);
+  if (!drawSprite(ctx, 'cannon', 0, -11, cn.len + 10, 24)) {
+    ctx.fillStyle = '#78350f';
+    ctx.fillRect(0, -9, cn.len, 18);
+    ctx.fillStyle = '#a16207';
+    for (let x = 10; x < cn.len; x += 16) ctx.fillRect(x, -9, 3, 18);
+    ctx.fillStyle = '#44403c';
+    ctx.fillRect(cn.len - 8, -11, 8, 22);
+  }
+  // breech glow while loaded
+  if (cn.loaded) {
+    const pulse = 0.55 + 0.45 * Math.sin(t / 90);
+    ctx.fillStyle = `rgba(252,211,77,${0.5 * pulse})`;
+    ctx.beginPath(); ctx.arc(-2, 0, 10, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+  // blast flash off the muzzle for a beat after the shot
+  if (cn.lastFiredAt && game.time - cn.lastFiredAt < 180) {
+    const k = 1 - (game.time - cn.lastFiredAt) / 180;
+    const mx = P.x + Math.cos(a) * (cn.len + 8), my = P.y + Math.sin(a) * (cn.len + 8);
+    if (!drawSprite(ctx, 'blast', mx, my, 44, 44)) {
+      ctx.globalAlpha = k;
+      ctx.fillStyle = '#fcd34d';
+      ctx.beginPath(); ctx.arc(mx, my, 8 + (1 - k) * 22, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+/**
+ * Catapult: a trebuchet frame with the arm reposing on its state clocks; the spoon cup rides
+ * the tip and the frame shows a release flash for a beat after the throw.
+ */
+function drawCatapult(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnType<typeof meta>, game: Game, _t: number) {
+  const ct = md.catapult;
+  if (!ct) return;
+  const a = catapultAngle(ct, game.time);
+  const P = { x: ct.px, y: ct.py };
+  ctx.save();
+  // A-frame stand
+  ctx.strokeStyle = '#78350f';
+  ctx.lineWidth = 7;
+  ctx.beginPath(); ctx.moveTo(P.x - 26, P.y + 34); ctx.lineTo(P.x, P.y - 6); ctx.lineTo(P.x + 26, P.y + 34); ctx.stroke();
+  ctx.strokeStyle = '#451a03';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(P.x - 34, P.y + 34); ctx.lineTo(P.x + 34, P.y + 34); ctx.stroke();
+  // arm with spoon
+  ctx.translate(P.x, P.y);
+  ctx.rotate(a);
+  if (!drawSprite(ctx, 'catapult', 0, -7, ct.len + 22, 26)) {
+    ctx.fillStyle = '#92610f';
+    ctx.fillRect(0, -5, ct.len, 10);
+    ctx.strokeStyle = '#451a03';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(0, -5, ct.len, 10);
+    // spoon cup at the tip
+    ctx.fillStyle = '#5b3a12';
+    ctx.beginPath();
+    ctx.arc(ct.len, 0, 15, 0, Math.PI, false);
+    ctx.fill();
+  }
+  ctx.restore();
+  // release flash
+  if (ct.lastFiredAt && game.time - ct.lastFiredAt < 160) {
+    const k = 1 - (game.time - ct.lastFiredAt) / 160;
+    ctx.globalAlpha = k * 0.7;
+    ctx.strokeStyle = '#fda4af';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(P.x, P.y, 30 + (1 - k) * 30, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+}
+
+/** Flipper: a lacquered bat on a brass pivot, pose read from its firedAt clock. */
+function drawFlipper(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnType<typeof meta>, t: number) {
+  const fl = md.flipper;
+  if (!fl) return;
+  const a = flipperAngle(fl, t);
+  ctx.save();
+  ctx.translate(fl.px, fl.py);
+  ctx.rotate(a);
+  if (!drawSprite(ctx, 'flipper', 2, -8, fl.len, 16)) {
+    ctx.fillStyle = '#9f1239';
+    ctx.strokeStyle = '#4c0519';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(0, -6, fl.len, 12, 6);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#fda4af';
+    ctx.fillRect(fl.len - 12, -6, 10, 12);
+  }
+  ctx.restore();
+  // pivot cap
+  ctx.fillStyle = '#b45309';
+  ctx.beginPath(); ctx.arc(fl.px, fl.py, 7, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#fde68a';
+  ctx.beginPath(); ctx.arc(fl.px, fl.py, 3, 0, Math.PI * 2); ctx.fill();
+}
+
+/** Slingshot kicker: a rubber-banded wedge on the wall; the band snaps back for a beat after a kick. */
+function drawSling(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnType<typeof meta>, game: Game, _t: number) {
+  const sl = md.sling;
+  if (!sl) return;
+  const fa = Math.atan2(sl.facing.y, sl.facing.x);
+  const c = _b.position;
+  const flash = game.time - sl.flashAt < 260;
+  ctx.save();
+  ctx.translate(c.x, c.y);
+  ctx.rotate(fa + Math.PI); // artwork faces along the kick normal
+  if (!drawSprite(ctx, 'sling', -30, -34, 60, 68)) {
+    ctx.fillStyle = '#713f12';
+    ctx.strokeStyle = '#422006';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(-26, -22); ctx.lineTo(26, -22); ctx.lineTo(0, 26); ctx.closePath(); ctx.fill(); ctx.stroke();
+  }
+  // the rubber band
+  const snap = flash ? 6 : 0;
+  ctx.strokeStyle = flash ? '#fef08a' : '#dc2626';
+  ctx.lineWidth = flash ? 6 : 4;
+  ctx.beginPath();
+  ctx.moveTo(-26 - snap, -18);
+  ctx.quadraticCurveTo(0, -10 - snap * 2, 26 + snap, -18);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** Scoop: a brass pocket lip with a chevron showing the kick direction; dimmed while it holds a rider. */
+
+// ---------------- MB-10E: fields and surfaces ----------------
+
+// the five fields share a clock pulse with the engine: same phase, same windows
+function fieldPulse(t: number, pulseMs: number, phaseMs: number): number {
+  if (pulseMs <= 0) return 1;
+  return 0.35 + 0.65 * (0.5 + 0.5 * Math.cos((2 * Math.PI * (t + phaseMs)) / pulseMs));
+}
+
+function drawWind(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
+  const w = md.wind;
+  if (!w) return;
+  const { x: lx, y: ly, w: bw, h: bh } = w.box;
+  const k = fieldPulse(t, w.pulseMs, w.phaseMs);
+  ctx.save();
+  ctx.globalAlpha = 0.06 + 0.1 * k;
+  ctx.fillStyle = '#38bdf8';
+  ctx.fillRect(lx, ly, bw, bh);
+  ctx.globalAlpha = 1;
+  // drift ribbons sliding along the fan's push
+  const vx = w.ux, vy = w.uy;
+  ctx.strokeStyle = `rgba(125,211,252,${0.25 + 0.5 * k})`;
+  ctx.lineWidth = 2;
+  const travel = ((t * 0.14 * k) % Math.max(bh, 1)) | 0;
+  for (let i = 0; i < 4; i++) {
+    const oy = ((travel + i * (bh / 4)) % bh) - 6;
+    const cx = lx + bw / 2;
+    const cy = ly + oy;
+    ctx.beginPath();
+    ctx.moveTo(cx - 12 + vx * 6, cy - vy * 6);
+    ctx.quadraticCurveTo(cx, cy - 2, cx + vx * 22, cy + vy * 22);
+    ctx.stroke();
+  }
+  // the fan box rides the leading corner of the field
+  const fx = vx <= 0 ? lx + 14 : lx + bw - 14;
+  const fy = vy >= 0 ? ly + 12 : ly + bh - 12;
+  ctx.translate(fx, fy);
+  if (!drawSprite(ctx, 'wind', -14, -10, 28, 20)) {
+    ctx.fillStyle = '#57534e';
+    ctx.fillRect(-14, -10, 28, 20);
+    ctx.fillStyle = '#fbbf24';
+    ctx.fillRect(-4, -4, 8, 8);
+  }
+  ctx.restore();
+  void b;
+}
+
+function drawMagnet(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
+  const g = md.magnet;
+  if (!g) return;
+  const on = g.periodMs <= 0 || (((t + g.phaseMs) % g.periodMs + g.periodMs) % g.periodMs) < g.periodMs / 2;
+  ctx.save();
+  ctx.translate(g.cx, g.cy);
+  const pulse = on ? 0.4 + 0.2 * Math.sin(t / 180) : 0.08;
+  ctx.globalAlpha = Math.max(0.05, pulse);
+  ctx.strokeStyle = '#fca5a5';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(0, 0, g.r, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(0, 0, g.r * (0.72 + 0.05 * Math.sin(t / 220)), 0, Math.PI * 2); ctx.stroke();
+  ctx.globalAlpha = 1;
+  if (!drawSprite(ctx, 'magnet', -24, -22, 48, 45)) {
+    ctx.fillStyle = '#ef4444';
+    ctx.fillRect(-20, -2, 10, 16);
+    ctx.fillRect(10, -2, 10, 16);
+    ctx.beginPath(); ctx.arc(0, 0, 16, Math.PI, 0); ctx.stroke();
+  }
+  ctx.restore();
+  void b;
+}
+
+function drawMud(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
+  const mud = md.mud;
+  if (!mud) return;
+  const cx = b.position.x, cy = b.position.y;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(b.angle);
+  const len = mud.box.w * Math.abs(Math.cos(b.angle)) + mud.box.h * Math.abs(Math.sin(b.angle)) || mud.box.w;
+  void len;
+  // glossy tar band centred on the sensor band (18px tall); painted sheen over the base fill
+  ctx.fillStyle = '#1c1917';
+  ctx.beginPath(); ctx.ellipse(0, 0, mud.box.w / 2, 9, 0, 0, Math.PI * 2); ctx.fill();
+  drawSprite(ctx, 'mud', 0, 0, mud.box.w + 26, 26);
+  ctx.fillStyle = '#44403c';
+  const wob = Math.sin(t / 500) * 2;
+  ctx.beginPath(); ctx.ellipse(-mud.box.w / 5, -2 + wob, 4, 2.4, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(mud.box.w / 6, 1 - wob, 3, 2, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(120,113,108,0.5)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.ellipse(0, 0, mud.box.w / 2, 9, 0, Math.PI, 0); ctx.stroke();
+  ctx.restore();
+}
+
+function drawPool(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
+  const po = md.pool;
+  if (!po) return;
+  const lx = po.box.x, hx = po.box.x + po.box.w, top = po.topY;
+  // basin clay banks
+  ctx.fillStyle = '#475569';
+  ctx.fillRect(lx - 10, top, 10, po.depth + 12);
+  ctx.fillRect(hx, top, 10, po.depth + 12);
+  // water slab
+  ctx.fillStyle = 'rgba(3,105,161,0.55)';
+  ctx.fillRect(lx, top + 2, hx - lx, po.depth + 14);
+  // painted surface sheen: the puddle art stretched over the pool mouth
+  drawSprite(ctx, 'pool', (lx + hx) / 2, top + 4, (hx - lx) + 22, 22);
+  // wobbling surface line
+  ctx.strokeStyle = '#7dd3fc';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let x = lx; x <= hx; x += 8) {
+    const y = top + 2 + Math.sin((x + t / 12) / 14) * 2;
+    if (x === lx) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  // slow ripples deeper down
+  ctx.strokeStyle = 'rgba(56,189,248,0.35)';
+  ctx.lineWidth = 1.5;
+  for (let d = 18; d < po.depth; d += 18) {
+    ctx.beginPath();
+    for (let x = lx + 6; x <= hx - 6; x += 14) {
+      const y = top + d + Math.sin((x + t / 20) / 18) * 1.4;
+      if (x === lx + 6) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  void b;
+}
+
+function drawGeyser(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
+  const gy = md.geyser;
+  if (!gy) return;
+  const p = b.position;
+  const tt = (((t + gy.phaseMs) % gy.periodMs) + gy.periodMs) % gy.periodMs;
+  const erupting = tt >= 900 && tt < 900 + gy.burstMs;
+  ctx.save();
+  ctx.translate(p.x, p.y - 8); // sprite sits on the mound
+  if (!drawSprite(ctx, 'geyser', -17, -20, 34, 44)) {
+    ctx.fillStyle = '#78350f';
+    ctx.beginPath(); ctx.moveTo(-12, 16); ctx.lineTo(0, -12); ctx.lineTo(12, 16); ctx.fill();
+  }
+  if (erupting) {
+    const k = 0.6 + 0.4 * Math.sin(t / 60);
+    ctx.globalAlpha = 0.55 * k;
+    ctx.fillStyle = '#e2e8f0';
+    for (let yi = 20; yi < gy.h; yi += 26) {
+      const wbb = 7 + (yi / gy.h) * 7;
+      ctx.beginPath();
+      ctx.ellipse(Math.sin((yi + t / 15) / 30) * 5, -yi, wbb, 12, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  } else if (tt < 900) {
+    // the warning bubble beat before the blast
+    ctx.fillStyle = 'rgba(226,232,240,0.6)';
+    const beep = (tt / 900) * 2.2 % 1;
+    ctx.beginPath(); ctx.arc(0, -12 - beep * 12, 2.6, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+
+// ---------------- MB-10F: big set pieces ----------------
+
+function drawTrampoline(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, _t: number) {
+  const tp = md.trampoline;
+  if (!tp) return;
+  const sag = md.tramp?.depth ?? 0;
+  ctx.save();
+  ctx.translate(b.position.x, b.position.y);
+  // wooden posts (painted art, mirrored at the far end); procedural frame if art is missing
+  if (!(drawSprite(ctx, 'trampoline-post-l', -tp.half - 12, -12, 32, 44) &&
+        drawSprite(ctx, 'trampoline-post-r', tp.half + 12, -12, 32, 44))) {
+    ctx.fillStyle = '#78350f';
+    ctx.fillRect(-tp.half - 10, -4, 10, 14);
+    ctx.fillRect(tp.half, -4, 10, 14);
+  }
+  // the net: a catenary that deepens when it takes a landing
+  ctx.strokeStyle = '#d4a04a';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  const dip = 3 + sag * 16;
+  ctx.moveTo(-tp.half, 0);
+  ctx.quadraticCurveTo(0, dip * 2, tp.half, 0);
+  ctx.stroke();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(212,160,74,0.6)';
+  for (let k = 1; k < 6; k++) {
+    const xk = -tp.half + (2 * tp.half * k) / 6;
+    ctx.beginPath();
+    ctx.moveTo(xk, 0);
+    ctx.quadraticCurveTo(xk * 0.5, dip, xk * -0.5 * -1 + xk * 0.18, dip);
+    ctx.stroke();
+  }
+  ctx.restore();
+  void b;
+}
+
+function drawTurnstile(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, _t: number) {
+  const ts = md.turnstile;
+  if (!ts) return;
+  ctx.save();
+  ctx.translate(b.position.x, b.position.y);
+  ctx.rotate(b.angle);
+  // painted rotor art when it matches the arm count (the art is a 4-arm X)
+  if (ts.arms === 4 && drawSprite(ctx, 'turnstile', 0, 0, ts.r * 2 + 16, ts.r * 2 + 16)) {
+    ctx.restore();
+    void b;
+    return;
+  }
+  // hub
+  ctx.fillStyle = '#44403c';
+  ctx.beginPath(); ctx.arc(0, 0, 9, 0, Math.PI * 2); ctx.fill();
+  // blades (art shows two; the physical bar matches two; the rest are painted)
+  for (let k = 0; k < ts.arms; k++) {
+    ctx.save();
+    ctx.rotate((k / ts.arms) * Math.PI);
+    ctx.strokeStyle = k < 2 ? '#8a5a2e' : 'rgba(138,90,46,0.55)';
+    ctx.lineWidth = k < 2 ? 11 : 10;
+    ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-ts.r, 0); ctx.lineTo(ts.r, 0); ctx.stroke();
+    ctx.restore();
+  }
+  ctx.fillStyle = '#b45309';
+  ctx.beginPath(); ctx.arc(0, 0, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  void b;
+}
+
+function drawTargets(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
+  const tg = md.target;
+  if (!tg) return;
+  const p = b.position;
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  const down = tg.dropAt >= 0;
+  if (!down) {
+    // standing pin: painted art, base resting on the lane
+    if (drawSprite(ctx, 'target-pin', 0, -9, 19, 25)) {
+      ctx.restore();
+      return;
+    }
+    // standing pin: red face, cream cap
+    ctx.fillStyle = '#b91c1c';
+    ctx.fillRect(-9, -13, 18, 14);
+    ctx.fillStyle = '#fde68a';
+    ctx.fillRect(-9, -13, 18, 4);
+    ctx.strokeStyle = '#450a0a';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-9, -13, 18, 14);
+  } else {
+    // down: fold flat with a soft settle wobble right after the hit
+    const age = Math.min(1, (t - tg.dropAt) / 200);
+    ctx.fillStyle = 'rgba(185,28,28,0.35)';
+    ctx.fillRect(-9, -4 + age * 2, 18, 5);
+  }
+  ctx.restore();
+}
+
+function drawVortex(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
+  const vo = md.vortex;
+  if (!vo) return;
+  ctx.save();
+  ctx.translate(vo.cx, vo.cy);
+  // painted funnel bowl beneath the field animation
+  drawSprite(ctx, 'vortex', 0, 0, vo.r * 2.35, vo.r * 2.35);
+  // spiral: three packets of dash-arcs spinning on the clock
+  for (let k = 0; k < 3; k++) {
+    ctx.save();
+    ctx.rotate((t / 900) * Math.PI * 2 * (0.8 + k * 0.25) * (k % 2 ? -1 : 1) + (k * Math.PI * 2) / 3);
+    ctx.strokeStyle = ['rgba(125,211,252,0.5)', 'rgba(167,139,250,0.45)', 'rgba(244,114,182,0.4)'][k];
+    ctx.lineWidth = 5 - k;
+    ctx.beginPath();
+    const r0 = vo.holeR + (vo.r - vo.holeR) * (1 - k * 0.22);
+    ctx.arc(0, 0, r0, 0.8, Math.PI * 2 - 1.6);
+    ctx.stroke();
+    ctx.restore();
+  }
+  // the drain: dark ring that gulps
+  ctx.fillStyle = '#0c0a09';
+  ctx.beginPath(); ctx.arc(0, 0, vo.holeR, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#e8813a';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(0, 0, vo.holeR + 2, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+  void b;
+}
+
+function drawPlatform(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
+  const mo = md.motion;
+  if (!mo || mo.mode !== 'platform') return;
+  const p = b.position;
+  // the rail between its endpoints (the winch route)
+  ctx.save();
+  ctx.strokeStyle = 'rgba(120,113,108,0.5)';
+  ctx.setLineDash([6, 6]);
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(mo.a.x, mo.a.y + 10); ctx.lineTo(mo.b.x, mo.b.y + 10); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.translate(p.x, p.y);
+  const w = b.bounds.max.x - b.bounds.min.x;
+  if (!drawSprite(ctx, 'platform', 0, -12, w + 10, (w + 10) * 0.43)) {
+    // wooden plank with iron shoes + chain loops
+    ctx.fillStyle = '#8a5a2e';
+    ctx.fillRect(-w / 2, -8, w, 16);
+    ctx.fillStyle = '#b45309';
+    ctx.fillRect(-w / 2, -8, w, 4);
+    ctx.strokeStyle = '#3f2a14';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-w / 2, -8, w, 16);
+    ctx.strokeStyle = '#57534e';
+    ctx.beginPath(); ctx.moveTo(-w / 3, -8); ctx.lineTo(-w / 3, -26); ctx.moveTo(w / 3, -8); ctx.lineTo(w / 3, -26); ctx.stroke();
+  }
+  ctx.restore();
+  void t;
+}
+
+function drawScoop(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
+  const sc = md.scoop;
+  if (!sc) return;
+  const p = b.position;
+  const busy = sc.loadedAt !== null;
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.globalAlpha = busy ? 0.65 : 1;
+  if (!drawSprite(ctx, 'scoop', -20, -12, 40, 24)) {
+    ctx.fillStyle = '#0c0a09';
+    ctx.beginPath(); ctx.ellipse(0, 0, 18, 10, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#b45309';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.ellipse(0, 0, 18, 10, 0, Math.PI, 0, false); ctx.stroke();
+  }
+  // direction chevrons (or the subway portal)
+  if (md.exit) {
+    const bob = Math.sin(t / 300) * 2;
+    ctx.strokeStyle = '#7dd3fc';
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(-12, 8 + bob); ctx.lineTo(12, 8 + bob); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-8, 20 - bob); ctx.lineTo(8, 20 - bob); ctx.stroke();
+  } else {
+    const pulse = 0.6 + 0.4 * Math.sin(t / 260);
+    ctx.rotate(sc.deg);
+    ctx.strokeStyle = `rgba(253,224,71,${pulse})`;
+    ctx.lineWidth = 4;
+    for (let i = 0; i < 2; i++) {
+      const o = 16 + i * 10;
+      ctx.beginPath(); ctx.moveTo(-8, -o); ctx.lineTo(0, -o - 7); ctx.lineTo(8, -o); ctx.stroke();
+    }
+  }
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+function drawWheel(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, game: Game, t: number) {
+  const motion = md.motion;
+  if (!motion || motion.mode !== 'spin' || !md.wheel) return;
+  const P = motion.pivot;
+  const r = motion.radius;
+  const n = md.wheel.buckets;
+  const taus = Math.PI * 2;
+  // drips under the wheel (wet skin); the frame counter keeps them cheap
+  if (t % 3 < 1) {
+    ctx.fillStyle = 'rgba(125,211,252,0.5)';
+    const dx = P.x + Math.sin(t * 0.0013) * r * 0.5;
+    ctx.fillRect(dx, P.y + r + 4, 2, 6);
+    ctx.fillRect(dx + 14, P.y + r + 1, 2, 4);
+  }
+  ctx.save();
+  ctx.translate(P.x, P.y);
+  ctx.rotate(b.angle);
+  // rim + spokes
+  ctx.strokeStyle = '#6b4423';
+  ctx.lineWidth = 7;
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, taus); ctx.stroke();
+  ctx.strokeStyle = '#4b5563';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, taus); ctx.stroke();
+  for (let i = 0; i < n; i++) {
+    const a = (i * taus) / n;
+    ctx.strokeStyle = '#6b4423';
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); ctx.stroke();
+    // bucket paddle: a little open box on the rim, riding lit while occupied
+    const busy = md.wheel.slots[i] > game.time;
+    ctx.save();
+    ctx.translate(Math.cos(a) * r, Math.sin(a) * r);
+    ctx.rotate(a + Math.PI / 2);
+    ctx.fillStyle = busy ? '#d4a04a' : '#8a5a2e';
+    ctx.strokeStyle = '#3f2a14';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.rect(-11, -8, 22, 16);
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+  // hub
+  ctx.fillStyle = '#44403c';
+  ctx.beginPath(); ctx.arc(0, 0, 13, 0, taus); ctx.fill();
+  ctx.fillStyle = '#a8a29e';
+  ctx.beginPath(); ctx.arc(0, 0, 5, 0, taus); ctx.fill();
+  const img = sprite('wheel');
+  if (img) {
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.drawImage(img, -r - 8, -r - 8, (r + 8) * 2, (r + 8) * 2);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+/**
+ * Screw lift: a translucent tube with the auger helix turning inside and little windows the
+ * rider slides past. The entry collar shows the queue: full tubes dim.
+ */
+function drawScrew(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnType<typeof meta>, t: number) {
+  const sc = md.screw;
+  if (!sc) return;
+  const a = sc.a, c = sc.b;
+  const len = Math.hypot(c.x - a.x, c.y - a.y) || 1;
+  const ang = Math.atan2(c.y - a.y, c.x - a.x);
+  ctx.save();
+  ctx.translate(a.x, a.y);
+  ctx.rotate(ang);
+  // tube shell
+  ctx.fillStyle = 'rgba(125,211,252,0.14)';
+  ctx.strokeStyle = '#57534e';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.roundRect(0, -14, len, 28, 8); ctx.fill(); ctx.stroke();
+  // auger helix — a sine spine running the spiral, turning with the frame clock
+  ctx.strokeStyle = '#a16207';
+  ctx.lineWidth = 3.5;
+  ctx.beginPath();
+  for (let x = 3; x < len - 3; x += 4) {
+    const y = Math.sin((x / 14) + t * 0.004) * 9;
+    if (x === 3) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  // windows
+  ctx.fillStyle = 'rgba(2,6,23,0.55)';
+  for (let x = 18; x < len - 6; x += 44) ctx.fillRect(x, -7, 14, 14);
+  // entry collar + crank housing
+  ctx.fillStyle = '#44403c';
+  ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#a8a29e'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI * 2); ctx.stroke();
+  if (!drawSprite(ctx, 'crusher-house', len - 10, 18, 44, 36)) {
+    ctx.fillStyle = '#57534e';
+    ctx.fillRect(len - 26, 12, 30, 22);
+  }
+  ctx.restore();
+}
+
+/** Seesaw: the plank body plus the stone pivot it swings on (pivot drawn under it). */
+function drawSeesaw(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>) {
+  const ss = md.seesaw;
+  if (!ss) return;
+  const P = b.position;
+  // stone pivot
+  ctx.fillStyle = '#78716c';
+  ctx.strokeStyle = '#44403c';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(P.x - 18, P.y + 34);
+  ctx.lineTo(P.x, P.y + 2);
+  ctx.lineTo(P.x + 18, P.y + 34);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  // plank
+  ctx.save();
+  ctx.translate(P.x, P.y);
+  ctx.rotate(ss.angle);
+  if (!drawSprite(ctx, 'seesaw', 0, 0, ss.len * 1.06, 16)) {
+    ctx.fillStyle = '#8a5a2e';
+    ctx.strokeStyle = '#3f2a14';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.roundRect(-ss.len / 2, -7, ss.len, 14, 4); ctx.fill(); ctx.stroke();
+    for (let x = -ss.len / 2 + 24; x < ss.len / 2; x += 48) {
+      ctx.fillStyle = '#44403c';
+      ctx.fillRect(x, -7, 6, 14);
+    }
+  }
+  // iron pin
+  ctx.fillStyle = '#a8a29e';
+  ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+/** Rope bridge plank: timber slat with rope ties; end planks grow an anchor post. */
+function drawBridgePlank(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>) {
+  const br = md.bridge;
+  if (!br) return;
+  const angle = b.angle;
+  ctx.save();
+  ctx.translate(b.position.x, b.position.y);
+  ctx.rotate(angle);
+  if (!drawSprite(ctx, 'bridge', 0, 0, br.plankLen, 12)) {
+    ctx.fillStyle = '#a3653d';
+    ctx.strokeStyle = '#51321c';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.roundRect(-br.plankLen / 2, -4.5, br.plankLen, 9, 2); ctx.fill(); ctx.stroke();
+  }
+  // rope ties at the slat ends
+  ctx.strokeStyle = '#b45309';
+  ctx.lineWidth = 2;
+  for (const sx of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo((br.plankLen / 2 - 5) * sx, -8);
+    ctx.lineTo((br.plankLen / 2 - 5) * sx, 8);
+    ctx.stroke();
+  }
+  ctx.restore();
+  // anchor posts at the chain ends
+  if (br.idx === 0 || br.idx === br.n - 1) {
+    const anchor = br.anchor[br.idx === 0 ? 0 : 1];
+    ctx.fillStyle = '#6b4423';
+    ctx.fillRect(anchor.x - 5, anchor.y - 34, 10, 36);
+    ctx.strokeStyle = '#3f2a14';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(anchor.x - 5, anchor.y - 34, 10, 36);
+    ctx.fillStyle = '#a8a29e';
+    ctx.beginPath(); ctx.arc(anchor.x, anchor.y - 36, 5, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+/**
+ * Conveyor belt: an iron deck with rollers at both ends and a moving chevron tread; the tread
+ * direction (and its clock flip) matches what the engine pushes with.
+ */
+function drawConveyor(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnType<typeof meta>, game: Game, t: number) {
+  const surface = md.surface;
+  const belt = md.belt;
+  if (!surface || !belt) return;
+  const dir = beltDir(belt, game.time);
+  const tx = surface.tangent.x, ty = surface.tangent.y;
+  const L = surface.length;
+  const mx = (surface.start.x + surface.end.x) / 2, my = (surface.start.y + surface.end.y) / 2;
+  ctx.save();
+  ctx.translate(mx, my);
+  ctx.rotate(Math.atan2(ty, tx));
+  // deck
+  if (!drawSprite(ctx, 'conveyor', 0, -4, L * 1.02, 16)) {
+    ctx.fillStyle = '#1f2937';
+    ctx.strokeStyle = '#0b1220';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(-L / 2, -9, L, 18, 5); ctx.fill(); ctx.stroke();
+  }
+  // rollers
+  ctx.fillStyle = '#6b7280';
+  ctx.strokeStyle = '#374151';
+  ctx.lineWidth = 2;
+  for (const sx of [-1, 1]) {
+    ctx.beginPath(); ctx.arc((L / 2 - 8) * sx * 1, 0, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.save();
+    ctx.translate((L / 2 - 8) * sx, 0);
+    ctx.rotate(dir * t * 0.01);
+    ctx.beginPath(); ctx.moveTo(0, -7); ctx.lineTo(0, 7); ctx.stroke();
+    ctx.restore();
+  }
+  // moving chevron tread
+  const offset = posMod(dir * t * belt.v * 60, 46);
+  ctx.strokeStyle = 'rgba(250,204,21,0.75)';
+  ctx.lineWidth = 3;
+  for (let x = -L / 2 + offset; x < L / 2 - 8; x += 46) {
+    ctx.beginPath();
+    ctx.moveTo(x - 6, -6);
+    ctx.lineTo(x + 5, 0);
+    ctx.lineTo(x - 6, 6);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function posMod(v: number, m: number): number {
+  return ((v % m) + m) % m;
 }

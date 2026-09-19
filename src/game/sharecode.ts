@@ -19,7 +19,19 @@ export const SHARE_VERSION = 1;
 export const SHARE_PREFIX = `${SHARE_VERSION}-`; // e.g. "1-"
 const SHORT_KEY_PREFIX = 'heavy-metal-gp:share:';
 
-const PIECE_TYPES = ['ramp','ice','curve','loop','hoop','wrecker','pad','boost','spinner','breakable','peg','ppeg','itembox','bucket','wall','block'] as const;
+// Append-only: new piece types go at the END so old codes keep decoding (`PIECE_TO_ID` is positional).
+const PIECE_TYPES = ['ramp','ice','curve','loop','hoop','wrecker','pad','boost','spinner','breakable','peg','ppeg','itembox','bucket','wall','block',
+  // MB-10A: shortcuts and secrets
+  'barricade','tunnel','crumble','trapdoor','switch',
+  // MB-10B: traps, hazards and treasure
+  'blade','saw','crusher','boulder','mace',
+  // MB-10C: movers and gizmos
+  'wheel','screw','conveyor','seesaw','bridge',
+  // MB-10D: launchers
+  'cannon','catapult','flipper','sling','scoop',
+  // MB-10E: fields and surfaces
+  'wind','magnet','mud','pool','geyser',
+  'trampoline','turnstile','targets','vortex','platform'] as const;
 type PieceTypeName = typeof PIECE_TYPES[number];
 const PIECE_TO_ID = Object.fromEntries(PIECE_TYPES.map((t,i)=>[t,i])) as Record<PieceTypeName, number>;
 
@@ -218,6 +230,210 @@ function encodeBinary(def: TrackDef): Uint8Array {
         writeUVarint(out, Math.round(p.w)); writeUVarint(out, Math.round(p.h));
         break;
       }
+      // ---- MB-10A ----
+      case 'barricade':
+      case 'crumble': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, Math.round(p.w)); writeUVarint(out, Math.round(p.h));
+        writeUVarint(out, Math.round(p.tough));
+        break;
+      }
+      case 'tunnel': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, Math.round(p.exit[0])); writeUVarint(out, Math.round(p.exit[1]));
+        writeSVarint(out, Math.round(p.edir[0] * 100)); writeSVarint(out, Math.round(p.edir[1] * 100));
+        writeUVarint(out, Math.round(p.ms));
+        writeUVarint(out, Math.round(p.speed * 10));
+        writeUVarint(out, p.two ? 1 : 0);
+        break;
+      }
+      case 'trapdoor': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, Math.round(p.w));
+        writeUVarint(out, p.hinge === 1 ? 1 : 0);
+        writeUVarint(out, p.mode === 'weight' ? 1 : 0);
+        writeUVarint(out, Math.round(p.open)); writeUVarint(out, Math.round(p.closed));
+        writeSVarint(out, Math.round(p.phase));
+        writeUVarint(out, Math.round(p.kg * 100));
+        writeUVarint(out, Math.round(p.hold));
+        break;
+      }
+      case 'switch': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, Math.round(p.len));
+        writeUVarint(out, Math.round(p.angle * 1000));
+        writeUVarint(out, p.side);
+        break;
+      }
+      // MB-10B traps / hazards / treasure
+      case 'blade': {
+        writeUVarint(out, Math.round(p.pivot[0])); writeUVarint(out, Math.round(p.pivot[1]));
+        writeUVarint(out, Math.round(p.len)); writeUVarint(out, Math.round(p.amp * 1000));
+        writeUVarint(out, Math.round(p.period)); writeUVarint(out, Math.round(p.phase * 1000));
+        writeUVarint(out, Math.round(p.thin));
+        break;
+      }
+      case 'saw': {
+        writeUVarint(out, Math.round(p.a[0])); writeUVarint(out, Math.round(p.a[1]));
+        writeUVarint(out, Math.round(p.b[0])); writeUVarint(out, Math.round(p.b[1]));
+        writeUVarint(out, Math.round(p.r)); writeUVarint(out, Math.round(p.spin));
+        writeUVarint(out, Math.round(p.period)); writeUVarint(out, Math.round(p.phase * 1000));
+        break;
+      }
+      case 'crusher': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, Math.round(p.w)); writeUVarint(out, Math.round(p.travel * 1000));
+        writeUVarint(out, Math.round(p.period)); writeUVarint(out, Math.round(p.floor * 1000));
+        writeUVarint(out, Math.round(p.phase * 1000));
+        break;
+      }
+      case 'boulder': {
+        writeUVarint(out, p.pts.length);
+        for (const q of p.pts) { writeUVarint(out, Math.round(q[0])); writeUVarint(out, Math.round(q[1])); }
+        writeUVarint(out, Math.round(p.r)); writeUVarint(out, Math.round(p.interval));
+        writeUVarint(out, Math.round(p.rest)); writeUVarint(out, Math.round(p.phase));
+        break;
+      }
+      case 'mace': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, Math.round(p.arm)); writeUVarint(out, Math.round(p.arc * 1000));
+        writeUVarint(out, Math.round(p.sweep)); writeUVarint(out, Math.round(p.rest));
+        writeUVarint(out, Math.round(p.phase)); writeUVarint(out, Math.round(p.r));
+        break;
+      }
+      // MB-10C movers / gizmos
+      case 'wheel': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, Math.round(p.r)); writeUVarint(out, Math.round(p.buckets));
+        writeUVarint(out, Math.round(p.rpm * 100)); writeUVarint(out, p.dir);
+        writeUVarint(out, Math.round(p.release * 1000)); writeUVarint(out, Math.round(p.phase * 1000));
+        break;
+      }
+      case 'screw': {
+        writeUVarint(out, Math.round(p.a[0])); writeUVarint(out, Math.round(p.a[1]));
+        writeUVarint(out, Math.round(p.b[0])); writeUVarint(out, Math.round(p.b[1]));
+        writeUVarint(out, Math.round(p.ms)); writeUVarint(out, Math.round(p.cap));
+        break;
+      }
+      case 'conveyor': {
+        writeUVarint(out, Math.round(p.a[0])); writeUVarint(out, Math.round(p.a[1]));
+        writeUVarint(out, Math.round(p.b[0])); writeUVarint(out, Math.round(p.b[1]));
+        writeUVarint(out, Math.round(p.v * 100)); writeUVarint(out, Math.round(p.flipMs));
+        writeUVarint(out, p.dir);
+        break;
+      }
+      case 'seesaw': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, Math.round(p.len)); writeUVarint(out, Math.round(p.lim * 1000));
+        writeUVarint(out, Math.round(p.damp * 1000));
+        break;
+      }
+      case 'bridge': {
+        writeUVarint(out, Math.round(p.a[0])); writeUVarint(out, Math.round(p.a[1]));
+        writeUVarint(out, Math.round(p.b[0])); writeUVarint(out, Math.round(p.b[1]));
+        writeUVarint(out, Math.round(p.planks)); writeUVarint(out, Math.round(p.slack * 1000));
+        break;
+      }
+      // MB-10D launchers
+      case 'cannon': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, Math.round(p.aimMin)); writeUVarint(out, Math.round(p.aimMax));
+        writeUVarint(out, Math.round(p.power * 100)); writeUVarint(out, Math.round(p.auto));
+        writeUVarint(out, Math.round(p.phase));
+        break;
+      }
+      case 'catapult': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, Math.round(p.len)); writeUVarint(out, p.dir);
+        writeUVarint(out, Math.round(p.reload));
+        break;
+      }
+      case 'flipper': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, p.side); writeUVarint(out, Math.round(p.len));
+        writeUVarint(out, Math.round(p.strength * 100)); writeUVarint(out, Math.round(p.timer));
+        writeUVarint(out, Math.round(p.phase * 1000));
+        break;
+      }
+      case 'sling': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, Math.round(p.size)); writeUVarint(out, Math.round(p.facing));
+        writeUVarint(out, Math.round(p.strength * 100));
+        break;
+      }
+      case 'scoop': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, Math.round(p.deg)); writeUVarint(out, Math.round(p.hold));
+        writeUVarint(out, p.exit ? 1 : 0);
+        if (p.exit) {
+          writeUVarint(out, Math.round(p.exit[0])); writeUVarint(out, Math.round(p.exit[1]));
+          writeUVarint(out, Math.round(p.exit[2]));
+        }
+        break;
+      }
+      // MB-10E fields
+      case 'wind': {
+        writeUVarint(out, Math.round(p.a[0])); writeUVarint(out, Math.round(p.a[1]));
+        writeUVarint(out, Math.round(p.b[0])); writeUVarint(out, Math.round(p.b[1]));
+        writeUVarint(out, Math.round(p.dir)); writeUVarint(out, Math.round(p.str * 100));
+        writeUVarint(out, Math.round(p.pulse)); writeUVarint(out, Math.round(p.phase));
+        break;
+      }
+      case 'magnet': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, Math.round(p.r)); writeUVarint(out, Math.round(p.str * 100));
+        writeUVarint(out, Math.round(p.period)); writeUVarint(out, Math.round(p.phase));
+        break;
+      }
+      case 'mud': {
+        writeUVarint(out, Math.round(p.a[0])); writeUVarint(out, Math.round(p.a[1]));
+        writeUVarint(out, Math.round(p.b[0])); writeUVarint(out, Math.round(p.b[1]));
+        writeUVarint(out, Math.round(p.drag * 100));
+        break;
+      }
+      case 'pool': {
+        writeUVarint(out, Math.round(p.a[0])); writeUVarint(out, Math.round(p.a[1]));
+        writeUVarint(out, Math.round(p.b[0])); writeUVarint(out, Math.round(p.b[1]));
+        writeUVarint(out, Math.round(p.depth)); writeUVarint(out, Math.round(p.skip * 10));
+        break;
+      }
+      case 'geyser': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, Math.round(p.h)); writeUVarint(out, Math.round(p.period));
+        writeUVarint(out, Math.round(p.phase));
+        break;
+      }
+      // MB-10F: set pieces
+      case 'trampoline': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, Math.round(p.w)); writeUVarint(out, Math.round(p.tension * 100));
+        break;
+      }
+      case 'turnstile': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, Math.round(p.arms)); writeUVarint(out, Math.round(p.r));
+        writeUVarint(out, Math.round(p.mode)); writeUVarint(out, Math.round(p.period));
+        writeUVarint(out, Math.round(p.phase));
+        break;
+      }
+      case 'targets': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, Math.round(p.count)); writeUVarint(out, Math.round(p.reset));
+        break;
+      }
+      case 'vortex': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, Math.round(p.r)); writeUVarint(out, Math.round(p.spin * 100));
+        writeUVarint(out, Math.round(p.hole));
+        break;
+      }
+      case 'platform': {
+        writeUVarint(out, Math.round(p.ax)); writeUVarint(out, Math.round(p.ay));
+        writeUVarint(out, Math.round(p.bx)); writeUVarint(out, Math.round(p.by));
+        writeUVarint(out, Math.round(p.w)); writeUVarint(out, Math.round(p.travel));
+        writeUVarint(out, Math.round(p.pause)); writeUVarint(out, Math.round(p.phase));
+        break;
+      }
     }
   }
   return new Uint8Array(out);
@@ -342,6 +558,211 @@ function decodeBinary(bytes: Uint8Array): TrackDef {
       case 'block': {
         const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), w = readUVarint(bytes, pos), h = readUVarint(bytes, pos);
         p = { t:'block', x, y, w, h, ...(flip?{flip}:{}) };
+        break;
+      }
+      // ---- MB-10A ----
+      case 'barricade':
+      case 'crumble': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), w = readUVarint(bytes, pos), h = readUVarint(bytes, pos), tough = readUVarint(bytes, pos);
+        p = { t, x, y, w, h, tough, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'tunnel': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos);
+        const ex = readUVarint(bytes, pos), ey = readUVarint(bytes, pos);
+        const dx = readSVarint(bytes, pos)/100, dy = readSVarint(bytes, pos)/100;
+        const ms = readUVarint(bytes, pos), speed = readUVarint(bytes, pos)/10;
+        const two = readUVarint(bytes, pos) === 1;
+        p = { t:'tunnel', x, y, exit:[ex, ey] as Vec, edir:[dx, dy] as Vec, ms, speed, ...(two?{two}:{}) , ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'trapdoor': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), w = readUVarint(bytes, pos);
+        const hinge = readUVarint(bytes, pos) === 1 ? 1 : -1;
+        const mode = readUVarint(bytes, pos) === 1 ? 'weight' : 'timer';
+        const open = readUVarint(bytes, pos), closed = readUVarint(bytes, pos);
+        const phase = readSVarint(bytes, pos);
+        const kg = readUVarint(bytes, pos)/100, hold = readUVarint(bytes, pos);
+        p = { t:'trapdoor', x, y, w, hinge: hinge as -1|1, mode: mode as 'timer'|'weight', open, closed, phase, kg, hold, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'switch': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), len = readUVarint(bytes, pos);
+        const angle = readUVarint(bytes, pos)/1000, side = readUVarint(bytes, pos);
+        p = { t:'switch', x, y, len, angle, side: (side === 1 ? 1 : 0) as 0|1, ...(flip?{flip}:{}) };
+        break;
+      }
+      // MB-10B traps / hazards / treasure
+      case 'blade': {
+        const px = readUVarint(bytes, pos), py = readUVarint(bytes, pos);
+        const len = readUVarint(bytes, pos), amp = readUVarint(bytes, pos)/1000;
+        const period = readUVarint(bytes, pos), phase = readUVarint(bytes, pos)/1000;
+        const thin = readUVarint(bytes, pos);
+        p = { t:'blade', pivot:[px, py] as Vec, len, amp, period, phase, thin, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'saw': {
+        const ax = readUVarint(bytes, pos), ay = readUVarint(bytes, pos), bx = readUVarint(bytes, pos), by = readUVarint(bytes, pos);
+        const r = readUVarint(bytes, pos), spin = readUVarint(bytes, pos);
+        const period = readUVarint(bytes, pos), phase = readUVarint(bytes, pos)/1000;
+        p = { t:'saw', a:[ax, ay] as Vec, b:[bx, by] as Vec, r, spin, period, phase, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'crusher': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), w = readUVarint(bytes, pos);
+        const travel = readUVarint(bytes, pos)/1000, period = readUVarint(bytes, pos);
+        const floor = readUVarint(bytes, pos)/1000, phase = readUVarint(bytes, pos)/1000;
+        p = { t:'crusher', x, y, w, travel, period, floor, phase, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'boulder': {
+        const n = readUVarint(bytes, pos);
+        const pts: Vec[] = [];
+        for (let k = 0; k < n; k++) pts.push([readUVarint(bytes, pos), readUVarint(bytes, pos)] as Vec);
+        const r = readUVarint(bytes, pos), interval = readUVarint(bytes, pos);
+        const rest = readUVarint(bytes, pos), phase = readUVarint(bytes, pos);
+        p = { t:'boulder', pts, r, interval, rest, phase, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'mace': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), arm = readUVarint(bytes, pos);
+        const arc = readUVarint(bytes, pos)/1000, sweep = readUVarint(bytes, pos);
+        const rest = readUVarint(bytes, pos), phase = readUVarint(bytes, pos), r = readUVarint(bytes, pos);
+        p = { t:'mace', x, y, arm, arc, sweep, rest, phase, r, ...(flip?{flip}:{}) };
+        break;
+      }
+      // MB-10C movers / gizmos
+      case 'wheel': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), r = readUVarint(bytes, pos);
+        const buckets = readUVarint(bytes, pos), rpm = readUVarint(bytes, pos)/100, dir = readUVarint(bytes, pos);
+        const release = readUVarint(bytes, pos)/1000, phase = readUVarint(bytes, pos)/1000;
+        p = { t:'wheel', x, y, r, buckets, rpm, dir: (dir === 1 ? 1 : 0) as 0|1, release, phase, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'screw': {
+        const ax = readUVarint(bytes, pos), ay = readUVarint(bytes, pos), bx = readUVarint(bytes, pos), by = readUVarint(bytes, pos);
+        const ms = readUVarint(bytes, pos), cap = readUVarint(bytes, pos);
+        p = { t:'screw', a:[ax, ay] as Vec, b:[bx, by] as Vec, ms, cap, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'conveyor': {
+        const ax = readUVarint(bytes, pos), ay = readUVarint(bytes, pos), bx = readUVarint(bytes, pos), by = readUVarint(bytes, pos);
+        const v = readUVarint(bytes, pos)/100, flipMs = readUVarint(bytes, pos), dir = readUVarint(bytes, pos);
+        p = { t:'conveyor', a:[ax, ay] as Vec, b:[bx, by] as Vec, v, flipMs, dir: (dir === 1 ? 1 : 0) as 0|1, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'seesaw': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), len = readUVarint(bytes, pos);
+        const lim = readUVarint(bytes, pos)/1000, damp = readUVarint(bytes, pos)/1000;
+        p = { t:'seesaw', x, y, len, lim, damp, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'bridge': {
+        const ax = readUVarint(bytes, pos), ay = readUVarint(bytes, pos), bx = readUVarint(bytes, pos), by = readUVarint(bytes, pos);
+        const planks = readUVarint(bytes, pos), slack = readUVarint(bytes, pos)/1000;
+        p = { t:'bridge', a:[ax, ay] as Vec, b:[bx, by] as Vec, planks, slack, ...(flip?{flip}:{}) };
+        break;
+      }
+      // MB-10D launchers
+      case 'cannon': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos);
+        const aimMin = readUVarint(bytes, pos), aimMax = readUVarint(bytes, pos);
+        const power = readUVarint(bytes, pos)/100, auto = readUVarint(bytes, pos);
+        const phase = readUVarint(bytes, pos);
+        p = { t:'cannon', x, y, aimMin, aimMax, power, auto, phase, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'catapult': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), len = readUVarint(bytes, pos);
+        const dir = readUVarint(bytes, pos), reload = readUVarint(bytes, pos);
+        p = { t:'catapult', x, y, len, dir: (dir === 1 ? 1 : 0) as 0|1, reload, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'flipper': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos);
+        const side = readUVarint(bytes, pos), len = readUVarint(bytes, pos);
+        const strength = readUVarint(bytes, pos)/100, timer = readUVarint(bytes, pos);
+        const phase = readUVarint(bytes, pos)/1000;
+        p = { t:'flipper', x, y, side: (side === 1 ? 1 : 0) as 0|1, len, strength, timer, phase, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'sling': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), size = readUVarint(bytes, pos);
+        const facing = readUVarint(bytes, pos), strength = readUVarint(bytes, pos)/100;
+        p = { t:'sling', x, y, size, facing, strength, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'scoop': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos);
+        const deg = readUVarint(bytes, pos), hold = readUVarint(bytes, pos);
+        const hasExit = readUVarint(bytes, pos) === 1;
+        const exit = hasExit ? ([readUVarint(bytes, pos), readUVarint(bytes, pos), readUVarint(bytes, pos)] as [number, number, number]) : undefined;
+        p = exit ? { t:'scoop', x, y, deg, hold, exit, ...(flip?{flip}:{}) } : { t:'scoop', x, y, deg, hold, ...(flip?{flip}:{}) };
+        break;
+      }
+      // MB-10E fields
+      case 'wind': {
+        const ax = readUVarint(bytes, pos), ay = readUVarint(bytes, pos), bx = readUVarint(bytes, pos), by = readUVarint(bytes, pos);
+        const dir = readUVarint(bytes, pos), str = readUVarint(bytes, pos)/100;
+        const pulse = readUVarint(bytes, pos), phase = readUVarint(bytes, pos);
+        p = { t:'wind', a:[ax, ay] as Vec, b:[bx, by] as Vec, dir, str, pulse, phase, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'magnet': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), r = readUVarint(bytes, pos);
+        const str = readUVarint(bytes, pos)/100, period = readUVarint(bytes, pos), phase = readUVarint(bytes, pos);
+        p = { t:'magnet', x, y, r, str, period, phase, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'mud': {
+        const ax = readUVarint(bytes, pos), ay = readUVarint(bytes, pos), bx = readUVarint(bytes, pos), by = readUVarint(bytes, pos);
+        const drag = readUVarint(bytes, pos)/100;
+        p = { t:'mud', a:[ax, ay] as Vec, b:[bx, by] as Vec, drag, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'pool': {
+        const ax = readUVarint(bytes, pos), ay = readUVarint(bytes, pos), bx = readUVarint(bytes, pos), by = readUVarint(bytes, pos);
+        const depth = readUVarint(bytes, pos), skip = readUVarint(bytes, pos)/10;
+        p = { t:'pool', a:[ax, ay] as Vec, b:[bx, by] as Vec, depth, skip, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'geyser': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), h = readUVarint(bytes, pos);
+        const period = readUVarint(bytes, pos), phase = readUVarint(bytes, pos);
+        p = { t:'geyser', x, y, h, period, phase, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'trampoline': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), w = readUVarint(bytes, pos);
+        const tension = readUVarint(bytes, pos) / 100;
+        p = { t:'trampoline', x, y, w, tension, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'turnstile': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), arms = readUVarint(bytes, pos);
+        const r = readUVarint(bytes, pos), mode = readUVarint(bytes, pos);
+        const period = readUVarint(bytes, pos), phase = readUVarint(bytes, pos);
+        p = { t:'turnstile', x, y, arms, r, mode, period, phase, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'targets': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), count = readUVarint(bytes, pos);
+        const reset = readUVarint(bytes, pos);
+        p = { t:'targets', x, y, count, reset, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'vortex': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), r = readUVarint(bytes, pos);
+        const spin = readUVarint(bytes, pos) / 100, hole = readUVarint(bytes, pos);
+        p = { t:'vortex', x, y, r, spin, hole, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'platform': {
+        const ax = readUVarint(bytes, pos), ay = readUVarint(bytes, pos);
+        const bx = readUVarint(bytes, pos), by = readUVarint(bytes, pos);
+        const w = readUVarint(bytes, pos), travel = readUVarint(bytes, pos);
+        const pause = readUVarint(bytes, pos), phase = readUVarint(bytes, pos);
+        p = { t:'platform', ax, ay, bx, by, w, travel, pause, phase, ...(flip?{flip}:{}) };
         break;
       }
       default: throw new ShareCodeError(`Unknown piece type ${t}`);

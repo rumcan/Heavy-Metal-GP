@@ -3,6 +3,7 @@ import { Game } from './engine';
 import { PHYSICS_STEP, rampSurface } from './physics';
 import { CALENDAR, gpSeed, newSeason, recordHeat, computeStandings, computeTeamStandings, gridSlots } from './season';
 import { DEFAULT_PROFILE, generateTrack, meta, W } from './track';
+import { buildTrackFromDef } from './trackdef';
 import type { Track } from './track';
 import { AI_COLORS, AI_NAMES, adjustStat, mulberry32, randomStats, statsToPhysics, emptyInventory, ITEM_TYPES, ITEM_INFO } from './types';
 import type { MarbleInfo, MarbleStats, Inventory } from './types';
@@ -52,6 +53,7 @@ function fixture(obstacles: Matter.Body[], finishY = 1000): Track {
     startY: 116, finishY, gate, segments: [{ name: 'Test fixture', y: 0, h: finishY }],
     spinners: [], itemBoxes: [], buckets: [], pegCount: { orange: 0, total: 0 },
     ramps: obstacles.filter((body) => !!meta(body).surface), theme: DEFAULT_PROFILE.theme, decor: [], wreckers: [],
+    targetBanks: [],
   };
 }
 
@@ -229,6 +231,186 @@ add('Procedural tracks preserve all signature features', 'Race safety', async ()
     for (const body of track.ramps) ensure(meta(body).surface!.normal.y < 0, 'Ramp surface is inverted.');
   }
   return '24 seeds; correct ramp normals and all three signature sectors';
+});
+
+add('MB-10D launchers: the whole field rides every toy', 'Race safety', async () => {
+  // The proving-ground circuit: each MB-10D piece exactly once on its tuned geometry (felt
+  // segment positions, mirrored in scripts/mb10d-sanity.mjs). Exercises the TrackDef schema,
+  // the validator, the builders, the holds and their releases as one machine.
+  const def = {
+    v: 1, name: 'MB-10D proving ground', seed: 11, theme: 'classic', height: 3300,
+    pieces: [
+      { t: 'ramp', a: [0, 40], b: [200, 140] },
+      { t: 'ramp', a: [0, 150], b: [150, 200] }, { t: 'ramp', a: [150, 250], b: [360, 320] },
+      { t: 'cannon', x: 220, y: 256, aimMin: 290, aimMax: 310, power: 12.5, auto: 1500, phase: 0 },
+      { t: 'ramp', a: [350, 240], b: [560, 300] }, { t: 'ramp', a: [560, 300], b: [880, 560] },
+      { t: 'ramp', a: [360, 320], b: [480, 380] }, { t: 'ramp', a: [480, 380], b: [890, 590] },
+      { t: 'ramp', a: [0, 650], b: [150, 880] }, { t: 'ramp', a: [150, 880], b: [330, 980] },
+      { t: 'catapult', x: 430, y: 790, len: 240, reload: 1200, dir: 0 },
+      { t: 'ramp', a: [310, 920], b: [520, 990] }, { t: 'ramp', a: [520, 990], b: [880, 1090] },
+      { t: 'ramp', a: [160, 970], b: [470, 1060] }, { t: 'ramp', a: [470, 1060], b: [890, 1170] },
+      { t: 'ramp', a: [0, 1220], b: [260, 1310] }, { t: 'ramp', a: [260, 1310], b: [440, 1395] },
+      { t: 'flipper', x: 560, y: 1418, side: 0, len: 124, strength: 1.45, timer: 0, phase: 0 },
+      { t: 'ramp', a: [440, 1440], b: [720, 1530] }, { t: 'ramp', a: [720, 1530], b: [890, 1690] },
+      { t: 'flipper', x: 740, y: 1546, side: 1, len: 112, strength: 2.4, timer: 1600, phase: 300 },
+      { t: 'ramp', a: [0, 1760], b: [300, 1848] },
+      { t: 'wall', x: 276, y: 1980, w: 12, h: 280 }, { t: 'wall', x: 560, y: 1980, w: 12, h: 280 },
+      { t: 'ramp', a: [300, 2040], b: [420, 2110] },
+      { t: 'sling', x: 470, y: 2100, size: 125, facing: 225, strength: 4 },
+      { t: 'sling', x: 380, y: 2220, size: 125, facing: 305, strength: 4 },
+      { t: 'ramp', a: [340, 2270], b: [890, 2340] },
+      { t: 'ramp', a: [0, 2260], b: [260, 2330] }, { t: 'ramp', a: [260, 2330], b: [450, 2410] },
+      { t: 'ramp', a: [450, 2410], b: [640, 2480] },
+      { t: 'scoop', x: 545, y: 2453, deg: 279, hold: 700 },
+      { t: 'ramp', a: [640, 2480], b: [890, 2720] },
+      { t: 'scoop', x: 300, y: 2680, deg: 276, hold: 800, exit: [420, 2740, 1400] },
+      { t: 'ramp', a: [240, 2760], b: [890, 2800] },
+      { t: 'ramp', a: [0, 2860], b: [400, 3030] }, { t: 'ramp', a: [400, 3030], b: [890, 3180] },
+    ],
+  };
+  buildTrackFromDef(def); // throws on a schema validator bug before the race even starts
+  const totals: Record<string, number> = {};
+  for (const seed of [7, 9001, 424242]) {
+    const game = new Game(seed, roster(seed), { def, recovery: true, effects: false, aiItems: false, wireEvents: true });
+    try {
+      game.openGate();
+      let t = 0;
+      while (!game.allFinished() && t < 240000) {
+        game.step(1000 / 60);
+        for (const e of game.drainRaceEvents()) {
+          if (e.kind === 'hold') totals['hold:' + (e.of ?? 'tunnel')] = (totals['hold:' + (e.of ?? 'tunnel')] ?? 0) + 1;
+          if (e.kind === 'flipper' || e.kind === 'sling') totals[e.kind] = (totals[e.kind] ?? 0) + 1;
+        }
+        t += 1000 / 60;
+      }
+      ensure(game.allFinished(), `Seed ${seed} left the field waiting past 240s.`);
+    } finally { game.destroy(); }
+  }
+  for (const need of ['hold:cannon', 'hold:catapult', 'hold:scoop', 'flipper', 'sling']) {
+    ensure((totals[need] ?? 0) > 0, `Launcher ${need} never fired across the three seeds.`);
+  }
+  return `3 seeds on the proving ground; rides ${JSON.stringify(totals)}`;
+});
+
+add('MB-10E fields: every field fires and nobody drowns', 'Race safety', async () => {
+  // Proving-ground circuit: each MB-10E field once on the exact geometry the segments ship
+  // (mirrored in scripts/mb10e-sanity.mjs). Exercises the schema, the builders, the clock
+  // programs, and proves the whole field creams through: no stick, no drown, no stall.
+  const def = {
+    v: 1, name: 'MB-10E proving ground', seed: 11, theme: 'classic', height: 2900,
+    pieces: [
+      { t: 'ramp', a: [0, 40], b: [300, 150] },
+      { t: 'ramp', a: [300, 150], b: [360, 180] },
+      { t: 'wind', a: [360, -20], b: [560, 320], dir: 300, str: 0.36, pulse: 2800, phase: 0 },
+      { t: 'ramp', a: [560, 160], b: [880, 330] },
+      { t: 'ramp', a: [60, 320], b: [890, 440] },
+      { t: 'ramp', a: [0, 520], b: [470, 710] },
+      { t: 'wall', x: 845, y: 800, w: 14, h: 250 },
+      { t: 'magnet', x: 700, y: 760, r: 175, str: 5, period: 0, phase: 0 },
+      { t: 'ramp', a: [470, 710], b: [120, 850] },
+      { t: 'wall', x: 30, y: 940, w: 14, h: 210 },
+      { t: 'magnet', x: 190, y: 940, r: 175, str: 5, period: 4600, phase: 600 },
+      { t: 'ramp', a: [120, 850], b: [660, 1010] },
+      { t: 'ramp', a: [660, 1010], b: [880, 1120] },
+      { t: 'ramp', a: [0, 1230], b: [260, 1340] },
+      { t: 'mud', a: [120, 1307], b: [380, 1405], drag: 0.3 },
+      { t: 'ramp', a: [260, 1340], b: [560, 1500] },
+      { t: 'mud', a: [430, 1446], b: [700, 1564], drag: 0.3 },
+      { t: 'ramp', a: [560, 1500], b: [890, 1670] },
+      { t: 'ramp', a: [0, 1830], b: [240, 1950] },
+      { t: 'pool', a: [290, 1970], b: [620, 1970], depth: 96, skip: 6.5 },
+      { t: 'ramp', a: [634, 1986], b: [880, 2140] },
+      { t: 'ramp', a: [240, 1990], b: [330, 2030] },
+      { t: 'ramp', a: [0, 2230], b: [300, 2380] },
+      { t: 'ramp', a: [300, 2380], b: [400, 2410] },
+      { t: 'geyser', x: 430, y: 2408, h: 260, period: 3500, phase: 0 },
+      { t: 'ramp', a: [460, 2424], b: [530, 2450] },
+      { t: 'geyser', x: 560, y: 2442, h: 260, period: 3700, phase: 900 },
+      { t: 'ramp', a: [590, 2466], b: [660, 2490] },
+      { t: 'geyser', x: 690, y: 2480, h: 260, period: 3900, phase: 1700 },
+      { t: 'ramp', a: [720, 2498], b: [890, 2620] },
+      { t: 'ramp', a: [0, 2660], b: [890, 2820] },
+    ],
+  };
+  buildTrackFromDef(def); // throws on a schema validator bug before the race even starts
+  const cues: Record<string, number> = {};
+  for (const seed of [7, 9001, 424242]) {
+    const game = new Game(seed, roster(seed), { def, recovery: true, effects: false, aiItems: false, wireEvents: true });
+    try {
+      game.openGate();
+      let t = 0;
+      while (!game.allFinished() && t < 300000) {
+        game.step(1000 / 60);
+        for (const e of game.drainRaceEvents()) {
+          if (e.kind === 'sound' && e.cue) cues[e.cue] = (cues[e.cue] ?? 0) + 1;
+        }
+        t += 1000 / 60;
+      }
+      ensure(game.allFinished(), `Seed ${seed} left the field waiting past 300s.`);
+    } finally { game.destroy(); }
+  }
+  // every cue-bearing field must have fired at least once across the seeds
+  for (const need of ['steam', 'gurgle', 'zap', 'splash']) {
+    ensure((cues[need] ?? 0) > 0, `Field cue '${need}' never fired across the three seeds.`);
+  }
+  return `3 seeds on the fields ground; cues ${JSON.stringify({ steam: cues.steam ?? 0, gurgle: cues.gurgle ?? 0, zap: cues.zap ?? 0, splash: cues.splash ?? 0 })}`;
+});
+
+add('MB-10F set pieces: every big toy fires and nobody is penned', 'Race safety', async () => {
+  // Proving-ground circuit: each MB-10F set piece once on tuned geometry (mirrored in
+  // scripts/mb10f-sanity.mjs). Asserts the wire events move too: target pins drop and
+  // re-arm, the turnstile ratchets, the vortex drops.
+  const def = {
+    v: 1, name: 'MB-10F proving ground', seed: 11, theme: 'classic', height: 3100,
+    pieces: [
+      { t: 'ramp', a: [0, 40], b: [300, 160] },
+      { t: 'trampoline', x: 390, y: 260, w: 175, tension: 1.3 },
+      { t: 'ramp', a: [60, 340], b: [880, 450] },
+      { t: 'ramp', a: [540, 170], b: [880, 300] },
+      { t: 'ramp', a: [0, 520], b: [470, 710] },
+      { t: 'turnstile', x: 455, y: 686, arms: 4, r: 78, mode: 0, period: 0, phase: 0 },
+      { t: 'ramp', a: [470, 710], b: [180, 880] },
+      { t: 'turnstile', x: 200, y: 856, arms: 3, r: 88, mode: 1, period: 4200, phase: 400 },
+      { t: 'ramp', a: [180, 880], b: [880, 1040] },
+      { t: 'ramp', a: [0, 1110], b: [300, 1250] },
+      { t: 'ramp', a: [300, 1250], b: [520, 1266] },
+      { t: 'targets', x: 370, y: 1260, count: 4, reset: 5600 },
+      { t: 'ramp', a: [520, 1276], b: [890, 1410] },
+      { t: 'ramp', a: [0, 1500], b: [880, 1780] },
+      { t: 'vortex', x: 560, y: 1660, r: 175, spin: 1.4, hole: 34 },
+      { t: 'ramp', a: [0, 1910], b: [880, 2050] },
+      { t: 'ramp', a: [0, 2150], b: [380, 2310] },
+      { t: 'ramp', a: [560, 2310], b: [880, 2460] },
+      { t: 'platform', ax: 405, ay: 2346, bx: 535, by: 2346, w: 130, travel: 2400, pause: 1600, phase: 0 },
+      { t: 'ramp', a: [60, 2540], b: [890, 2640] },
+      { t: 'ramp', a: [0, 2700], b: [890, 3010] },
+    ],
+  };
+  buildTrackFromDef(def); // throws on a schema validator bug before the race even starts
+  const events: Record<string, number> = {};
+  for (const seed of [7, 9001, 424242]) {
+    const game = new Game(seed, roster(seed), { def, recovery: true, effects: false, aiItems: false, wireEvents: true });
+    try {
+      game.openGate();
+      let t = 0;
+      while (!game.allFinished() && t < 360000) {
+        game.step(1000 / 60);
+        for (const e of game.drainRaceEvents()) {
+          events[e.kind] = (events[e.kind] ?? 0) + 1;
+          if (e.kind === 'sound' && e.cue) events['cue:' + e.cue] = (events['cue:' + e.cue] ?? 0) + 1;
+        }
+        t += 1000 / 60;
+      }
+      ensure(game.allFinished(), `Seed ${seed} left the field waiting past 360s.`);
+    } finally { game.destroy(); }
+  }
+  for (const need of ['targets', 'turnstile']) {
+    ensure((events[need] ?? 0) > 0, `Event '${need}' never fired across the three seeds.`);
+  }
+  for (const need of ['cue:boing', 'cue:whoosh']) {
+    ensure((events[need] ?? 0) > 0, `Cue '${need}' never fired across the three seeds.`);
+  }
+  return `3 seeds on the set pieces; events ${JSON.stringify(Object.fromEntries(Object.entries(events).filter(([k]) => ['targets', 'turnstile', 'cue:boing', 'cue:whoosh', 'cue:crank', 'cue:ding', 'cue:bonus'].includes(k))))}`;
 });
 
 add('Three heats use one seed and advance the championship once', 'Championship', async () => {

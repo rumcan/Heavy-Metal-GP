@@ -33,6 +33,20 @@
  *   bucket    — a Peggle bucket gave a free ball
  *   boost     — a booster strip pushed someone along
  *   finish    — a marble crossed the line
+ *   cheer     — MB-10A: the crowd roars as a NO ENTRY barricade splinters
+ *   rumble    — MB-10A: a marble rumbles through a cliff tunnel (or a wall gives)
+ *   creak     — MB-10A: a trapdoor swings on its hinge
+ *   click     — MB-10A: a track-switch lever trips over
+ *   shriek    — MB-10B: a swinging blade catches a marble
+ *   grind     — MB-10B: a saw bites and throws a marble up
+ *   slam      — MB-10B: a crusher piston docks at floor level
+ *   splash    — MB-10C: a water wheel bucket dunks or tips a marble out
+ *   groan     — MB-10C: a seesaw or rope bridge takes real load
+ *   whirr     — MB-10C: an Archimedes screw swallows a marble for the climb
+ *   bang      — MB-10D: a cannon spits its marble out of the muzzle
+ *   twang     — MB-10D: a slingshot band snaps back behind a marble
+ *   snap      — MB-10D: a flipper bat swats
+ *   boing     — MB-10D: a scoop kicks its marble back out
  */
 export const SOUND_EVENTS = [
   'gate',
@@ -48,6 +62,29 @@ export const SOUND_EVENTS = [
   'bucket',
   'boost',
   'finish',
+  'cheer',
+  'rumble',
+  'creak',
+  'click',
+  'shriek',
+  'grind',
+  'slam',
+  'splash',
+  'groan',
+  'whirr',
+  'bang',
+  'twang',
+  'snap',
+  'boing',
+  // MB-10E
+  'steam',
+  'gurgle',
+  'zap',
+  // MB-10F
+  'crank',
+  'ding',
+  'bonus',
+  'whoosh',
 ] as const;
 
 /** One named cue. The wire carries these, so the list is the contract. */

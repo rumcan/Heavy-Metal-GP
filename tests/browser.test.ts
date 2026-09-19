@@ -59,9 +59,15 @@ before(async () => {
 
 after(async () => { await browser?.close(); await server?.close(); if (libraryDir) await rm(libraryDir, { recursive: true, force: true }); });
 
+/** Dismiss the boot loading screen if it is up (fixture pages have none). */
+async function dismissGate(page: Page) {
+  await page.getByRole('button', { name: /Enter the paddock|Lights out/ }).click({ timeout: 9000 }).catch(() => { /* no gate on this page */ });
+}
+
 async function ready(page: Page, path = '/') {
   await page.goto(`${baseUrl}${path}`, { waitUntil: 'networkidle' });
   await page.evaluate(() => Promise.race([document.fonts.ready, new Promise((resolve) => setTimeout(resolve, 3500))]));
+  await dismissGate(page);
 }
 
 test('Browser: garage controls preserve budget and select the actual circuit', { timeout: 60000 }, async () => {
@@ -71,7 +77,7 @@ test('Browser: garage controls preserve budget and select the actual circuit', {
   page.on('pageerror', (error) => errors.push(error.message));
   try {
     await ready(page);
-    assert.ok(await page.getByRole('heading', { name: 'MARBLE RUN. RUMBLE.' }).isVisible());
+    assert.ok(await page.locator('#circuit-title').isVisible(), 'Garage did not reach the circuit pane.');
     await page.getByRole('button', { name: 'Pause circuit preview' }).click();
     await page.screenshot({ path: `${artifacts}/garage-desktop.png`, fullPage: true });
     await page.getByRole('slider', { name: 'Weight', exact: true }).focus();
@@ -84,7 +90,8 @@ test('Browser: garage controls preserve budget and select the actual circuit', {
     await page.locator('.circuit-selector button').nth(1).click();
     assert.equal(await page.locator('#circuit-title').textContent(), 'MONTE PIPO');
     await page.getByRole('button', { name: 'Quick race', exact: true }).click();
-    await page.getByRole('button', { name: "LIGHTS OUT. LET'S RACE." }).click();
+    await page.getByRole('button', { name: 'LIGHTS OUT', exact: true }).click();
+    await dismissGate(page);
     await page.waitForSelector('.race-canvas');
     assert.match(await page.locator('.race-event').textContent() ?? '', /Monte Pipo/);
     await page.getByRole('button', { name: 'Pause race', exact: true }).click();
@@ -108,11 +115,14 @@ test('Browser: mobile layout stays in-bounds and controls remain usable', { time
   page.on('pageerror', (error) => errors.push(error.message));
   try {
     await ready(page);
+    // The garage is tabbed on mobile: the live preview lives in the Circuit pane.
+    await page.getByRole('button', { name: 'Circuit', exact: true }).click();
     await page.getByRole('button', { name: 'Pause circuit preview' }).click();
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Garage overflows on mobile.');
     await page.screenshot({ path: `${artifacts}/garage-mobile.png`, fullPage: true });
     await page.getByRole('button', { name: 'Quick race', exact: true }).click();
-    await page.getByRole('button', { name: "LIGHTS OUT. LET'S RACE." }).click();
+    await page.getByRole('button', { name: 'LIGHTS OUT', exact: true }).click();
+    await dismissGate(page);
     await page.waitForSelector('.race-canvas');
     assert.ok(await page.getByRole('button', { name: 'Nudge left', exact: true }).isVisible());
     assert.ok(await page.getByRole('button', { name: 'Nudge right', exact: true }).isVisible());
@@ -162,16 +172,17 @@ test('Browser: results have readable contrast, real finish times and accessible 
   } finally { await context.close(); }
 });
 
-test('Browser: a complete long heat pays winnings and the saved season advances correctly', { timeout: 240000 }, async () => {
-  const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
+test('Browser: a complete long heat pays winnings and the saved season advances correctly', { timeout: 540000 }, async () => {
+  const context = await browser.newContext({ viewport: { width: 900, height: 560 }, deviceScaleFactor: 1 });
   const page = await context.newPage();
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   try {
     await page.addInitScript(() => { let s = 42; Math.random = () => { s = Math.imul(s, 1664525) + 1013904223 | 0; return (s >>> 0) / 4294967296; }; });
     await page.addInitScript(() => {
-      // Render at 20 Hz in this long browser test; the game still simulates at its real 120 Hz.
-      window.requestAnimationFrame = (callback) => window.setTimeout(() => callback(performance.now()), 50);
+      // Render at 10 Hz in this long browser test; the game still simulates at its real 120 Hz
+      // (the loop drains as many steps as a frame spans — frames only cost wall time).
+      window.requestAnimationFrame = (callback) => window.setTimeout(() => callback(performance.now()), 100);
       window.cancelAnimationFrame = (id) => clearTimeout(id);
     });
     await ready(page);
@@ -180,7 +191,8 @@ test('Browser: a complete long heat pays winnings and the saved season advances 
     await page.screenshot({ path: `${artifacts}/championship-desktop.png`, fullPage: true });
     await page.clock.install();
     await page.getByRole('button', { name: 'START HEAT 1', exact: true }).click();
-    for (let i = 0; i < 55 && await page.locator('.results-panel').count() === 0; i++) await page.clock.runFor(10000);
+    await dismissGate(page);
+    for (let i = 0; i < 80 && await page.locator('.results-panel').count() === 0; i++) await page.clock.runFor(10000);
     await page.waitForSelector('.results-panel', { timeout: 5000 });
     assert.equal(await page.locator('.results-table tbody tr').count(), 10);
     assert.equal(await page.locator('.dnf-label').count(), 0, 'Race cut off while marbles were still on track.');
@@ -193,11 +205,12 @@ test('Browser: a complete long heat pays winnings and the saved season advances 
     await page.getByRole('button', { name: 'Standings & next heat' }).click();
     await page.waitForSelector('.next-event');
     assert.ok(await page.getByRole('button', { name: 'START HEAT 2', exact: true }).isVisible());
-    assert.ok(await page.getByRole('button', { name: 'Setup locked', exact: true }).isDisabled());
+    assert.ok(await page.getByRole('button', { name: 'Locked', exact: true }).isDisabled());
     await page.getByRole('button', { name: 'Constructors', exact: true }).click();
     assert.equal(await page.locator('.constructor-list li').count(), 5);
     await page.reload({ waitUntil: 'networkidle' });
-    await page.getByRole('button', { name: 'Continue season', exact: true }).click();
+    await dismissGate(page);
+    await page.getByRole('button', { name: 'Continue', exact: true }).click();
     assert.ok(await page.getByRole('button', { name: 'START HEAT 2', exact: true }).isVisible());
     assert.equal((await page.evaluate(() => JSON.parse(Object.entries(localStorage).find(([k]) => k === 'mrr-season-v1' || k.endsWith(':mrr-season-v1'))![1]))).seed, saved.seed);
     assert.equal((await page.evaluate(() => JSON.parse(Object.entries(localStorage).find(([k]) => k === 'mrr-account-v1' || k.endsWith(':mrr-account-v1'))![1]))).credits, paid.credits, 'Returning to the paddock or reloading duplicated the payout.');
@@ -225,12 +238,16 @@ test('Browser: shop purchases persist, number keys spend only selected items, an
     await page.screenshot({ path: `${artifacts}/pit-shop-desktop.png` });
     await page.getByRole('button', { name: 'Loadout ready', exact: true }).click();
     await page.reload({ waitUntil: 'networkidle' });
+    await dismissGate(page);
     assert.ok(await page.getByRole('button', { name: 'Open pit shop, 80 credits', exact: true }).isVisible());
     await page.getByRole('button', { name: 'Pause circuit preview', exact: true }).click();
     await page.clock.install({ time: new Date('2026-01-01T00:00:00Z') });
     await page.clock.pauseAt(new Date('2026-01-01T00:00:01Z'));
     await page.getByRole('button', { name: 'Quick race', exact: true }).click();
-    await page.getByRole('button', { name: "LIGHTS OUT. LET'S RACE." }).click();
+    await page.getByRole('button', { name: 'LIGHTS OUT', exact: true }).click();
+    // The virtual clock is paused, so wind it past the loading gate's minimum duration.
+    await page.clock.runFor(3400);
+    await page.getByRole('button', { name: 'Lights out', exact: true }).click();
     assert.equal(await page.locator('.inventory-slot').count(), 8);
     assert.ok(await page.locator('.inventory-slot').first().isDisabled(), 'Item could be spent on the start grid.');
     await page.clock.runFor(5300);

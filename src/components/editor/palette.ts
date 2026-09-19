@@ -82,6 +82,83 @@ export const PALETTE: PaletteGroup[] = [
       { id: 'block', t: 'block', label: 'Block', sprite: 'tile-metal', hint: 'A solid steel block. Nothing breaks it.' },
     ],
   },
+  {
+    id: 'secrets',
+    label: 'Secrets',
+    note: 'Shortcuts and hatches',
+    tiles: [
+      { id: 'barricade', t: 'barricade', label: 'No entry barricade', sprite: 'barricade', hint: 'NO ENTRY planks over a shortcut. Smash through with speed and weight.' },
+      { id: 'barricade-tough', t: 'barricade', label: 'Tough barricade', sprite: 'barricade', preset: { tough: 8 }, hint: 'Heavily boarded. Very few marbles are getting through here.' },
+      { id: 'tunnel', t: 'tunnel', label: 'Cliff tunnel', sprite: 'tunnel', hint: 'An entrance burrow. Where the arrow lands is the exit hole.' },
+      { id: 'crumble', t: 'crumble', label: 'Crumbling wall', sprite: 'crumble', hint: 'Weak stone the whole pack slowly knocks down.' },
+      { id: 'trapdoor', t: 'trapdoor', label: 'Trapdoor (clock)', sprite: 'trapdoor', hint: 'A hinged hatch that opens and shuts on a tick-tock.' },
+      { id: 'trapdoor-weight', t: 'trapdoor', label: 'Trapdoor (weight)', sprite: 'trapdoor', preset: { mode: 'weight' }, hint: 'A scale pan: enough marbles resting on it drops the hatch.' },
+      { id: 'switch', t: 'switch', label: 'Track switch lever', sprite: 'switchplate', hint: 'Every marble that crosses it flips the split for the next one.' },
+    ],
+  },
+  {
+    id: 'danger',
+    label: 'Danger',
+    note: 'Blades and crushers',
+    tiles: [
+      { id: 'blade', t: 'blade', label: 'Swinging blade', sprite: 'blade', hint: 'A huge axe swinging across the track. Time the swing or eat the flat.' },
+      { id: 'saw', t: 'saw', label: 'Saw blade', sprite: 'saw', hint: 'A spinning disc set into the track. Drag a slot end and it slides.' },
+      { id: 'crusher', t: 'crusher', label: 'Crusher piston', sprite: 'crusher', hint: 'A stamper slamming down on a timer. Watch the shadow, dash on the rise.' },
+      { id: 'crusher-rapid', t: 'crusher', label: 'Rapid crusher', sprite: 'crusher', preset: { period: 2400, floor: 450 }, hint: 'A twitchy stamper on a short cycle. Relentless.' },
+      { id: 'boulder', t: 'boulder', label: 'Rolling boulder', sprite: 'boulder', hint: 'A goblin-faced rock rolling down its path on a timer. Jump hops it.' },
+      { id: 'mace', t: 'mace', label: 'Mace sweeper', sprite: 'mace', hint: 'A spiked ball scything the lane. A Shockwave jams it for two seconds.' },
+    ],
+  },
+  {
+    id: 'movers',
+    label: 'Movers',
+    note: 'Wheels, lifts and belts',
+    tiles: [
+      { id: 'wheel', t: 'wheel', label: 'Water wheel', sprite: 'wheel', hint: 'A bucket wheel: marbles drop in, ride round and tip out at the marker. Carries uphill.' },
+      { id: 'screw', t: 'screw', label: 'Screw lift', sprite: 'screw', hint: 'A turning screw inside a tube that carries marbles up and over a section. Queues at capacity.' },
+      { id: 'conveyor', t: 'conveyor', label: 'Conveyor belt', sprite: 'conveyor', hint: 'A belt that pushes marbles along the surface. Can flip its direction on a timer.' },
+      { id: 'conveyor-back', t: 'conveyor', label: 'Belt (reversed)', sprite: 'conveyor', preset: { dir: 1 }, hint: 'A belt fighting downhill. Speed marbles push through it best.' },
+      { id: 'seesaw', t: 'seesaw', label: 'Seesaw', sprite: 'seesaw', hint: 'A plank on a pivot. Heavy tips it; whoever sits light on the far end launches.' },
+      { id: 'bridge', t: 'bridge', label: 'Rope bridge', sprite: 'bridge', hint: 'A sagging plank chain between two anchors. The pack dips it; bouncy balls bounce it.' },
+    ],
+  },
+  {
+    id: 'launchers',
+    label: 'Launchers',
+    note: 'Cannons, catapults and pinball',
+    tiles: [
+      { id: 'cannon', t: 'cannon', label: 'Goblin cannon', sprite: 'cannon', hint: 'Swallows a marble and fires it along the swinging aim fan. Heavy flies shorter; the player can nudge to fire early.' },
+      { id: 'catapult', t: 'catapult', label: 'Catapult', sprite: 'catapult', hint: 'A spoon cradle on a long arm. Land in it, wait for the reload, fly up to the shelf.' },
+      { id: 'flipper', t: 'flipper', label: 'Flipper (left)', sprite: 'flipper', hint: 'A pinball bat pivoted on the left. Rest on it and it snaps you up-right — or set a timer.' },
+      { id: 'flipper-right', t: 'flipper', label: 'Flipper (right)', sprite: 'flipper', preset: { side: 1 }, hint: 'The right-handed bat: snaps marbles up-left.' },
+      { id: 'sling', t: 'sling', label: 'Slingshot kicker', sprite: 'sling', hint: 'A rubber-banded wall wedge. Face contact fires the marble through the kick direction; bounce stat adds punch.' },
+      { id: 'scoop', t: 'scoop', label: 'Scoop', sprite: 'scoop', hint: 'A kickback hole in the floor. Swallows a marble, kicks it back out along the chevrons — or link a subway exit.' },
+    ],
+  },
+  {
+    id: 'fields',
+    label: 'Fields & surfaces',
+    note: 'Wind, magnets, tar, water and steam',
+    tiles: [
+      { id: 'wind', t: 'wind', label: 'Updraft vent', sprite: 'wind', hint: 'A box fan whose swish fills the rectangle. Light marbles sail on it, Heavy metal ignores it, Slipstream catches twice. Pulse it to breathe.' },
+      { id: 'magnet', t: 'magnet', label: 'Horseshoe magnet', sprite: 'magnet', hint: 'Drags runners off line, heavier iron harder. Anvil heavy metal sticks for a beat, then lets go — thrum it on a period for a softening window.' },
+      { id: 'mud', t: 'mud', label: 'Tar band', sprite: 'mud', hint: 'A strip of sticky tar. Rollers trudge, bounce builds hop it, the speed stat digs in, Slipstream sails over.' },
+      { id: 'pool', t: 'pool', label: 'Skipping pond', sprite: 'pool', hint: 'A stone-skimming pond. Fast and flat and you skip across; slow and steep and you splash in, then the wade carries you out.' },
+      { id: 'geyser', t: 'geyser', label: 'Geyser vent', sprite: 'geyser', hint: 'Bubbles for a beat, then blasts upward on a timer. Park on it and get chucked. All on the race clock.' },
+    ],
+  },
+  {
+    id: 'setpieces',
+    label: 'Big set pieces',
+    note: 'Nets, turnstiles, targets, funnels and ferries',
+    tiles: [
+      { id: 'trampoline', t: 'trampoline', label: 'Trampoline net', sprite: 'trampoline', hint: 'A stretchy net over a gully. Land hard, spring high; bounce doubles it, heavy barely springs.' },
+      { id: 'turnstile', t: 'turnstile', label: 'Turnstile diverter', sprite: 'turnstile', hint: 'Arms on a ratchet (or free spin on a period) reshuffling who comes out left and right.' },
+      { id: 'targets', t: 'targets', label: 'Drop-target bank', sprite: 'targets', hint: 'A row of pinball pins blocking the lane. Knock every pin and the lane is open — pins re-arm on a timer.' },
+      { id: 'vortex', t: 'vortex', label: 'Vortex funnel', sprite: 'vortex', hint: 'A spiral funnel: speed keeps you circling, weight sinks you to the drain. Exits rewrite the order.' },
+      { id: 'platform', t: 'platform', label: 'Moving platform', sprite: 'platform', hint: 'A shuttling ferry pad. Catch its window or take the low road — timing decides the jump.' },
+    ],
+  },
 ];
 
 /** Every tile, flat — for looking one up by piece type. */

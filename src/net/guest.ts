@@ -22,6 +22,7 @@ import { Game, LIGHTS_OUT_STAGE } from '../game/engine';
 import type { Marble } from '../game/engine';
 import type { Track } from '../game/track';
 import { meta } from '../game/track';
+import { elementBodies } from '../game/elements';
 import type { MarbleInfo } from '../game/types';
 import type { SoundEvent } from '../game/cues';
 import {
@@ -383,6 +384,13 @@ export class RaceGuest {
     const alpha = a === b ? 0 : clamp01((renderAt - a.at) / (b.at - a.at));
     this.flushEvents(b.seq);
     this.renderFrame(a, b, alpha);
+    // Held marbles (MB-10 tunnel rides) reappear when the host clock says the ride is over.
+    for (const m of this.game.marbles) {
+      if (m.hold && this.game.time >= m.hold.until) {
+        m.hold = null;
+        m.trail = [];
+      }
+    }
     this.game.ageEffects(dt);
 
     // Retire the frames the picture has drawn PAST, but keep `a`: it is still
@@ -585,6 +593,16 @@ export class RaceGuest {
         // The shock shatters ice: the host unfroze everyone in range, so the
         // guest does too rather than leaving a marble in ice that has melted.
         for (const m of marbles) if (m.frozen) this.game.setFrozen(m, false);
+        // MB-10B: a blast in range jams a mace sweeper for two seconds. The host made the same
+        // distance check before it sent this event, so the arm freezes identically on this side.
+        for (const arm of elementBodies(this.game.track, 'mace')) {
+          const amd = meta(arm);
+          const motion = amd.motion;
+          if (!motion || motion.mode !== 'sweep') continue;
+          if (Math.hypot(motion.pivot.x - event.x, motion.pivot.y - event.y) < 280 || Math.hypot(arm.position.x - event.x, arm.position.y - event.y) < 280) {
+            amd.stunUntil = this.game.time + 2000;
+          }
+        }
         break;
       }
       case 'item': {
@@ -604,6 +622,88 @@ export class RaceGuest {
       case 'sound':
         this.cues.push(event.cue);
         break;
+      // MB-10A: stateful element flips — set the state the host decided; the shared easing in
+      // `Game.ageEffects` swings the plate / door on this end exactly as it does on the host.
+      case 'switch': {
+        const body = this.bodyAt(event.i);
+        if (body) {
+          meta(body).side = event.side;
+          meta(body).flippedAt = this.game.time;
+        }
+        break;
+      }
+      case 'trapdoor': {
+        const body = this.bodyAt(event.i);
+        if (body) {
+          meta(body).openNow = event.open;
+          if (event.open) meta(body).openedAt = this.game.time;
+        }
+        break;
+      }
+      case 'hold': {
+        // A marble went into an element. The host glides it from now on; the `until` is on the
+        // host clock, which we mirror. A tunnel ride is hidden start-to-end; a wheel bucket or
+        // screw transit stays on screen — the position frames draw the ride. MB-10D launcher
+        // holds (cannon/catapult/scoop) park the rider at the machine until the same clock says go.
+        const m = marbles[event.seat];
+        if (m) {
+          m.hold = { kind: event.of ?? 'tunnel', until: event.until };
+          // mirror the machine's own bookkeeping so its skin lights up for us too
+          if ((event.of === 'cannon' || event.of === 'catapult' || event.of === 'scoop') && m.hold.kind !== 'tunnel') {
+            m.hold.at = this.game.time;
+          }
+        }
+        break;
+      }
+      // MB-10D: a flipper snapped — set the local copy's firedAt so it replays the same swing.
+      case 'flipper': {
+        const bat = this.bodyAt(event.i);
+        const fl = bat ? meta(bat).flipper : undefined;
+        if (fl) fl.firedAt = event.at;
+        break;
+      }
+      // MB-10F: a turnstile stepped — replicate the same ratchet beat.
+      case 'turnstile': {
+        const hub = this.bodyAt(event.i);
+        const ts = hub ? meta(hub).turnstile : undefined;
+        if (ts) { ts.stepIndex = event.steps; ts.stepAt = event.at; }
+        break;
+      }
+      // MB-10F: a drop-target pin dropped or re-armed — set the same pin state on our copy.
+      case 'targets': {
+        const pin = this.bodyAt(event.i);
+        const tg = pin ? meta(pin).target : undefined;
+        if (pin && tg) {
+          tg.dropAt = event.down === 1 ? event.at : -1;
+          pin.isSensor = event.down === 1;
+          const bank = this.game.track.targetBanks[tg.bank];
+          if (bank) bank.downAt[tg.slot] = event.down === 1 ? event.at : -1;
+        }
+        break;
+      }
+      // MB-10D: a slingshot face tossed someone — redraw the band flash on our copy.
+      case 'sling': {
+        const tri = this.bodyAt(event.i);
+        const sl = tri ? meta(tri).sling : undefined;
+        if (sl) sl.flashAt = this.game.time;
+        break;
+      }
+      // MB-10C: dynamic mover state — set the truth, `Game.ageEffects` blends the pose in.
+      case 'seesaw': {
+        const body = this.bodyAt(event.i);
+        const ss = body ? meta(body).seesaw : undefined;
+        if (ss) ss.remote = { angle: event.angle, angVel: event.angVel, at: this.game.time };
+        break;
+      }
+      case 'bridge': {
+        const head = this.bodyAt(event.i);
+        if (head) {
+          const mdh = meta(head);
+          mdh.sagTarget = event.sag;
+          mdh.sagAt = this.game.time;
+        }
+        break;
+      }
     }
   }
 

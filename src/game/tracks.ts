@@ -104,6 +104,16 @@ function compressPiece(p: Piece): Piece {
     case 'wall':
     case 'block':
       return { ...p, x: Math.round(p.x), y: Math.round(p.y), w: Math.round(p.w), h: Math.round(p.h) };
+    // ---- MB-10A ----
+    case 'barricade':
+    case 'crumble':
+      return { ...p, x: Math.round(p.x), y: Math.round(p.y), w: Math.round(p.w), h: Math.round(p.h), tough: Math.round(p.tough) };
+    case 'tunnel':
+      return { ...p, x: Math.round(p.x), y: Math.round(p.y), exit: roundVec(p.exit), edir: [Math.round(p.edir[0] * 100) / 100, Math.round(p.edir[1] * 100) / 100], ms: Math.round(p.ms) };
+    case 'trapdoor':
+      return { ...p, x: Math.round(p.x), y: Math.round(p.y), w: Math.round(p.w), open: Math.round(p.open), closed: Math.round(p.closed), phase: Math.round(p.phase), hold: Math.round(p.hold) };
+    case 'switch':
+      return { ...p, x: Math.round(p.x), y: Math.round(p.y), len: Math.round(p.len), angle: Math.round(p.angle * 1000) / 1000 };
     default:
       return p;
   }

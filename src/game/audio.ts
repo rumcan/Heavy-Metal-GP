@@ -8,6 +8,18 @@ import * as storage from './storage';
 export type SoundType =
   | 'peg' | 'bump' | 'thud' | 'clack' | 'spring' | 'hoop' | 'clang' | 'crack' | 'smash'
   | 'pickup' | 'bucket' | 'loop' | 'finish' | 'item' | 'go' | 'light'
+  // MB-10A: shortcuts and secrets — the crowd, the rock, the hinge, the lever
+  | 'cheer' | 'rumble' | 'creak' | 'click'
+  // MB-10B: blades and crushers — the caught squeal, the bite, the dock
+  | 'shriek' | 'grind' | 'slam'
+  // MB-10C: movers — the bucket splash/dunk, the timber groan, the screw hum
+  | 'splash' | 'groan' | 'whirr'
+  // MB-10D: launchers — the cannon blast, the sling band, the flipper snap, the kickback spring
+  | 'bang' | 'twang' | 'snap' | 'boing'
+  // MB-10E: fields — the geyser hiss, the mud squelch, the magnet arc
+  | 'steam' | 'gurgle' | 'zap'
+  // MB-10F: set pieces — the turnstile crank, the target drop, the gate bonus, the funnel whoosh
+  | 'crank' | 'ding' | 'bonus' | 'whoosh'
   // story mode UI: dialogue tick and chapter/act sting
   | 'blip' | 'sting';
 
@@ -26,7 +38,7 @@ const MUTE_KEY = 'heavy-metal-gp:muted';
 // Peggle-style rising run: a major scale that keeps climbing while the streak lasts
 const SCALE = [0, 2, 4, 5, 7, 9, 11];
 const STREAK_WINDOW = 1600;
-const MIN_GAP: Partial<Record<SoundType, number>> = { peg: 25, bump: 60, thud: 90, clack: 70, crack: 90, clang: 80, hoop: 80, spring: 120, blip: 26 };
+const MIN_GAP: Partial<Record<SoundType, number>> = { peg: 25, bump: 60, thud: 90, clack: 70, crack: 90, clang: 80, hoop: 80, spring: 120, blip: 26, cheer: 500, rumble: 250, creak: 200, click: 60, shriek: 220, grind: 180, slam: 320, splash: 200, groan: 300, whirr: 400, bang: 400, twang: 200, snap: 150, boing: 250, steam: 600, gurgle: 280, zap: 500, crank: 320, ding: 90, bonus: 900, whoosh: 420 };
 
 class RaceAudio {
   private ctx: AudioContext | null = null;
@@ -106,6 +118,59 @@ class RaceAudio {
       case 'light': return this.tone(t, 440, 0.16, 'square', 0.22, 0);
       case 'go': return this.tone(t, 880, 0.45, 'square', 0.28, 0);
       case 'finish': return this.finish(t, e.rank ?? 10);
+      case 'cheer': {
+        // the crowd roars: a noisy swell plus a rising whoop
+        this.noiseHit(t, 0.7, 1100, 0.3 * vol, pan, 'bandpass');
+        return this.arp(t + 0.04, [72, 76, 79, 84], 0.07, 'triangle', 0.14 * vol, pan);
+      }
+      case 'rumble': {
+        // muffled rock: low noise with a slow sub thump
+        this.noiseHit(t, 0.45, 160, 0.42 * vol, pan, 'lowpass');
+        return this.tone(t, 55, 0.4, 'sine', 0.2 * vol, pan, 38);
+      }
+      case 'creak': return this.tone(t, 140, 0.5, 'triangle', 0.16 * vol, pan, 90);
+      case 'click': return this.tone(t, 1150, 0.045, 'square', 0.16 * vol, pan, 760);
+      // MB-10B: blades and crushers
+      case 'shriek': {
+        // scraping steel with a rising wail
+        this.noiseHit(t, 0.22, 3200, 0.35 * vol, pan, 'bandpass');
+        return this.tone(t, 1500, 0.28, 'sawtooth', 0.14 * vol, pan, 2600);
+      }
+      case 'grind': {
+        // the saw bites: band noise with a low chew
+        this.noiseHit(t, 0.3, 1900, 0.4 * vol, pan, 'bandpass');
+        return this.tone(t, 130, 0.24, 'sawtooth', 0.16 * vol, pan, 90);
+      }
+      // MB-10C: movers
+      case 'splash': {
+        // the bucket dunks: bright noise with a plop behind it
+        this.noiseHit(t, 0.3, 2400, 0.34 * vol, pan, 'bandpass');
+        return this.tone(t, 420, 0.22, 'sine', 0.2 * vol, pan, 190);
+      }
+      case 'groan': return this.tone(t, 105, 0.65, 'sawtooth', 0.15 * vol, pan, 62); // timber under load
+      case 'whirr': {
+        // the screw turns: soft band hum with a tick
+        this.tone(t, 260, 0.4, 'sawtooth', 0.08 * vol, pan, 320);
+        return this.noiseHit(t, 0.4, 900, 0.1 * vol, pan, 'bandpass');
+      }
+      case 'slam': {
+        // the piston docks: a boom under a dust of noise
+        this.noiseHit(t, 0.32, 420, 0.65 * vol, pan, 'lowpass');
+        return this.tone(t, 68, 0.42, 'sine', 0.55 * vol, pan, 34);
+      }
+      // MB-10D launchers
+      case 'bang': {
+        // black powder: a big noise burst over a sub drop
+        this.noiseHit(t, 0.5, 1200, 0.85 * vol, pan, 'lowpass');
+        return this.tone(t, 70, 0.4, 'sine', 0.7 * vol, pan, 34);
+      }
+      case 'twang': return this.tone(t, 240 + Math.random() * 60, 0.28, 'sawtooth', 0.3 * vol, pan, 110); // rubber band
+      case 'snap': { this.noiseHit(t, 0.05, 2600, 0.35 * vol, pan, 'bandpass'); return this.tone(t, 320, 0.07, 'square', 0.2 * vol, pan, 140); }
+      case 'crank': { this.tone(t, 90, 0.16, 'square', 0.22 * vol, pan, 70); return this.tone(t + 0.05, 140, 0.14, 'square', 0.18 * vol, pan, 110); }
+      case 'ding': { return this.tone(t, 1250, 0.09, 'triangle', 0.22 * vol, pan, 960); }
+      case 'bonus': { this.tone(t, 660, 0.1, 'triangle', 0.24 * vol, pan, 500); this.tone(t + 0.09, 880, 0.1, 'triangle', 0.24 * vol, pan, 640); return this.tone(t + 0.18, 1180, 0.16, 'triangle', 0.26 * vol, pan, 760); }
+      case 'whoosh': { return this.noiseHit(t, 0.22, 900, 0.22 * vol, pan, 'bandpass'); }
+      case 'boing': { this.tone(t, 180, 0.12, 'sine', 0.3 * vol, pan, 420); return this.tone(t + 0.1, 320, 0.1, 'sine', 0.2 * vol, pan, 520); }
       case 'blip': return this.tone(t, 1500 + Math.random() * 220, 0.028, 'square', 0.07, 0);
       case 'sting': return this.sting(t);
     }

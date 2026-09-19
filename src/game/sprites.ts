@@ -1,13 +1,14 @@
 import type Matter from 'matter-js';
 
-/** Gameplay sprites sliced from the "game graphics kit" sheet (see assets/ui). */
-const files = import.meta.glob<string>('../assets/game/*.webp', { eager: true, import: 'default' });
+/** Gameplay sprites sliced from the "game graphics kit" sheet (see assets/ui), plus placeholder PNGs. */
+const files = import.meta.glob<string>('../assets/game/*.{webp,png}', { eager: true, import: 'default' });
 const images = new Map<string, HTMLImageElement>();
 if (typeof Image !== 'undefined') {
   for (const [path, url] of Object.entries(files)) {
     const img = new Image();
     img.src = url;
-    images.set(path.slice(path.lastIndexOf('/') + 1, -'.webp'.length), img);
+    const file = path.slice(path.lastIndexOf('/') + 1);
+    images.set(file.slice(0, file.lastIndexOf('.')), img);
   }
 }
 

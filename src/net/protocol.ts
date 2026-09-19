@@ -59,7 +59,8 @@ export type { RaceEntry, RankWire };
  * lobby/ready/start, 20 Hz packed `state`, `events`, chunked `snapshot`,
  * `intent`, `resync`, `results`, presence and the hard refusal on mismatch.
  */
-export const PROTOCOL_VERSION = 3; // 3: the rated wire (rating board, result claim, the room's result)
+export const PROTOCOL_VERSION = 4; // 3: the rated wire (rating board, result claim, the room's result);
+// 4: MB-10 launchers (cannon/catapult/scoop holds, flipper firedAt, sling flash) and the movers' dynamic state
 
 /**
  * Realtime WS frame cap in bytes. Mirrors the SDK's `MAX_BROADCAST_BYTES`
@@ -539,6 +540,88 @@ export interface CueEvent {
   seat?: number;
 }
 
+/** MB-10A. A track-switch plate flipped to a route (`side`: 0 = left, 1 = right). */
+export interface SwitchEvent {
+  kind: 'switch';
+  i: number;
+  side: 0 | 1;
+}
+
+/** MB-10A. A stateful (weight-mode) trapdoor opened or closed. */
+export interface TrapdoorEvent {
+  kind: 'trapdoor';
+  i: number;
+  open: boolean;
+}
+
+/**
+ * MB-10A. A marble is hidden inside an element until `until` (host clock). `of` names the
+ * carrier: a cliff `tunnel` draw is hidden start-to-end; a water-`wheel` bucket ride or a
+ * `screw` lift transit stays visible on screen (MB-10C); a `cannon` load, a `catapult` spoon
+ * hold or a `scoop` kickback keeps the rider parked at the machine until the shot (MB-10D).
+ */
+export interface HoldEvent {
+  kind: 'hold';
+  seat: number;
+  until: number;
+  of?: 'tunnel' | 'wheel' | 'screw' | 'cannon' | 'catapult' | 'scoop';
+}
+
+/**
+ * MB-10C. A seesaw's dynamic state, streamed at a low rate while the plank is moving: its
+ * angle (rad, 0 = level) and angular velocity (rad/ms). Guests blend their local copy toward
+ * it; the plank itself is a body, so track collisions follow.
+ */
+export interface SeesawEvent {
+  kind: 'seesaw';
+  i: number;
+  angle: number;
+  angVel: number;
+}
+
+/**
+ * MB-10C. A rope bridge's plank chain: `i` is the FIRST plank's body index (planks are
+ * contiguous from the builder) and `sag` is each plank's vertical offset in px, rounded.
+ * Guests spring their local planks toward it.
+ */
+export interface BridgeEvent {
+  kind: 'bridge';
+  i: number;
+  sag: number[];
+}
+
+/**
+ * MB-10D. A flipper snapped: `at` is the host clock of the swing start; guests set their
+ * copy's firedAt so their bat reposes through the same swing between position frames.
+ */
+export interface FlipperEvent {
+  kind: 'flipper';
+  i: number;
+  at: number;
+}
+
+/** MB-10D. A slingshot face tossed a marble; guests redraw the band flash (physics is theirs anyway). */
+export interface SlingEvent {
+  kind: 'sling';
+  i: number;
+}
+
+/** MB-10F. A turnstile took a shove: guests set the same step so their eased ratchet matches. */
+export interface TurnstileEvent {
+  kind: 'turnstile';
+  i: number;
+  steps: number;
+  at: number;
+}
+
+/** MB-10F. A drop-target pin changed state (1 = dropped, 0 = re-armed); the bank gate derives from the pin set. */
+export interface TargetsEvent {
+  kind: 'targets';
+  i: number;
+  down: number;
+  at: number;
+}
+
 export type RaceEvent =
   | PegEvent
   | CrateEvent
@@ -548,10 +631,19 @@ export type RaceEvent =
   | ShockEvent
   | ItemEvent
   | FinishEvent
-  | CueEvent;
+  | CueEvent
+  | SwitchEvent
+  | TrapdoorEvent
+  | HoldEvent
+  | SeesawEvent
+  | BridgeEvent
+  | FlipperEvent
+  | SlingEvent
+  | TurnstileEvent
+  | TargetsEvent;
 
 /** Every event kind, in wire order. `validateMessage` rejects anything else. */
-export const RACE_EVENT_KINDS = ['peg', 'crate', 'box', 'oil', 'freeze', 'shock', 'item', 'finish', 'sound'] as const;
+export const RACE_EVENT_KINDS = ['peg', 'crate', 'box', 'oil', 'freeze', 'shock', 'item', 'finish', 'sound', 'switch', 'trapdoor', 'hold', 'seesaw', 'bridge', 'flipper', 'sling', 'turnstile', 'targets'] as const;
 
 /**
  * host → server → everyone. What happened since the last frame.
@@ -1539,6 +1631,46 @@ function validateEvent(value: unknown): ProtocolError | null {
       if (!isSoundEvent(e.cue)) return forged(`Sound cue "${e.cue}" is not one of: ${SOUND_EVENTS.join(', ')}.`);
       if (e.seat !== undefined) return seat(e.seat);
       return null;
+    }
+    case 'switch': {
+      if (e.side !== 0 && e.side !== 1) return bad('Switch event has no side.');
+      return body(e.i);
+    }
+    case 'trapdoor': {
+      if (typeof e.open !== 'boolean') return bad('Trapdoor event has no open flag.');
+      return body(e.i);
+    }
+    case 'hold': {
+      if (typeof e.until !== 'number' || !Number.isFinite(e.until) || e.until < 0) return bad('Hold event has no release time.');
+      if (e.of !== undefined && !['tunnel', 'wheel', 'screw', 'cannon', 'catapult', 'scoop'].includes(e.of as string)) return bad('Hold event names no carrier this build knows.');
+      return seat(e.seat);
+    }
+    case 'seesaw': {
+      if (typeof e.angle !== 'number' || !Number.isFinite(e.angle) || Math.abs(e.angle) > 3) return bad('Seesaw event has no sane angle.');
+      if (typeof e.angVel !== 'number' || !Number.isFinite(e.angVel)) return bad('Seesaw event has no angular velocity.');
+      return body(e.i);
+    }
+    case 'bridge': {
+      if (!Array.isArray(e.sag) || e.sag.length < 1 || e.sag.length > 12) return bad('Bridge event has a malformed sag chain.');
+      for (const s of e.sag) if (typeof s !== 'number' || !Number.isFinite(s) || Math.abs(s) > 400) return bad('Bridge event has a plank out of range.');
+      return body(e.i);
+    }
+    case 'flipper': {
+      if (typeof e.at !== 'number' || !Number.isFinite(e.at) || e.at < 0) return bad('Flipper event has no swing clock.');
+      return body(e.i);
+    }
+    case 'sling': {
+      return body(e.i);
+    }
+    case 'turnstile': {
+      if (!isInt(e.steps, 0, 1_000_000)) return bad('Turnstile event has a bad step counter.');
+      if (typeof e.at !== 'number' || !Number.isFinite(e.at) || e.at < 0) return bad('Turnstile event has no step clock.');
+      return body(e.i);
+    }
+    case 'targets': {
+      if (!(e.down === 0 || e.down === 1)) return bad('Targets event must say whether the pin dropped or re-armed.');
+      if (typeof e.at !== 'number' || !Number.isFinite(e.at) || e.at < 0) return bad('Targets event has no state clock.');
+      return body(e.i);
     }
     default:
       return bad(`Unknown event kind "${String(e.kind)}".`);

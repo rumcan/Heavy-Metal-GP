@@ -75,6 +75,29 @@ const CUE_SOUND: Record<CueName, SoundType> = {
   bucket: 'bucket',
   boost: 'hoop',
   finish: 'finish',
+  // MB-10A: shortcuts and secrets
+  cheer: 'cheer',
+  rumble: 'rumble',
+  creak: 'creak',
+  click: 'click',
+  shriek: 'shriek',
+  grind: 'grind',
+  slam: 'slam',
+  splash: 'splash',
+  groan: 'groan',
+  whirr: 'whirr',
+  // MB-10D launchers
+  bang: 'bang',
+  twang: 'twang',
+  snap: 'snap',
+  boing: 'boing',
+  crank: 'crank',
+  ding: 'ding',
+  bonus: 'bonus',
+  whoosh: 'whoosh',
+  steam: 'steam',
+  gurgle: 'gurgle',
+  zap: 'zap',
 };
 
 /** One line of the classification, in the shape the results screen already reads. */
