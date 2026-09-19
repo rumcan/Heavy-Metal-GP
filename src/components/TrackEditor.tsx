@@ -469,6 +469,22 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
           const val = parseInt(floorPrompt, 10);
           if (!isNaN(val) && val >= 0) piece.floor = val;
         }
+      } else if (piece.t === 'boulder') {
+        const rPrompt = window.prompt('What is the boulder radius (size)?', String(piece.r));
+        if (rPrompt !== null) {
+          const val = parseInt(rPrompt, 10);
+          if (!isNaN(val) && val > 0) piece.r = val;
+        }
+        const intervalPrompt = window.prompt('How many milliseconds between boulder spawns?', String(piece.interval));
+        if (intervalPrompt !== null) {
+          const val = parseInt(intervalPrompt, 10);
+          if (!isNaN(val) && val > 0) piece.interval = val;
+        }
+        const restPrompt = window.prompt('How many milliseconds should the boulder wait before rolling (rest)?', String(piece.rest));
+        if (restPrompt !== null) {
+          const val = parseInt(restPrompt, 10);
+          if (!isNaN(val) && val >= 0) piece.rest = val;
+        }
       }
 
       // The new piece is not selected: the tool stays armed so the player can keep placing. Select mode (E) edits.

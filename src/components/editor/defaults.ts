@@ -156,8 +156,8 @@ export function defaultPiece(type: PieceType, at: Point, snap = false): Piece {
       return {
         t: 'boulder',
         pts: [
-          [x - 180, y] as [number, number],
-          [x + 160, y + 240] as [number, number],
+          [x, y] as [number, number],
+          [x + 340, y + 240] as [number, number],
         ],
         r: 27, interval: 6500, rest: 1400, phase: 0,
       };
