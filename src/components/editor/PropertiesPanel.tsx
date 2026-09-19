@@ -317,7 +317,7 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
           <NumField label="Pivot Y" value={piece.pivot[1]} onValue={(v) => update({ pivot: [piece.pivot[0], v] } as unknown as Piece)} />
           <NumField label="Arm length" value={piece.len} min={60} max={600} step={5} onValue={(v) => update({ len: clampNum(v, 60, 600) } as unknown as Piece)} />
           <NumField label="Amplitude (rad)" value={piece.amp} min={0.1} max={1.5} step={0.05} onValue={(v) => update({ amp: clampNum(v, 0.1, 1.5) } as unknown as Piece)} />
-          <NumField label="Period (ms)" value={piece.period} min={800} max={20000} step={100} onValue={(v) => update({ period: Math.round(clampNum(v, 800, 20000)) } as unknown as Piece)} />
+          <NumField label="Period (ms)" value={piece.period} min={1500} max={20000} step={100} onValue={(v) => update({ period: Math.round(clampNum(v, 1500, 20000)) } as unknown as Piece)} />
           <NumField label="Phase (ms)" value={piece.phase} step={100} onValue={(v) => update({ phase: v } as unknown as Piece)} />
           <NumField label="Blade half-thick" value={piece.thin} min={4} max={24} step={1} onValue={(v) => update({ thin: Math.round(clampNum(v, 4, 24)) } as unknown as Piece)} />
         </>
@@ -488,6 +488,52 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
           ) : (
             <p className="hint">Subway: drag the exit handle into place with the move tool, or leave unset for a kickback.</p>
           )}
+        </>
+      )}
+
+      {piece.t === 'wind' && (
+        <>
+          <NumField label="Dir (deg, 270 = up)" value={piece.dir} min={0} max={360} step={5} onValue={(v) => update({ dir: (((v % 360) + 360) % 360) } as unknown as Piece)} />
+          <NumField label="Strength" value={piece.str} min={0.05} max={1} step={0.02} onValue={(v) => update({ str: clampNum(v, 0.05, 1) } as unknown as Piece)} />
+          <NumField label="Pulse (ms, 0 = steady)" value={piece.pulse} min={0} max={20000} step={100} onValue={(v) => update({ pulse: v === 0 ? 0 : Math.round(clampNum(v, 800, 20000)) } as unknown as Piece)} />
+          <NumField label="Phase (ms)" value={piece.phase} min={0} max={20000} step={100} onValue={(v) => update({ phase: Math.round(clampNum(v, 0, 20000)) } as unknown as Piece)} />
+          <p className="hint">Grab the box corners with the move tool; the dir handle swings the fan.</p>
+        </>
+      )}
+
+      {piece.t === 'magnet' && (
+        <>
+          <NumField label="X" value={piece.x} min={0} max={W} onValue={(v) => update({ x: clampNum(v, 0, W) } as unknown as Piece)} />
+          <NumField label="Y" value={piece.y} onValue={(v) => update({ y: v } as unknown as Piece)} />
+          <NumField label="Radius" value={piece.r} min={40} max={400} step={5} onValue={(v) => update({ r: Math.round(clampNum(v, 40, 400)) } as unknown as Piece)} />
+          <NumField label="Pull" value={piece.str} min={1} max={6} step={0.2} onValue={(v) => update({ str: clampNum(v, 1, 6) } as unknown as Piece)} />
+          <NumField label="Thrum (ms, 0 = always)" value={piece.period} min={0} max={20000} step={100} onValue={(v) => update({ period: v === 0 ? 0 : Math.round(clampNum(v, 800, 20000)) } as unknown as Piece)} />
+          <NumField label="Phase (ms)" value={piece.phase} min={0} max={20000} step={100} onValue={(v) => update({ phase: Math.round(clampNum(v, 0, 20000)) } as unknown as Piece)} />
+        </>
+      )}
+
+      {piece.t === 'mud' && (
+        <>
+          <NumField label="Drag" value={piece.drag} min={0.05} max={0.5} step={0.02} onValue={(v) => update({ drag: clampNum(v, 0.05, 0.5) } as unknown as Piece)} />
+          <p className="hint">Drag the two ends to shape the strip.</p>
+        </>
+      )}
+
+      {piece.t === 'pool' && (
+        <>
+          <NumField label="Depth" value={piece.depth} min={40} max={200} step={4} onValue={(v) => update({ depth: Math.round(clampNum(v, 40, 200)) } as unknown as Piece)} />
+          <NumField label="Skip speed" value={piece.skip} min={4} max={14} step={0.5} onValue={(v) => update({ skip: clampNum(v, 4, 14) } as unknown as Piece)} />
+          <p className="hint">Drag the edges; depth handle sits below the waterline.</p>
+        </>
+      )}
+
+      {piece.t === 'geyser' && (
+        <>
+          <NumField label="X" value={piece.x} min={0} max={W} onValue={(v) => update({ x: clampNum(v, 0, W) } as unknown as Piece)} />
+          <NumField label="Y" value={piece.y} onValue={(v) => update({ y: v } as unknown as Piece)} />
+          <NumField label="Column (px)" value={piece.h} min={120} max={500} step={10} onValue={(v) => update({ h: Math.round(clampNum(v, 120, 500)) } as unknown as Piece)} />
+          <NumField label="Period (ms)" value={piece.period} min={1500} max={20000} step={100} onValue={(v) => update({ period: Math.round(clampNum(v, 1500, 20000)) } as unknown as Piece)} />
+          <NumField label="Phase (ms)" value={piece.phase} min={0} max={20000} step={100} onValue={(v) => update({ phase: Math.round(clampNum(v, 0, 20000)) } as unknown as Piece)} />
         </>
       )}
     </div>

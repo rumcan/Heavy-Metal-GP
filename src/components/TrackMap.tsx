@@ -12,7 +12,7 @@ const COLORS = {
   bg: '#0c1520', grid: 'rgba(255,255,255,0.04)', wall: '#56657a', wood: '#c98a4b', ice: '#8fd3ff', curve: '#d99a5a',
   blue: '#3b82f6', orange: '#f97316', item: '#a855f7', bumper: '#e0453a', loop: '#f2b36b', hoop: '#ff8a3d',
   boost: '#e0453a', spinner: '#f5c542', wrecker: '#9aa6b2', pad: '#b690ff', crate: '#b87a3e', block: '#7c8ba0', itembox: '#f5c542', bucket: '#34d399',
-  danger: '#f87171', mover: '#7dd3fc', launcher: '#fbbf24',
+  danger: '#f87171', mover: '#7dd3fc', launcher: '#fbbf24', field: '#34d399',
 };
 
 function drawPiece(ctx: CanvasRenderingContext2D, p: Piece, k: number) {
@@ -220,6 +220,52 @@ function drawPiece(ctx: CanvasRenderingContext2D, p: Piece, k: number) {
         const ea = ((p.deg ?? 270) * Math.PI) / 180;
         line(p.x, p.y, p.x + Math.cos(ea) * 30, p.y + Math.sin(ea) * 30, COLORS.launcher, Math.max(1, 2 * k));
       }
+      break;
+    }
+    // ---- MB-10E: fields and surfaces ----
+    case 'wind': {
+      // the field rectangle with a dir tick through its centre
+      const x0 = Math.min(p.a[0], p.b[0]), x1 = Math.max(p.a[0], p.b[0]);
+      const y0 = Math.min(p.a[1], p.b[1]), y1 = Math.max(p.a[1], p.b[1]);
+      ctx.save();
+      ctx.strokeStyle = COLORS.field;
+      ctx.lineWidth = Math.max(1, 1.5 * k);
+      ctx.strokeRect(X(x0), Y(y0), (x1 - x0) * k, (y1 - y0) * k);
+      ctx.restore();
+      const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+      const fa = (p.dir * Math.PI) / 180;
+      line(cx, cy, cx + Math.cos(fa) * 26, cy + Math.sin(fa) * 26, COLORS.field, Math.max(1, 2 * k));
+      break;
+    }
+    case 'magnet': {
+      dot(p.x, p.y, 7, COLORS.field);
+      ctx.save();
+      ctx.strokeStyle = COLORS.field;
+      ctx.globalAlpha = 0.6;
+      ctx.lineWidth = Math.max(1, 1.2 * k);
+      ctx.beginPath();
+      ctx.arc(X(p.x), Y(p.y), p.r * k, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+      break;
+    }
+    case 'mud':
+      line(p.a[0], p.a[1], p.b[0], p.b[1], COLORS.field, Math.max(2, 5 * k));
+      break;
+    case 'pool': {
+      const x0 = Math.min(p.a[0], p.b[0]), x1 = Math.max(p.a[0], p.b[0]);
+      const top = Math.min(p.a[1], p.b[1]);
+      ctx.save();
+      ctx.strokeStyle = COLORS.field;
+      ctx.lineWidth = Math.max(1, 1.5 * k);
+      ctx.strokeRect(X(x0), Y(top), (x1 - x0) * k, p.depth * k);
+      ctx.restore();
+      line(x0, top, x1, top, COLORS.field, Math.max(1.5, 2.5 * k));
+      break;
+    }
+    case 'geyser': {
+      dot(p.x, p.y, 6, COLORS.field);
+      line(p.x, p.y, p.x, p.y - Math.min(p.h, 240), COLORS.field, Math.max(1, 1.5 * k));
       break;
     }
   }

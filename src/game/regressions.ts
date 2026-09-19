@@ -291,6 +291,70 @@ add('MB-10D launchers: the whole field rides every toy', 'Race safety', async ()
   return `3 seeds on the proving ground; rides ${JSON.stringify(totals)}`;
 });
 
+add('MB-10E fields: every field fires and nobody drowns', 'Race safety', async () => {
+  // Proving-ground circuit: each MB-10E field once on the exact geometry the segments ship
+  // (mirrored in scripts/mb10e-sanity.mjs). Exercises the schema, the builders, the clock
+  // programs, and proves the whole field creams through: no stick, no drown, no stall.
+  const def = {
+    v: 1, name: 'MB-10E proving ground', seed: 11, theme: 'classic', height: 2900,
+    pieces: [
+      { t: 'ramp', a: [0, 40], b: [300, 150] },
+      { t: 'ramp', a: [300, 150], b: [360, 180] },
+      { t: 'wind', a: [360, -20], b: [560, 320], dir: 300, str: 0.36, pulse: 2800, phase: 0 },
+      { t: 'ramp', a: [560, 160], b: [880, 330] },
+      { t: 'ramp', a: [60, 320], b: [890, 440] },
+      { t: 'ramp', a: [0, 520], b: [470, 710] },
+      { t: 'wall', x: 845, y: 800, w: 14, h: 250 },
+      { t: 'magnet', x: 700, y: 760, r: 175, str: 5, period: 0, phase: 0 },
+      { t: 'ramp', a: [470, 710], b: [120, 850] },
+      { t: 'wall', x: 30, y: 940, w: 14, h: 210 },
+      { t: 'magnet', x: 190, y: 940, r: 175, str: 5, period: 4600, phase: 600 },
+      { t: 'ramp', a: [120, 850], b: [660, 1010] },
+      { t: 'ramp', a: [660, 1010], b: [880, 1120] },
+      { t: 'ramp', a: [0, 1230], b: [260, 1340] },
+      { t: 'mud', a: [120, 1307], b: [380, 1405], drag: 0.3 },
+      { t: 'ramp', a: [260, 1340], b: [560, 1500] },
+      { t: 'mud', a: [430, 1446], b: [700, 1564], drag: 0.3 },
+      { t: 'ramp', a: [560, 1500], b: [890, 1670] },
+      { t: 'ramp', a: [0, 1830], b: [240, 1950] },
+      { t: 'pool', a: [290, 1970], b: [620, 1970], depth: 96, skip: 6.5 },
+      { t: 'ramp', a: [634, 1986], b: [880, 2140] },
+      { t: 'ramp', a: [240, 1990], b: [330, 2030] },
+      { t: 'ramp', a: [0, 2230], b: [300, 2380] },
+      { t: 'ramp', a: [300, 2380], b: [400, 2410] },
+      { t: 'geyser', x: 430, y: 2408, h: 260, period: 3500, phase: 0 },
+      { t: 'ramp', a: [460, 2424], b: [530, 2450] },
+      { t: 'geyser', x: 560, y: 2442, h: 260, period: 3700, phase: 900 },
+      { t: 'ramp', a: [590, 2466], b: [660, 2490] },
+      { t: 'geyser', x: 690, y: 2480, h: 260, period: 3900, phase: 1700 },
+      { t: 'ramp', a: [720, 2498], b: [890, 2620] },
+      { t: 'ramp', a: [0, 2660], b: [890, 2820] },
+    ],
+  };
+  buildTrackFromDef(def); // throws on a schema validator bug before the race even starts
+  const cues: Record<string, number> = {};
+  for (const seed of [7, 9001, 424242]) {
+    const game = new Game(seed, roster(seed), { def, recovery: true, effects: false, aiItems: false, wireEvents: true });
+    try {
+      game.openGate();
+      let t = 0;
+      while (!game.allFinished() && t < 300000) {
+        game.step(1000 / 60);
+        for (const e of game.drainRaceEvents()) {
+          if (e.kind === 'sound' && e.cue) cues[e.cue] = (cues[e.cue] ?? 0) + 1;
+        }
+        t += 1000 / 60;
+      }
+      ensure(game.allFinished(), `Seed ${seed} left the field waiting past 300s.`);
+    } finally { game.destroy(); }
+  }
+  // every cue-bearing field must have fired at least once across the seeds
+  for (const need of ['steam', 'gurgle', 'zap', 'splash']) {
+    ensure((cues[need] ?? 0) > 0, `Field cue '${need}' never fired across the three seeds.`);
+  }
+  return `3 seeds on the fields ground; cues ${JSON.stringify({ steam: cues.steam ?? 0, gurgle: cues.gurgle ?? 0, zap: cues.zap ?? 0, splash: cues.splash ?? 0 })}`;
+});
+
 add('Three heats use one seed and advance the championship once', 'Championship', async () => {
   let season = newSeason(roster());
   const seed = gpSeed(season.seed, 0);

@@ -105,13 +105,26 @@ export interface SlingPiece extends PieceBase { t: 'sling'; x: number; y: number
 /** Scoop / kickback hole: pocket at (x, y) holds a marble `hold` ms, kicks it along `deg` (seeded jitter); optional `exit` = subway chute link [x, y, transitMs]. */
 export interface ScoopPiece extends PieceBase { t: 'scoop'; x: number; y: number; deg: number; hold: number; exit?: [number, number, number] }
 
+// ---- MB-10E: fields and surfaces ----
+/** Wind fan / updraft vent: rect field [a1,b1] corner box, blowing along `dir` deg (canvas; 270 = up), `str` push scale. `pulse` ms > 0 makes it breathe on a timer (kinematic). */
+export interface WindPiece extends PieceBase { t: 'wind'; a: Vec; b: Vec; dir: number; str: number; pulse: number; phase: number }
+/** Horseshoe magnet: circle field at (x, y) radius `r`; pull `str` scaled by weight. `period` ms = on/off thrum (0 = always on), kinematic. */
+export interface MagnetPiece extends PieceBase { t: 'magnet'; x: number; y: number; r: number; str: number; period: number; phase: number }
+/** Mud / tar pit: sticky strip along a→b with `drag` per-step fraction. Airborne marbles hop it. */
+export interface MudPiece extends PieceBase { t: 'mud'; a: Vec; b: Vec; drag: number }
+/** Water pool: basin [a1,a2] surface corners, `depth` deep; entries with horizontal speed over `skip` skim the surface. */
+export interface PoolPiece extends PieceBase { t: 'pool'; a: Vec; b: Vec; depth: number; skip: number }
+/** Geyser / steam vent: vent plinth at (x, y); eruption column `h` high every `period` ms (kinematic, off the race clock). */
+export interface GeyserPiece extends PieceBase { t: 'geyser'; x: number; y: number; h: number; period: number; phase: number }
+
 export type Piece =
   | RampPiece | CurvePiece | IcePiece | LoopPiece | HoopPiece | WreckerPiece | PadPiece | BoostPiece
   | SpinnerPiece | BreakablePiece | PegPiece | PPegPiece | ItemBoxPiece | BucketPiece | WallPiece | BlockPiece
   | BarricadePiece | TunnelPiece | CrumblePiece | TrapdoorPiece | SwitchPiece
   | BladePiece | SawPiece | CrusherPiece | BoulderPiece | MacePiece
   | WheelPiece | ScrewPiece | ConveyorPiece | SeesawPiece | BridgePiece
-  | CannonPiece | CatapultPiece | FlipperPiece | SlingPiece | ScoopPiece;
+  | CannonPiece | CatapultPiece | FlipperPiece | SlingPiece | ScoopPiece
+  | WindPiece | MagnetPiece | MudPiece | PoolPiece | GeyserPiece;
 
 export interface TrackDef {
   v: 1;
@@ -372,6 +385,42 @@ class DefRecorder extends Builder {
     );
   }
 
+  // ---- MB-10E ----
+  override wind(x1: number, y1: number, x2: number, y2: number, dirDeg = 270, strength = 0.28, pulseMs = 0, phaseMs = 0) {
+    return this.capture(
+      () => super.wind(x1, y1, x2, y2, dirDeg, strength, pulseMs, phaseMs),
+      () => ({ t: 'wind', a: [x1, y1] as Vec, b: [x2, y2] as Vec, dir: dirDeg, str: strength, pulse: pulseMs, phase: phaseMs, flip: this.mirrored }),
+    );
+  }
+
+  override magnet(x: number, y: number, r = 180, strength = 3, periodMs = 0, phaseMs = 0) {
+    return this.capture(
+      () => super.magnet(x, y, r, strength, periodMs, phaseMs),
+      () => ({ t: 'magnet', x, y, r, str: strength, period: periodMs, phase: phaseMs, flip: this.mirrored }),
+    );
+  }
+
+  override mud(x1: number, y1: number, x2: number, y2: number, drag = 0.22) {
+    return this.capture(
+      () => super.mud(x1, y1, x2, y2, drag),
+      () => ({ t: 'mud', a: [x1, y1] as Vec, b: [x2, y2] as Vec, drag, flip: this.mirrored }),
+    );
+  }
+
+  override pool(x1: number, y1: number, x2: number, y2: number, depth = 90, skip = 8) {
+    return this.capture(
+      () => super.pool(x1, y1, x2, y2, depth, skip),
+      () => ({ t: 'pool', a: [x1, y1] as Vec, b: [x2, y2] as Vec, depth, skip, flip: this.mirrored }),
+    );
+  }
+
+  override geyser(x: number, y: number, h = 300, periodMs = 4200, phaseMs = 0) {
+    return this.capture(
+      () => super.geyser(x, y, h, periodMs, phaseMs),
+      () => ({ t: 'geyser', x, y, h, period: periodMs, phase: phaseMs, flip: this.mirrored }),
+    );
+  }
+
   override seesaw(px: number, py: number, len = 300, limDeg = 22, damp = 0.9) {
     return this.capture(
       () => super.seesaw(px, py, len, limDeg, damp),
@@ -461,6 +510,12 @@ function replayPiece(b: Builder, piece: Piece) {
       case 'flipper': b.flipper(piece.x, piece.y, piece.side, piece.len, piece.strength, piece.timer, piece.phase); break;
       case 'sling': b.sling(piece.x, piece.y, piece.size, piece.facing, piece.strength); break;
       case 'scoop': b.scoop(piece.x, piece.y, piece.deg, piece.hold, piece.exit); break;
+      // ---- MB-10E ----
+      case 'wind': b.wind(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.dir, piece.str, piece.pulse, piece.phase); break;
+      case 'magnet': b.magnet(piece.x, piece.y, piece.r, piece.str, piece.period, piece.phase); break;
+      case 'mud': b.mud(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.drag); break;
+      case 'pool': b.pool(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.depth, piece.skip); break;
+      case 'geyser': b.geyser(piece.x, piece.y, piece.h, piece.period, piece.phase); break;
     }
   } finally {
     b.flip = false;
@@ -1045,6 +1100,55 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
           : {}),
         ...body,
       };
+    case 'wind':
+      return {
+        t: 'wind',
+        a: vec(raw.a, `${at}.a`, problems),
+        b: vec(raw.b, `${at}.b`, problems),
+        dir: number(raw.dir, `${at}.dir`, 0, 360, problems),
+        str: number(raw.str, `${at}.str`, 0.05, 1, problems),
+        pulse: number(raw.pulse, `${at}.pulse`, 0, 20000, problems),
+        phase: real(raw.phase, `${at}.phase`, problems),
+        ...body,
+      };
+    case 'magnet':
+      return {
+        t: 'magnet',
+        x: number(raw.x, `${at}.x`, 0, W, problems),
+        y: real(raw.y, `${at}.y`, problems),
+        r: number(raw.r, `${at}.r`, 40, 400, problems),
+        str: number(raw.str, `${at}.str`, 1, 10, problems),
+        period: number(raw.period, `${at}.period`, 0, 20000, problems),
+        phase: real(raw.phase, `${at}.phase`, problems),
+        ...body,
+      };
+    case 'mud':
+      return {
+        t: 'mud',
+        a: vec(raw.a, `${at}.a`, problems),
+        b: vec(raw.b, `${at}.b`, problems),
+        drag: number(raw.drag, `${at}.drag`, 0.05, 0.5, problems),
+        ...body,
+      };
+    case 'pool':
+      return {
+        t: 'pool',
+        a: vec(raw.a, `${at}.a`, problems),
+        b: vec(raw.b, `${at}.b`, problems),
+        depth: number(raw.depth, `${at}.depth`, 40, 300, problems),
+        skip: number(raw.skip, `${at}.skip`, 4, 14, problems),
+        ...body,
+      };
+    case 'geyser':
+      return {
+        t: 'geyser',
+        x: number(raw.x, `${at}.x`, 0, W, problems),
+        y: real(raw.y, `${at}.y`, problems),
+        h: number(raw.h, `${at}.h`, 80, 600, problems),
+        period: number(raw.period, `${at}.period`, 1500, 20000, problems),
+        phase: real(raw.phase, `${at}.phase`, problems),
+        ...body,
+      };
     default:
       problems.add(`${at}.t is unknown piece type ${JSON.stringify(raw.t)}.`);
       return null;
@@ -1093,6 +1197,16 @@ function pieceYs(piece: Piece): number[] {
       return [piece.y - 0.9 * piece.size, piece.y + 0.9 * piece.size];
     case 'scoop':
       return piece.exit ? [piece.y, piece.exit[1]] : [piece.y - 220, piece.y];
+    case 'wind':
+      return [piece.a[1], piece.b[1]];
+    case 'magnet':
+      return piece.period ? [piece.y - piece.r, piece.y + piece.r] : [piece.y];
+    case 'mud':
+      return [piece.a[1], piece.b[1]];
+    case 'pool':
+      return [Math.min(piece.a[1], piece.b[1]), Math.min(piece.a[1], piece.b[1]) + piece.depth + 12];
+    case 'geyser':
+      return [piece.y - piece.h, piece.y + 10];
     case 'hoop':
     case 'spinner':
     case 'breakable':

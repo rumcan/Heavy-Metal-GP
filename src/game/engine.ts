@@ -99,6 +99,14 @@ export interface Marble {
   finishedAt: number | null;
   stuckTime: number;
   lastPickupAt: number;
+  /** MB-10E: last clock the pool surface skipped this marble, so one splash bounces once. */
+  poolSkipAt?: number;
+  /** MB-10E: drift banked on pool entry — the inertial carry that wades a sunken runner out. */
+  poolDrift?: number;
+  /** MB-10E: last clock a magnet latched this marble, for the zap cue and a grab cooldown. */
+  magnetGrabAt?: number;
+  /** MB-10E: last clock the mud squelched for this marble (cue debounce). */
+  mudSquelchAt?: number;
   trail: { x: number; y: number }[];
   pegs: number;
   gridSlot: number;
@@ -1418,6 +1426,161 @@ export class Game {
         for (const m of this.marbles) {
           if (m.hold || m.frozen || m.finishedAt !== null) continue;
           if (Math.hypot(m.body.position.x - body.position.x, m.body.position.y - body.position.y) <= 40) { this.tryLoadScoop(m, body); break; }
+        }
+      }
+    }
+
+    // ---------------- MB-10E: fields and surfaces ----------------
+    // All of these are deterministic velocity nudges read straight off positions and the race
+    // clock — no state crosses the wire, only sound cues do.
+    if (hasElement(this.track, 'wind')) {
+      for (const body of elementBodies(this.track, 'wind')) {
+        const md = meta(body);
+        const w = md.wind;
+        if (!w) continue;
+        // breathe: a pulsed fan swells and ebbs on the clock
+        const k = w.pulseMs > 0 ? 0.35 + 0.65 * (0.5 + 0.5 * Math.cos((2 * Math.PI * (this.time + w.phaseMs)) / w.pulseMs)) : 1;
+        const push = w.push * k;
+        if (push < 0.005) continue;
+        for (const m of this.marbles) {
+          if (m.finishedAt !== null || m.frozen || m.hold) continue;
+          const p = m.body.position;
+          if (p.x < w.box.x - 12 || p.x > w.box.x + w.box.w + 12 || p.y < w.box.y - 12 || p.y > w.box.y + w.box.h + 12) continue;
+          const v = Body.getVelocity(m.body);
+          // light marbles sail; Heavy metal ignores the whole field; Slipstream doubles the gust
+          const weight = m.info.stats.weight ?? 5;
+          let f = 1.25 - weight * 0.075;
+          if (this.time < m.anvilUntil) f = 0;
+          else if (m.aeroUntil > this.time) f *= 2;
+          if (f <= 0) continue;
+          Body.setVelocity(m.body, { x: v.x + w.ux * push * f, y: v.y + w.uy * push * f });
+        }
+      }
+    }
+    if (hasElement(this.track, 'magnet')) {
+      for (const body of elementBodies(this.track, 'magnet')) {
+        const md = meta(body);
+        const g = md.magnet;
+        if (!g) continue;
+        // thrum: an on/off cycle read off the clock
+        if (g.periodMs > 0 && ((this.time + g.phaseMs) % g.periodMs) >= g.periodMs / 2) continue;
+        for (const m of this.marbles) {
+          if (m.finishedAt !== null || m.frozen || m.hold) continue;
+          if (m.ghostUntil > this.time) continue; // Ghost has no iron in it
+          const p = m.body.position;
+          const dx = g.cx - p.x, dy = g.cy - p.y;
+          const d = Math.hypot(dx, dy);
+          if (d < 1 || d > g.r) continue;
+          const weight = m.info.stats.weight ?? 5;
+          const anvil = this.time < m.anvilUntil;
+          const fall = 0.3 + 0.7 * (1 - d / g.r) * 1.8;
+          // iron = weight: the drag scales with it; Heavy metal is yanked three times as hard
+          const acc = 0.045 * g.pull * (0.35 + 0.65 * (weight / 10)) * fall * (anvil ? 3 : 1);
+          const v = Body.getVelocity(m.body);
+          Body.setVelocity(m.body, { x: v.x + (dx / d) * acc, y: v.y + (dy / d) * acc });
+          if (d > g.r * 0.55) m.magnetGrabAt = -1e9; // walked clear: the latch re-arms
+          if (d < g.r * 0.5 && this.time - (m.magnetGrabAt ?? -1e9) > 1500) {
+            m.magnetGrabAt = this.time;
+            this.sfx('zap', m, g.cx, g.cy);
+            this.emit({ kind: 'sound', cue: 'zap' });
+          }
+          if (anvil && d < g.r * 0.38 && this.time - (m.magnetGrabAt ?? -1e9) < 1400) {
+            // Heavy metal sticks BRIEFLY — a beat and a half, then the iron lets go
+            Body.setVelocity(m.body, { x: m.body.velocity.x * 0.6, y: m.body.velocity.y * 0.6 });
+          }
+        }
+      }
+    }
+    if (hasElement(this.track, 'mud')) {
+      for (const body of elementBodies(this.track, 'mud')) {
+        const md = meta(body);
+        const mud = md.mud;
+        if (!mud) continue;
+        for (const m of this.marbles) {
+          if (m.finishedAt !== null || m.frozen || m.hold) continue;
+          const p = m.body.position;
+          if (p.x < mud.box.x || p.x > mud.box.x + mud.box.w || p.y < mud.box.y || p.y > mud.box.y + mud.box.h) continue;
+          const speed = m.info.stats.speed ?? 5;
+          let drag = mud.drag * (1.18 - speed * 0.06);
+          if (m.aeroUntil > this.time) drag *= 0.15; // Slipstream sails over the tar
+          const v = Body.getVelocity(m.body);
+          Body.setVelocity(m.body, { x: v.x * (1 - drag), y: v.y * (1 - drag * 0.4) });
+          if (this.time - (m.mudSquelchAt ?? -1e9) > 900 && Math.hypot(v.x, v.y) > 2.5) {
+            m.mudSquelchAt = this.time;
+            this.sfx('gurgle', m, p.x, p.y);
+            this.emit({ kind: 'sound', cue: 'gurgle' });
+          }
+        }
+      }
+    }
+    if (hasElement(this.track, 'pool')) {
+      for (const body of elementBodies(this.track, 'pool')) {
+        const md = meta(body);
+        const pool = md.pool;
+        if (!pool) continue;
+        for (const m of this.marbles) {
+          if (m.finishedAt !== null || m.frozen || m.hold) continue;
+          const p = m.body.position;
+          const insideX = p.x > pool.box.x + 4 && p.x < pool.box.x + pool.box.w - 4;
+          if (!insideX) {
+            // walked out onto dry land: the drift story ends here
+            if (m.poolDrift !== undefined && p.y < pool.topY - 2) m.poolDrift = undefined;
+            continue;
+          }
+          if (p.y < pool.topY - 4 && m.poolDrift !== undefined) m.poolDrift = undefined;
+          const v = Body.getVelocity(m.body);
+          const belowTop = p.y > pool.topY - 4;
+          if (belowTop && p.y < pool.topY + pool.depth + 24) {
+            // was it flying above a beat ago? then this frame is an ENTRY — skip or splash
+            const skipCd = this.time - (m.poolSkipAt ?? -1e9) > 600;
+            const shallow = Math.abs(v.y) <= Math.abs(v.x) * 1.1;
+            const fast = Math.abs(v.x) >= pool.skip;
+            if (skipCd && v.y >= 1 && fast && shallow && p.y < pool.topY + 18) {
+              // stone skip: bounce off the skin, damping as you go
+              const bounce = m.info.stats.bounce ?? 5;
+              if (m.poolDrift === undefined) m.poolDrift = Math.max(-1.6, Math.min(1.6, (Math.abs(v.x) < 0.5 ? (v.x < 0 ? -0.35 : 0.35) : v.x * 0.28)));
+              m.poolSkipAt = this.time;
+              Body.setVelocity(m.body, { x: v.x * 0.86, y: -v.y * Math.min(0.7, 0.4 + bounce * 0.02) });
+              this.sfx('splash', m, p.x, pool.topY);
+              this.emit({ kind: 'sound', cue: 'splash' });
+              continue;
+            }
+            // submerged: buoyancy pulls light marbles up, and the runner's own inertial drift
+            // (banked on entry) wades everyone out at their own end of the basin — no drowning
+            const weight = m.info.stats.weight ?? 5;
+            const buoy = 0.55 * (1.25 - weight * 0.07);
+            if (m.poolDrift === undefined) m.poolDrift = Math.max(-1.6, Math.min(1.6, (Math.abs(v.x) < 0.5 ? (v.x < 0 ? -0.35 : 0.35) : v.x * 0.28)));
+            const nv = Body.getVelocity(m.body);
+            Body.setVelocity(m.body, { x: nv.x * 0.94 + m.poolDrift, y: nv.y * 0.95 - buoy });
+          }
+        }
+      }
+    }
+    if (hasElement(this.track, 'geyser')) {
+      for (const body of elementBodies(this.track, 'geyser')) {
+        const md = meta(body);
+        const g = md.geyser;
+        if (!g) continue;
+        const t = ((this.time + g.phaseMs) % g.periodMs + g.periodMs) % g.periodMs;
+        const erupting = t >= 900 && t < 900 + g.burstMs;
+        const wasHot = (md as unknown as { geyserHot?: boolean }).geyserHot ?? false;
+        if (erupting !== wasHot) (md as unknown as { geyserHot?: boolean }).geyserHot = erupting;
+        if (erupting && !wasHot) {
+          this.sfx('steam', this.player, g.cx, g.topY);
+          this.emit({ kind: 'sound', cue: 'steam' });
+          this.effects.push({ type: 'debris', x: g.cx, y: g.topY, ttl: 20, maxTtl: 20, color: '#e2e8f0', particles: this.makeParticles(g.cx, g.topY, 12, 4.5) });
+        }
+        if (!erupting) continue;
+        for (const m of this.marbles) {
+          if (m.finishedAt !== null || m.frozen || m.hold) continue;
+          const p = m.body.position;
+          if (p.y > g.topY + 6 || p.y < g.topY - g.h) continue;
+          if (Math.abs(p.x - g.cx) > 30) continue;
+          const weight = m.info.stats.weight ?? 5;
+          let up = 0.85 * (1.25 - weight * 0.07);
+          if (this.time < m.anvilUntil) up *= 0.35;
+          const v = Body.getVelocity(m.body);
+          Body.setVelocity(m.body, { x: v.x, y: Math.min(v.y, v.y - up) });
         }
       }
     }

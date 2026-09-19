@@ -72,7 +72,13 @@ export type Kind =
   | 'catapult'
   | 'flipper'
   | 'sling'
-  | 'scoop';
+  | 'scoop'
+  // MB-10E: fields and surfaces
+  | 'wind'
+  | 'magnet'
+  | 'mud'
+  | 'pool'
+  | 'geyser';
 
 /**
  * MB-10 element framework. A kinematic driver for the moving pieces: a body's pose is a pure
@@ -269,6 +275,17 @@ export interface Meta {
   sling?: { facing: Matter.Vector; strength: number; flashAt: number };
   /** Scoop: eject angle (canvas rad), hold time, seeded occupancy; exit (down a subway) when linked. */
   scoop?: { deg: number; holdMs: number; loadedAt: number | null; fireAt: number | null; seat: number | null };
+  // ---- MB-10E: fields and surfaces ----
+  /** Wind field: push direction (unit), base push px/step, pulse program (0 = steady). Deterministic from the clock. */
+  wind?: { ux: number; uy: number; push: number; pulseMs: number; phaseMs: number; box: { x: number; y: number; w: number; h: number } };
+  /** Magnet field: centre, radius, pull scale, on/off cycle (0 = always on). */
+  magnet?: { cx: number; cy: number; r: number; pull: number; periodMs: number; phaseMs: number };
+  /** Mud strip: drag fraction per step and the along-slope tangent (unit). */
+  mud?: { drag: number; tanx: number; tany: number; box: { x: number; y: number; w: number; h: number } };
+  /** Water pool: surface y, box, depth, skip threshold (basin floor is a separate solid body). */
+  pool?: { topY: number; depth: number; skip: number; box: { x: number; y: number; w: number; h: number } };
+  /** Geyser: column geometry + timed eruption program off the race clock (kinematic). */
+  geyser?: { cx: number; topY: number; h: number; periodMs: number; phaseMs: number; burstMs: number };
   sagAt?: number;
 }
 
@@ -1016,6 +1033,102 @@ export class Builder {
     this.bodies.push(pocket);
     return pocket;
   }
+
+  // ---------- MB-10E: fields and surfaces ----------
+
+  /**
+   * A wind field: a box that pushes marbles along `dirDeg`. Light marbles ride it further, Heavy
+   * metal shrugs it off, Slipstream catches twice the gust. `pulseMs` > 0 makes the fan breathe on
+   * a timer — kinematic, everyone reads the same race clock.
+   */
+  wind(x1: number, y1: number, x2: number, y2: number, dirDeg = 270, strength = 0.28, pulseMs = 0, phaseMs = 0) {
+    const px1 = this.X(x1), px2 = this.X(x2);
+    const lx = Math.min(px1, px2), hx = Math.max(px1, px2);
+    const ly = Math.min(y1, y2), hy = Math.max(y1, y2);
+    const mirrored = this.flip ? ((180 - dirDeg) % 360 + 360) % 360 : dirDeg;
+    const fa = (mirrored * Math.PI) / 180;
+    const w = Math.max(10, hx - lx), h = Math.max(10, hy - ly);
+    const b = Bodies.rectangle(lx + w / 2, ly + h / 2, w, h, { ...SENSOR_OPTS, label: 'wind' });
+    b.plugin = {
+      kind: 'wind',
+      wind: { ux: Math.cos(fa), uy: Math.sin(fa), push: strength, pulseMs, phaseMs, box: { x: lx, y: ly, w, h } },
+    } as Meta;
+    this.bodies.push(b);
+    return b;
+  }
+
+  /**
+   * A horseshoe magnet: a circle field dragging iron marbles to the centre — the heavier they are,
+   * the harder it grips (a Heavy-metal marble briefly sticks). Ghost glides through untouched.
+   * `periodMs` > 0 makes it thrum on and off on the race clock.
+   */
+  magnet(x: number, y: number, r = 180, strength = 3, periodMs = 0, phaseMs = 0) {
+    const cx = this.X(x);
+    const b = Bodies.circle(cx, y, r, { ...SENSOR_OPTS, label: 'magnet' });
+    b.plugin = { kind: 'magnet', magnet: { cx, cy: y, r, pull: strength, periodMs, phaseMs } } as Meta;
+    this.bodies.push(b);
+    return b;
+  }
+
+  /**
+   * A mud / tar strip: a thin sticky band on the surface it lies along. Rollers trudge; hoppers and
+   * bounce builds skip right over the top; the speed stat digs in against the drag and Slipstream
+   * sails by untouched.
+   */
+  mud(x1: number, y1: number, x2: number, y2: number, drag = 0.22) {
+    const px1 = this.X(x1), px2 = this.X(x2);
+    const len = Math.hypot(px2 - px1, y2 - y1);
+    const bx = (px1 + px2) / 2, by = (y1 + y2) / 2;
+    const ang = Math.atan2(y2 - y1, px2 - px1);
+    // thin band: airborne marbles legitimately hop it
+    const b2 = Bodies.rectangle(bx, by - 9, len, 18, { ...SENSOR_OPTS, label: 'mud', angle: ang });
+    const inv = len || 1;
+    b2.plugin = {
+      kind: 'mud',
+      mud: { drag, tanx: (px2 - px1) / inv, tany: (y2 - y1) / inv, box: { x: Math.min(px1, px2) - 6, y: Math.min(y1, y2) - 26, w: len + 12, h: 42 } },
+    } as Meta;
+    this.bodies.push(b2);
+    return b2;
+  }
+
+  /**
+   * A water pool: a basin floor with a water box above it. Fast, flat entries skip across the
+   * surface like stones (bounce stat helps); slow or steep entries splash in, then wade the
+   * bottom — light marbles bob up, heavy ones plumb straight down.
+   */
+  pool(x1: number, y1: number, x2: number, y2: number, depth = 90, skip = 8) {
+    const px1 = this.X(x1), px2 = this.X(x2);
+    const lx = Math.min(px1, px2), hx = Math.max(px1, px2);
+    const top = Math.min(y1, y2);
+    const w = hx - lx;
+    // the basin floor (solid) rides before the sensor so body indices keep the sensor last
+    const floor = Bodies.rectangle(lx + w / 2, top + depth + 6, w + 24, 14, { ...STATIC_OPTS, label: 'ramp', friction: 0.06 });
+    this.bodies.push(floor);
+    // the sensor reaches past the basin floor so waders on the bottom stay buoyant on the current
+    const water = Bodies.rectangle(lx + w / 2, top + depth / 2, w, depth + 48, { ...SENSOR_OPTS, label: 'pool' });
+    water.plugin = { kind: 'pool', pool: { topY: top, depth, skip, box: { x: lx, y: top, w, h: depth } } } as Meta;
+    this.bodies.push(water);
+    return water;
+  }
+
+  /**
+   * A geyser / steam vent: a rock mound that erupts on a timer — a warning bubble, then a blast
+   * column that hurls riders skyward (light marbles highest). All timing rides the race clock, so
+   * the pose is kinematic and nothing crosses the wire.
+   */
+  geyser(x: number, y: number, h = 300, periodMs = 4200, phaseMs = 0) {
+    const cx = this.X(x);
+    const mound = Bodies.rectangle(cx, y + 8, 56, 18, { ...STATIC_OPTS, label: 'geyser', friction: 0.02, chamfer: { radius: 4 } });
+    this.bodies.push(mound);
+    const column = Bodies.rectangle(cx, y - h / 2, 44, h, { ...SENSOR_OPTS, label: 'geyser' });
+    column.plugin = {
+      kind: 'geyser',
+      geyser: { cx, topY: y, h, periodMs, phaseMs, burstMs: 1100 },
+    } as Meta;
+    this.bodies.push(column);
+    return column;
+  }
+
 }
 
 // ---------------- MB-10C pose helpers (shared host / guest / skin) ----------------
@@ -1700,6 +1813,94 @@ const segScoopSubway: Seg = (b, y) => {
   return 560;
 };
 
+
+// ---------------- MB-10E sectors: fields and surfaces ----------------
+
+/**
+ * Fan Garden: a pulsed updraft column bridges a gully in the main slope. Light marbles sail the
+ * gust across; heavier ones sink into the trough below and take the low road — and every fall is
+ * onto the trough ramp, never into a void.
+ */
+const segFanGarden: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  b.ramp(0, y + 30, 300, y + 150);
+  b.ramp(300, y + 150, 360, y + 180); // the lip
+  // the fan: up-and-following, breathing on the race clock
+  b.wind(360, y - 200, 560, y + 320, 300, 0.34 + b.rng() * 0.08, 2600 + b.rng() * 1600, b.rng() * 2600);
+  b.ramp(560, y + 160, W - 20, y + 330); // the far shore
+  // under-trough: anything that sinks lands here — the low road still takes you out
+  b.ramp(60, y + 320, W - 10, y + 440);
+  return 480;
+};
+
+/**
+ * Lodestone Way: an S-chute past two horseshoes. The right-hand magnet is always on and drags
+ * runners into the backboard (Heavy metal sticks for a beat); the left-hand one thrums on and off
+ * off the race clock. Tin can overtones, iron soreness, nobody stuck.
+ */
+const segLodestoneWay: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  b.ramp(0, y + 30, 470, y + 220);
+  // right backboard the first magnet pins you to
+  b.wall(845, y + 290, 14, 250);
+  b.magnet(700, y + 250, 175, 4.8 + b.rng() * 0.8, 0, 0);
+  b.ramp(470, y + 220, 120, y + 360);
+  // left backboard for the timer magnet
+  b.wall(30, y + 430, 14, 210);
+  b.magnet(190, y + 430, 175, 4.8 + b.rng() * 0.8, 4600 + b.rng() * 1200, b.rng() * 4600);
+  b.ramp(120, y + 360, 660, y + 520);
+  b.ramp(660, y + 520, W - 20, y + 630);
+  return 670;
+};
+
+/**
+ * Tar Flats: strips of sticky tar on the fast slope. Two bands, a steeper second: rollers trudge,
+ * bounce builds hop the top, the speed stat digs in, Slipstream sails.
+ */
+const segTarFlats: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  b.ramp(0, y + 30, 260, y + 140);
+  b.mud(120, y + 107, 380, y + 205, 0.24 + b.rng() * 0.08);
+  b.ramp(260, y + 140, 560, y + 300);
+  b.mud(430, y + 246, 700, y + 364, 0.26 + b.rng() * 0.08);
+  b.ramp(560, y + 300, W - 10, y + 470);
+  return 510;
+};
+
+/**
+ * Skipping Pools: a stone-skimming pond on the main line. Fast and flat and it skips across;
+ * slow and steep and it splashes in, then the wade carries you out. Neither ending is a trap.
+ */
+const segSkippingPools: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  b.ramp(0, y + 30, 240, y + 150);
+  b.pool(290, y + 170, 620, y + 170, 96, 6.5);
+  // the exit ramp tip sits a hair under the waterline, so skimming marbles glide clear
+  b.ramp(634, y + 186, W - 20, y + 340);
+  // left backstop above the waterline: drift-waders hit it and settle instead of rebounding out
+  b.ramp(240, y + 190, 330, y + 230);
+  return 380;
+};
+
+/**
+ * Vent Field: three timed geysers erupt through plinths on the bowl run. The bubble beat warns
+ * you; park on the vent at the wrong (right) moment and you get chucked up the course. All timing
+ * is the race clock: no wire traffic at all.
+ */
+const segVentField: Seg = (b, y) => {
+  b.flip = b.rng() < 0.5;
+  b.ramp(0, y + 30, 300, y + 180);
+  b.ramp(300, y + 180, 400, y + 210);
+  const p1 = 3300 + b.rng() * 1400, p2 = 3300 + b.rng() * 1400, p3 = 3300 + b.rng() * 1400;
+  b.geyser(430, y + 208, 260, p1, b.rng() * p1);
+  b.ramp(460, y + 224, 530, y + 250);
+  b.geyser(560, y + 242, 260, p2, b.rng() * p2);
+  b.ramp(590, y + 266, 660, y + 290);
+  b.geyser(690, y + 280, 260, p3, b.rng() * p3);
+  b.ramp(720, y + 298, W - 10, y + 420);
+  return 460;
+};
+
 const POOL: { seg: Seg; name: string; weight: number }[] = [
   { seg: segZigzag, name: 'Zigzag Pipes', weight: 2 },
   { seg: segFunnel, name: 'Funnel', weight: 2 },
@@ -1735,6 +1936,12 @@ const POOL: { seg: Seg; name: string; weight: number }[] = [
   { seg: segFlipperAlley, name: 'Flipper Alley', weight: 0.45 },
   { seg: segSlingChute, name: 'Sling Chute', weight: 0.45 },
   { seg: segScoopSubway, name: 'Scoop Subway', weight: 0.4 },
+  // MB-10E: fields and surfaces — same cameo treatment
+  { seg: segFanGarden, name: 'Fan Garden', weight: 0.4 },
+  { seg: segLodestoneWay, name: 'Lodestone Way', weight: 0.4 },
+  { seg: segTarFlats, name: 'Tar Flats', weight: 0.4 },
+  { seg: segSkippingPools, name: 'Skipping Pools', weight: 0.4 },
+  { seg: segVentField, name: 'Vent Field', weight: 0.4 },
 ];
 
 export const DEFAULT_PROFILE: TrackProfile = {

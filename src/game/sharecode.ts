@@ -28,7 +28,9 @@ const PIECE_TYPES = ['ramp','ice','curve','loop','hoop','wrecker','pad','boost',
   // MB-10C: movers and gizmos
   'wheel','screw','conveyor','seesaw','bridge',
   // MB-10D: launchers
-  'cannon','catapult','flipper','sling','scoop'] as const;
+  'cannon','catapult','flipper','sling','scoop',
+  // MB-10E: fields and surfaces
+  'wind','magnet','mud','pool','geyser'] as const;
 type PieceTypeName = typeof PIECE_TYPES[number];
 const PIECE_TO_ID = Object.fromEntries(PIECE_TYPES.map((t,i)=>[t,i])) as Record<PieceTypeName, number>;
 
@@ -368,6 +370,38 @@ function encodeBinary(def: TrackDef): Uint8Array {
         }
         break;
       }
+      // MB-10E fields
+      case 'wind': {
+        writeUVarint(out, Math.round(p.a[0])); writeUVarint(out, Math.round(p.a[1]));
+        writeUVarint(out, Math.round(p.b[0])); writeUVarint(out, Math.round(p.b[1]));
+        writeUVarint(out, Math.round(p.dir)); writeUVarint(out, Math.round(p.str * 100));
+        writeUVarint(out, Math.round(p.pulse)); writeUVarint(out, Math.round(p.phase));
+        break;
+      }
+      case 'magnet': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, Math.round(p.r)); writeUVarint(out, Math.round(p.str * 100));
+        writeUVarint(out, Math.round(p.period)); writeUVarint(out, Math.round(p.phase));
+        break;
+      }
+      case 'mud': {
+        writeUVarint(out, Math.round(p.a[0])); writeUVarint(out, Math.round(p.a[1]));
+        writeUVarint(out, Math.round(p.b[0])); writeUVarint(out, Math.round(p.b[1]));
+        writeUVarint(out, Math.round(p.drag * 100));
+        break;
+      }
+      case 'pool': {
+        writeUVarint(out, Math.round(p.a[0])); writeUVarint(out, Math.round(p.a[1]));
+        writeUVarint(out, Math.round(p.b[0])); writeUVarint(out, Math.round(p.b[1]));
+        writeUVarint(out, Math.round(p.depth)); writeUVarint(out, Math.round(p.skip * 10));
+        break;
+      }
+      case 'geyser': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
+        writeUVarint(out, Math.round(p.h)); writeUVarint(out, Math.round(p.period));
+        writeUVarint(out, Math.round(p.phase));
+        break;
+      }
     }
   }
   return new Uint8Array(out);
@@ -632,6 +666,38 @@ function decodeBinary(bytes: Uint8Array): TrackDef {
         const hasExit = readUVarint(bytes, pos) === 1;
         const exit = hasExit ? ([readUVarint(bytes, pos), readUVarint(bytes, pos), readUVarint(bytes, pos)] as [number, number, number]) : undefined;
         p = exit ? { t:'scoop', x, y, deg, hold, exit, ...(flip?{flip}:{}) } : { t:'scoop', x, y, deg, hold, ...(flip?{flip}:{}) };
+        break;
+      }
+      // MB-10E fields
+      case 'wind': {
+        const ax = readUVarint(bytes, pos), ay = readUVarint(bytes, pos), bx = readUVarint(bytes, pos), by = readUVarint(bytes, pos);
+        const dir = readUVarint(bytes, pos), str = readUVarint(bytes, pos)/100;
+        const pulse = readUVarint(bytes, pos), phase = readUVarint(bytes, pos);
+        p = { t:'wind', a:[ax, ay] as Vec, b:[bx, by] as Vec, dir, str, pulse, phase, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'magnet': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), r = readUVarint(bytes, pos);
+        const str = readUVarint(bytes, pos)/100, period = readUVarint(bytes, pos), phase = readUVarint(bytes, pos);
+        p = { t:'magnet', x, y, r, str, period, phase, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'mud': {
+        const ax = readUVarint(bytes, pos), ay = readUVarint(bytes, pos), bx = readUVarint(bytes, pos), by = readUVarint(bytes, pos);
+        const drag = readUVarint(bytes, pos)/100;
+        p = { t:'mud', a:[ax, ay] as Vec, b:[bx, by] as Vec, drag, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'pool': {
+        const ax = readUVarint(bytes, pos), ay = readUVarint(bytes, pos), bx = readUVarint(bytes, pos), by = readUVarint(bytes, pos);
+        const depth = readUVarint(bytes, pos), skip = readUVarint(bytes, pos)/10;
+        p = { t:'pool', a:[ax, ay] as Vec, b:[bx, by] as Vec, depth, skip, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'geyser': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), h = readUVarint(bytes, pos);
+        const period = readUVarint(bytes, pos), phase = readUVarint(bytes, pos);
+        p = { t:'geyser', x, y, h, period, phase, ...(flip?{flip}:{}) };
         break;
       }
       default: throw new ShareCodeError(`Unknown piece type ${t}`);

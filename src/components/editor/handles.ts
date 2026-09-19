@@ -292,6 +292,42 @@ function baseHandles(piece: Piece): Handle[] {
       // Only y matters; pivot is centre-x. Handle at (W/2, y).
       return [{ id: 'move', x: W / 2, y: piece.y, cursor: 'ns-resize', label: 'Height' }];
     }
+    // ---- MB-10E ----
+    case 'wind': {
+      const mx = (piece.a[0] + piece.b[0]) / 2, my = (piece.a[1] + piece.b[1]) / 2;
+      const fa = (piece.dir * Math.PI) / 180;
+      return [
+        { id: 'move', x: mx, y: my, cursor: 'move', label: 'Move' },
+        { id: 'a', x: piece.a[0], y: piece.a[1], cursor: 'crosshair', label: 'Corner A' },
+        { id: 'b', x: piece.b[0], y: piece.b[1], cursor: 'crosshair', label: 'Corner B' },
+        { id: 'dir', x: mx + Math.cos(fa) * 56, y: my + Math.sin(fa) * 56, cursor: 'crosshair', label: 'Blow direction' },
+      ];
+    }
+    case 'magnet':
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
+        { id: 'r', x: piece.x + piece.r, y: piece.y, cursor: 'ew-resize', label: 'Radius' },
+      ];
+    case 'mud':
+      return [
+        { id: 'move', x: (piece.a[0] + piece.b[0]) / 2, y: (piece.a[1] + piece.b[1]) / 2, cursor: 'move', label: 'Move' },
+        { id: 'a', x: piece.a[0], y: piece.a[1], cursor: 'crosshair', label: 'Start' },
+        { id: 'b', x: piece.b[0], y: piece.b[1], cursor: 'crosshair', label: 'End' },
+      ];
+    case 'pool': {
+      const top = Math.min(piece.a[1], piece.b[1]);
+      return [
+        { id: 'move', x: (piece.a[0] + piece.b[0]) / 2, y: (piece.a[1] + piece.b[1]) / 2, cursor: 'move', label: 'Move' },
+        { id: 'a', x: piece.a[0], y: piece.a[1], cursor: 'crosshair', label: 'Corner A' },
+        { id: 'b', x: piece.b[0], y: piece.b[1], cursor: 'crosshair', label: 'Corner B' },
+        { id: 'depth', x: piece.b[0], y: top + piece.depth, cursor: 'ns-resize', label: 'Depth' },
+      ];
+    }
+    case 'geyser':
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
+        { id: 'h', x: piece.x, y: piece.y - piece.h, cursor: 'ns-resize', label: 'Blast height' },
+      ];
   }
 }
 
@@ -676,6 +712,52 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       if (handleId === 'move') return { ...piece, y: withSnap(to.y, sx) };
       return piece;
     }
+    // ---- MB-10E ----
+    case 'wind': {
+      if (handleId === 'a') return { ...piece, a: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number] };
+      if (handleId === 'b') return { ...piece, b: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number] };
+      if (handleId === 'dir') {
+        const mx = (piece.a[0] + piece.b[0]) / 2, my = (piece.a[1] + piece.b[1]) / 2;
+        const deg = ((Math.round((Math.atan2(to.y - my, to.x - mx) * 180) / Math.PI) % 360) + 360) % 360;
+        return { ...piece, dir: deg };
+      }
+      const ddx = withSnap(to.x, sx) - (piece.a[0] + piece.b[0]) / 2;
+      const ddy = withSnap(to.y, sx) - (piece.a[1] + piece.b[1]) / 2;
+      return { ...piece, a: [clampX(piece.a[0] + ddx), piece.a[1] + ddy], b: [clampX(piece.b[0] + ddx), piece.b[1] + ddy] };
+    }
+    case 'magnet': {
+      if (handleId === 'r') {
+        const r = Math.max(40, Math.min(400, Math.abs(withSnap(to.x, sx) - piece.x)));
+        return { ...piece, r: sx ? snapVal(r) : r };
+      }
+      return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
+    }
+    case 'mud': {
+      if (handleId === 'a') return { ...piece, a: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number] };
+      if (handleId === 'b') return { ...piece, b: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number] };
+      const ddx = withSnap(to.x, sx) - (piece.a[0] + piece.b[0]) / 2;
+      const ddy = withSnap(to.y, sx) - (piece.a[1] + piece.b[1]) / 2;
+      return { ...piece, a: [clampX(piece.a[0] + ddx), piece.a[1] + ddy], b: [clampX(piece.b[0] + ddx), piece.b[1] + ddy] };
+    }
+    case 'pool': {
+      if (handleId === 'a') return { ...piece, a: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number] };
+      if (handleId === 'b') return { ...piece, b: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number] };
+      if (handleId === 'depth') {
+        const top = Math.min(piece.a[1], piece.b[1]);
+        const depth = Math.max(40, Math.min(300, withSnap(to.y, sx) - top));
+        return { ...piece, depth: sx ? snapVal(depth) : depth };
+      }
+      const ddx = withSnap(to.x, sx) - (piece.a[0] + piece.b[0]) / 2;
+      const ddy = withSnap(to.y, sx) - (piece.a[1] + piece.b[1]) / 2;
+      return { ...piece, a: [clampX(piece.a[0] + ddx), piece.a[1] + ddy], b: [clampX(piece.b[0] + ddx), piece.b[1] + ddy] };
+    }
+    case 'geyser': {
+      if (handleId === 'h') {
+        const h = Math.max(80, Math.min(600, piece.y - withSnap(to.y, sx)));
+        return { ...piece, h: sx ? snapVal(h) : h };
+      }
+      return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
+    }
   }
 }
 
@@ -755,6 +837,18 @@ export function movePiece(piece: Piece, dx: number, dy: number): Piece {
         ...(sc.exit ? { exit: [clampX(sc.exit[0] + dx), sc.exit[1] + dy, sc.exit[2]] as [number, number, number] } : {}),
       } as Piece;
     }
+    case 'wind':
+    case 'mud':
+    case 'pool': {
+      return {
+        ...piece,
+        a: [clampX(piece.a[0] + dx), piece.a[1] + dy] as [number, number],
+        b: [clampX(piece.b[0] + dx), piece.b[1] + dy] as [number, number],
+      } as Piece;
+    }
+    case 'magnet':
+    case 'geyser':
+      return { ...piece, x: clampX(piece.x + dx), y: piece.y + dy } as Piece;
     case 'screw':
     case 'conveyor':
     case 'bridge': {
@@ -849,6 +943,21 @@ export function mirrorPiece(piece: Piece): Piece {
         deg: (180 - piece.deg + 360) % 360,
         ...(piece.exit ? { exit: [mx((piece.exit as [number, number, number])[0]), (piece.exit as [number, number, number])[1], (piece.exit as [number, number, number])[2]] as [number, number, number] } : {}),
       };
+    case 'wind': {
+      // Swap the ends and steer the blow like every other mirrored angle.
+      const dir = ((180 - piece.dir) % 360 + 360) % 360;
+      return { ...piece, a: [mx(piece.b[0]), piece.b[1]] as [number, number], b: [mx(piece.a[0]), piece.a[1]] as [number, number], dir };
+    }
+    case 'mud':
+    case 'pool':
+      return {
+        ...piece,
+        a: [mx(piece.b[0]), piece.b[1]] as [number, number],
+        b: [mx(piece.a[0]), piece.a[1]] as [number, number],
+      } as Piece;
+    case 'magnet':
+    case 'geyser':
+      return { ...piece, x: mx(piece.x) } as Piece;
     case 'screw':
     case 'conveyor':
     case 'bridge': {

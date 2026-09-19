@@ -925,6 +925,22 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
       case 'scoop':
         drawScoop(ctx, b, md, game, t);
         break;
+      // ---- MB-10E: fields and surfaces ----
+      case 'wind':
+        if (b.isSensor) drawWind(ctx, b, md, game, t);
+        break;
+      case 'magnet':
+        if (b.isSensor) drawMagnet(ctx, b, md, game, t);
+        break;
+      case 'mud':
+        if (b.isSensor) drawMud(ctx, b, md, game, t);
+        break;
+      case 'pool':
+        if (b.isSensor) drawPool(ctx, b, md, game, t);
+        break;
+      case 'geyser':
+        if (!b.isSensor) drawGeyser(ctx, b, md, game, t);
+        break;
       default:
         break;
     }
@@ -2425,6 +2441,164 @@ function drawSling(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnTyp
 }
 
 /** Scoop: a brass pocket lip with a chevron showing the kick direction; dimmed while it holds a rider. */
+
+// ---------------- MB-10E: fields and surfaces ----------------
+
+// the five fields share a clock pulse with the engine: same phase, same windows
+function fieldPulse(t: number, pulseMs: number, phaseMs: number): number {
+  if (pulseMs <= 0) return 1;
+  return 0.35 + 0.65 * (0.5 + 0.5 * Math.cos((2 * Math.PI * (t + phaseMs)) / pulseMs));
+}
+
+function drawWind(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
+  const w = md.wind;
+  if (!w) return;
+  const { x: lx, y: ly, w: bw, h: bh } = w.box;
+  const k = fieldPulse(t, w.pulseMs, w.phaseMs);
+  ctx.save();
+  ctx.globalAlpha = 0.06 + 0.1 * k;
+  ctx.fillStyle = '#38bdf8';
+  ctx.fillRect(lx, ly, bw, bh);
+  ctx.globalAlpha = 1;
+  // drift ribbons sliding along the fan's push
+  const vx = w.ux, vy = w.uy;
+  ctx.strokeStyle = `rgba(125,211,252,${0.25 + 0.5 * k})`;
+  ctx.lineWidth = 2;
+  const travel = ((t * 0.14 * k) % Math.max(bh, 1)) | 0;
+  for (let i = 0; i < 4; i++) {
+    const oy = ((travel + i * (bh / 4)) % bh) - 6;
+    const cx = lx + bw / 2;
+    const cy = ly + oy;
+    ctx.beginPath();
+    ctx.moveTo(cx - 12 + vx * 6, cy - vy * 6);
+    ctx.quadraticCurveTo(cx, cy - 2, cx + vx * 22, cy + vy * 22);
+    ctx.stroke();
+  }
+  // the fan box rides the leading corner of the field
+  const fx = vx <= 0 ? lx + 14 : lx + bw - 14;
+  const fy = vy >= 0 ? ly + 12 : ly + bh - 12;
+  ctx.translate(fx, fy);
+  if (!drawSprite(ctx, 'wind', -14, -10, 28, 20)) {
+    ctx.fillStyle = '#57534e';
+    ctx.fillRect(-14, -10, 28, 20);
+    ctx.fillStyle = '#fbbf24';
+    ctx.fillRect(-4, -4, 8, 8);
+  }
+  ctx.restore();
+  void b;
+}
+
+function drawMagnet(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
+  const g = md.magnet;
+  if (!g) return;
+  const on = g.periodMs <= 0 || (((t + g.phaseMs) % g.periodMs + g.periodMs) % g.periodMs) < g.periodMs / 2;
+  ctx.save();
+  ctx.translate(g.cx, g.cy);
+  const pulse = on ? 0.4 + 0.2 * Math.sin(t / 180) : 0.08;
+  ctx.globalAlpha = Math.max(0.05, pulse);
+  ctx.strokeStyle = '#fca5a5';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(0, 0, g.r, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(0, 0, g.r * (0.72 + 0.05 * Math.sin(t / 220)), 0, Math.PI * 2); ctx.stroke();
+  ctx.globalAlpha = 1;
+  if (!drawSprite(ctx, 'magnet', -24, -22, 48, 45)) {
+    ctx.fillStyle = '#ef4444';
+    ctx.fillRect(-20, -2, 10, 16);
+    ctx.fillRect(10, -2, 10, 16);
+    ctx.beginPath(); ctx.arc(0, 0, 16, Math.PI, 0); ctx.stroke();
+  }
+  ctx.restore();
+  void b;
+}
+
+function drawMud(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
+  const mud = md.mud;
+  if (!mud) return;
+  const cx = b.position.x, cy = b.position.y;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(b.angle);
+  const len = mud.box.w * Math.abs(Math.cos(b.angle)) + mud.box.h * Math.abs(Math.sin(b.angle)) || mud.box.w;
+  void len;
+  // glossy tar band centred on the sensor band (18px tall)
+  ctx.fillStyle = '#1c1917';
+  ctx.beginPath(); ctx.ellipse(0, 0, mud.box.w / 2, 9, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#44403c';
+  const wob = Math.sin(t / 500) * 2;
+  ctx.beginPath(); ctx.ellipse(-mud.box.w / 5, -2 + wob, 4, 2.4, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(mud.box.w / 6, 1 - wob, 3, 2, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(120,113,108,0.5)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.ellipse(0, 0, mud.box.w / 2, 9, 0, Math.PI, 0); ctx.stroke();
+  ctx.restore();
+}
+
+function drawPool(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
+  const po = md.pool;
+  if (!po) return;
+  const lx = po.box.x, hx = po.box.x + po.box.w, top = po.topY;
+  // basin clay banks
+  ctx.fillStyle = '#475569';
+  ctx.fillRect(lx - 10, top, 10, po.depth + 12);
+  ctx.fillRect(hx, top, 10, po.depth + 12);
+  // water slab
+  ctx.fillStyle = 'rgba(3,105,161,0.55)';
+  ctx.fillRect(lx, top + 2, hx - lx, po.depth + 14);
+  // wobbling surface line
+  ctx.strokeStyle = '#7dd3fc';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let x = lx; x <= hx; x += 8) {
+    const y = top + 2 + Math.sin((x + t / 12) / 14) * 2;
+    if (x === lx) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  // slow ripples deeper down
+  ctx.strokeStyle = 'rgba(56,189,248,0.35)';
+  ctx.lineWidth = 1.5;
+  for (let d = 18; d < po.depth; d += 18) {
+    ctx.beginPath();
+    for (let x = lx + 6; x <= hx - 6; x += 14) {
+      const y = top + d + Math.sin((x + t / 20) / 18) * 1.4;
+      if (x === lx + 6) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  void b;
+}
+
+function drawGeyser(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
+  const gy = md.geyser;
+  if (!gy) return;
+  const p = b.position;
+  const tt = (((t + gy.phaseMs) % gy.periodMs) + gy.periodMs) % gy.periodMs;
+  const erupting = tt >= 900 && tt < 900 + gy.burstMs;
+  ctx.save();
+  ctx.translate(p.x, p.y - 8); // sprite sits on the mound
+  if (!drawSprite(ctx, 'geyser', -17, -20, 34, 44)) {
+    ctx.fillStyle = '#78350f';
+    ctx.beginPath(); ctx.moveTo(-12, 16); ctx.lineTo(0, -12); ctx.lineTo(12, 16); ctx.fill();
+  }
+  if (erupting) {
+    const k = 0.6 + 0.4 * Math.sin(t / 60);
+    ctx.globalAlpha = 0.55 * k;
+    ctx.fillStyle = '#e2e8f0';
+    for (let yi = 20; yi < gy.h; yi += 26) {
+      const wbb = 7 + (yi / gy.h) * 7;
+      ctx.beginPath();
+      ctx.ellipse(Math.sin((yi + t / 15) / 30) * 5, -yi, wbb, 12, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  } else if (tt < 900) {
+    // the warning bubble beat before the blast
+    ctx.fillStyle = 'rgba(226,232,240,0.6)';
+    const beep = (tt / 900) * 2.2 % 1;
+    ctx.beginPath(); ctx.arc(0, -12 - beep * 12, 2.6, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
 function drawScoop(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
   const sc = md.scoop;
   if (!sc) return;

@@ -135,6 +135,18 @@ export const PALETTE: PaletteGroup[] = [
       { id: 'scoop', t: 'scoop', label: 'Scoop', sprite: 'scoop', hint: 'A kickback hole in the floor. Swallows a marble, kicks it back out along the chevrons — or link a subway exit.' },
     ],
   },
+  {
+    id: 'fields',
+    label: 'Fields & surfaces',
+    note: 'Wind, magnets, tar, water and steam',
+    tiles: [
+      { id: 'wind', t: 'wind', label: 'Updraft vent', sprite: 'wind', hint: 'A box fan whose swish fills the rectangle. Light marbles sail on it, Heavy metal ignores it, Slipstream catches twice. Pulse it to breathe.' },
+      { id: 'magnet', t: 'magnet', label: 'Horseshoe magnet', sprite: 'magnet', hint: 'Drags runners off line, heavier iron harder. Anvil heavy metal sticks for a beat, then lets go — thrum it on a period for a softening window.' },
+      { id: 'mud', t: 'mud', label: 'Tar band', sprite: 'mud', hint: 'A strip of sticky tar. Rollers trudge, bounce builds hop it, the speed stat digs in, Slipstream sails over.' },
+      { id: 'pool', t: 'pool', label: 'Skipping pond', sprite: 'pool', hint: 'A stone-skimming pond. Fast and flat and you skip across; slow and steep and you splash in, then the wade carries you out.' },
+      { id: 'geyser', t: 'geyser', label: 'Geyser vent', sprite: 'geyser', hint: 'Bubbles for a beat, then blasts upward on a timer. Park on it and get chucked. All on the race clock.' },
+    ],
+  },
 ];
 
 /** Every tile, flat — for looking one up by piece type. */

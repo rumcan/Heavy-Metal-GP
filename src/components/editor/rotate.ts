@@ -198,6 +198,25 @@ export function rotatePiece(piece: Piece, rad: number, c: Point): Piece {
       const [x, y] = at(piece.x, piece.y);
       return { ...piece, x, y };
     }
+    case 'wind': {
+      const dir = (((piece.dir + (rad * 180) / Math.PI) % 360) + 360) % 360;
+      return { ...piece, a: turn(piece.a, c, cos, sin), b: turn(piece.b, c, cos, sin), dir };
+    }
+    case 'mud':
+      return { ...piece, a: turn(piece.a, c, cos, sin), b: turn(piece.b, c, cos, sin) };
+    case 'pool': {
+      // The water level stays horizontal: slide the corners but keep depth vertical.
+      const [ax, ay] = at(piece.a[0], piece.a[1]);
+      const [bx, by] = at(piece.b[0], piece.b[1]);
+      const lx = Math.min(ax, bx), hx = Math.max(ax, bx);
+      const top = Math.min(ay, by);
+      return { ...piece, a: [lx, top], b: [hx, top] };
+    }
+    case 'magnet':
+    case 'geyser': {
+      const [x, y] = at(piece.x, piece.y);
+      return { ...piece, x, y };
+    }
     case 'bucket':
       // Always spans the pipe at a fixed height.
       return piece;

@@ -16,6 +16,8 @@ export type SoundType =
   | 'splash' | 'groan' | 'whirr'
   // MB-10D: launchers — the cannon blast, the sling band, the flipper snap, the kickback spring
   | 'bang' | 'twang' | 'snap' | 'boing'
+  // MB-10E: fields — the geyser hiss, the mud squelch, the magnet arc
+  | 'steam' | 'gurgle' | 'zap'
   // story mode UI: dialogue tick and chapter/act sting
   | 'blip' | 'sting';
 
@@ -34,7 +36,7 @@ const MUTE_KEY = 'heavy-metal-gp:muted';
 // Peggle-style rising run: a major scale that keeps climbing while the streak lasts
 const SCALE = [0, 2, 4, 5, 7, 9, 11];
 const STREAK_WINDOW = 1600;
-const MIN_GAP: Partial<Record<SoundType, number>> = { peg: 25, bump: 60, thud: 90, clack: 70, crack: 90, clang: 80, hoop: 80, spring: 120, blip: 26, cheer: 500, rumble: 250, creak: 200, click: 60, shriek: 220, grind: 180, slam: 320, splash: 200, groan: 300, whirr: 400, bang: 400, twang: 200, snap: 150, boing: 250 };
+const MIN_GAP: Partial<Record<SoundType, number>> = { peg: 25, bump: 60, thud: 90, clack: 70, crack: 90, clang: 80, hoop: 80, spring: 120, blip: 26, cheer: 500, rumble: 250, creak: 200, click: 60, shriek: 220, grind: 180, slam: 320, splash: 200, groan: 300, whirr: 400, bang: 400, twang: 200, snap: 150, boing: 250, steam: 600, gurgle: 280, zap: 500 };
 
 class RaceAudio {
   private ctx: AudioContext | null = null;

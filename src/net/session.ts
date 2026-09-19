@@ -91,6 +91,9 @@ const CUE_SOUND: Record<CueName, SoundType> = {
   twang: 'twang',
   snap: 'snap',
   boing: 'boing',
+  steam: 'steam',
+  gurgle: 'gurgle',
+  zap: 'zap',
 };
 
 /** One line of the classification, in the shape the results screen already reads. */
