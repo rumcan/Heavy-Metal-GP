@@ -20,7 +20,6 @@ import { drawCursorMark, drawGrid, drawRuler, viewWindow } from './overlay';
 import type { OverlayView } from './overlay';
 import { hitPieceAt, piecesInBox } from './build';
 import { handlesFor } from './handles';
-import type { PieceType } from './palette';
 // MB-09 handle knobs — Blizzard style, easily replaceable PNGs
 
 /**
@@ -105,9 +104,10 @@ interface Props {
   grid: boolean;
   ruler: boolean;
   onStatus: (status: EditorStatus) => void;
-  armed: PieceType | null;
+  armed: string | null;
   track: Track | null;
   bodyToPiece: number[];
+  pieceBounds: { min: Point; max: Point }[];
   selected: number[];
   onPlace: (world: Point) => void;
   onSelect: (indices: number[], additive: boolean) => void;
@@ -128,7 +128,7 @@ const DRAG_SLOP = 3;
 const HANDLE_SCREEN = 10;
 
 export default function EditorCanvas(props: Props) {
-  const { game, rig, grid, ruler, onStatus, armed, track, bodyToPiece, selected, onPlace, onSelect, onClear, onMoveSelected, onHandleChange, startTransaction, endTransaction, spawnAt, pickingSpawn, onPickSpawn, validation } = props;
+  const { game, rig, grid, ruler, onStatus, armed, track, bodyToPiece, pieceBounds, selected, onPlace, onSelect, onClear, onMoveSelected, onHandleChange, startTransaction, endTransaction, spawnAt, pickingSpawn, onPickSpawn, validation } = props;
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const gameRef = useRef(game);
@@ -138,6 +138,7 @@ export default function EditorCanvas(props: Props) {
   const armedRef = useRef(armed);
   const trackRef = useRef(track);
   const b2pRef = useRef(bodyToPiece);
+  const pbRef = useRef(pieceBounds);
   const selectedRef = useRef(selected);
   const onPlaceRef = useRef(onPlace);
   const onSelectRef = useRef(onSelect);
@@ -157,6 +158,7 @@ export default function EditorCanvas(props: Props) {
   armedRef.current = armed;
   trackRef.current = track;
   b2pRef.current = bodyToPiece;
+  pbRef.current = pieceBounds;
   selectedRef.current = selected;
   onPlaceRef.current = onPlace;
   onSelectRef.current = onSelect;
@@ -310,7 +312,7 @@ export default function EditorCanvas(props: Props) {
         let hit: number | null = null;
         // While placing, a click always drops a piece, even on top of another one: select mode (E) edits pieces.
         if (curTrack && b2p.length && !armedRef.current) {
-          hit = hitPieceAt(worldRaw, curTrack, b2p);
+          hit = hitPieceAt(worldRaw, curTrack, b2p, pbRef.current);
         }
 
         if (hit !== null) {
@@ -471,14 +473,19 @@ export default function EditorCanvas(props: Props) {
           const maxY = Math.max(wasBox.startWorld.y, wasBox.curWorld.y);
           // Small box = click without drag? If box small, treat as clear or no-op.
           if (Math.abs(maxX - minX) > 8 || Math.abs(maxY - minY) > 8) {
-            const hitSet = piecesInBox({ minX, minY, maxX, maxY }, curTrack, b2p);
-            const indices = [...hitSet].sort((a, b) => a - b);
-            if (indices.length) {
-              const additive = event.shiftKey;
-              onSelectRef.current(indices, additive);
-            } else if (!event.shiftKey) {
-              onClearRef.current();
+            if (curTrack && b2p.length && pbRef.current.length) {
+              const hitSet = piecesInBox({ minX, minY, maxX, maxY }, curTrack, b2p, pbRef.current);
+              const indices = [...hitSet].sort((a, b) => a - b);
+              if (indices.length) {
+                const additive = event.shiftKey;
+                onSelectRef.current(indices, additive);
+              } else if (!event.shiftKey) {
+                onClearRef.current();
+              }
             }
+          } else if (!event.shiftKey) {
+            // Tiny box = simple click on empty space — clear selection
+            onClearRef.current();
           }
         }
         boxDrag = null;
@@ -494,8 +501,11 @@ export default function EditorCanvas(props: Props) {
         // If hit nothing and not armed, clear selection
         const curTrack = trackRef.current;
         const b2p = b2pRef.current;
+        const pb = pbRef.current;
         let hit: number | null = null;
-        if (curTrack && b2p.length) hit = hitPieceAt(worldRaw, curTrack, b2p);
+        if (curTrack && b2p.length && pb.length) {
+          hit = hitPieceAt(worldRaw, curTrack, b2p, pb);
+        }
         if (hit === null && !event.shiftKey) {
           // Miss on empty space clears selection (unless shift)
           onClearRef.current();
@@ -603,40 +613,39 @@ export default function EditorCanvas(props: Props) {
       if (!curTrack || !pieces || sel.length === 0) return;
       const cam = overlay.camera;
       const toScreen = (w: Point): Point => ({ x: (w.x - cam.x) * cam.scale + overlay.width / 2, y: (w.y - cam.y) * cam.scale + overlay.height / 2 });
-      // Compute union bounds per selected piece for highlight
+      // Compute bounds and highlights per selected piece
       const b2p = b2pRef.current;
-      // For each selected piece, find bounds union of its bodies
+      const pb = pbRef.current;
       for (const idx of sel) {
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        let found = false;
+        // Draw green transparent highlight over physics bodies
+        ctx.save();
+        ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
         for (let bi = 0; bi < curTrack.bodies.length; bi++) {
           if (b2p[bi] !== idx) continue;
           const b = curTrack.bodies[bi];
           if (!b.bounds) continue;
-          found = true;
-          minX = Math.min(minX, b.bounds.min.x);
-          minY = Math.min(minY, b.bounds.min.y);
-          maxX = Math.max(maxX, b.bounds.max.x);
-          maxY = Math.max(maxY, b.bounds.max.y);
+          const sMin = toScreen(b.bounds.min);
+          const sMax = toScreen(b.bounds.max);
+          ctx.fillRect(sMin.x, sMin.y, sMax.x - sMin.x, sMax.y - sMin.y);
         }
-        if (!found) {
-          // Fallback to piece geometry
-          const p = pieces[idx];
-          if (!p) continue;
-          // Approximate bounds per type for those without bodies? All have bodies though.
-          continue;
-        }
-        const sMin = toScreen({ x: minX, y: minY });
-        const sMax = toScreen({ x: maxX, y: maxY });
+        ctx.restore();
+
+        // Draw red dashed selection box using pieceBounds
+        const bounds = pb[idx];
+        if (!bounds) continue;
+        
+        const sMin = toScreen(bounds.min);
+        const sMax = toScreen(bounds.max);
         const rw = sMax.x - sMin.x;
         const rh = sMax.y - sMin.y;
+        
         ctx.save();
         ctx.strokeStyle = '#d63e2e';
         ctx.lineWidth = 1.5;
         ctx.setLineDash([6, 4]);
         ctx.strokeRect(sMin.x, sMin.y, rw, rh);
         ctx.setLineDash([]);
-        // Fill with translucent
+        // Fill with translucent red
         ctx.fillStyle = 'rgba(214,62,46,0.08)';
         ctx.fillRect(sMin.x, sMin.y, rw, rh);
         ctx.restore();

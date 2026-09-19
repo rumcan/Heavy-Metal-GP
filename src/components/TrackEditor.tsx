@@ -47,6 +47,7 @@ import {
 import Brand from './Brand';
 import Dialog from './Dialog';
 import PublishDialog from './editor/PublishDialog';
+import TemplateSaveDialog from './editor/TemplateSaveDialog';
 import ThemePicker from './editor/ThemePicker';
 import RulesDialog from './RulesDialog';
 import EditorCanvas from './editor/EditorCanvas';
@@ -227,6 +228,7 @@ function ensureHeight(def: TrackDef): TrackDef {
 
 export default function TrackEditor({ seed, profile, name, driver, onExit, onCommunity }: Props) {
   const [publishOpen, setPublishOpen] = useState(false);
+  const [templateSaveOpen, setTemplateSaveOpen] = useState(false);
   const [circuit, setCircuit] = useState<Circuit>(() => {
     const draft = loadDraftSync();
     if (draft) return { def: draft, build: 0 };
@@ -431,14 +433,17 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
         const dx = dropX - anchorX;
         const dy = dropY - anchorY;
 
+        const toAdd = tpl.pieces.map(p => {
+          const cloned = JSON.parse(JSON.stringify(p)) as Piece;
+          return movePiece(cloned, dx, dy);
+        });
+        const startLen = circuit.def.pieces.length;
+        const select = toAdd.map((_, i) => startLen + i);
         commit((def) => {
-          const toAdd = tpl.pieces.map(p => {
-             const cloned = JSON.parse(JSON.stringify(p)) as Piece;
-             return movePiece(cloned, dx, dy);
-          });
           def.pieces.push(...toAdd);
           return def;
-        }, { select: [] });
+        }, { select });
+        setArmed(null);
         return;
       }
 
@@ -559,16 +564,35 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
   }, [selected, pushHistory]);
 
   const handleSaveTemplate = useCallback(() => {
-    if (selected.length === 0) return;
-    const name = window.prompt('Enter a name for this template:', 'New Template');
-    if (!name) return;
+    if (selected.length < 2) return;
+    setTemplateSaveOpen(true);
+  }, [selected]);
+
+  const submitTemplateSave = useCallback((name: string, sprite: string) => {
     const pieces = selected.map(i => JSON.parse(JSON.stringify(circuit.def.pieces[i])));
-    // Just use a generic icon like 'rail-wood' or pick from the first piece.
-    const sprite = (PALETTE.flatMap(g => g.tiles).find(t => t.t === pieces[0].t)?.sprite) || 'rail-wood';
+    
+    // Find visual bounds to center the template
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const idx of selected) {
+      const b = built.pieceBounds[idx];
+      if (!b) continue;
+      minX = Math.min(minX, b.min.x);
+      minY = Math.min(minY, b.min.y);
+      maxX = Math.max(maxX, b.max.x);
+      maxY = Math.max(maxY, b.max.y);
+    }
+    
+    if (minX !== Infinity) {
+      const cx = (minX + maxX) / 2;
+      const cy = (minY + maxY) / 2;
+      for (let i = 0; i < pieces.length; i++) {
+        pieces[i] = movePiece(pieces[i], -cx, -cy);
+      }
+    }
+    
     saveTemplate({ name, sprite, pieces });
-    // Alert or small UX feedback
-    alert(`Template "${name}" saved! Check the Templates tab.`);
-  }, [selected, circuit.def.pieces]);
+    setTemplateSaveOpen(false);
+  }, [selected, circuit.def.pieces, built.pieceBounds]);
 
   const handleDuplicate = useCallback(() => {
     if (selected.length === 0) return;
@@ -1200,9 +1224,10 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
                 grid={grid}
                 ruler={ruler}
                 onStatus={setStatus}
-                armed={armedTile?.t ?? null}
+                armed={armed}
                 track={track}
                 bodyToPiece={bodyToPiece}
+                pieceBounds={built.pieceBounds}
                 selected={selected}
                 onPlace={handlePlace}
                 onSelect={handleSelect}
@@ -1256,6 +1281,7 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
         </Dialog>
       )}
       {publishOpen && <PublishDialog def={circuit.def} onClose={() => setPublishOpen(false)} onViewCommunity={onCommunity ? () => { setPublishOpen(false); handleCommunity(); } : undefined} />}
+      {templateSaveOpen && <TemplateSaveDialog onClose={() => setTemplateSaveOpen(false)} onSave={submitTemplateSave} defaultSprite={(PALETTE.flatMap(g => g.tiles).find(t => t.t === circuit.def.pieces[selected[0]]?.t)?.sprite) || 'rail-wood'} />}
       <CoachMarks def={circuit.def} testing={testing} validating={validating} canShare={!!validation?.canShare} armed={armed} onClose={() => setCoachForced(false)} forceOpen={coachForced} />
     </div>
   );

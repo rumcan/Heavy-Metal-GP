@@ -20,11 +20,16 @@ import { Builder, FINISH_H, W, meta, segFinish, segStart } from '../../game/trac
 import type { Track } from '../../game/track';
 import { themeFor } from '../../game/types';
 import { replayPiece, type TrackDef } from '../../game/trackdef';
+import { visualBoundsForPiece } from './bounds';
+
+type Bounds = { min: { x: number, y: number }, max: { x: number, y: number } };
 
 export interface EditorBuild {
   track: Track;
   /** `bodyToPiece[bodyIndex] = pieceIndex`, or -1 for bodies that are not part of the def. */
   bodyToPiece: number[];
+  /** Bounding boxes for each piece in the def, calculated from visualBoundsForPiece. */
+  pieceBounds: Bounds[];
   /** The def this build came from, for reuse by the editor's React state. */
   def: TrackDef;
   /** Readable error when `def` failed validation (mirrors `buildTrackFromDef`'s throw). */
@@ -35,7 +40,7 @@ export interface EditorBuild {
  * Build a track and its hit-test map. Never throws: a malformed def
  * produces `{ track: null, error }` like the canvas does for MB-02.
  */
-export function buildEditorTrack(def: TrackDef): { track: Track | null; bodyToPiece: number[]; error: string | null } {
+export function buildEditorTrack(def: TrackDef): { track: Track | null; bodyToPiece: number[]; pieceBounds: Bounds[]; error: string | null } {
   // Lightweight validation — reuse the loader's own check so the editor
   // never builds a def the race would refuse.
   // We cannot call `validateTrackDef` here without a cycle? It lives in
@@ -45,6 +50,7 @@ export function buildEditorTrack(def: TrackDef): { track: Track | null; bodyToPi
   try {
     const b = new Builder(def.seed ?? 0);
     const bodyToPiece: number[] = [];
+    const pieceBounds: Bounds[] = [];
 
     // Start grid + gate — not part of the def.
     const beforeStart = b.bodies.length;
@@ -56,6 +62,7 @@ export function buildEditorTrack(def: TrackDef): { track: Track | null; bodyToPi
       const before = b.bodies.length;
       replayPiece(b, piece);
       for (let i = before; i < b.bodies.length; i++) bodyToPiece[i] = index;
+      pieceBounds[index] = visualBoundsForPiece(piece, b.bodies.slice(before, b.bodies.length));
     });
 
     // Finish stub — not part of the def.
@@ -103,9 +110,9 @@ export function buildEditorTrack(def: TrackDef): { track: Track | null; bodyToPi
       wreckers: b.wreckers,
     targetBanks: b.targetBanks,
     };
-    return { track, bodyToPiece, error: null };
+    return { track, bodyToPiece, pieceBounds, error: null };
   } catch (error) {
-    return { track: null, bodyToPiece: [], error: error instanceof Error ? error.message : String(error) };
+    return { track: null, bodyToPiece: [], pieceBounds: [], error: error instanceof Error ? error.message : String(error) };
   }
 }
 
@@ -119,20 +126,18 @@ export function bodyToPieceForDef(def: TrackDef): number[] {
  * Returns the piece index or null when the point is on empty space or on
  * a non-def body (the gate, a start wall, the finish).
  */
-export function hitPieceAt(point: { x: number; y: number }, track: Track, bodyToPiece: number[]): number | null {
+export function hitPieceAt(point: { x: number; y: number }, track: Track, bodyToPiece: number[], pieceBounds: Bounds[]): number | null {
   // Reverse iteration: the last-drawn body is visually on top, so a click
   // on an overlap should pick the topmost piece — the same rule the race
   // renderer uses.
+  const checked = new Set<number>();
   for (let i = track.bodies.length - 1; i >= 0; i--) {
     const piece = bodyToPiece[i];
     if (piece === -1 || piece === undefined) continue;
-    const body = track.bodies[i];
-    const { min, max } = body.bounds;
+    if (checked.has(piece)) continue;
+    checked.add(piece);
+    const { min, max } = pieceBounds[piece];
     if (point.x >= min.x && point.x <= max.x && point.y >= min.y && point.y <= max.y) {
-      // For sensors with small bounds this is exact; for rotated ramps the
-      // AABB is a little generous, but that matches the spec's "via the built
-      // body bounds" wording and is far cheaper than a point-in-polygon test
-      // per body per pointer move.
       return piece;
     }
   }
@@ -140,13 +145,12 @@ export function hitPieceAt(point: { x: number; y: number }, track: Track, bodyTo
 }
 
 /** Hit-test with an axis-aligned world rect (box select). All piece indices whose body bounds intersect the rect. */
-export function piecesInBox(box: { minX: number; minY: number; maxX: number; maxY: number }, track: Track, bodyToPiece: number[]): Set<number> {
+export function piecesInBox(box: { minX: number; minY: number; maxX: number; maxY: number }, _track: Track, _bodyToPiece: number[], pieceBounds: Bounds[]): Set<number> {
   const out = new Set<number>();
-  for (let i = 0; i < track.bodies.length; i++) {
-    const piece = bodyToPiece[i];
-    if (piece === -1 || piece === undefined) continue;
-    const { min, max } = track.bodies[i].bounds;
-    if (max.x >= box.minX && min.x <= box.maxX && max.y >= box.minY && min.y <= box.maxY) out.add(piece);
+  for (let i = 0; i < pieceBounds.length; i++) {
+    if (!pieceBounds[i]) continue;
+    const { min, max } = pieceBounds[i];
+    if (max.x >= box.minX && min.x <= box.maxX && max.y >= box.minY && min.y <= box.maxY) out.add(i);
   }
   return out;
 }
