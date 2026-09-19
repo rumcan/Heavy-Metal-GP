@@ -287,3 +287,88 @@ test('Browser: shop purchases persist, number keys spend only selected items, an
     assert.deepEqual(errors, []);
   } finally { await context.close(); }
 });
+test('Browser: template dialog blocks editor shortcuts and preserves the saved group', { timeout: 60000 }, async () => {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
+  const page = await context.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const draft = () => page.evaluate(() => (window as any).templateFixture.readDraft());
+  const shortcuts = ['Delete', 'Backspace', 'm', 'r', 'Shift+r', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Control+z', 'Control+y', 'Control+Shift+z', 'Control+d', 'Control+c', 'Control+v'];
+  try {
+    await page.goto(`${baseUrl}/tests/editor-template-fixture.html`, { waitUntil: 'networkidle' });
+    await page.getByRole('button', { name: 'Templates', exact: true }).click();
+    await page.getByRole('button', { name: 'Two walls', exact: true }).click();
+    const canvas = page.locator('.editor-canvas');
+    const box = await canvas.boundingBox();
+    assert.ok(box);
+    await canvas.click({ position: { x: box.width / 2, y: box.height / 2 } });
+    await page.waitForFunction(() => (window as any).templateFixture.readDraft().pieces.length === 2);
+    const before = await draft();
+    assert.equal(before.pieces[1].x - before.pieces[0].x, 200);
+    assert.match(await page.locator('.editor-status').textContent() ?? '', /2 selected/);
+
+    await page.getByRole('button', { name: 'Template', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Save Template', exact: true });
+    await dialog.getByRole('textbox').fill('Keyboard-safe walls');
+    const icon = dialog.locator('button[title]').first();
+    await icon.click();
+    for (const key of shortcuts) {
+      await page.keyboard.press(key);
+      assert.deepEqual(await draft(), before, `${key} changed the map behind the dialog`);
+      assert.match(await page.locator('.editor-status').textContent() ?? '', /2 selected/);
+    }
+    // Normal dialog keyboard behaviour is not swallowed by the editor guard.
+    await dialog.getByRole('button', { name: 'Save Template', exact: true }).focus();
+    await page.keyboard.press('Tab');
+    assert.equal(await dialog.getByRole('button', { name: 'Close dialog' }).evaluate(el => el === document.activeElement), true);
+    await dialog.getByRole('button', { name: 'Save Template', exact: true }).focus();
+    await page.keyboard.press('Enter');
+    await dialog.waitFor({ state: 'detached' });
+    const saved = await page.evaluate(() => (window as any).templateFixture.getTemplates().find((t: any) => t.name === 'Keyboard-safe walls'));
+    assert.equal(saved.version, 2);
+    assert.deepEqual(saved.pieces.map((p: any) => [p.x, p.y]), [[-100, 0], [100, 0]]);
+    assert.deepEqual(await draft(), before);
+
+    // Reopen, type shortcut letters in the input, then Escape: selection survives.
+    await page.getByRole('button', { name: 'Template', exact: true }).click();
+    await dialog.getByRole('textbox').fill('m r Delete');
+    await page.keyboard.press('Escape');
+    await dialog.waitFor({ state: 'detached' });
+    assert.deepEqual(await draft(), before);
+    await page.getByRole('button', { name: 'Template', exact: true }).focus();
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(x => (window as any).templateFixture.readDraft().pieces[0].x === x + 1, before.pieces[0].x);
+    await page.keyboard.press('Control+z');
+    assert.deepEqual(await draft(), before, 'shortcuts should resume after closing the dialog');
+
+    // Other editor modals (including child-owned tutorial) obey the same routing.
+    for (const name of ['New track', 'Clear map', 'Tutorial']) {
+      await page.getByRole('button', { name, exact: true }).first().click();
+      const modal = page.getByRole('dialog');
+      await modal.waitFor();
+      await modal.getByRole('button').first().focus();
+      for (const key of ['Delete', 'm', 'r', 'ArrowRight', 'Control+z']) {
+        await page.keyboard.press(key);
+        assert.deepEqual(await draft(), before, `${name}: ${key} changed the map`);
+      }
+      if (name === 'Tutorial') await modal.getByRole('button', { name: 'Dismiss tutorial' }).click();
+      else if (name === 'New track') await modal.getByRole('button', { name: /cancel/i }).click();
+      else await page.keyboard.press('Escape');
+      await modal.waitFor({ state: 'detached' });
+    }
+    // Insert the newly saved template, not just the seeded fixture template.
+    await page.getByRole('button', { name: 'Base Items', exact: true }).click();
+    await page.getByRole('button', { name: 'Templates', exact: true }).click();
+    await page.getByRole('button', { name: 'Keyboard-safe walls', exact: true }).click();
+    await canvas.hover({ position: { x: box.width * 0.6, y: box.height * 0.7 } });
+    await canvas.click({ position: { x: box.width * 0.6, y: box.height * 0.7 } });
+    await page.waitForFunction(() => (window as any).templateFixture.readDraft().pieces.length === 4);
+    const after = await draft();
+    assert.deepEqual(after.pieces.slice(0, 2), before.pieces);
+    assert.equal(after.pieces[3].x - after.pieces[2].x, 200);
+    assert.equal(after.pieces[3].y, after.pieces[2].y);
+    assert.deepEqual(errors, []);
+  } finally {
+    await context.close();
+  }
+});
