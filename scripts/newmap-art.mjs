@@ -5,8 +5,8 @@
  * alpha; each job names the window it lives in, we alpha-trim and rasterise to
  * stock dims. Replaces the AI-painted interim art.
  *
- * Not sliced (no matching art on the sheets): sling — it keeps its
- * current art. Run: node scripts/newmap-art.mjs
+ * Every sprite on the sheets is sliced: the whole inventory rides the
+ * author's sheet art now. Run: node scripts/newmap-art.mjs
  */
 import { decodePng, encodePng, bbox, crop, resize, flipX } from './lib/png-pipe.mjs';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -94,6 +94,7 @@ save('seesaw.png', cut(3, 628, 404, 1056, 472, 140, 16));
 save('switchplate.png', cut(3, 114, 810, 222, 1058, 24, 120));
 save('crusher-house.png', cut(3, 832, 842, 1042, 1046, 170, 46));
 save('bridge.png', cut(3, 1280, 85, 1410, 145, 56, 14));
+save('sling.png', cut(3, 1100, 780, 1448, 1080, 120, 136));
 
 // screw: the banded log is horizontal on the sheet; stand it up
 save('screw.png', rotCW(cut(2, 14, 832, 702, 1022, 112, 64)));
@@ -103,4 +104,4 @@ save('trampoline.png', cut(3, 1028, 86, 1404, 280, 192, 96));
 save('trampoline-post-l.png', cut(3, 1028, 86, 1120, 280, 64, 96));
 save('trampoline-post-r.png', cut(3, 1330, 86, 1404, 280, 64, 96));
 
-console.log('Sheets sliced. Not sliced: sling (no matching art on the sheets).');
+console.log("Sheets sliced: full inventory now on the author's sheet art.");
