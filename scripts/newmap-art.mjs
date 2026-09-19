@@ -6,9 +6,20 @@
  * stock dims. Replaces the AI-painted interim art.
  *
  * Every sprite on the sheets is sliced: the whole inventory rides the
- * author's sheet art now. Run: node scripts/newmap-art.mjs
+ * author's sheet art now (bar the drawing cells the author labelled with
+ * their own names for assets not in the game — see below). Window
+ * assignments follow the author's labelled reference: crusher = yellow
+ * warning piston, crusher-house = slatted gate, trapdoor = splat plank,
+ * conveyor = red-chevron plank, switchplate = arrow totem, screw = vertical
+ * coil lift, bridge/flipper = bracketed plank, seesaw = diamond plank,
+ * trampoline = rope net, posts = braced pair.
+ *
+ * Not sliced (no game consumer — author's own names): wooden_cannon (banded
+ * log), skull-box (skull in iron frame).
+ *
+ * Run: node scripts/newmap-art.mjs
  */
-import { decodePng, encodePng, bbox, crop, resize, flipX } from './lib/png-pipe.mjs';
+import { decodePng, encodePng, bbox, crop, resize } from './lib/png-pipe.mjs';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -47,29 +58,20 @@ function cut(sheetNo, x0, y0, x1, y1, W, H, { pad = 6 } = {}) {
   return out;
 }
 
-/** quarter-turn CW. */
-function rotCW(img) {
-  const { w, h, px } = img;
-  const out = { w: h, h: w, px: new Uint8ClampedArray(px.length) };
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const si = (y * w + x) * 4, di = (x * h + (h - 1 - y)) * 4;
-    for (let c = 0; c < 4; c++) out.px[di + c] = px[si + c];
-  }
-  return out;
-}
-
 // ---- sheet 1: MB-10A passages + MB-10B/D machinery ----
 save('crumble.png', cut(1, 62, 46, 390, 328, 100, 140));
-save('trapdoor.png', cut(1, 458, 116, 876, 288, 120, 28));
-save('crusher.png', cut(1, 936, 114, 1404, 286, 150, 60));
+save('crusher.png', cut(1, 458, 116, 876, 288, 150, 60));        // yellow-triangle piston beam
+save('crusher-house.png', cut(1, 936, 114, 1404, 286, 170, 46)); // slatted piston gate
 save('barricade.png', cut(1, 58, 368, 496, 566, 140, 60));
 save('blade.png', cut(1, 642, 294, 816, 672, 70, 170));
 save('blast.png', cut(1, 1068, 320, 1350, 602, 96, 96));
 save('boulder.png', cut(1, 172, 584, 380, 788, 76, 76));
 save('flipper.png', cut(1, 576, 676, 830, 766, 160, 48));
+save('bridge.png', cut(1, 576, 676, 830, 766, 56, 14));
 save('cannon.png', cut(1, 916, 602, 1406, 818, 192, 48));
 save('catapult.png', cut(1, 54, 786, 904, 1048, 224, 64));
-save('arrow.png', cut(1, 960, 918, 1406, 1004, 132, 24));
+save('conveyor.png', cut(1, 950, 900, 1445, 1000, 132, 22));     // red-chevron plank
+save('arrow.png', cut(1, 950, 900, 1445, 1000, 132, 24));        // the chevron plank doubles as the switch arrow
 
 // ---- sheet 2: MB-10E fields + movers ----
 save('mud.png', cut(2, 18, 168, 614, 362, 160, 56));
@@ -82,26 +84,22 @@ save('mace.png', cut(2, 890, 788, 1166, 1064, 76, 76));
 save('magnet.png', cut(2, 1182, 776, 1432, 1040, 120, 112));
 
 // ---- sheet 3: MB-10C movers + MB-10F set pieces ----
+save('switchplate.png', cut(3, 88, 10, 210, 312, 24, 120));      // arrow totem
 save('target-pin.png', cut(3, 346, 94, 496, 294, 48, 64));
 save('targets.png', cut(3, 560, 142, 988, 252, 224, 60));
-save('tunnel.png', cut(3, 1148, 326, 1374, 552, 100, 100));
+save('tunnel.png', cut(3, 1148, 326, 1374, 552, 100, 100));      // portal ring
 save('turnstile.png', cut(3, 56, 560, 306, 806, 160, 160));
 save('vortex.png', cut(3, 406, 562, 694, 824, 240, 240));
 save('wheel.png', cut(3, 788, 554, 1056, 812, 128, 128));
 save('wind.png', cut(3, 1150, 622, 1386, 772, 80, 56));
-save('conveyor.png', cut(3, 318, 920, 758, 976, 132, 22));
-save('seesaw.png', cut(3, 628, 404, 1056, 472, 140, 16));
-save('switchplate.png', cut(3, 114, 810, 222, 1058, 24, 120));
-save('crusher-house.png', cut(3, 832, 842, 1042, 1046, 170, 46));
-save('bridge.png', cut(3, 1280, 85, 1410, 145, 56, 14));
+save('trapdoor.png', cut(3, 596, 372, 1072, 478, 120, 28));      // hinged splat plank
+save('seesaw.png', cut(3, 296, 880, 770, 945, 140, 16));         // diamond-chevron plank
+save('screw.png', cut(3, 10, 825, 205, 1075, 64, 112));          // vertical coil lift
 save('sling.png', cut(3, 1100, 780, 1448, 1080, 120, 136));
 
-// screw: the banded log is horizontal on the sheet; stand it up
-save('screw.png', rotCW(cut(2, 14, 832, 702, 1022, 112, 64)));
-
-// trampoline: whole net for the palette; sub-slices make the mirrored posts
+// trampoline: rope net for the palette; the braced posts come from row 2
 save('trampoline.png', cut(3, 1028, 86, 1404, 280, 192, 96));
-save('trampoline-post-l.png', cut(3, 1028, 86, 1120, 280, 64, 96));
-save('trampoline-post-r.png', cut(3, 1330, 86, 1404, 280, 64, 96));
+save('trampoline-post-l.png', cut(3, 30, 283, 245, 560, 64, 96));
+save('trampoline-post-r.png', cut(3, 330, 283, 565, 560, 64, 96));
 
 console.log("Sheets sliced: full inventory now on the author's sheet art.");
