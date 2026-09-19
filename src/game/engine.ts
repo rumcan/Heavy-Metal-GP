@@ -1278,7 +1278,7 @@ export class Game {
       if (ss.angle > ss.max) { ss.angle = ss.max; if (ss.angVel > 0) ss.angVel = 0; }
       (Body.setAngle as unknown as (b: Matter.Body, a: number, u: boolean) => void)(plank, ss.angle, true);
       // stream the state, throttled — a resting plank barely talks
-      if ((ss.emittedAt === undefined ? -1 : this.time - ss.emittedAt) > (Math.abs(ss.angVel) > 0.0002 ? 150 : 1200) && Math.abs(ss.angle) + Math.abs(ss.angVel * 400) > 0.004) {
+      if ((ss.emittedAt === undefined ? Infinity : this.time - ss.emittedAt) > (Math.abs(ss.angVel) > 0.0002 ? 150 : 1200) && Math.abs(ss.angle) + Math.abs(ss.angVel * 400) > 0.004) {
         ss.emittedAt = this.time;
         this.emit({ kind: 'seesaw', i: this.track.bodies.indexOf(plank), angle: ss.angle, angVel: ss.angVel });
       }

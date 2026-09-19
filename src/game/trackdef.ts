@@ -510,7 +510,7 @@ export function generateTrackDef(seed: number, profile: TrackProfile = DEFAULT_P
 
 // ---------------------------------------------------------------- replay
 
-function replayPiece(b: Builder, piece: Piece) {
+export function replayPiece(b: Builder, piece: Piece) {
   b.flip = piece.flip === true;
   try {
     switch (piece.t) {
@@ -707,6 +707,9 @@ export function validateTrackDef(value: unknown): TrackDefCheck {
 
   // Sizes, positions and heights are only meaningful once every number is known to be finite.
   for (const piece of pieces) {
+    if (piece.t === 'screw' && Math.hypot(piece.b[0] - piece.a[0], piece.b[1] - piece.a[1]) < 1) {
+      problems.add('A screw lift needs distinct entrance and exit positions.');
+    }
     for (const y of pieceYs(piece)) {
       if (y > height) {
         problems.add(`A ${piece.t} piece sits at y=${round(y)}, below the circuit's height of ${height}.`);

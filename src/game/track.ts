@@ -978,7 +978,9 @@ export class Builder {
     // mirror the course: the whole aim fan maps θ → 180−θ, swapping the range ends
     const mirror = (deg: number) => ((180 - deg) % 360 + 360) % 360;
     const lo = this.flip ? mirror(aimMaxDeg) : aimMinDeg;
-    const hi = this.flip ? mirror(aimMinDeg) : aimMaxDeg;
+    let hi = this.flip ? mirror(aimMinDeg) : aimMaxDeg;
+    // A rotated fan may straddle 0 degrees; retain its clockwise span.
+    if (hi < lo) hi += 360;
     const md: Meta = {
       kind: 'cannon',
       motion: { mode: 'aim', pivot, minA: (lo * Math.PI) / 180, maxA: (hi * Math.PI) / 180, periodMs: 2600, phaseMs },
