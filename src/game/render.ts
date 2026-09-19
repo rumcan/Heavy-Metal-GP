@@ -2350,7 +2350,7 @@ function drawCannon(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnTy
   if (cn.lastFiredAt && game.time - cn.lastFiredAt < 180) {
     const k = 1 - (game.time - cn.lastFiredAt) / 180;
     const mx = P.x + Math.cos(a) * (cn.len + 8), my = P.y + Math.sin(a) * (cn.len + 8);
-    if (!drawSprite(ctx, 'blast', mx - 22, my - 22, 44, 44)) {
+    if (!drawSprite(ctx, 'blast', mx, my, 44, 44)) {
       ctx.globalAlpha = k;
       ctx.fillStyle = '#fcd34d';
       ctx.beginPath(); ctx.arc(mx, my, 8 + (1 - k) * 22, 0, Math.PI * 2); ctx.fill();
@@ -2536,9 +2536,10 @@ function drawMud(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<t
   ctx.rotate(b.angle);
   const len = mud.box.w * Math.abs(Math.cos(b.angle)) + mud.box.h * Math.abs(Math.sin(b.angle)) || mud.box.w;
   void len;
-  // glossy tar band centred on the sensor band (18px tall)
+  // glossy tar band centred on the sensor band (18px tall); painted sheen over the base fill
   ctx.fillStyle = '#1c1917';
   ctx.beginPath(); ctx.ellipse(0, 0, mud.box.w / 2, 9, 0, 0, Math.PI * 2); ctx.fill();
+  drawSprite(ctx, 'mud', 0, 0, mud.box.w + 26, 26);
   ctx.fillStyle = '#44403c';
   const wob = Math.sin(t / 500) * 2;
   ctx.beginPath(); ctx.ellipse(-mud.box.w / 5, -2 + wob, 4, 2.4, 0, 0, Math.PI * 2); ctx.fill();
@@ -2560,6 +2561,8 @@ function drawPool(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<
   // water slab
   ctx.fillStyle = 'rgba(3,105,161,0.55)';
   ctx.fillRect(lx, top + 2, hx - lx, po.depth + 14);
+  // painted surface sheen: the puddle art stretched over the pool mouth
+  drawSprite(ctx, 'pool', (lx + hx) / 2, top + 4, (hx - lx) + 22, 22);
   // wobbling surface line
   ctx.strokeStyle = '#7dd3fc';
   ctx.lineWidth = 2;
