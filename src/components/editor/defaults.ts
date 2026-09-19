@@ -12,6 +12,8 @@ import type { Piece } from '../../game/trackdef';
 import type { PieceType } from './palette';
 import type { Point } from './camera';
 import { W } from '../../game/track';
+import { fitDelta, xExtent } from './extent';
+import { movePiece } from './handles';
 
 const SNAP = 25;
 const snapVal = (v: number) => Math.round(v / SNAP) * SNAP;
@@ -20,8 +22,25 @@ function snapPoint(p: Point): Point {
   return { x: snapVal(p.x), y: snapVal(p.y) };
 }
 
-/** Create a fresh piece of `type` at `at` (world units). */
+/**
+ * Create a fresh piece of `type` at `at` (world units).
+ *
+ * The click is a *centre*, not a promise: a ramp near the left wall would otherwise start at x=-125
+ * and a ramp near the right wall would end at x=1025, both of which `validateTrackDef` rejects — a
+ * legal click could produce an unshareable map (#71). So the generated geometry is measured and, if
+ * any of it hangs outside 0..W, slid sideways by one shared delta: lengths and the offsets between
+ * points survive, and the piece lands as close to the cursor as it can. Anchor-led pieces (tunnel,
+ * trapdoor, boulder) turn inwards first so the clicked point stays put; the slide is the fallback
+ * for everything that still overflows.
+ */
 export function defaultPiece(type: PieceType, at: Point, snap = false): Piece {
+  const piece = buildDefault(type, at, snap);
+  const dx = fitDelta(xExtent(piece));
+  return dx === 0 ? piece : movePiece(piece, dx, 0);
+}
+
+/** The piece the click describes, before it is fitted into the track. */
+function buildDefault(type: PieceType, at: Point, snap = false): Piece {
   const p = snap ? snapPoint(at) : at;
   // Clamp x inside the pipe; y is unbounded (the track grows downward).
   const cx = Math.max(0, Math.min(W, p.x));
@@ -122,15 +141,20 @@ export function defaultPiece(type: PieceType, at: Point, snap = false): Piece {
       return { t: 'crumble', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, w: 56, h: 120, tough: 6 };
     }
     case 'tunnel': {
-      // Entrance at the click; exit 200 units below, shooting down and slightly right.
+      // Entrance at the click; exit 200 units below, shooting down and towards the middle of the
+      // track.  Near the right wall the ride turns left instead of punching through it (#71).
       const ix = snap ? snapVal(cx) : cx;
       const iy = snap ? snapVal(cy) : cy;
-      return { t: 'tunnel', x: ix, y: iy, exit: [snap ? snapVal(ix + 80) : ix + 80, iy + 200] as [number, number], edir: [0.3, 0.95] as [number, number], ms: 900, speed: 7 };
+      const inward: 1 | -1 = ix + 80 > W ? -1 : 1;
+      const ex = snap ? snapVal(ix + 80 * inward) : ix + 80 * inward;
+      return { t: 'tunnel', x: ix, y: iy, exit: [ex, iy + 200] as [number, number], edir: [0.3 * inward, 0.95] as [number, number], ms: 900, speed: 7 };
     }
     case 'trapdoor': {
       const w = 110;
-      const hinge = -1 as -1 | 1;
       const hx = snap ? snapVal(cx) : cx;
+      // The leaf hangs off the far side of the hinge, so the hinge goes where the leaf still fits:
+      // left of the click, or right of it when the click hugs the right wall (#71).
+      const hinge: -1 | 1 = hx + w <= W ? -1 : 1;
       const center_x = hx - hinge * w / 2;
       return { t: 'trapdoor', x: center_x, y: snap ? snapVal(cy) : cy, w, hinge, mode: 'timer' as 'timer' | 'weight', open: 1400, closed: 2800, phase: 0, kg: 2.4, hold: 300 };
     }
@@ -153,11 +177,14 @@ export function defaultPiece(type: PieceType, at: Point, snap = false): Piece {
     case 'boulder': {
       const x = snap ? snapVal(cx) : cx;
       const y = snap ? snapVal(cy) : cy;
+      // The run heads for the middle of the track and keeps its full 340 units.  Running short near
+      // a wall used to shorten the route; running long made the map invalid (#71).
+      const inward: 1 | -1 = x + 340 > W ? -1 : 1;
       return {
         t: 'boulder',
         pts: [
           [x, y] as [number, number],
-          [x > W - 80 ? Math.max(40, x - 340) : Math.min(W - 40, x + 340), y + 240] as [number, number],
+          [x + 340 * inward, y + 240] as [number, number],
         ],
         r: 27, interval: 6500, rest: 1400, phase: 0,
       };
@@ -174,12 +201,14 @@ export function defaultPiece(type: PieceType, at: Point, snap = false): Piece {
     case 'screw': {
       const x = snap ? snapVal(cx) : cx;
       const y = snap ? snapVal(cy) : cy;
-      return { t: 'screw', a: [x, y] as [number, number], b: [Math.min(W - 40, x + 120), y - 190] as [number, number], ms: 3200, cap: 2 };
+      // Full 120-unit rise: a click near the wall slides the tube in (see defaultPiece) instead of
+      // shortening it, which is what an independent clamp on the far end used to do (#71).
+      return { t: 'screw', a: [x, y] as [number, number], b: [x + 120, y - 190] as [number, number], ms: 3200, cap: 2 };
     }
     case 'conveyor': {
       const x = snap ? snapVal(cx) : cx;
       const y = snap ? snapVal(cy) : cy;
-      return { t: 'conveyor', a: [x - 140, y] as [number, number], b: [Math.min(W - 40, x + 140), y + 60] as [number, number], v: 0.16, flipMs: 0, dir: 0 as const };
+      return { t: 'conveyor', a: [x - 140, y] as [number, number], b: [x + 140, y + 60] as [number, number], v: 0.16, flipMs: 0, dir: 0 as const };
     }
     case 'seesaw': {
       return { t: 'seesaw', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, len: 300, lim: 22, damp: 0.9 };
@@ -187,7 +216,7 @@ export function defaultPiece(type: PieceType, at: Point, snap = false): Piece {
     case 'bridge': {
       const x = snap ? snapVal(cx) : cx;
       const y = snap ? snapVal(cy) : cy;
-      return { t: 'bridge', a: [x - 180, y] as [number, number], b: [Math.min(W - 40, x + 180), y] as [number, number], planks: 8, slack: 34 };
+      return { t: 'bridge', a: [x - 180, y] as [number, number], b: [x + 180, y] as [number, number], planks: 8, slack: 34 };
     }
     // ---- MB-10D ----
     case 'cannon': {

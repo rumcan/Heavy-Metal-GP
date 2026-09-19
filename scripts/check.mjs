@@ -13,6 +13,8 @@ const commands = [
     'tests/trackdef.test.ts',
     // Map builder (MB-02): the editor shell — the camera's maths, the palette, and what the shell paints.
     'tests/editor-ui.test.ts', 'tests/map-builder-audit.test.ts', 'tests/map-elements-runtime.test.ts', 'tests/mb10e.test.ts', 'tests/mb10f.test.ts',
+    // Map builder (#71): edge placement, moving against a boundary, and the placement prompts' bounds.
+    'tests/placement-bounds.test.ts',
     // Ranked racing (RK-01): multi-player Elo, tiers, the stored file and the wire. Pure — no SDK, no DOM.
     'tests/rating.test.ts',
     // Ranked racing (RK-02): where a rating lives — RUN player storage, the once-only guard, the ladder.

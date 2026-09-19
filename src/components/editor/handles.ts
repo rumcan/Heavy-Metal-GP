@@ -13,6 +13,7 @@
 import type { Piece } from '../../game/trackdef';
 import { SNAP } from './camera';
 import { W } from '../../game/track';
+import { clampDeltaToExtent, deltaRange, xExtent } from './extent';
 import { applyRotateHandle, hasFreeRotation, rotateHandlePoint } from './rotate';
 
 export interface Handle {
@@ -31,6 +32,15 @@ const clampNum = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi
 
 function withSnap(v: number, snap: boolean): number {
   return snap ? snapVal(v) : v;
+}
+
+/**
+ * The delta a move-handle drag can actually apply: the piece slides as far as the wall allows and no
+ * further, and every point travels that same distance (#71). Clamping the coordinates one by one
+ * reshaped the piece instead — a ramp dragged into the left wall came back half as long.
+ */
+function moveDelta(piece: Piece, toX: number, anchorX: number, snap: boolean): number {
+  return clampDeltaToExtent(xExtent(piece), withSnap(toX, snap) - anchorX);
 }
 
 /** World positions of every handle for `piece`. The first entry is always the "move" handle (centre). */
@@ -376,12 +386,12 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
         const [bx, by] = piece.b;
         const mx = (ax + bx) / 2;
         const my = (ay + by) / 2;
-        const dx = withSnap(to.x, sx) - mx;
+        const dx = moveDelta(piece, to.x, mx, sx);
         const dy = withSnap(to.y, sx) - my;
         return {
           ...piece,
-          a: [clampX(ax + dx), ay + dy],
-          b: [clampX(bx + dx), by + dy],
+          a: [ax + dx, ay + dy],
+          b: [bx + dx, by + dy],
         };
       }
       return piece;
@@ -396,13 +406,13 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
         const [bx, by] = piece.b;
         const mx = (ax + bx + cx) / 3;
         const my = (ay + by + cy) / 3;
-        const dx = withSnap(to.x, sx) - mx;
+        const dx = moveDelta(piece, to.x, mx, sx);
         const dy = withSnap(to.y, sx) - my;
         return {
           ...piece,
-          a: [clampX(ax + dx), ay + dy],
-          c: [clampX(cx + dx), cy + dy],
-          b: [clampX(bx + dx), by + dy],
+          a: [ax + dx, ay + dy],
+          c: [cx + dx, cy + dy],
+          b: [bx + dx, by + dy],
         };
       }
       return piece;
@@ -544,10 +554,10 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
     }
     case 'tunnel': {
       if (handleId === 'move') {
-        const nx = clampX(withSnap(to.x, sx));
-        const dx = nx - piece.x;
+        // Entrance and exit travel together: the pair is measured as one, so the ride keeps its run.
+        const dx = moveDelta(piece, to.x, piece.x, sx);
         const dy = withSnap(to.y, sx) - piece.y;
-        return { ...piece, x: nx, y: piece.y + dy, exit: [clampX(piece.exit[0] + dx), piece.exit[1] + dy] as [number, number] };
+        return { ...piece, x: piece.x + dx, y: piece.y + dy, exit: [piece.exit[0] + dx, piece.exit[1] + dy] as [number, number] };
       }
       if (handleId === 'exit') {
         return { ...piece, exit: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number] };
@@ -591,12 +601,12 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       if (handleId === 'move') {
         const cx = (piece.a[0] + piece.b[0]) / 2;
         const cy = (piece.a[1] + piece.b[1]) / 2;
-        const dx = withSnap(to.x, sx) - cx;
+        const dx = moveDelta(piece, to.x, cx, sx);
         const dy = withSnap(to.y, sx) - cy;
         return {
           ...piece,
-          a: [clampX(piece.a[0] + dx), piece.a[1] + dy] as [number, number],
-          b: [clampX(piece.b[0] + dx), piece.b[1] + dy] as [number, number],
+          a: [piece.a[0] + dx, piece.a[1] + dy] as [number, number],
+          b: [piece.b[0] + dx, piece.b[1] + dy] as [number, number],
         };
       }
       if (handleId === 'a') return { ...piece, a: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number] };
@@ -620,9 +630,9 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       if (handleId === 'move') {
         const mx = piece.pts.reduce((s, p) => s + p[0], 0) / piece.pts.length;
         const my = piece.pts.reduce((s, p) => s + p[1], 0) / piece.pts.length;
-        const dx = withSnap(to.x, sx) - mx;
+        const dx = moveDelta(piece, to.x, mx, sx);
         const dy = withSnap(to.y, sx) - my;
-        return { ...piece, pts: piece.pts.map(([x, y]) => [clampX(x + dx), y + dy] as [number, number]) };
+        return { ...piece, pts: piece.pts.map(([x, y]) => [x + dx, y + dy] as [number, number]) };
       }
       if (/^p\d+$/.test(handleId)) {
         const i = Number(handleId.slice(1));
@@ -667,12 +677,12 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       if (handleId === 'move') {
         const mx = (piece.a[0] + piece.b[0]) / 2;
         const my = (piece.a[1] + piece.b[1]) / 2;
-        const dx = span.x - mx;
+        const dx = moveDelta(piece, to.x, mx, sx);
         const dy = span.y - my;
         return {
           ...piece,
-          a: [clampX(piece.a[0] + dx), piece.a[1] + dy] as [number, number],
-          b: [clampX(piece.b[0] + dx), piece.b[1] + dy] as [number, number],
+          a: [piece.a[0] + dx, piece.a[1] + dy] as [number, number],
+          b: [piece.b[0] + dx, piece.b[1] + dy] as [number, number],
         };
       }
       if (handleId === 'a') return { ...piece, a: [clampX(span.x), span.y] as [number, number] };
@@ -751,9 +761,9 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
         const deg = ((Math.round((Math.atan2(to.y - my, to.x - mx) * 180) / Math.PI) % 360) + 360) % 360;
         return { ...piece, dir: deg };
       }
-      const ddx = withSnap(to.x, sx) - (piece.a[0] + piece.b[0]) / 2;
+      const ddx = moveDelta(piece, to.x, (piece.a[0] + piece.b[0]) / 2, sx);
       const ddy = withSnap(to.y, sx) - (piece.a[1] + piece.b[1]) / 2;
-      return { ...piece, a: [clampX(piece.a[0] + ddx), piece.a[1] + ddy], b: [clampX(piece.b[0] + ddx), piece.b[1] + ddy] };
+      return { ...piece, a: [piece.a[0] + ddx, piece.a[1] + ddy], b: [piece.b[0] + ddx, piece.b[1] + ddy] };
     }
     case 'magnet': {
       if (handleId === 'r') {
@@ -765,9 +775,9 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
     case 'mud': {
       if (handleId === 'a') return { ...piece, a: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number] };
       if (handleId === 'b') return { ...piece, b: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number] };
-      const ddx = withSnap(to.x, sx) - (piece.a[0] + piece.b[0]) / 2;
+      const ddx = moveDelta(piece, to.x, (piece.a[0] + piece.b[0]) / 2, sx);
       const ddy = withSnap(to.y, sx) - (piece.a[1] + piece.b[1]) / 2;
-      return { ...piece, a: [clampX(piece.a[0] + ddx), piece.a[1] + ddy], b: [clampX(piece.b[0] + ddx), piece.b[1] + ddy] };
+      return { ...piece, a: [piece.a[0] + ddx, piece.a[1] + ddy], b: [piece.b[0] + ddx, piece.b[1] + ddy] };
     }
     case 'pool': {
       if (handleId === 'a') return { ...piece, a: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number] };
@@ -777,9 +787,9 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
         const depth = Math.max(40, Math.min(300, withSnap(to.y, sx) - top));
         return { ...piece, depth: clampNum(withSnap(depth, sx), 40, 300) };
       }
-      const ddx = withSnap(to.x, sx) - (piece.a[0] + piece.b[0]) / 2;
+      const ddx = moveDelta(piece, to.x, (piece.a[0] + piece.b[0]) / 2, sx);
       const ddy = withSnap(to.y, sx) - (piece.a[1] + piece.b[1]) / 2;
-      return { ...piece, a: [clampX(piece.a[0] + ddx), piece.a[1] + ddy], b: [clampX(piece.b[0] + ddx), piece.b[1] + ddy] };
+      return { ...piece, a: [piece.a[0] + ddx, piece.a[1] + ddy], b: [piece.b[0] + ddx, piece.b[1] + ddy] };
     }
     case 'trampoline': {
       if (handleId === 'w') return { ...piece, w: clampNum(Math.abs(withSnap(to.x, sx) - piece.x) * 2, 60, 400) };
@@ -798,9 +808,9 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
     case 'platform': {
       if (handleId === 'a') return { ...piece, ax: clampX(withSnap(to.x, sx)), ay: withSnap(to.y, sx) };
       if (handleId === 'b') return { ...piece, bx: clampX(withSnap(to.x, sx)), by: withSnap(to.y, sx) };
-      const ddx = withSnap(to.x, sx) - (piece.ax + piece.bx) / 2;
+      const ddx = moveDelta(piece, to.x, (piece.ax + piece.bx) / 2, sx);
       const ddy = withSnap(to.y, sx) - (piece.ay + piece.by) / 2;
-      return { ...piece, ax: clampX(piece.ax + ddx), ay: piece.ay + ddy, bx: clampX(piece.bx + ddx), by: piece.by + ddy };
+      return { ...piece, ax: piece.ax + ddx, ay: piece.ay + ddy, bx: piece.bx + ddx, by: piece.by + ddy };
     }
     case 'geyser': {
       if (handleId === 'h') {
@@ -812,33 +822,87 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
   }
 }
 
-/** Apply a translation delta to a piece (move as a block). */
+/**
+ * Apply a translation delta to a piece (move as a block).
+ *
+ * The delta is measured against the piece's whole extent and cut back there, so a piece pushed
+ * towards a wall stops at it intact: clamping each coordinate on its own used to shorten a ramp
+ * from 300 to 100 and, pushed far enough, collapse it to nothing (#71). Moving never reshapes —
+ * that is what the endpoint handles are for.
+ */
 export function movePiece(piece: Piece, dx: number, dy: number): Piece {
   // A flipped piece is drawn mirrored, so moving it right on screen means moving its stored x left.
-  if (piece.flip) dx = -dx;
+  const stored = piece.flip ? -dx : dx;
+  return translatePiece(piece, clampDeltaToExtent(xExtent(piece), stored), dy);
+}
+
+/**
+ * Move several pieces as one block. The delta is measured against the group's *combined* extent, so
+ * the selection stops at the wall together and the spacing between its pieces survives (#71); with a
+ * per-piece clamp, the piece nearest the wall stopped while the others slid on and sheared the group.
+ */
+export function movePieces(pieces: readonly Piece[], dx: number, dy: number): Piece[] {
+  const applied = sharedDelta(pieces, dx);
+  return pieces.map((piece) => translatePiece(piece, piece.flip ? -applied : applied, dy));
+}
+
+/**
+ * Translate a piece with no wall check at all. For storing a saved template's pieces as offsets
+ * around the origin, where coordinates outside 0..W are the point — a template is a bag of shapes,
+ * not a map, and clamping it here would freeze it against the wall instead of centring it (#71).
+ */
+export function offsetPiece(piece: Piece, dx: number, dy: number): Piece {
+  return translatePiece(piece, piece.flip ? -dx : dx, dy);
+}
+
+/** The part of `dx` every piece of a group can absorb at once. */
+function sharedDelta(pieces: readonly Piece[], dx: number): number {
+  let lo = -Infinity;
+  let hi = Infinity;
+  for (const piece of pieces) {
+    const range = deltaRange(xExtent(piece));
+    // No stored x (the bucket), or wider than the track: it cannot constrain the group.
+    if (!range) continue;
+    if (piece.flip) {
+      lo = Math.max(lo, -range.hi);
+      hi = Math.min(hi, -range.lo);
+    } else {
+      lo = Math.max(lo, range.lo);
+      hi = Math.min(hi, range.hi);
+    }
+  }
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return dx;
+  // Contradictory limits mean something is already out of range: keep the shapes and let validation
+  // report it rather than quietly reshaping the group.
+  if (lo > hi) return dx;
+  return Math.max(lo, Math.min(hi, dx));
+}
+
+/** Translate every stored coordinate of a piece. The delta is assumed to be one the piece can absorb. */
+function translatePiece(piece: Piece, dx: number, dy: number): Piece {
   switch (piece.t) {
     case 'ramp':
     case 'ice':
-      return { ...piece, a: [clampX(piece.a[0] + dx), piece.a[1] + dy], b: [clampX(piece.b[0] + dx), piece.b[1] + dy] };
+      return { ...piece, a: [piece.a[0] + dx, piece.a[1] + dy], b: [piece.b[0] + dx, piece.b[1] + dy] };
     case 'curve':
       return {
         ...piece,
-        a: [clampX(piece.a[0] + dx), piece.a[1] + dy],
-        c: [clampX(piece.c[0] + dx), piece.c[1] + dy],
-        b: [clampX(piece.b[0] + dx), piece.b[1] + dy],
+        a: [piece.a[0] + dx, piece.a[1] + dy],
+        c: [piece.c[0] + dx, piece.c[1] + dy],
+        b: [piece.b[0] + dx, piece.b[1] + dy],
       };
     case 'loop':
-      return { ...piece, x: clampX(piece.x + dx), bottom: piece.bottom + dy };
+      return { ...piece, x: piece.x + dx, bottom: piece.bottom + dy };
     case 'hoop':
-      return { ...piece, x: clampX(piece.x + dx), y: piece.y + dy };
+      return { ...piece, x: piece.x + dx, y: piece.y + dy };
     case 'wrecker':
-      return { ...piece, pivot: [clampX(piece.pivot[0] + dx), piece.pivot[1] + dy] };
+      return { ...piece, pivot: [piece.pivot[0] + dx, piece.pivot[1] + dy] };
     case 'pad':
-      return { ...piece, x: clampX(piece.x + dx), y: piece.y + dy };
+      return { ...piece, x: piece.x + dx, y: piece.y + dy };
     case 'boost':
-      return { ...piece, x: clampX(piece.x + dx), y: piece.y + dy };
+      return { ...piece, x: piece.x + dx, y: piece.y + dy };
     case 'spinner':
-      return { ...piece, x: clampX(piece.x + dx), y: piece.y + dy };
+      return { ...piece, x: piece.x + dx, y: piece.y + dy };
     case 'breakable':
     case 'wall':
     case 'block':
@@ -847,45 +911,45 @@ export function movePiece(piece: Piece, dx: number, dy: number): Piece {
     case 'crumble':
     case 'trapdoor':
     case 'switch':
-      return { ...piece, x: clampX(piece.x + dx), y: piece.y + dy };
+      return { ...piece, x: piece.x + dx, y: piece.y + dy };
     // ---- MB-10B ----
     case 'crusher':
     case 'mace':
-      return { ...piece, x: clampX(piece.x + dx), y: piece.y + dy };
+      return { ...piece, x: piece.x + dx, y: piece.y + dy };
     case 'blade':
-      return { ...piece, pivot: [clampX(piece.pivot[0] + dx), piece.pivot[1] + dy] as [number, number] };
+      return { ...piece, pivot: [piece.pivot[0] + dx, piece.pivot[1] + dy] as [number, number] };
     case 'saw':
       return {
         ...piece,
-        a: [clampX(piece.a[0] + dx), piece.a[1] + dy] as [number, number],
-        b: [clampX(piece.b[0] + dx), piece.b[1] + dy] as [number, number],
+        a: [piece.a[0] + dx, piece.a[1] + dy] as [number, number],
+        b: [piece.b[0] + dx, piece.b[1] + dy] as [number, number],
       };
     case 'boulder':
-      return { ...piece, pts: piece.pts.map(([x, y]) => [clampX(x + dx), y + dy] as [number, number]) };
+      return { ...piece, pts: piece.pts.map(([x, y]) => [x + dx, y + dy] as [number, number]) };
     case 'tunnel':
-      return { ...piece, x: clampX(piece.x + dx), y: piece.y + dy, exit: [clampX(piece.exit[0] + dx), piece.exit[1] + dy] as [number, number] };
+      return { ...piece, x: piece.x + dx, y: piece.y + dy, exit: [piece.exit[0] + dx, piece.exit[1] + dy] as [number, number] };
     case 'peg':
     case 'ppeg':
-      return { ...piece, x: clampX(piece.x + dx), y: piece.y + dy };
+      return { ...piece, x: piece.x + dx, y: piece.y + dy };
     case 'itembox':
-      return { ...piece, x: clampX(piece.x + dx), y: piece.y + dy };
+      return { ...piece, x: piece.x + dx, y: piece.y + dy };
     // ---- MB-10C ----
     case 'wheel':
     case 'seesaw':
-      return { ...piece, x: clampX((piece as unknown as { x: number }).x + dx), y: (piece as unknown as { y: number }).y + dy } as Piece;
+      return { ...piece, x: (piece as unknown as { x: number }).x + dx, y: (piece as unknown as { y: number }).y + dy } as Piece;
     // ---- MB-10D ----
     case 'cannon':
     case 'catapult':
     case 'flipper':
     case 'sling':
-      return { ...piece, x: clampX((piece as unknown as { x: number }).x + dx), y: (piece as unknown as { y: number }).y + dy } as Piece;
+      return { ...piece, x: (piece as unknown as { x: number }).x + dx, y: (piece as unknown as { y: number }).y + dy } as Piece;
     case 'scoop': {
       const sc = piece;
       return {
         ...sc,
-        x: clampX(sc.x + dx),
+        x: sc.x + dx,
         y: sc.y + dy,
-        ...(sc.exit ? { exit: [clampX(sc.exit[0] + dx), sc.exit[1] + dy, sc.exit[2]] as [number, number, number] } : {}),
+        ...(sc.exit ? { exit: [sc.exit[0] + dx, sc.exit[1] + dy, sc.exit[2]] as [number, number, number] } : {}),
       } as Piece;
     }
     case 'wind':
@@ -893,8 +957,8 @@ export function movePiece(piece: Piece, dx: number, dy: number): Piece {
     case 'pool': {
       return {
         ...piece,
-        a: [clampX(piece.a[0] + dx), piece.a[1] + dy] as [number, number],
-        b: [clampX(piece.b[0] + dx), piece.b[1] + dy] as [number, number],
+        a: [piece.a[0] + dx, piece.a[1] + dy] as [number, number],
+        b: [piece.b[0] + dx, piece.b[1] + dy] as [number, number],
       } as Piece;
     }
     case 'magnet':
@@ -903,17 +967,17 @@ export function movePiece(piece: Piece, dx: number, dy: number): Piece {
     case 'turnstile':
     case 'targets':
     case 'vortex':
-      return { ...piece, x: clampX(piece.x + dx), y: piece.y + dy } as Piece;
+      return { ...piece, x: piece.x + dx, y: piece.y + dy } as Piece;
     case 'platform':
-      return { ...piece, ax: clampX(piece.ax + dx), ay: piece.ay + dy, bx: clampX(piece.bx + dx), by: piece.by + dy } as Piece;
+      return { ...piece, ax: piece.ax + dx, ay: piece.ay + dy, bx: piece.bx + dx, by: piece.by + dy } as Piece;
     case 'screw':
     case 'conveyor':
     case 'bridge': {
       const p2 = piece as unknown as { a: readonly [number, number]; b: readonly [number, number] };
       return {
         ...piece,
-        a: [clampX(p2.a[0] + dx), p2.a[1] + dy] as [number, number],
-        b: [clampX(p2.b[0] + dx), p2.b[1] + dy] as [number, number],
+        a: [p2.a[0] + dx, p2.a[1] + dy] as [number, number],
+        b: [p2.b[0] + dx, p2.b[1] + dy] as [number, number],
       } as Piece;
     }
     case 'bucket':
