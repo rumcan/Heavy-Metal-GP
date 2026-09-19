@@ -30,7 +30,7 @@ for (const tile of TILES) {
       const indices = editor.bodyToPiece.flatMap((p, i) => p === 0 ? [i] : []);
       assert.ok(indices.length > 0, `${tile.id}: placed piece has no selectable bodies`);
       const body = editor.track.bodies[indices[indices.length - 1]];
-      assert.equal(hitPieceAt(body.position, editor.track, editor.bodyToPiece), 0);
+      assert.equal(hitPieceAt(body.position, editor.track, editor.bodyToPiece, editor.pieceBounds), 0);
       assert.deepEqual(geometry(editor.track), geometry(buildTrackFromDef(def)));
       const back = await decodeShareCode(await encodeShareCode(def));
       // Share codes intentionally quantise coordinates to whole world units.
