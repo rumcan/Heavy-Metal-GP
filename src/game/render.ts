@@ -2861,7 +2861,7 @@ function drawWheel(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType
   const img = sprite('wheel');
   if (img) {
     ctx.save();
-    ctx.globalAlpha = 0.55;
+    ctx.globalAlpha = 1;
     ctx.drawImage(img, -r - 8, -r - 8, (r + 8) * 2, (r + 8) * 2);
     ctx.restore();
   }
