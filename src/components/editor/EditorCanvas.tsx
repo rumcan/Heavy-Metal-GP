@@ -20,8 +20,10 @@ import { drawCursorMark, drawGrid, drawRuler, viewWindow } from './overlay';
 import type { OverlayView } from './overlay';
 import { hitPieceAt, piecesInBox } from './build';
 import { handlesFor } from './handles';
+import { defaultPiece } from './defaults';
+import { tileFor } from './palette';
 import { Builder } from '../../game/track';
-import { replayPiece } from '../../game/trackdef';
+import { replayPiece, type Piece } from '../../game/trackdef';
 import { getTemplates, placeTemplate } from './templates';
 // MB-09 handle knobs — Blizzard style, easily replaceable PNGs
 
@@ -740,20 +742,38 @@ export default function EditorCanvas(props: Props) {
       if (!armedT || !cur) return;
       // Only show ghost when not dragging handles/pieces
       if (handleDrag || pieceDrag || boxDrag) return;
-      // Ghost position is cursor (snapped). Draw simple preview.
       const cam = overlay.camera;
       const toScreen = (w: Point): Point => ({ x: (w.x - cam.x) * cam.scale + overlay.width / 2, y: (w.y - cam.y) * cam.scale + overlay.height / 2 });
-      // Use world snapped pos
-      const worldPos = cur;
-      // For each type draw appropriate ghost
       ctx.save();
       ctx.globalAlpha = 0.55;
       ctx.strokeStyle = '#d63e2e';
       ctx.fillStyle = 'rgba(214,62,46,0.18)';
       ctx.lineWidth = 2;
       ctx.setLineDash([6, 4]);
-      const s = toScreen(worldPos);
       const sc = overlay.camera.scale;
+      const tile = tileFor(armedT);
+      // Draw the piece this click will really build — the same defaults, the same snap, and the same
+      // slide back off an edge — so the preview never promises a spot the piece will not land in (#71).
+      const ghost = tile ? ({ ...defaultPiece(tile.t, cur, gridRef.current), ...tile.preset } as Piece) : null;
+      const s = toScreen(ghost ? handlesFor(ghost)[0] : cur);
+      const dot = (at: Point, r: number) => {
+        ctx.beginPath();
+        ctx.arc(at.x, at.y, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      };
+      const label = (at: Point) => {
+        ctx.fillStyle = '#fff';
+        ctx.font = `10px system-ui`;
+        ctx.textAlign = 'center';
+        ctx.fillText(armedT, at.x, at.y - 14);
+      };
+      const ends = (pts: Point[]) => {
+        ctx.beginPath();
+        pts.forEach((pt, i) => (i === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y)));
+        ctx.stroke();
+        for (const pt of pts) dot(pt, 5);
+      };
       if (armedT.startsWith('template-')) {
         const template = templateRef.current;
         const key = `${armedT}:${cur.x}:${cur.y}:${gridRef.current}`;
@@ -777,152 +797,101 @@ export default function EditorCanvas(props: Props) {
           }
         } else {
           // Explicit invalid-placement marker for groups wider than the track.
+          const c = toScreen(cur);
           ctx.beginPath();
-          ctx.moveTo(s.x - 10, s.y - 10); ctx.lineTo(s.x + 10, s.y + 10);
-          ctx.moveTo(s.x + 10, s.y - 10); ctx.lineTo(s.x - 10, s.y + 10);
+          ctx.moveTo(c.x - 10, c.y - 10); ctx.lineTo(c.x + 10, c.y + 10);
+          ctx.moveTo(c.x + 10, c.y - 10); ctx.lineTo(c.x - 10, c.y + 10);
           ctx.stroke();
         }
         ctx.restore();
         return;
       }
-      switch (armedT) {
+      if (!ghost) {
+        dot(s, 6);
+        ctx.restore();
+        void curRaw;
+        return;
+      }
+      switch (ghost.t) {
         case 'ramp':
-        case 'ice': {
-          const len = 300 * sc;
-          const ang = (12 * Math.PI) / 180;
-          const dx = Math.cos(ang) * len / 2;
-          const dy = Math.sin(ang) * len / 2;
+        case 'ice':
+          ends([toScreen({ x: ghost.a[0], y: ghost.a[1] }), toScreen({ x: ghost.b[0], y: ghost.b[1] })]);
+          break;
+        case 'curve': {
+          const a = toScreen({ x: ghost.a[0], y: ghost.a[1] });
+          const c = toScreen({ x: ghost.c[0], y: ghost.c[1] });
+          const b = toScreen({ x: ghost.b[0], y: ghost.b[1] });
           ctx.beginPath();
-          ctx.moveTo(s.x - dx, s.y - dy);
-          ctx.lineTo(s.x + dx, s.y + dy);
+          ctx.moveTo(a.x, a.y);
+          ctx.quadraticCurveTo(c.x, c.y, b.x, b.y);
           ctx.stroke();
-          ctx.beginPath();
-          ctx.arc(s.x - dx, s.y - dy, 5, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-          ctx.beginPath();
-          ctx.arc(s.x + dx, s.y + dy, 5, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
+          dot(a, 5);
+          dot(b, 5);
           break;
         }
         case 'loop': {
-          const r = 95 * sc;
           ctx.beginPath();
-          ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+          ctx.arc(s.x, s.y, ghost.r * sc, 0, Math.PI * 2);
           ctx.stroke();
           ctx.fill();
           break;
         }
-        case 'peg': {
-          const r = 11 * sc;
-          ctx.beginPath();
-          ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
+        case 'peg':
+        case 'ppeg':
+          dot(s, ghost.r * sc);
           break;
-        }
-        case 'ppeg': {
-          const r = 10 * sc;
-          ctx.beginPath();
-          ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-          break;
-        }
         case 'wall':
-        case 'block': {
-          const w = (armedT === 'wall' ? 120 : 60) * sc;
-          const h = (armedT === 'wall' ? 24 : 32) * sc;
+        case 'block':
+        case 'breakable':
+        case 'barricade':
+        case 'crumble': {
+          const w = ghost.w * sc;
+          const h = ghost.h * sc;
           ctx.fillRect(s.x - w / 2, s.y - h / 2, w, h);
           ctx.strokeRect(s.x - w / 2, s.y - h / 2, w, h);
           break;
         }
-        case 'breakable': {
-          const w = 30 * sc;
-          const h = 92 * sc;
-          ctx.fillRect(s.x - w / 2, s.y - h / 2, w, h);
-          ctx.strokeRect(s.x - w / 2, s.y - h / 2, w, h);
-          break;
-        }
-        case 'hoop':
-        case 'itembox':
-        case 'pad':
-        case 'boost':
-        case 'spinner':
-        case 'wrecker':
-        case 'bucket':
-        case 'curve':
-        case 'trampoline':
-        case 'turnstile':
-        case 'targets':
-        case 'vortex':
-        case 'platform':
-        case 'wheel':
-        case 'screw':
-        case 'conveyor':
-        case 'seesaw':
-        case 'bridge':
-        case 'cannon':
-        case 'catapult':
-        case 'flipper':
-        case 'sling':
-        case 'scoop':
+        // Two-ended pieces: draw the span itself, so a placement that slid along a wall shows it.
         case 'wind':
-        case 'magnet':
         case 'mud':
         case 'pool':
-        case 'geyser':
-        case 'blade':
+        case 'conveyor':
+        case 'bridge':
         case 'saw':
-        case 'crusher':
+        case 'screw':
+          ends([toScreen({ x: ghost.a[0], y: ghost.a[1] }), toScreen({ x: ghost.b[0], y: ghost.b[1] })]);
+          break;
+        case 'platform':
+          ends([toScreen({ x: ghost.ax, y: ghost.ay }), toScreen({ x: ghost.bx, y: ghost.by })]);
+          break;
         case 'boulder':
-        case 'mace':
-        case 'barricade':
-        case 'crumble':
-        case 'tunnel':
-        case 'switch': {
-          // Generic dot + label
-          ctx.beginPath();
-          ctx.arc(s.x, s.y, 8, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-          ctx.fillStyle = '#fff';
-          ctx.font = `10px system-ui`;
-          ctx.textAlign = 'center';
-          ctx.fillText(armedT, s.x, s.y - 14);
+          ends(ghost.pts.map(([x, y]) => toScreen({ x, y })));
+          break;
+        case 'tunnel': {
+          const exit = toScreen({ x: ghost.exit[0], y: ghost.exit[1] });
+          ends([s, exit]);
+          dot(s, 8);
+          dot(exit, 8);
           break;
         }
         case 'trapdoor': {
-          const w = 110 * sc;
-          const h2 = -1; // Default hinge
-          const h = { x: s.x + h2 * w / 2, y: s.y };
-          const otherX = s.x - h2 * w / 2;
-          
+          // The leaf hangs off the hinge the placement picked, not a hardcoded left hinge.
+          const hinge = toScreen({ x: ghost.x + (ghost.hinge * ghost.w) / 2, y: ghost.y });
+          const tip = toScreen({ x: ghost.x - (ghost.hinge * ghost.w) / 2, y: ghost.y });
+          dot(hinge, 8);
           ctx.beginPath();
-          ctx.arc(h.x, h.y, 8, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-          
-          ctx.beginPath();
-          ctx.moveTo(h.x, h.y);
-          ctx.lineTo(otherX, h.y);
+          ctx.moveTo(hinge.x, hinge.y);
+          ctx.lineTo(tip.x, tip.y);
           ctx.lineWidth = 4 * sc;
           ctx.strokeStyle = '#4f5a6a';
           ctx.stroke();
           ctx.lineWidth = 1;
-          
-          ctx.fillStyle = '#fff';
-          ctx.font = `10px system-ui`;
-          ctx.textAlign = 'center';
-          ctx.fillText(armedT, h.x, h.y - 14);
+          label(hinge);
           break;
         }
         default:
-          ctx.beginPath();
-          ctx.arc(s.x, s.y, 6, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
+          dot(s, 8);
+          label(s);
       }
       ctx.restore();
       void curRaw;

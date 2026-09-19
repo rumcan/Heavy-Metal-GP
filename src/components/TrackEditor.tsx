@@ -62,7 +62,8 @@ import { defaultPiece } from './editor/defaults';
 import { getTemplates, saveTemplate, snapshotTemplate, placeTemplate } from './editor/templates';
 import { History } from './editor/history';
 import { buildEditorTrack } from './editor/build';
-import { applyHandle, movePiece, mirrorPiece } from './editor/handles';
+import { applyHandle, movePieces, mirrorPiece } from './editor/handles';
+import { applyPlacementSettings } from './editor/pieceSettings';
 import { ROTATE_STEP_DEG, rotateSelection } from './editor/rotate';
 import { FINISH_H, START_H } from '../game/track';
 import type { Piece, TrackDef } from '../game/trackdef';
@@ -439,50 +440,11 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
 
       const tile = tileFor(armed);
       if (!tile) return;
-      const piece = { ...defaultPiece(tile.t, world, grid), ...tile.preset } as Piece;
-      
-      if (piece.t === 'trapdoor') {
-        if (piece.mode === 'timer') {
-          const p = window.prompt('How many milliseconds until it opens?', String(piece.open));
-          if (p !== null) {
-            const val = parseInt(p, 10);
-            if (!isNaN(val) && val > 0) piece.open = val;
-          }
-        } else if (piece.mode === 'weight') {
-          const p = window.prompt('How many kg of weight to trigger it?', String(piece.kg));
-          if (p !== null) {
-            const val = parseFloat(p);
-            if (!isNaN(val) && val > 0) piece.kg = val;
-          }
-        }
-      } else if (piece.t === 'crusher') {
-        const periodPrompt = window.prompt('How many milliseconds for a full cycle (period)?', String(piece.period));
-        if (periodPrompt !== null) {
-          const val = parseInt(periodPrompt, 10);
-          if (!isNaN(val) && val > 0) piece.period = val;
-        }
-        const floorPrompt = window.prompt('How many milliseconds should it stay down (floor hold)?', String(piece.floor));
-        if (floorPrompt !== null) {
-          const val = parseInt(floorPrompt, 10);
-          if (!isNaN(val) && val >= 0) piece.floor = val;
-        }
-      } else if (piece.t === 'boulder') {
-        const rPrompt = window.prompt('What is the boulder radius (size)?', String(piece.r));
-        if (rPrompt !== null) {
-          const val = parseInt(rPrompt, 10);
-          if (!isNaN(val) && val > 0) piece.r = val;
-        }
-        const intervalPrompt = window.prompt('How many milliseconds between boulder spawns?', String(piece.interval));
-        if (intervalPrompt !== null) {
-          const val = parseInt(intervalPrompt, 10);
-          if (!isNaN(val) && val > 0) piece.interval = val;
-        }
-        const restPrompt = window.prompt('How many milliseconds should the boulder wait before rolling (rest)?', String(piece.rest));
-        if (restPrompt !== null) {
-          const val = parseInt(restPrompt, 10);
-          if (!isNaN(val) && val >= 0) piece.rest = val;
-        }
-      }
+      const placed = { ...defaultPiece(tile.t, world, grid), ...tile.preset } as Piece;
+
+      // Every prompt clamps through the same limits as the settings popup (#71), so an answer can
+      // never put the piece outside what the schema accepts and make the map unshareable.
+      const piece = applyPlacementSettings(placed, (question, value) => window.prompt(question, value));
 
       // The new piece is not selected: the tool stays armed so the player can keep placing. Select mode (E) edits.
       commit(
@@ -519,11 +481,9 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
       if (selected.length === 0) return;
       if (opts?.push) pushHistory();
       transact((def) => {
-        for (const idx of selected) {
-          const p = def.pieces[idx];
-          if (!p) continue;
-          def.pieces[idx] = movePiece(p, dx, dy);
-        }
+        const idx = selected.filter((i) => !!def.pieces[i]);
+        const moved = movePieces(idx.map((i) => def.pieces[i]), dx, dy);
+        idx.forEach((i, k) => { def.pieces[i] = moved[k]; });
         return def;
       });
     },
@@ -570,14 +530,15 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
     pushHistory();
     const offset = grid ? 25 : 12;
     setCircuit((cur) => {
-      const toAdd: Piece[] = [];
+      const clones: Piece[] = [];
       const startLen = cur.def.pieces.length;
       for (const idx of selected) {
         const p = cur.def.pieces[idx];
         if (!p) continue;
-        const cloned = JSON.parse(JSON.stringify(p)) as Piece;
-        toAdd.push(movePiece(cloned, offset, offset));
+        clones.push(JSON.parse(JSON.stringify(p)) as Piece);
       }
+      // The copies move as one block: each keeps its shape and their spacing (#71).
+      const toAdd = movePieces(clones, offset, offset);
       const newIndices = toAdd.map((_, i) => startLen + i);
       const nextDef = cloneDef(cur.def);
       nextDef.pieces.push(...toAdd);
@@ -640,11 +601,9 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
       pushHistory();
       setCircuit((cur) => {
         const next = cloneDef(cur.def);
-        for (const idx of selected) {
-          const p = next.pieces[idx];
-          if (!p) continue;
-          next.pieces[idx] = movePiece(p, dx, dy);
-        }
+        const idx = selected.filter((i) => !!next.pieces[i]);
+        const moved = movePieces(idx.map((i) => next.pieces[i]), dx, dy);
+        idx.forEach((i, k) => { next.pieces[i] = moved[k]; });
         return { def: ensureHeight(next), build: cur.build + 1 };
       });
     },
@@ -905,7 +864,7 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
         const offset = grid ? 25 : 12;
         pushHistory();
         setCircuit((cur) => {
-          const toAdd: Piece[] = clipboardRef.current.map(p => movePiece(JSON.parse(JSON.stringify(p)), offset, offset));
+          const toAdd: Piece[] = movePieces(clipboardRef.current.map(p => JSON.parse(JSON.stringify(p)) as Piece), offset, offset);
           const startLen = cur.def.pieces.length;
           const newIndices = toAdd.map((_, i) => startLen + i);
           const nextDef = cloneDef(cur.def);

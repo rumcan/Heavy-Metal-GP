@@ -10,6 +10,7 @@
  */
 import type { Piece } from '../../game/trackdef';
 import { W } from '../../game/track';
+import { clampToRange, SETTING_RANGES } from './pieceSettings';
 
 interface Props {
   selected: number[];
@@ -282,13 +283,13 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
           </label>
           {piece.mode === 'timer' ? (
             <>
-              <NumField label="Open (ms)" value={piece.open} min={200} max={20000} step={100} onValue={(v) => update({ open: Math.round(clampNum(v, 200, 20000)) } as unknown as Piece)} />
-              <NumField label="Closed (ms)" value={piece.closed} min={200} max={20000} step={100} onValue={(v) => update({ closed: Math.round(clampNum(v, 200, 20000)) } as unknown as Piece)} />
+              <NumField label="Open (ms)" value={piece.open} min={SETTING_RANGES.trapdoor.open.min} max={SETTING_RANGES.trapdoor.open.max} step={100} onValue={(v) => update({ open: clampToRange(v, SETTING_RANGES.trapdoor.open) } as unknown as Piece)} />
+              <NumField label="Closed (ms)" value={piece.closed} min={SETTING_RANGES.trapdoor.closed.min} max={SETTING_RANGES.trapdoor.closed.max} step={100} onValue={(v) => update({ closed: clampToRange(v, SETTING_RANGES.trapdoor.closed) } as unknown as Piece)} />
               <NumField label="Phase (ms)" value={piece.phase} step={100} onValue={(v) => update({ phase: v } as unknown as Piece)} />
             </>
           ) : (
             <>
-              <NumField label="Needs (kg)" value={piece.kg} min={0.1} max={50} step={0.1} onValue={(v) => update({ kg: clampNum(v, 0.1, 50) } as unknown as Piece)} />
+              <NumField label="Needs (kg)" value={piece.kg} min={SETTING_RANGES.trapdoor.kg.min} max={SETTING_RANGES.trapdoor.kg.max} step={0.1} onValue={(v) => update({ kg: clampToRange(v, SETTING_RANGES.trapdoor.kg) } as unknown as Piece)} />
               <NumField label="Hold (ms)" value={piece.hold} min={0} max={5000} step={50} onValue={(v) => update({ hold: Math.round(clampNum(v, 0, 5000)) } as unknown as Piece)} />
             </>
           )}
@@ -342,17 +343,17 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
           <NumField label="Top Y" value={piece.y} onValue={(v) => update({ y: v } as unknown as Piece)} />
           <NumField label="Plate W" value={piece.w} min={40} max={400} step={5} onValue={(v) => update({ w: clampNum(v, 40, 400) } as unknown as Piece)} />
           <NumField label="Travel" value={piece.travel} min={30} max={600} step={5} onValue={(v) => update({ travel: clampNum(v, 30, 600) } as unknown as Piece)} />
-          <NumField label="Period (ms)" value={piece.period} min={1400} max={30000} step={100} onValue={(v) => update({ period: Math.round(clampNum(v, 1400, 30000)) } as unknown as Piece)} />
-          <NumField label="At floor (ms)" value={piece.floor} min={100} max={5000} step={50} onValue={(v) => update({ floor: Math.round(clampNum(v, 100, 5000)) } as unknown as Piece)} />
+          <NumField label="Period (ms)" value={piece.period} min={SETTING_RANGES.crusher.period.min} max={SETTING_RANGES.crusher.period.max} step={100} onValue={(v) => update({ period: clampToRange(v, SETTING_RANGES.crusher.period) } as unknown as Piece)} />
+          <NumField label="At floor (ms)" value={piece.floor} min={SETTING_RANGES.crusher.floor.min} max={SETTING_RANGES.crusher.floor.max} step={50} onValue={(v) => update({ floor: clampToRange(v, SETTING_RANGES.crusher.floor) } as unknown as Piece)} />
           <NumField label="Phase (ms)" value={piece.phase} step={100} onValue={(v) => update({ phase: v } as unknown as Piece)} />
         </>
       )}
 
       {piece.t === 'boulder' && (
         <>
-          <NumField label="Radius" value={piece.r} min={12} max={60} step={1} onValue={(v) => update({ r: Math.round(clampNum(v, 12, 60)) } as unknown as Piece)} />
-          <NumField label="Interval (ms)" value={piece.interval} min={1800} max={30000} step={100} onValue={(v) => update({ interval: Math.round(clampNum(v, 1800, 30000)) } as unknown as Piece)} />
-          <NumField label="Rest at top (ms)" value={piece.rest} min={0} max={10000} step={100} onValue={(v) => update({ rest: Math.round(clampNum(v, 0, 10000)) } as unknown as Piece)} />
+          <NumField label="Radius" value={piece.r} min={SETTING_RANGES.boulder.r.min} max={SETTING_RANGES.boulder.r.max} step={1} onValue={(v) => update({ r: clampToRange(v, SETTING_RANGES.boulder.r) } as unknown as Piece)} />
+          <NumField label="Interval (ms)" value={piece.interval} min={SETTING_RANGES.boulder.interval.min} max={SETTING_RANGES.boulder.interval.max} step={100} onValue={(v) => update({ interval: clampToRange(v, SETTING_RANGES.boulder.interval) } as unknown as Piece)} />
+          <NumField label="Rest at top (ms)" value={piece.rest} min={SETTING_RANGES.boulder.rest.min} max={SETTING_RANGES.boulder.rest.max} step={100} onValue={(v) => update({ rest: clampToRange(v, SETTING_RANGES.boulder.rest) } as unknown as Piece)} />
           <NumField label="Phase (ms)" value={piece.phase} step={100} onValue={(v) => update({ phase: v } as unknown as Piece)} />
         </>
       )}
