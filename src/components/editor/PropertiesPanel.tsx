@@ -10,6 +10,7 @@
  */
 import type { Piece } from '../../game/trackdef';
 import { W } from '../../game/track';
+import { boulderSpeed, setBoulderSpeed, setBoulderRest } from './boulder';
 
 interface Props {
   selected: number[];
@@ -351,8 +352,9 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
       {piece.t === 'boulder' && (
         <>
           <NumField label="Radius" value={piece.r} min={12} max={60} step={1} onValue={(v) => update({ r: Math.round(clampNum(v, 12, 60)) } as unknown as Piece)} />
-          <NumField label="Interval (ms)" value={piece.interval} min={1800} max={30000} step={100} onValue={(v) => update({ interval: Math.round(clampNum(v, 1800, 30000)) } as unknown as Piece)} />
-          <NumField label="Rest at top (ms)" value={piece.rest} min={0} max={10000} step={100} onValue={(v) => update({ rest: Math.round(clampNum(v, 0, 10000)) } as unknown as Piece)} />
+          <NumField label="Rolling speed (units/second)" value={Math.round(boulderSpeed(piece) * 10) / 10} min={1} step={1} onValue={(v) => update(setBoulderSpeed(piece, v))} />
+          <NumField label="Pause before rolling (seconds)" value={piece.rest / 1000} min={0} max={10} step={0.1} onValue={(v) => update(setBoulderRest(piece, v * 1000))} />
+          <p className="prop-empty">Rolls along the path in {((piece.interval - piece.rest) / 1000).toFixed(2)} seconds, then returns to the start. Drag the path points to change its route.</p>
           <NumField label="Phase (ms)" value={piece.phase} step={100} onValue={(v) => update({ phase: v } as unknown as Piece)} />
         </>
       )}

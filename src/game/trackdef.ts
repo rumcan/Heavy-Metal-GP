@@ -1066,12 +1066,18 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
       } else {
         for (let k = 0; k < raw.pts.length; k++) pts.push(vec(raw.pts[k], `${at}.pts[${k}]`, problems));
       }
+      const interval = number(raw.interval, `${at}.interval`, 1800, 30000, problems);
+      const rest = number(raw.rest, `${at}.rest`, 0, 10000, problems);
+      if (rest > interval - 200) problems.add(`${at}.rest must leave at least 200 ms for rolling.`);
+      if (pts.length > 1 && pts.every(([x, y]) => x === pts[0][0] && y === pts[0][1])) {
+        problems.add(`${at}.pts must define a non-zero rolling path.`);
+      }
       return {
         t: 'boulder',
         pts,
         r: number(raw.r, `${at}.r`, 12, 60, problems),
-        interval: number(raw.interval, `${at}.interval`, 1800, 30000, problems),
-        rest: number(raw.rest, `${at}.rest`, 0, 10000, problems),
+        interval,
+        rest,
         phase: real(raw.phase, `${at}.phase`, problems),
         ...body,
       };

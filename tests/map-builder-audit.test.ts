@@ -128,3 +128,28 @@ test('Boulders appear at the placement point, keep their route in bounds and exp
     assert.ok(resized.t === 'boulder' && resized.r === 55);
   }
 });
+
+test('Boulder speed and pause controls produce moving, shareable cycles', async () => {
+  const { boulderSpeed, setBoulderSpeed, setBoulderRest } = await import('../src/components/editor/boulder');
+  const { rollAt } = await import('../src/game/elements');
+  const piece = defaultPiece('boulder', { x: 450, y: 1500 });
+  assert.equal(piece.t, 'boulder');
+  if (piece.t !== 'boulder') return;
+  const faster = setBoulderSpeed(piece, 200);
+  assert.ok(Math.abs(boulderSpeed(faster) - 200) < 0.1);
+  const paused = setBoulderRest(faster, 3200);
+  assert.equal(paused.rest, 3200);
+  assert.equal(paused.interval - paused.rest, faster.interval - faster.rest);
+  const b = buildTrackFromDef(defFor(paused)).bodies.find(b => meta(b)?.kind === 'boulder')!;
+  const motion = meta(b)!.motion!;
+  assert.equal(motion.mode, 'roll');
+  if (motion.mode !== 'roll') return;
+  assert.equal(rollAt(motion, 3199).rolling, false);
+  assert.ok(Math.abs(rollAt(motion, 3700).d - 100) < 0.1);
+  assert.deepEqual((await decodeShareCode(await encodeShareCode(defFor(paused)))).pieces, [paused]);
+  for (const speed of [0, 1, 100000]) for (const rest of [0, 10000]) {
+    assert.ok(validateTrackDef(defFor(setBoulderSpeed(setBoulderRest(piece, rest), speed))).ok);
+  }
+  assert.equal(validateTrackDef(defFor({ ...piece, rest: 6500 })).ok, false);
+  assert.equal(validateTrackDef(defFor({ ...piece, pts: [[450, 1500], [450, 1500]] })).ok, false);
+});
