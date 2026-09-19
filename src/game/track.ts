@@ -604,7 +604,8 @@ export class Builder {
     const cy = bottomY - r;
     this.arc(cx, cy, r, 0, Math.PI / 2, CAT_LOOP_UP);
     this.arc(cx, cy, r, Math.PI / 2, Math.PI, CAT_LOOP_CLOSE);
-    this.arc(cx, cy, r, Math.PI, Math.PI * 2, CAT_WALL);
+    this.arc(cx, cy, r, Math.PI, Math.PI * 1.5, CAT_LOOP_CLOSE);
+    this.arc(cx, cy, r, Math.PI * 1.5, Math.PI * 2, CAT_LOOP_UP);
     const sensor = (x: number, yy: number, w: number, h: number, kind: Kind) => {
       const b = Bodies.rectangle(this.X(x), yy, w, h, { ...SENSOR_OPTS, label: kind });
       b.plugin = { kind } as Meta;
@@ -1351,21 +1352,9 @@ export const START_H = 440;
 export const FINISH_H = 300;
 
 export const segStart: Seg = (b, y) => {
-  // starting blocks: individual pockets so every marble sits still on one horizontal line
-  const spacing = (W - 120) / (GRID_N - 1);
-  for (let i = 0; i < GRID_N - 1; i++) {
-    const x = 60 + (i + 0.5) * spacing;
-    b.block(x, y + GATE_TOP - 16, 8, 32);
-  }
-  b.block(14, y + GATE_TOP - 16, 8, 32);
-  b.block(W - 14, y + GATE_TOP - 16, 8, 32);
-  // gate floor (the "lights out" trapdoor)
+  // gate floor (the "lights out" trapdoor) — the only essential start infrastructure
   const gate = b.wall(W / 2, y + GATE_TOP + 10, W, 20, 'gate');
   gate.plugin = { kind: 'gate' };
-  // funnel below
-  b.ramp(0, y + 200, W / 2 - 70, y + 320);
-  b.ramp(W, y + 200, W / 2 + 70, y + 320);
-  b.ppeg(W / 2, y + 400, 'green', 14);
   return START_H;
 };
 

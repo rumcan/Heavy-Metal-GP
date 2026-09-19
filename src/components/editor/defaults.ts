@@ -122,10 +122,10 @@ export function defaultPiece(type: PieceType, at: Point, snap = false): Piece {
       return { t: 'crumble', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, w: 56, h: 120, tough: 6 };
     }
     case 'tunnel': {
-      // Entrance at the click; exit 340 units higher, shooting up and slightly right.
+      // Entrance at the click; exit 200 units below, shooting down and slightly right.
       const ix = snap ? snapVal(cx) : cx;
       const iy = snap ? snapVal(cy) : cy;
-      return { t: 'tunnel', x: ix, y: iy, exit: [snap ? snapVal(ix + 100) : ix + 100, iy - 340] as [number, number], edir: [0.3, -0.95] as [number, number], ms: 900, speed: 7 };
+      return { t: 'tunnel', x: ix, y: iy, exit: [snap ? snapVal(ix + 80) : ix + 80, iy + 200] as [number, number], edir: [0.3, 0.95] as [number, number], ms: 900, speed: 7 };
     }
     case 'trapdoor': {
       const w = 110;

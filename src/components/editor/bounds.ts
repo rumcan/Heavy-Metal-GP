@@ -78,6 +78,21 @@ export function visualBoundsForPiece(piece: Piece, bodies: Matter.Body[]): Bound
       hasSprite = false; break;
     case 'wheel': // wheel sprite is r*2 + something, but bodies usually cover it.
       w = piece.r * 2; h = piece.r * 2; hasSprite = true; break;
+    case 'tunnel': {
+      // Both entrance and exit portals need to be in the bounding box (each ~34px radius sprite)
+      const r = 34;
+      const ex = piece.exit[0], ey = piece.exit[1];
+      minX = Math.min(piece.x - r, ex - r);
+      maxX = Math.max(piece.x + r, ex + r);
+      minY = Math.min(piece.y - r, ey - r);
+      maxY = Math.max(piece.y + r, ey + r);
+      // Skip the sprite-center logic below — we already computed the full bounds
+      const padding = 15;
+      return {
+        min: { x: minX - padding, y: minY - padding },
+        max: { x: maxX + padding, y: maxY + padding }
+      };
+    }
   }
 
   // If it's a fixed size sprite that is centered at cx, cy, we reconstruct the box

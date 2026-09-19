@@ -1907,7 +1907,7 @@ function drawTrapdoor(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnT
     ctx.lineTo(lx, ly - 3);
     ctx.stroke();
     ctx.save();
-    ctx.translate(lx, ly - 3);
+    ctx.translate(lx, ly + 10);
     ctx.rotate(open01 * 0.5 * dirX);
     ctx.fillStyle = '#c3cdd7';
     ctx.beginPath();

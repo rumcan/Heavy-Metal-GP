@@ -390,6 +390,9 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
     [history, bumpHistory],
   );
 
+  // Clipboard for copy/paste
+  const clipboardRef = useRef<Piece[]>([]);
+
   // Transaction for continuous drags: one push at start, many silent commits, no push during updates.
   const transactionRef = useRef(false);
   const startTransaction = useCallback(() => {
@@ -918,6 +921,31 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
         handleDuplicate();
         return;
       }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c') {
+        if (selected.length === 0) return;
+        e.preventDefault();
+        // Deep-clone the selected pieces into the clipboard
+        clipboardRef.current = selected.map(i => JSON.parse(JSON.stringify(circuit.def.pieces[i])));
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'v') {
+        if (clipboardRef.current.length === 0) return;
+        e.preventDefault();
+        const offset = grid ? 25 : 12;
+        pushHistory();
+        setCircuit((cur) => {
+          const toAdd: Piece[] = clipboardRef.current.map(p => movePiece(JSON.parse(JSON.stringify(p)), offset, offset));
+          const startLen = cur.def.pieces.length;
+          const newIndices = toAdd.map((_, i) => startLen + i);
+          const nextDef = cloneDef(cur.def);
+          nextDef.pieces.push(...toAdd);
+          setSelected(newIndices);
+          // Update clipboard to the pasted positions so repeated Ctrl+V cascades
+          clipboardRef.current = toAdd.map(p => JSON.parse(JSON.stringify(p)));
+          return { def: ensureHeight(nextDef), build: cur.build + 1 };
+        });
+        return;
+      }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selected.length) {
           e.preventDefault();
@@ -966,7 +994,7 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [settingsOpen, testing, selected, handleDelete, handleDuplicate, handleMirror, handleRotate, handleNudge, handleUndo, handleRedo]);
+  }, [settingsOpen, testing, selected, circuit.def.pieces, grid, pushHistory, handleDelete, handleDuplicate, handleMirror, handleRotate, handleNudge, handleUndo, handleRedo]);
 
   const editName = useCallback(
     (value: string) => {

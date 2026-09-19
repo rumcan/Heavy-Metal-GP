@@ -565,7 +565,6 @@ export class Game {
   private applyMask(m: Marble) {
     const ghost = m.ghostUntil > this.time;
     // Ghost marbles phase through rivals (CAT_MARBLE), fragile barricades (CAT_FRAGILE, MB-10A) and
-    // danger machinery (CAT_DANGER, MB-10B): a ghost goes untroubled between the blades.
     m.body.collisionFilter.mask = CAT_WALL | CAT_SENSOR | (ghost ? 0 : CAT_MARBLE | CAT_FRAGILE | CAT_DANGER) | (m.loopStage === 1 ? CAT_LOOP_CLOSE : CAT_LOOP_UP);
   }
 
@@ -1196,7 +1195,7 @@ export class Game {
       const scale = fighting ? 1 - 0.45 * ((m.info.stats.speed - 1) / 9) : 1;
       const targetV = dir * belt.v * 50; // Convert 0.16 into ~8 px/step so it actually shoves the marble
       const pull = (targetV - along) * 0.09 * scale;
-      Body.setVelocity(m.body, { x: velocity.x + tangent.x * pull, y: velocity.y + tangent.y * pull * 0.5 });
+      Body.setVelocity(m.body, { x: velocity.x + tangent.x * pull, y: velocity.y + tangent.y * pull });
       pair.friction = 0.015;
     }
   }
