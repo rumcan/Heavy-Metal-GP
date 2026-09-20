@@ -96,6 +96,7 @@ export function buildEditorTrack(def: TrackDef): { track: Track | null; bodyToPi
       height: def.height,
       segments,
       spinners: b.spinners,
+      turnstiles: b.turnstiles,
       itemBoxes: b.itemBoxes,
       ramps: b.bodies.filter((body) => !!meta(body).surface),
       buckets: b.buckets,

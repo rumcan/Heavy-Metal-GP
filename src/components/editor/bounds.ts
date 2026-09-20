@@ -283,6 +283,26 @@ export function visualBoundsForPiece(piece: Piece, bodies: Matter.Body[]): Bound
       // The ring sensor (r + 18) already wraps the rim, the bucket paddles and
       // the painted skin, so the built bodies are the drawn extent.
       break;
+    case 'pad': {
+      const b = bodyWith(bodies, 'pad');
+      if (b) {
+        box.addBody(b);
+        // The pad might render a large sheep sprite above it (e.g., 'sheep-spring').
+        // Add a bounding box that covers where the sheep is so the entire art is selectable.
+        const p = piece as import('../../game/trackdef').PadPiece;
+        const w = p.w * 1.55;
+        const h = w * (502 / 512); // Approximate aspect ratio of the sheep
+        // Sheep center: x = ~0, y = h * 0.34 - 22 (from render.ts translations)
+        box.addSprite(b.position, b.angle, { x: 0, y: h * 0.34 - 22, w, h });
+      }
+      break;
+    }
+    case 'saw': {
+      const p = piece as import('../../game/trackdef').SawPiece;
+      box.addCentred(p.a[0], p.a[1], p.r * 2.5, p.r * 2.5);
+      box.addCentred(p.b[0], p.b[1], p.r * 2.5, p.r * 2.5);
+      break;
+    }
     default:
       // Everything else selects by its physics extent: cannon/catapult/flipper
       // art is anchored on the body, crushers and target banks move or span

@@ -79,7 +79,7 @@ export interface SawPiece extends PieceBase { t: 'saw'; a: Vec; b: Vec; r: numbe
 /** Crusher piston: `w`-wide plate hanging at (x, y), slamming `travel` down every `period` ms, sitting `floor` ms at the deck. */
 export interface CrusherPiece extends PieceBase { t: 'crusher'; x: number; y: number; w: number; travel: number; period: number; floor: number; phase: number }
 /** Rolling boulder: a disc of radius `r` released down `pts` every `interval` ms, resting `rest` ms at the top first. */
-export interface BoulderPiece extends PieceBase { t: 'boulder'; pts: Vec[]; r: number; interval: number; rest: number; phase: number }
+export interface BoulderPiece extends PieceBase { t: 'boulder'; pts: Vec[]; r: number; speed: number; delay: number }
 /** Mace sweeper: spiked ball on an `arm`, sweeping ±`arc` rad with `sweep` ms travel and `rest` ms pause at each end. */
 export interface MacePiece extends PieceBase { t: 'mace'; x: number; y: number; arm: number; arc: number; sweep: number; rest: number; phase: number; r: number }
 // ---- MB-10C: mechanical movers (wheel/screw/conveyor kinematic; seesaw/bridge dynamic with low-rate state sync) ----
@@ -99,7 +99,7 @@ export interface CannonPiece extends PieceBase { t: 'cannon'; x: number; y: numb
 /** Catapult: pivot stand at (x, y), throw arm `len`; rests `reload` ms with a load, then whips through the release angle. `dir` 0 throws right. Kinematic pose; dynamic load state. */
 export interface CatapultPiece extends PieceBase { t: 'catapult'; x: number; y: number; len: number; reload: number; dir: 0 | 1 }
 /** Pinball flipper: pivot (x, y), bat `len`, sensor-triggered, or every `timer` ms when set (0 = sensor only). `side` 0 pivots left. */
-export interface FlipperPiece extends PieceBase { t: 'flipper'; x: number; y: number; side: 0 | 1; len: number; strength: number; timer: number; phase: number }
+export interface FlipperPiece extends PieceBase { t: 'flipper'; x: number; y: number; side: 0 | 1; angle: number; len: number; strength: number; timer: number; phase: number }
 /** Slingshot kicker: rubber triangle `size` px at (x, y), face normal `facing` deg, impulse `strength` px/step scaled by bounce. */
 export interface SlingPiece extends PieceBase { t: 'sling'; x: number; y: number; size: number; facing: number; strength: number }
 /** Scoop / kickback hole: pocket at (x, y) holds a marble `hold` ms, kicks it along `deg` (seeded jitter); optional `exit` = subway chute link [x, y, transitMs]. */
@@ -326,10 +326,10 @@ class DefRecorder extends Builder {
     );
   }
 
-  override boulder(pts: ReadonlyArray<readonly [number, number]>, r = 27, intervalMs = 6500, restMs = 1400, phaseMs = 0) {
+  override boulder(pts: ReadonlyArray<readonly [number, number]>, r = 27, speed = 5, delay = 0) {
     return this.capture(
-      () => super.boulder(pts, r, intervalMs, restMs, phaseMs),
-      () => ({ t: 'boulder', pts: pts.map(([x, y]) => [x, y] as Vec), r, interval: intervalMs, rest: restMs, phase: phaseMs, flip: this.mirrored }),
+      () => super.boulder(pts, r, speed, delay),
+      () => ({ t: 'boulder', pts: pts.map(([x, y]) => [x, y] as Vec), r, speed, delay, flip: this.mirrored }),
     );
   }
 
@@ -377,10 +377,10 @@ class DefRecorder extends Builder {
     );
   }
 
-  override flipper(x: number, y: number, side: 0 | 1 = 0, len = 120, strength = 1.4, periodMs = 0, phaseMs = 0) {
+  override flipper(x: number, y: number, side: 0 | 1 = 0, angleDeg = 0, len = 120, strength = 1.4, periodMs = 0, phaseMs = 0) {
     return this.capture(
-      () => super.flipper(x, y, side, len, strength, periodMs, phaseMs),
-      () => ({ t: 'flipper', x, y, side, len, strength, timer: periodMs, phase: phaseMs, flip: this.mirrored }),
+      () => super.flipper(x, y, side, angleDeg, len, strength, periodMs, phaseMs),
+      () => ({ t: 'flipper', x, y, side, angle: angleDeg, len, strength, timer: periodMs, phase: phaseMs, flip: this.mirrored }),
     );
   }
 
@@ -540,7 +540,7 @@ export function replayPiece(b: Builder, piece: Piece) {
       case 'blade': b.blade(piece.pivot[0], piece.pivot[1], piece.len, piece.amp, piece.period, piece.phase, piece.thin); break;
       case 'saw': b.saw(piece.a[0], piece.a[1], piece.r, [piece.b[0], piece.b[1]], piece.period, piece.spin, piece.phase); break;
       case 'crusher': b.crusher(piece.x, piece.y, piece.w, piece.travel, piece.period, piece.floor, piece.phase); break;
-      case 'boulder': b.boulder(piece.pts.map(([x, y]) => [x, y] as [number, number]), piece.r, piece.interval, piece.rest, piece.phase); break;
+      case 'boulder': b.boulder(piece.pts.map(([x, y]) => [x, y] as [number, number]), piece.r, piece.speed, piece.delay); break;
       case 'mace': b.mace(piece.x, piece.y, piece.arm, piece.arc, piece.sweep, piece.rest, piece.phase, piece.r); break;
       // ---- MB-10C ----
       case 'wheel': b.waterWheel(piece.x, piece.y, piece.r, piece.buckets, piece.rpm, piece.dir, piece.release, piece.phase, piece.rideMs); break;
@@ -551,7 +551,7 @@ export function replayPiece(b: Builder, piece: Piece) {
       // ---- MB-10D launchers and pinball ----
       case 'cannon': b.cannon(piece.x, piece.y, piece.aimMin, piece.aimMax, piece.power, piece.auto, piece.phase); break;
       case 'catapult': b.catapult(piece.x, piece.y, piece.len, piece.reload, piece.dir); break;
-      case 'flipper': b.flipper(piece.x, piece.y, piece.side, piece.len, piece.strength, piece.timer, piece.phase); break;
+      case 'flipper': b.flipper(piece.x, piece.y, piece.side, piece.angle, piece.len, piece.strength, piece.timer, piece.phase); break;
       case 'sling': b.sling(piece.x, piece.y, piece.size, piece.facing, piece.strength); break;
       case 'scoop': b.scoop(piece.x, piece.y, piece.deg, piece.hold, piece.exit); break;
       // ---- MB-10E ----
@@ -611,6 +611,7 @@ export function buildTrackFromDef(value: unknown): Track {
     height: def.height,
     segments,
     spinners: b.spinners,
+    turnstiles: b.turnstiles,
     itemBoxes: b.itemBoxes,
     ramps: b.bodies.filter((body) => !!meta(body).surface),
     buckets: b.buckets,
@@ -1070,9 +1071,8 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
         t: 'boulder',
         pts,
         r: number(raw.r, `${at}.r`, 12, 60, problems),
-        interval: number(raw.interval, `${at}.interval`, 1800, 30000, problems),
-        rest: number(raw.rest, `${at}.rest`, 0, 10000, problems),
-        phase: real(raw.phase, `${at}.phase`, problems),
+        speed: number(raw.speed, `${at}.speed`, 1, 20, problems),
+        delay: number(raw.delay, `${at}.delay`, 0, 30000, problems),
         ...body,
       };
     }
@@ -1171,6 +1171,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
         x: number(raw.x, `${at}.x`, 0, W, problems),
         y: real(raw.y, `${at}.y`, problems),
         side: (raw.side === 0 || raw.side === 1 ? raw.side : (problems.add(`${at}.side must be 0 or 1.`), 0 as 0 | 1)),
+        angle: raw.angle === undefined ? 0 : number(raw.angle, `${at}.angle`, -180, 180, problems),
         len: number(raw.len, `${at}.len`, 70, 180, problems),
         strength: number(raw.strength, `${at}.strength`, 0.5, 3, problems),
         timer: number(raw.timer, `${at}.timer`, 0, 5000, problems),

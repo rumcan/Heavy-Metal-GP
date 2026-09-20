@@ -457,8 +457,17 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
     const md = meta(b);
     // Workshop bodies stay at rest while their artwork previews the swing.
     const artReach = md?.catapult ? md.catapult.len * 1.4 : md?.flipper?.len ?? 0;
-    if (b.bounds.max.y + artReach < viewTop || b.bounds.min.y - artReach > viewBottom) continue;
-    if (b.bounds.max.x + artReach < viewLeft || b.bounds.min.x - artReach > viewRight) continue;
+    let culled = b.bounds.max.y + artReach < viewTop || b.bounds.min.y - artReach > viewBottom ||
+                 b.bounds.max.x + artReach < viewLeft || b.bounds.min.x - artReach > viewRight;
+    
+    // Tunnels draw an exit hole that might be far from the entrance body.
+    if (culled && md?.kind === 'tunnel' && md.exit) {
+      const ex = md.exit.x, ey = md.exit.y, r = 34;
+      if (!(ey + r < viewTop || ey - r > viewBottom || ex + r < viewLeft || ex - r > viewRight)) {
+        culled = false;
+      }
+    }
+    if (culled) continue;
     if (md?.destroyed || STATIC_KINDS.has(md?.kind)) continue;
     switch (md?.kind) {
       case 'ramp':
@@ -2472,11 +2481,7 @@ function drawSling(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType
 
 // ---------------- MB-10E: fields and surfaces ----------------
 
-// the five fields share a clock pulse with the engine: same phase, same windows
-function fieldPulse(t: number, pulseMs: number, phaseMs: number): number {
-  if (pulseMs <= 0) return 1;
-  return 0.35 + 0.65 * (0.5 + 0.5 * Math.cos((2 * Math.PI * (t + phaseMs)) / pulseMs));
-}
+
 
 function drawWind(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
   const w = md.wind;

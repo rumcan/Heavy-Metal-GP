@@ -11,7 +11,7 @@
  */
 import { W, START_H, FINISH_H } from '../../game/track';
 import { pieceXs } from './extent';
-import { BOULDER_REST_RATIO } from './pieceSettings';
+
 import { MAX_HEIGHT, MAX_PIECES, validateTrackDef } from '../../game/trackdef';
 import type { TrackDef, Piece } from '../../game/trackdef';
 import type { Track } from '../../game/track';
@@ -302,7 +302,6 @@ function staticChecks(def: TrackDef, track: Track | null): ValidationIssue[] {
         if (p.floor > p.period * 0.5) issues.push({ severity: 'error', message: `Crusher #${idx}: floor time is more than half the cycle — no rise time left`, pos: pos({ x: p.x, y: p.y }), pieceIndex: idx });
         if (p.period < 1600) issues.push({ severity: 'warning', message: `Crusher #${idx}: cycle under 1.6s is relentless — marbles can rarely pass`, pos: pos({ x: p.x, y: p.y }), pieceIndex: idx });
       } else if (p.t === 'boulder') {
-        if (p.rest > p.interval * BOULDER_REST_RATIO) issues.push({ severity: 'error', message: `Boulder #${idx}: rest takes most of the interval — it barely rolls`, pos: pos({ x: p.pts[0][0], y: p.pts[0][1] }), pieceIndex: idx });
         for (let i = 1; i < p.pts.length; i++) {
           const d = Math.hypot(p.pts[i][0] - p.pts[i - 1][0], p.pts[i][1] - p.pts[i - 1][1]);
           if (Math.abs(p.pts[i][1] - p.pts[i - 1][1]) < d * 0.15) {

@@ -1,3 +1,4 @@
+import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 import tailwindcss from "@tailwindcss/vite";
@@ -73,6 +74,49 @@ function devRoomsConfigPath(): string | undefined {
   return configPath || undefined;
 }
 
+/**
+ * DEV ONLY. Receives a POST request with an official track JSON and writes it to disk.
+ */
+function saveOfficialTrackPlugin(): Plugin {
+  return {
+    name: "hmgp:save-official-track",
+    apply: "serve",
+    configureServer(server) {
+      server.middlewares.use("/__dev/save-official-track", async (req, res) => {
+        if (req.method === "POST") {
+          const url = new URL(req.url || "", "http://localhost");
+          const roundStr = url.searchParams.get("round");
+          if (!roundStr) {
+            res.statusCode = 400;
+            res.end("Missing round param");
+            return;
+          }
+          const round = parseInt(roundStr, 10);
+          
+          let body = "";
+          req.on("data", (chunk) => {
+            body += chunk.toString();
+          });
+          req.on("end", async () => {
+            try {
+              const targetDir = path.join(__dirname, "src/game/official-tracks");
+              await fs.mkdir(targetDir, { recursive: true });
+              const targetFile = path.join(targetDir, `champ-${round}.json`);
+              await fs.writeFile(targetFile, body, "utf-8");
+              res.statusCode = 200;
+              res.end("OK");
+            } catch (err) {
+              console.error(err);
+              res.statusCode = 500;
+              res.end("Error writing file");
+            }
+          });
+        }
+      });
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig({
         build: {
@@ -104,6 +148,7 @@ export default defineConfig({
             // The local room sidecar (:9001) that serves `rundot/realtime.config.json`.
             rundotMultiplayerPlugin(devRoomsConfigPath() ? { configPath: devRoomsConfigPath() } : {}),
             devRoomServerOrigin(),
+            saveOfficialTrackPlugin(),
             react(), tailwindcss(), viteSingleFile(),
   ],
   resolve: {

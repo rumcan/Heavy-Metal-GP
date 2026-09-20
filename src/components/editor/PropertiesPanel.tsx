@@ -377,9 +377,8 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
       {piece.t === 'boulder' && (
         <>
           <NumField label="Radius (px)" value={piece.r} min={SETTING_RANGES.boulder.r.min} max={SETTING_RANGES.boulder.r.max} step={1} onValue={(v) => update({ r: clampToRange(v, SETTING_RANGES.boulder.r) } as unknown as Piece)} />
-          <NumField label="Spawn Interval (ms)" desc="How often a new item is spawned." value={piece.interval} min={SETTING_RANGES.boulder.interval.min} max={SETTING_RANGES.boulder.interval.max} step={100} onValue={(v) => update({ interval: clampToRange(v, SETTING_RANGES.boulder.interval) } as unknown as Piece)} />
-          <NumField label="Rest at top (ms)" desc="How long the item waits before falling/moving again." value={piece.rest} min={SETTING_RANGES.boulder.rest.min} max={SETTING_RANGES.boulder.rest.max} step={100} onValue={(v) => update({ rest: clampToRange(v, SETTING_RANGES.boulder.rest) } as unknown as Piece)} />
-          <NumField label="Start Delay Offset (ms)" desc="Staggers the animation timing so multiple pieces don't move identically at the exact same time." value={piece.phase} step={100} onValue={(v) => update({ phase: v } as unknown as Piece)} />
+          <NumField label="Speed" desc="How fast the boulder rolls." value={piece.speed} min={SETTING_RANGES.boulder.speed.min} max={SETTING_RANGES.boulder.speed.max} step={1} onValue={(v) => update({ speed: clampToRange(v, SETTING_RANGES.boulder.speed) } as unknown as Piece)} />
+          <NumField label="Start Delay (ms)" desc="How long it waits before rolling once a player approaches." value={piece.delay} min={SETTING_RANGES.boulder.delay.min} max={SETTING_RANGES.boulder.delay.max} step={100} onValue={(v) => update({ delay: clampToRange(v, SETTING_RANGES.boulder.delay) } as unknown as Piece)} />
         </>
       )}
 
@@ -502,6 +501,7 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
         <>
           <NumField label="Pivot X" value={piece.x} min={0} max={W} onValue={(v) => update({ x: clampNum(v, 0, W) } as unknown as Piece)} />
           <NumField label="Pivot Y" value={piece.y} min={0} max={10000} step={5} onValue={(v) => update({ y: v } as unknown as Piece)} />
+          <NumField label="Angle (deg)" value={piece.angle} min={-180} max={180} step={5} onValue={(v) => update({ angle: clampNum(v, -180, 180) } as unknown as Piece)} />
           <label className="prop-field">
             <span>Pivot Side</span>
             <select value={piece.side} onChange={(e) => update({ side: Number(e.target.value) as 0 | 1 } as unknown as Piece)} onKeyDown={(e) => e.stopPropagation()}>

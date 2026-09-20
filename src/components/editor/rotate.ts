@@ -33,7 +33,7 @@ export function pieceCentre(piece: Piece): Point {
 
 /** Pieces with a free angle, and so a rotate handle. Boxes turn only by quarter turns, via R / the toolbar. */
 export function hasFreeRotation(piece: Piece): boolean {
-  return piece.t === 'ramp' || piece.t === 'ice' || piece.t === 'curve' || piece.t === 'boost' || piece.t === 'hoop' || piece.t === 'spinner';
+  return piece.t === 'ramp' || piece.t === 'ice' || piece.t === 'curve' || piece.t === 'boost' || piece.t === 'hoop' || piece.t === 'spinner' || piece.t === 'sling' || piece.t === 'flipper';
 }
 
 /** Current on-screen angle (radians) of a freely rotating piece. */
@@ -48,6 +48,10 @@ export function pieceAngle(piece: Piece): number {
       return Math.atan2(piece.dir[1], piece.dir[0]);
     case 'spinner':
       return piece.angle ?? 0;
+    case 'sling':
+      return (piece.facing * Math.PI) / 180;
+    case 'flipper':
+      return (piece.angle * Math.PI) / 180;
     default:
       return 0;
   }
@@ -174,10 +178,14 @@ export function rotatePiece(piece: Piece, rad: number, c: Point): Piece {
       const wrap = (v: number) => ((v % 360) + 360) % 360;
       return { ...piece, x, y, aimMin: wrap(piece.aimMin + d), aimMax: wrap(piece.aimMax + d) };
     }
-    case 'catapult':
-    case 'flipper': {
+    case 'catapult': {
       const [x, y] = at(piece.x, piece.y);
       return { ...piece, x, y };
+    }
+    case 'flipper': {
+      const [x, y] = at(piece.x, piece.y);
+      const angle = (((piece.angle + (rad * 180) / Math.PI) % 360) + 360) % 360;
+      return { ...piece, x, y, angle };
     }
     case 'sling': {
       const [x, y] = at(piece.x, piece.y);

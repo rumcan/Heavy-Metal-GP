@@ -155,12 +155,10 @@ export function pistonState(motion: Extract<Motion, { mode: 'piston' }>, time: n
  * Boulder pose: distance rolled into the path at `time` (0 while resting at the top, capped at
  * `spanLen` until the cycle wraps and it is "collected" back to the shed).
  */
-export function rollAt(motion: Extract<Motion, { mode: 'roll' }>, time: number): { d: number; rolling: boolean } {
-  const t = ((time + motion.phaseMs) % motion.intervalMs + motion.intervalMs) % motion.intervalMs;
-  if (t < motion.restMs) return { d: 0, rolling: false };
-  const runMs = Math.max(200, motion.intervalMs - motion.restMs);
-  const d = Math.min(motion.spanLen, ((t - motion.restMs) / runMs) * motion.spanLen);
-  return { d, rolling: true };
+export function rollAt(motion: Extract<Motion, { mode: 'roll' }>, time: number, triggeredAt: number | null): { d: number; rolling: boolean } {
+  if (triggeredAt === null || time < triggeredAt) return { d: 0, rolling: false };
+  const d = Math.min(motion.spanLen, (time - triggeredAt) * motion.speed * 0.05); // speed 5 gives 0.25 px/ms
+  return { d, rolling: d < motion.spanLen };
 }
 
 /** Point on a boulder path at distance `d` (and the local travel direction). */
@@ -268,7 +266,7 @@ export function updateElement(body: Matter.Body, time: number, dt: number): void
     case 'boulder': {
       const motion = md.motion;
       if (!motion || motion.mode !== 'roll') return;
-      const { d } = rollAt(motion, time);
+      const { d } = rollAt(motion, time, md.triggeredAt ?? null);
       const p = pathAt(motion, d);
       (Body.setPosition as unknown as (b: Matter.Body, p2: Matter.Vector, u: boolean) => void)(body, { x: p.x, y: p.y }, true);
       (Body.setAngle as unknown as (b: Matter.Body, a: number, u: boolean) => void)(body, d / Math.max(1, motion.r), true);

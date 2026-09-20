@@ -735,6 +735,7 @@ export default function EditorCanvas(props: Props) {
           const isHover = hoveredHandle?.pieceIndex === idx && hoveredHandle?.handleId === h.id;
           drawHandleIcon(ctx, s.x, s.y, h.id, isHover);
         }
+
         // Direction arrows for pad/boost/hoop etc: draw line from move handle to dir handle
         const move = handles.find((h) => h.id === 'move');
         const dir = handles.find((h) => h.id === 'dir');
@@ -757,6 +758,23 @@ export default function EditorCanvas(props: Props) {
           ctx.lineTo(sDir.x - Math.cos(ang + 0.5) * 10, sDir.y - Math.sin(ang + 0.5) * 10);
           ctx.closePath();
           ctx.fill();
+          ctx.restore();
+        }
+        
+        // Link lines for pairs of handles like a/b for saw, or similar path start/end points
+        const ha = handles.find((h) => h.id === 'a');
+        const hb = handles.find((h) => h.id === 'b');
+        if (ha && hb) {
+          const sA = toScreen(ha);
+          const sB = toScreen(hb);
+          ctx.save();
+          ctx.strokeStyle = 'rgba(255,209,138,0.85)';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([6, 4]);
+          ctx.beginPath();
+          ctx.moveTo(sA.x, sA.y);
+          ctx.lineTo(sB.x, sB.y);
+          ctx.stroke();
           ctx.restore();
         }
       }

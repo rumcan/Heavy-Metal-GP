@@ -290,8 +290,8 @@ function encodeBinary(def: TrackDef): Uint8Array {
       case 'boulder': {
         writeUVarint(out, p.pts.length);
         for (const q of p.pts) { writeUVarint(out, Math.round(q[0])); writeUVarint(out, Math.round(q[1])); }
-        writeUVarint(out, Math.round(p.r)); writeUVarint(out, Math.round(p.interval));
-        writeUVarint(out, Math.round(p.rest)); writeUVarint(out, Math.round(p.phase));
+        writeUVarint(out, Math.round(p.r)); writeUVarint(out, Math.round(p.speed));
+        writeUVarint(out, Math.round(p.delay));
         break;
       }
       case 'mace': {
@@ -351,7 +351,7 @@ function encodeBinary(def: TrackDef): Uint8Array {
       }
       case 'flipper': {
         writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
-        writeUVarint(out, p.side); writeUVarint(out, Math.round(p.len));
+        writeUVarint(out, p.side); writeUVarint(out, Math.round(p.angle)); writeUVarint(out, Math.round(p.len));
         writeUVarint(out, Math.round(p.strength * 100)); writeUVarint(out, Math.round(p.timer));
         writeUVarint(out, Math.round(p.phase * 1000));
         break;
@@ -620,9 +620,9 @@ function decodeBinary(bytes: Uint8Array, version = 1): TrackDef {
         const n = readUVarint(bytes, pos);
         const pts: Vec[] = [];
         for (let k = 0; k < n; k++) pts.push([readUVarint(bytes, pos), readUVarint(bytes, pos)] as Vec);
-        const r = readUVarint(bytes, pos), interval = readUVarint(bytes, pos);
-        const rest = readUVarint(bytes, pos), phase = readUVarint(bytes, pos);
-        p = { t:'boulder', pts, r, interval, rest, phase, ...(flip?{flip}:{}) };
+        const r = readUVarint(bytes, pos), speed = readUVarint(bytes, pos);
+        const delay = readUVarint(bytes, pos);
+        p = { t:'boulder', pts, r, speed, delay, ...(flip?{flip}:{}) };
         break;
       }
       case 'mace': {
@@ -682,10 +682,10 @@ function decodeBinary(bytes: Uint8Array, version = 1): TrackDef {
       }
       case 'flipper': {
         const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos);
-        const side = readUVarint(bytes, pos), len = readUVarint(bytes, pos);
+        const side = readUVarint(bytes, pos), angle = readUVarint(bytes, pos), len = readUVarint(bytes, pos);
         const strength = readUVarint(bytes, pos)/100, timer = readUVarint(bytes, pos);
         const phase = readUVarint(bytes, pos)/1000;
-        p = { t:'flipper', x, y, side: (side === 1 ? 1 : 0) as 0|1, len, strength, timer, phase, ...(flip?{flip}:{}) };
+        p = { t:'flipper', x, y, side: (side === 1 ? 1 : 0) as 0|1, angle, len, strength, timer, phase, ...(flip?{flip}:{}) };
         break;
       }
       case 'sling': {

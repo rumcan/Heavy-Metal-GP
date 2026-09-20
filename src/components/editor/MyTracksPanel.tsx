@@ -14,6 +14,8 @@ import type { SavedTrack } from '../../game/tracks';
 import type { TrackDef } from '../../game/trackdef';
 import { validateTrack } from './validate';
 import type { ValidationResult } from './validate';
+import { CALENDAR, officialTracks } from '../../game/season';
+import { generateTrackDef } from '../../game/trackdef';
 
 interface Props {
   tracks: SavedTrack[];
@@ -25,6 +27,7 @@ interface Props {
   onDelete: (id: string) => void;
   onSaveCurrent: () => void;
   onNewBlank?: () => void;
+  onDevLoadOfficial?: (def: TrackDef) => void;
 }
 
 function timeAgo(ms: number): string {
@@ -61,7 +64,7 @@ function ValidationBadge({ def }: { def: TrackDef }) {
     : <span className="my-track-badge is-fail"><ShieldAlert size={10} /> FAIL</span>;
 }
 
-export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, onRename, onDuplicate, onDelete, onSaveCurrent }: Props) {
+export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, onRename, onDuplicate, onDelete, onSaveCurrent, onDevLoadOfficial }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [filter, setFilter] = useState('');
@@ -142,6 +145,47 @@ export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, on
           <p className="prop-empty">This draft autosaves every 10 s. Reload the page to see it restore. Save it to My tracks to keep it permanently.</p>
         </div>
       </details>
+
+      {import.meta.env.DEV && onDevLoadOfficial && (
+        <div style={{ marginTop: 20, padding: 10, background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--line)', borderRadius: 4 }}>
+          <header className="eyebrow" style={{ marginBottom: 10, display: 'block' }}>DEV TOOLS: OFFICIAL TRACKS</header>
+          {CALENDAR.map((gp) => (
+            <div key={gp.id} style={{ display: 'flex', gap: 5, marginBottom: 5 }}>
+              <button 
+                className="button-secondary" 
+                style={{ flex: 1, padding: '4px 8px', fontSize: 10 }}
+                onClick={() => {
+                  const key = `./official-tracks/champ-${gp.id}.json`;
+                  if (officialTracks[key]) {
+                    onDevLoadOfficial(officialTracks[key]);
+                  } else {
+                    const profile = gp.profile;
+                    const def = generateTrackDef(0, profile, gp.name);
+                    onDevLoadOfficial(def);
+                  }
+                }}
+              >
+                Load {gp.id}
+              </button>
+              <button
+                className="button-primary"
+                style={{ flex: 1, padding: '4px 8px', fontSize: 10 }}
+                onClick={() => {
+                  fetch(`/__dev/save-official-track?round=${gp.id}`, {
+                    method: 'POST',
+                    body: JSON.stringify(currentDef, null, 2),
+                  }).then((res) => {
+                    if (res.ok) alert(`Saved to src/game/official-tracks/champ-${gp.id}.json`);
+                    else alert('Failed to save official track');
+                  });
+                }}
+              >
+                Save {gp.id}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

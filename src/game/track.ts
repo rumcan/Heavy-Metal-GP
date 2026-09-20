@@ -177,11 +177,10 @@ export type Motion =
     /** Cumulative length at each path point. */
     stepLens: number[];
     spanLen: number;
-    /** Full cycle: rest at the top, then the run. Rolling speed derives from both. */
-    intervalMs: number;
-    /** Time the boulder sits at the first point before rolling. */
-    restMs: number;
-    phaseMs: number;
+    /** How fast the boulder rolls (px/ms coefficient roughly). */
+    speed: number;
+    /** Wait time after proximity trigger before rolling. */
+    delay: number;
     r: number;
   }
   /** MB-10D cannon: the barrel angle oscillates between minA and maxA (canvas rad from +x). */
@@ -263,6 +262,8 @@ export interface Meta {
   rumbledAt?: number;
   /** Boulder: the distance it has already rolled this cycle (drives the rolling skin's spin). */
   rolled?: number;
+  /** Boulder: the clock time when it starts rolling, triggered by proximity. */
+  triggeredAt?: number;
   // ---- MB-10C: mechanical movers ----
   /** Water wheel: bucket count, tip-out angle (rad, canvas y-down from +x), bucket occupancy. */
   wheel?: { buckets: number; release: number; rideMs?: number; slots: number[] };
@@ -336,6 +337,7 @@ export interface Track {
   height: number;
   segments: SegmentInfo[];
   spinners: Matter.Body[];
+  turnstiles: Matter.Body[];
   itemBoxes: Matter.Body[];
   ramps: Matter.Body[];
   buckets: Matter.Body[];
@@ -389,6 +391,7 @@ export interface TargetBank {
 export class Builder {
   bodies: Matter.Body[] = [];
   spinners: Matter.Body[] = [];
+  turnstiles: Matter.Body[] = [];
   itemBoxes: Matter.Body[] = [];
   buckets: Matter.Body[] = [];
   decor: Decor[] = [];
@@ -810,7 +813,7 @@ export class Builder {
    * store exactly three numbers and every client computes the same pose. Marbles bowl over unless
    * they hop it with Jump; the heavier the marble, the smaller the shove.
    */
-  boulder(pts: ReadonlyArray<readonly [number, number]>, r = 27, intervalMs = 6500, restMs = 1400, phaseMs = 0) {
+  boulder(pts: ReadonlyArray<readonly [number, number]>, r = 27, speed = 5, delay = 0) {
     const path = pts.map(([x, y]) => ({ x: this.X(x), y }));
     const stepLens = [0];
     let spanLen = 0;
@@ -822,7 +825,7 @@ export class Builder {
       ...STATIC_OPTS, label: 'boulder', restitution: 0.6, friction: 0.35,
       collisionFilter: { category: CAT_DANGER, mask: 0xffff, group: 0 },
     });
-    b.plugin = { kind: 'boulder', motion: { mode: 'roll', path, stepLens, spanLen, intervalMs, restMs, phaseMs, r }, radius: r } as Meta;
+    b.plugin = { kind: 'boulder', motion: { mode: 'roll', path, stepLens, spanLen, speed, delay, r }, radius: r } as Meta;
     this.bodies.push(b);
     return b;
   }
@@ -1033,13 +1036,19 @@ export class Builder {
    * A pinball flipper: `side` 0 = pivot on the left (bat points right, swats up-right),
    * 1 = pivot right. Fires when a marble rolls onto the bat, or every `periodMs` if set (timer mode).
    */
-  flipper(x: number, y: number, side: 0 | 1 = 0, len = 120, strength = 1.4, periodMs = 0, phaseMs = 0) {
+  flipper(x: number, y: number, side: 0 | 1 = 0, angleDeg = 0, len = 120, strength = 1.4, periodMs = 0, phaseMs = 0) {
     const pivot = { x: this.X(x), y };
     const left = this.flip ? side === 1 : side === 0;
     const sd = (left ? 1 : -1) as 1 | -1;
     // left flipper: bat runs right at rest (8°), snaps up to -46°. Right flipper mirrors.
-    const restA = (left ? 8 : 172) * Math.PI / 180;
-    const swingA = (left ? -46 : 226) * Math.PI / 180;
+    const baseRestA = (left ? 8 : 172);
+    const baseSwingA = (left ? -46 : 226);
+    
+    // Apply rotation angle
+    const mirroredAng = this.flip ? -angleDeg : angleDeg;
+    const restA = (baseRestA + mirroredAng) * Math.PI / 180;
+    const swingA = (baseSwingA + mirroredAng) * Math.PI / 180;
+    
     const P = { x: pivot.x + Math.cos(restA) * len * 0.5, y: pivot.y + Math.sin(restA) * len * 0.5 };
     const bat = Bodies.rectangle(P.x, P.y, len, 12, { ...STATIC_OPTS, label: 'flipper', angle: restA, restitution: 0.25, friction: 0.001, chamfer: { radius: 4 } });
     bat.plugin = {
@@ -1219,6 +1228,7 @@ export class Builder {
       turnstile: { arms, r, mode, periodMs: mode === 1 ? Math.max(2400, periodMs || 6000) : 0, phaseMs, stepIndex: 0, stepAt: -1e9 },
     } as Meta;
     this.bodies.push(b);
+    this.turnstiles.push(b);
     return b;
   }
 
@@ -1637,9 +1647,8 @@ const segBoulderRun: Seg = (b, y) => {
       [220, y + 495],
     ],
     26 + b.rng() * 6,
-    7000 + b.rng() * 2600,
-    1300 + b.rng() * 800,
-    b.rng() * 7000,
+    5 + b.rng() * 10, // speed
+    0 // delay
   );
   if (b.rng() < 0.5) b.itemBox(430 + b.rng() * 240, y + 250);
   return 580;
@@ -1905,12 +1914,12 @@ const segFlipperAlley: Seg = (b, y) => {
   b.flip = b.rng() < 0.5;
   b.ramp(0, y + 30, 260, y + 120);
   b.ramp(260, y + 120, 440, y + 205);
-  b.flipper(560, y + 228, 0, 116 + b.rng() * 16, 1.3 + b.rng() * 0.3, 0, 0);
+  b.flipper(560, y + 228, 0, 0, 116 + b.rng() * 16, 1.3 + b.rng() * 0.3, 0, 0);
   // the gap floor slides across regardless
   b.ramp(440, y + 250, 720, y + 340);
   b.ramp(720, y + 340, W - 10, y + 500);
   b.scoop(W - 25, y + 500 - 15, 230, 800);
-  if (b.rng() < 0.5) b.flipper(740, y + 356, 1, 108 + b.rng() * 14, 2.2 + b.rng() * 0.6, 1400 + b.rng() * 600, b.rng() * 1000);
+  if (b.rng() < 0.5) b.flipper(740, y + 356, 1, 0, 108 + b.rng() * 14, 2.2 + b.rng() * 0.6, 1400 + b.rng() * 600, b.rng() * 1000);
   return 540;
 };
 
@@ -2279,6 +2288,7 @@ export function assembleTrack(b: Builder, seed: number, profile: TrackProfile): 
     height,
     segments,
     spinners: b.spinners,
+    turnstiles: b.turnstiles,
     itemBoxes: b.itemBoxes,
     ramps: b.bodies.filter((body) => !!meta(body).surface),
     buckets: b.buckets,

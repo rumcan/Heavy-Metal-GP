@@ -1028,7 +1028,7 @@ export class Game {
           this.effects.push({ type: 'ring', x: m.body.position.x, y: m.body.position.y, ttl: 16, maxTtl: 16, color: '#a7f3d0' });
           break;
         }
-        const dir = motion && motion.mode === 'roll' ? pathAt(motion, rollAt(motion, this.time).d).dir : { x: 0, y: 1 };
+        const dir = motion && motion.mode === 'roll' ? pathAt(motion, rollAt(motion, this.time, md.triggeredAt ?? null).d).dir : { x: 0, y: 1 };
         const k = 6.2 * (1 / Math.sqrt(m.body.mass / 0.8));
         Body.setVelocity(m.body, { x: v.x * 0.35 + dir.x * k, y: v.y * 0.35 + dir.y * k - 2 });
         this.sfx('thud', m, other.position.x, other.position.y);
@@ -1478,6 +1478,56 @@ export class Game {
             m.crushCount = 0;
             if (m.info.isPlayer) this.onEvent?.('EJECTED!', '#f87171');
             else this.effects.push({ type: 'text', x: p.x, y: p.y - 24, ttl: 40, maxTtl: 40, color: '#f87171', text: 'EJECTED' });
+          }
+        }
+      }
+    }
+
+    for (const boulder of elementBodies(this.track, 'boulder')) {
+      const md = meta(boulder);
+      const motion = md.motion;
+      if (!motion || motion.mode !== 'roll') continue;
+
+      if (md.triggeredAt === undefined) {
+        let near = false;
+        for (const m of this.marbles) {
+          if (m.finishedAt !== null) continue;
+          if (Math.hypot(m.body.position.x - boulder.position.x, m.body.position.y - boulder.position.y) < 500) {
+            near = true;
+            break;
+          }
+        }
+        if (near) md.triggeredAt = this.time + motion.delay;
+      } else {
+        const { rolling } = rollAt(motion, this.time, md.triggeredAt);
+        if (rolling) {
+          for (const other of this.track.bodies) {
+            const omd = meta(other);
+            if (omd.kind !== 'barricade' && omd.kind !== 'crumble') continue;
+            if (omd.hp !== undefined && omd.hp <= 0) continue;
+
+            if (Query.collides(boulder, [other]).length > 0) {
+              omd.hp = 0;
+              if (omd.kind === 'crumble') {
+                this.emit({ kind: 'crate', i: this.indexOf(other), hp: 0, broken: true });
+                this.sfx('crack', this.player, other.position.x, other.position.y);
+                this.effects.push({
+                  type: 'debris', x: other.position.x, y: other.position.y, ttl: 40, maxTtl: 40, color: '#fcd34d',
+                  particles: this.makeParticles(other.position.x, other.position.y, 22, 6),
+                });
+              } else if (omd.kind === 'barricade') {
+                this.emit({ kind: 'crate', i: this.indexOf(other), hp: 0, broken: true });
+                this.sfx('smash', this.player, other.position.x, other.position.y);
+                this.effects.push({
+                  type: 'debris', x: other.position.x, y: other.position.y, ttl: 50, maxTtl: 50, color: '#d6a04e',
+                  particles: this.makeParticles(other.position.x, other.position.y, 22, 7),
+                });
+                this.effects.push({ type: 'text', x: other.position.x, y: other.position.y - 30, ttl: 70, maxTtl: 70, color: '#fca5a5', text: 'NO ENTRY!' });
+              }
+              if (!this.pendingBreaks.some((p) => p.body === other)) {
+                this.pendingBreaks.push({ body: other, marble: this.marbles[0], v: { x: 0, y: 0 } });
+              }
+            }
           }
         }
       }
@@ -2417,6 +2467,22 @@ export class Game {
     for (const sp of this.track.spinners) {
       const md = meta(sp);
       (Body.setAngle as unknown as (b: Matter.Body, a: number, u: boolean) => void)(sp, sp.angle + (md.spin ?? 0) * s, true);
+    }
+    // turnstiles
+    for (const ts of this.track.turnstiles) {
+      const md = meta(ts).turnstile!;
+      if (md.mode === 0) {
+        // ratchet eases step by step
+        const targetAngle = md.stepIndex * (Math.PI * 2 / md.arms);
+        const diff = targetAngle - ts.angle;
+        if (Math.abs(diff) > 0.001) {
+          (Body.setAngle as unknown as (b: Matter.Body, a: number, u: boolean) => void)(ts, ts.angle + diff * 0.1 * s, true);
+        }
+      } else {
+        // free spin
+        const angle = ((this.time + md.phaseMs) / md.periodMs) * Math.PI * 2;
+        (Body.setAngle as unknown as (b: Matter.Body, a: number, u: boolean) => void)(ts, angle, true);
+      }
     }
     // wrecking balls swing on their chains (kinematic, so collisions see their velocity)
     for (const wb of this.track.wreckers) {

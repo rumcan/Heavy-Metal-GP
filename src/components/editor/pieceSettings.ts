@@ -34,16 +34,10 @@ export const SETTING_RANGES = {
   },
   boulder: {
     r: { min: 12, max: 60, integer: true },
-    interval: { min: 1800, max: 30000, integer: true },
-    rest: { min: 0, max: 10000, integer: true },
+    speed: { min: 1, max: 20 },
+    delay: { min: 0, max: 30000, integer: true },
   },
 } satisfies Record<string, Record<string, SettingRange>>;
-
-/**
- * How much of its interval a boulder may spend resting before the validator calls it "barely
- * rolls". Shared with `validate.ts` so a prompt can never write a rest the validator rejects.
- */
-export const BOULDER_REST_RATIO = 0.7;
 
 /** Clamp into a range, rounding first when the field is whole units. */
 export function clampToRange(value: number, range: SettingRange): number {
@@ -59,20 +53,10 @@ export function clampToRange(value: number, range: SettingRange): number {
 export function readPromptedNumber(answer: string | null, range: SettingRange, fallback: number): number {
   if (answer === null) return fallback;
   const text = answer.trim();
-  // An emptied box means "leave it alone", not zero — Number('') is 0 and would clamp to the minimum.
   if (!text) return fallback;
   const value = Number(text);
   if (!Number.isFinite(value)) return fallback;
   return clampToRange(value, range);
-}
-
-/**
- * The most a boulder may rest and still roll within its interval — the prompt's ceiling, from the
- * validator's rule. Falls back to the schema minimum when the interval is too short to leave room.
- */
-export function maxBoulderRest(interval: number): number {
-  const cap = Math.floor(interval * BOULDER_REST_RATIO);
-  return Math.max(0, cap);
 }
 
 /** The trapdoor/crusher/boulder settings a placement asks for, applied to the piece it just built. */
@@ -121,19 +105,17 @@ export function applyPlacementSettings(
       SETTING_RANGES.boulder.r,
       piece.r,
     );
-    const interval = readPromptedNumber(
-      ask(`How many milliseconds between boulder spawns? (${SETTING_RANGES.boulder.interval.min}–${SETTING_RANGES.boulder.interval.max})`, String(piece.interval)),
-      SETTING_RANGES.boulder.interval,
-      piece.interval,
+    const speed = readPromptedNumber(
+      ask(`How fast should the boulder roll? (${SETTING_RANGES.boulder.speed.min}–${SETTING_RANGES.boulder.speed.max})`, String(piece.speed)),
+      SETTING_RANGES.boulder.speed,
+      piece.speed,
     );
-    const rest = readPromptedNumber(
-      ask(`How many milliseconds should the boulder wait before rolling (rest)? (0–${SETTING_RANGES.boulder.rest.max})`, String(piece.rest)),
-      SETTING_RANGES.boulder.rest,
-      piece.rest,
+    const delay = readPromptedNumber(
+      ask(`How many milliseconds should the boulder wait after sensing a marble before rolling (delay)? (0–${SETTING_RANGES.boulder.delay.max})`, String(piece.delay)),
+      SETTING_RANGES.boulder.delay,
+      piece.delay,
     );
-    // A rest that eats the interval leaves the boulder sitting at the top: cap it the way the
-    // validator does, so the prompt cannot build a piece validation then refuses.
-    return { ...piece, r, interval, rest: Math.min(rest, maxBoulderRest(interval)) };
+    return { ...piece, r, speed, delay };
   }
   return piece;
 }

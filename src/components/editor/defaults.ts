@@ -168,7 +168,7 @@ function buildDefault(type: PieceType, at: Point, snap = false): Piece {
       // Set into the track at the click; drag a slot end to make it slide.
       const x = snap ? snapVal(cx) : cx;
       const y = snap ? snapVal(cy) : cy;
-      return { t: 'saw', a: [x, y] as [number, number], b: [x, y] as [number, number], r: 26, spin: 0.55, period: 3600, phase: 0 };
+      return { t: 'saw', a: [x, y] as [number, number], b: [x, y - 100] as [number, number], r: 26, spin: 0.55, period: 3600, phase: 0 };
     }
     case 'crusher': {
       return { t: 'crusher', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, w: 130, travel: 110, period: 4200, floor: 700, phase: 0 };
@@ -185,7 +185,7 @@ function buildDefault(type: PieceType, at: Point, snap = false): Piece {
           [x, y] as [number, number],
           [x + 340 * inward, y + 240] as [number, number],
         ],
-        r: 27, interval: 6500, rest: 1400, phase: 0,
+        r: 27, speed: 5, delay: 0,
       };
     }
     case 'mace': {
@@ -225,7 +225,7 @@ function buildDefault(type: PieceType, at: Point, snap = false): Piece {
       return { t: 'catapult', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, len: 230, reload: 1400, dir: 0 };
     }
     case 'flipper': {
-      return { t: 'flipper', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, side: 0, len: 120, strength: 1.4, timer: 0, phase: 0 };
+      return { t: 'flipper', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, side: 0, angle: 0, len: 120, strength: 1.4, timer: 0, phase: 0 };
     }
     case 'sling': {
       return { t: 'sling', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, size: 90, facing: 245, strength: 4 };

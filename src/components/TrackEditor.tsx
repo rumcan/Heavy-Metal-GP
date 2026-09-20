@@ -1007,6 +1007,16 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
             onDuplicate={handleDuplicateTrack}
             onDelete={handleDeleteTrack}
             onSaveCurrent={handleSaveCurrent}
+            onDevLoadOfficial={(def) => {
+              history.push(circuit.def);
+              setCircuit({ def: cloneDef(def), build: 0 });
+              setActiveTrackId(null);
+              setSelected([]);
+              setValidation(null);
+              bumpHistory();
+              setDraftMsg(`Loaded official dev track`);
+              setTimeout(() => setDraftMsg(null), 3000);
+            }}
           />
           <SharePanel def={circuit.def} validation={validation} validating={validating} onImport={handleImportTrack} />
           <div className="editor-savebar" role="toolbar" aria-label="Save and share">

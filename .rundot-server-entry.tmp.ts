@@ -1,0 +1,1 @@
+export { default as __Room_0__ } from './src/rooms/RaceRoom.ts';
