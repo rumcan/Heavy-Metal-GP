@@ -36,12 +36,12 @@
  *     "missed rebound follows the catch": off the boundary, down the lower leg to the merge.
  *  2. Canopy Descent: the tunnel exit is (570,1015), not (580,1050) - the spec's point sits under
  *     the lower leg's slab, so an emitted marble would start inside a floor.
- *  3. Emerald Oxbow: the spec's feeder (825,1490)->(610,1560) is a reversal ramp that no marble can
- *     roll onto (the entry-rail fall lands 200-260u east of its west end, moving east). The oxbow
- *     keeps the same shape as a switchback down the room's east side, so the fall lands on its east
- *     leg and the marble enters the pool moving west, which is what the feeder is for.
- *  4. The spec's approach boost (680,1510) sits outside every lane of that room; the committed
- *     acceleration is placed on the switchback's own leg, along travel.
+ *  3. Emerald Oxbow: the spec's feeder (825,1490)->(610,1560) is committed at spec coordinates and
+ *     carries every marble west into the water's east end, with the spec's approach boost
+ *     (680,1510) dir (-0.95,0.3) on it. The pool is entered slowly, so the pack wades; the ticket's
+ *     skim needs a fast shallow approach the oxbow's own entry rail does not provide (see PR).
+ *  4. The switchback that first occupied that airspace is gone for the same reason - the feeder is
+ *     the ticket's line and the switchback was mine.
  *  5. The raised landing rail (390,1570)->(485,1600) is lifted 20u so its slab clears the pool's
  *     surface at y1590 - at the spec height the bar hangs into the water and a wader can stall on
  *     its underside, the one thing this map's acceptance forbids.
@@ -145,12 +145,12 @@ export function buildDef() {
   b.ramp([670, 1272], [852, 1300]);
   b.tunnel(795, 1250, [180, 2300], [0.85, 0.53], 1700, 8);
 
-  // ── The oxbow's turn: switchback down the east side, committed acceleration along travel.
-  const TURN = [[680, 1372], [770, 1430], [790, 1530], [745, 1640], [640, 1740]];
-  floorChain(b, TURN);
-  railChain(b, TURN, 120, -1, 'rail', 0.04, 0.96);
-  railChain(b, TURN, 120, 1, 'rail', 0.04, 0.96);
-  b.boost(680, 1510, 80, 42, [-0.95, 0.3]);
+  // ── The oxbow's feeder (spec): the fall lands on it and rolls west into the water's east end,
+  // past the committed boost - which is what makes a fast marble skim and a slow one wade.
+  const FEEDER = [[825, 1490], [610, 1560]];
+  floorChain(b, FEEDER);
+  railChain(b, FEEDER, 150, 1, 'rail', 0.1, 0.9);
+  b.boost(680, 1505, 80, 42, [-0.95, 0.3]);
 
   // ── Pool and its diving board: a fast marble is thrown up-west and flies the water; a slow one
   // drops into the basin and wades west on the basin's own inertia.
