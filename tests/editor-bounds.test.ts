@@ -76,12 +76,12 @@ test('wind fan is selectable where the renderer paints it', () => {
   const editor = buildOne(piece);
   const body = editor.track!.bodies.find((b) => meta(b).kind === 'wind')!;
   const wind = meta(body).wind!;
-  // The renderer's own corner formula: fan near the lower-left for an upward blow.
+  // The renderer's own corner formula: fan centred beneath the field for an upward blow.
   const fan = windFanAnchor(wind);
-  assert.ok(Math.abs(fan.x - 104) < 1e-6 && Math.abs(fan.y - 1488) < 1e-6, `fan anchor at the leading corner, got ${JSON.stringify(fan)}`);
+  assert.ok(Math.abs(fan.x - 200) < 1e-6 && Math.abs(fan.y - 1488) < 1e-6, `fan anchor centred on the upwind edge, got ${JSON.stringify(fan)}`);
   const bounds = editor.pieceBounds[0];
   assert.ok(within(bounds, fan.x, fan.y), 'fan anchor inside selection bounds');
-  assert.ok(within(bounds, fan.x - 28 + 1, fan.y - 20 + 1), 'painted fan box inside selection bounds');
+  assert.ok(within(bounds, fan.x - 56 + 1, fan.y + 40 - 1), 'painted fan box inside selection bounds');
   assert.equal(hit(editor, fan.x - 10, fan.y - 5), 0, 'clicking the visible fan selects the wind piece');
   assert.equal(hit(editor, 200, 1370), 0, 'field centre stays selectable');
   // The bounds also cover the whole editable field, not just the icon.
@@ -102,7 +102,7 @@ test('wind bounds follow the field, the fan and the flip', () => {
   const body = editor.track!.bodies.find((b) => meta(b).kind === 'wind')!;
   const wind = meta(body).wind!;
   const fan = windFanAnchor(wind);
-  assert.ok(hit(editor, fan.x, fan.y) === 0, 'mirrored wind fan still selectable at its drawn corner');
+  assert.ok(hit(editor, fan.x, fan.y) === 0, 'mirrored wind fan still selectable at its drawn edge');
   assert.ok(editor.pieceBounds[0].min.x > W / 2, 'mirrored wind bounds sit on the drawn side');
 });
 

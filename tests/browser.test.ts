@@ -429,3 +429,93 @@ test('Browser: workshop launchers animate on the correct clock and bridge art fo
     assert.deepEqual(errors, []);
   } finally { await page.close(); }
 });
+
+test('Browser: War Drum and translucent Updraft dust use the supplied artwork', { timeout: 60000 }, async () => {
+  const page = await browser.newPage({ viewport: { width: 900, height: 950 } });
+  const errors: string[] = [];
+  page.on('pageerror', e => errors.push(e.message));
+  try {
+    await page.goto(`${baseUrl}/tests/workshop-art-fixture.html?drum-wind`);
+    await page.waitForFunction(() => (window as any).workshopArt?.ready);
+    const button = page.locator('[data-tile="sling"]');
+    await button.waitFor();
+    assert.match(await button.textContent() ?? '', /War Drum/);
+    assert.match(await button.locator('img').getAttribute('src') ?? '', /sling\.webp/);
+    assert.equal(await page.locator('.prop-head strong').textContent(), 'WAR DRUM');
+    const first = await page.evaluate(() => (window as any).workshopArt.frame(1000, true));
+    await page.screenshot({ path: join(artifacts, 'war-drum-updraft.png') });
+    const later = await page.evaluate(() => (window as any).workshopArt.frame(1600, true));
+    await page.screenshot({ path: join(artifacts, 'war-drum-updraft-pulse.png') });
+    assert.ok(first.unchanged && later.unchanged, 'art must not mutate obstacle bodies or forces');
+    const draws = (frame: any, name: string) => frame.calls.filter((c: any) => c.name === name);
+    assert.equal(draws(first, 'sling').length, 3, 'all sizes and mirrored drums use supplied image');
+    assert.ok(draws(first, 'sling')[1].rect[2] > draws(first, 'sling')[0].rect[2], 'size setting scales drum art');
+    const vents = draws(first, 'wind');
+    assert.equal(vents.length, 2);
+    vents.forEach((vent: any) => {
+      assert.equal(vent.rect[2], 112, 'vent is four times wider than the old 28px sprite');
+      assert.equal(vent.rect[3], 80);
+      assert.equal(vent.opacity, 1, 'machine stays opaque');
+    });
+    const dust = draws(first, 'wind-dust');
+    assert.equal(dust.length, 2);
+    dust.forEach((call: any, i: number) => {
+      assert.ok(call.opacity >= 0.6 && call.opacity <= 0.72, 'vortex is translucent');
+      assert.ok(call.rect[3] > 300, 'dust spans the field');
+      assert.equal(call.matrix[4], vents[i].matrix[4]);
+      assert.equal(call.matrix[5], vents[i].matrix[5], 'vortex tip is anchored on the machine');
+    });
+    assert.notDeepEqual(dust, draws(later, 'wind-dust'), 'vortex animation moves over time');
+    assert.deepEqual(errors, []);
+  } finally { await page.close(); }
+});
+
+test('Browser: canvas settings cog opens the selected piece dialog without moving it', { timeout: 60000 }, async () => {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
+  try {
+    // Record the rendered cog centre so the test clicks its actual canvas hit target.
+    await page.addInitScript(() => {
+      const arc = CanvasRenderingContext2D.prototype.arc;
+      CanvasRenderingContext2D.prototype.arc = function (x, y, radius, start, end, anticlockwise) {
+        if (this.canvas.classList.contains('editor-canvas') && radius === 4.5) {
+          (window as any).settingsCog = { x, y };
+        }
+        return arc.call(this, x, y, radius, start, end, anticlockwise);
+      };
+    });
+    await page.goto(`${baseUrl}/tests/editor-template-fixture.html`, { waitUntil: 'networkidle' });
+    await page.locator('[data-tile="conveyor"]').click();
+    const canvas = page.locator('.editor-canvas');
+    const box = await canvas.boundingBox();
+    assert.ok(box);
+    const centre = { x: box.width / 2, y: box.height / 2 };
+    await canvas.click({ position: centre });
+    await page.waitForFunction(() => (window as any).templateFixture.readDraft().pieces.length === 1);
+    await page.keyboard.press('Escape');
+    await canvas.click({ position: centre });
+    await page.waitForFunction(() => (window as any).settingsCog);
+    const before = await page.evaluate(() => (window as any).templateFixture.readDraft());
+    const cog = await page.evaluate(() => (window as any).settingsCog);
+    await canvas.click({ position: cog });
+    const dialog = page.getByRole('dialog', { name: 'Conveyor belt settings', exact: true });
+    await dialog.waitFor();
+    assert.deepEqual(await page.evaluate(() => (window as any).templateFixture.readDraft()), before);
+    await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+    await canvas.click({ position: cog });
+    await dialog.waitFor();
+  } finally { await page.close(); }
+});
+
+test('Browser: Workshop loop shows its entry and exit route', { timeout: 60000 }, async () => {
+  const page = await browser.newPage({ viewport: { width: 900, height: 950 } });
+  const errors: string[] = [];
+  page.on('pageerror', e => errors.push(e.message));
+  try {
+    await page.goto(`${baseUrl}/tests/workshop-art-fixture.html?loop`);
+    await page.waitForFunction(() => (window as any).workshopArt?.ready);
+    const frame = await page.evaluate(() => (window as any).workshopArt.frame(1000, true));
+    assert.ok(frame.unchanged);
+    await page.screenshot({ path: join(artifacts, 'workshop-loop-route.png') });
+    assert.deepEqual(errors, []);
+  } finally { await page.close(); }
+});

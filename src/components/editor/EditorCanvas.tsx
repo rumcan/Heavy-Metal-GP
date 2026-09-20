@@ -137,6 +137,7 @@ interface Props {
   onClear: () => void;
   onMoveSelected: (dx: number, dy: number) => void;
   onHandleChange: (pieceIndex: number, handleId: string, to: Point) => void;
+  onOpenSettings: (pieceIndex: number) => void;
   startTransaction: () => void;
   transact: (mutate: (def: import('../../game/trackdef').TrackDef) => import('../../game/trackdef').TrackDef) => void;
   endTransaction: () => void;
@@ -171,6 +172,7 @@ export default function EditorCanvas(props: Props) {
   const onClearRef = useRef(onClear);
   const onMoveRef = useRef(onMoveSelected);
   const onHandleRef = useRef(onHandleChange);
+  const onSettingsRef = useRef(props.onOpenSettings);
   const startTxRef = useRef(startTransaction);
   const endTxRef = useRef(endTransaction);
   const spawnAtRef = useRef(spawnAt);
@@ -191,6 +193,7 @@ export default function EditorCanvas(props: Props) {
   onClearRef.current = onClear;
   onMoveRef.current = onMoveSelected;
   onHandleRef.current = onHandleChange;
+  onSettingsRef.current = props.onOpenSettings;
   startTxRef.current = startTransaction;
   endTxRef.current = endTransaction;
   spawnAtRef.current = spawnAt;
@@ -493,6 +496,7 @@ export default function EditorCanvas(props: Props) {
       const wasPan = pan;
       const wasPendingPlace = pendingPlace;
       const wasPendingSettingsClick = pendingSettingsClick;
+      pendingSettingsClick = null;
 
       const down = downPoint;
       const isClick = down && Math.hypot(event.clientX - down.x, event.clientY - down.y) <= DRAG_SLOP;
@@ -543,14 +547,7 @@ export default function EditorCanvas(props: Props) {
       if (wasPendingPlace && isClick) {
         onPlaceRef.current(world);
       } else if (wasPendingSettingsClick && isClick) {
-        const panel = document.querySelector('.editor-inspector');
-        if (panel) {
-          panel.scrollTo({ top: 0, behavior: 'smooth' });
-          const originalBg = (panel as HTMLElement).style.backgroundColor;
-          (panel as HTMLElement).style.backgroundColor = '#1e293b';
-          setTimeout(() => { (panel as HTMLElement).style.backgroundColor = originalBg; }, 400);
-        }
-        pendingSettingsClick = null;
+        onSettingsRef.current(wasPendingSettingsClick.pieceIndex);
       } else if (!wasHandle && !wasPiece && !wasBox && !wasPan && isClick) {
         // Empty click (no handle/piece/box/pan/place)
         // If hit nothing and not armed, clear selection

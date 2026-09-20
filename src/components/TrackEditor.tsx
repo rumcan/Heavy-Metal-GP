@@ -63,7 +63,6 @@ import { saveTemplate, snapshotTemplate } from './editor/templates';
 import { History } from './editor/history';
 import { buildEditorTrack } from './editor/build';
 import { applyHandle, movePieces, mirrorPiece } from './editor/handles';
-import { clampToRange, SETTING_RANGES } from './editor/pieceSettings';
 import { ROTATE_STEP_DEG, rotateSelection } from './editor/rotate';
 import { FINISH_H, START_H } from '../game/track';
 import type { Piece, TrackDef } from '../game/trackdef';
@@ -435,7 +434,7 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
       }
       if (!toAdd.length) return;
 
-      if (armed.startsWith(TEMPLATE_ARM)) {
+      if (armed.startsWith(TEMPLATE_ARM) || toAdd.length > 1) {
         const startLen = circuit.def.pieces.length;
         const select = toAdd.map((_, i) => startLen + i);
         commit((def) => {
@@ -1201,6 +1200,10 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
                 onClear={handleClear}
                 onMoveSelected={handleMoveSelected}
                 onHandleChange={applyHandleChange}
+                onOpenSettings={(pieceIndex) => {
+                  setSelected([pieceIndex]);
+                  setSettingsOpen(true);
+                }}
                 startTransaction={startTransaction}
                 transact={transact}
                 endTransaction={endTransaction}

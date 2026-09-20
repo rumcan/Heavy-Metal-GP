@@ -1,6 +1,7 @@
 import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import PiecePalette from '../src/components/editor/PiecePalette';
+import PropertiesPanel from '../src/components/editor/PropertiesPanel';
 import { Game } from '../src/game/engine';
 import { render } from '../src/game/render';
 import { meta, flipperAngle } from '../src/game/track';
@@ -9,8 +10,17 @@ import { updateElements } from '../src/game/elements';
 import { bridgePlankPose } from '../src/game/track';
 import Matter from 'matter-js';
 import type { TrackDef } from '../src/game/trackdef';
+import { placementPieces } from '../src/components/editor/ghost';
 
-const def: TrackDef = { v: 1, name: 'Workshop art', seed: 11, theme: 'classic', height: 2400, pieces: [
+const drumWind = new URLSearchParams(location.search).has('drum-wind');
+const loopRoute = new URLSearchParams(location.search).has('loop');
+const def: TrackDef = { v: 1, name: 'Workshop art', seed: 11, theme: 'classic', height: 2400, pieces: loopRoute ? placementPieces('loop', { x: 470, y: 1200 }, false)! : drumWind ? [
+  { t: 'sling', x: 200, y: 660, size: 90, facing: 270, strength: 4 },
+  { t: 'sling', x: 470, y: 680, size: 160, facing: 245, strength: 4 },
+  { t: 'sling', x: 180, y: 660, size: 90, facing: 245, strength: 4, flip: true },
+  { t: 'wind', a: [70, 900], b: [290, 1280], dir: 270, str: 0.34, pulse: 2600, phase: 0 },
+  { t: 'wind', a: [450, 1050], b: [810, 1280], dir: 0, str: 0.34, pulse: 2600, phase: 0 },
+] : [
   { t: 'flipper', x: 240, y: 650, side: 0, len: 160, strength: 1.4, timer: 0, phase: 0 },
   { t: 'flipper', x: 660, y: 650, side: 1, len: 160, strength: 1.4, timer: 0, phase: 0 },
   { t: 'catapult', x: 300, y: 870, len: 170, reload: 1400, dir: 0 },
@@ -22,16 +32,20 @@ const canvas = document.createElement('canvas'); canvas.width = 900; canvas.heig
 document.body.appendChild(canvas);
 const palette = document.createElement('div'); document.body.appendChild(palette);
 createRoot(palette).render(createElement(PiecePalette, { active: null, onPick: () => {} }));
+if (drumWind) {
+  const panel = document.createElement('div'); document.body.appendChild(panel);
+  createRoot(panel).render(createElement(PropertiesPanel, { selected: [0], pieces: def.pieces, onChange: () => {} }));
+}
 const ctx = canvas.getContext('2d')!;
-type Draw = { name: string; angle: number; matrix: number[]; rect: number[] };
+type Draw = { name: string; angle: number; opacity: number; matrix: number[]; rect: number[] };
 let calls: Draw[] = [];
 const originalDraw = ctx.drawImage.bind(ctx);
 ctx.drawImage = ((img: CanvasImageSource, ...args: number[]) => {
   if (img instanceof HTMLImageElement) {
-    const name = ['flipper', 'catapult_arm', 'catapult_static', 'bridge'].find(n => img === sprite(n));
+    const name = ['flipper', 'catapult_arm', 'catapult_static', 'bridge', 'sling', 'wind', 'wind-dust'].find(n => img === sprite(n));
     if (name) {
       const m = ctx.getTransform();
-      calls.push({ name, angle: Math.atan2(m.b, m.a), matrix: [m.a, m.b, m.c, m.d, m.e, m.f], rect: args });
+      calls.push({ name, angle: Math.atan2(m.b, m.a), opacity: ctx.globalAlpha, matrix: [m.a, m.b, m.c, m.d, m.e, m.f], rect: args });
     }
   }
   (originalDraw as (...args: unknown[]) => void)(img, ...args);
@@ -42,6 +56,7 @@ function frame(time: number, preview = false) {
   for (const b of game.track.bodies) {
     const md = meta(b);
     if (md.flipper) md.flipper.firedAt = 1530;
+    if (md.sling) md.sling.flashAt = 1530;
     if (md.catapult) { md.catapult.loadedAt = 0; md.catapult.firedAt = null; }
   }
   if (!preview) updateElements(game.track, time, 0);
@@ -66,7 +81,7 @@ function sagBridge() {
 }
 const api = { frame, sagBridge, ready: false };
 (window as unknown as { workshopArt: typeof api }).workshopArt = api;
-await Promise.all(['flipper', 'catapult_arm', 'catapult_static', 'rail-wood'].map(async name => {
+await Promise.all(['flipper', 'catapult_arm', 'catapult_static', 'rail-wood', 'sling', 'wind', 'wind-dust'].map(async name => {
   for (let i = 0; i < 200 && !sprite(name); i++) await new Promise(r => setTimeout(r, 25));
   if (!sprite(name)) throw new Error(`Sprite did not load: ${name}`);
 }));

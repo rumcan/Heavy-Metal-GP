@@ -58,7 +58,7 @@ export const PALETTE: PaletteGroup[] = [
     label: 'Features',
     note: 'Things that happen to a marble',
     tiles: [
-      { id: 'loop', t: 'loop', label: 'Loop', sprite: 'loop-ring', hint: 'A full loop the marble has to carry speed through.', effects: { speed: 80, weight: -20 } },
+      { id: 'loop', t: 'loop', label: 'Loop', sprite: 'loop-ring', hint: 'A complete loop with a curved entry, speed boost and exit ramp. Feed marbles onto the high end; move or mirror the selected parts together.', effects: { speed: 80, weight: -20 } },
       { id: 'hoop', t: 'hoop', label: 'Fire hoop', sprite: 'fire-hoop', hint: 'A hoop that launches a marble at speed.', effects: { speed: 60 } },
       { id: 'pad', t: 'pad', label: 'Spring sheep', sprite: 'sheep-spring', hint: 'A bouncy launch pad pointed left or right.', effects: { bounce: 70, weight: -80 } },
       { id: 'boost', t: 'boost', label: 'Boost', sprite: 'rail-chevron', hint: 'A chevron strip that accelerates whatever crosses it.', effects: { speed: 30 } },
@@ -145,7 +145,7 @@ export const PALETTE: PaletteGroup[] = [
     label: 'Fields & surfaces',
     note: 'Wind, magnets, tar, water and steam',
     tiles: [
-      { id: 'wind', t: 'wind', label: 'Updraft vent', sprite: 'wind', hint: 'A box fan whose swish fills the rectangle. Light marbles sail on it, Heavy metal ignores it, Slipstream catches twice. Pulse it to breathe.', effects: { weight: -75 } },
+      { id: 'wind', t: 'wind', label: 'Updraft vent', sprite: 'wind', hint: 'A large vent whose dust vortex fills the rectangle. Light marbles sail on it, Heavy metal ignores it, Slipstream catches twice. Pulse it to breathe.', effects: { weight: -75 } },
       { id: 'magnet', t: 'magnet', label: 'Horseshoe magnet', sprite: 'magnet', hint: 'Drags runners off line, heavier iron harder. Anvil heavy metal sticks for a beat, then lets go — thrum it on a period for a softening window.', effects: { weight: 80 } },
       { id: 'mud', t: 'mud', label: 'Tar band', sprite: 'mud', hint: 'A strip of sticky tar. Rollers trudge, bounce builds hop it, the speed stat digs in, Slipstream sails over.', effects: { speed: 60 } },
       { id: 'geyser', t: 'geyser', label: 'Geyser vent', sprite: 'geyser', hint: 'Bubbles for a beat, then blasts upward on a timer. Park on it and get chucked. All on the race clock.', effects: { weight: -50 } },

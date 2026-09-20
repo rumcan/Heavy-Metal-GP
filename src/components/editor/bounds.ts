@@ -18,7 +18,7 @@
  *
  * The sprite geometry below mirrors `src/game/render.ts` draw-for-draw; every
  * entry names the function it must stay in step with.  When a piece's art is
- * anchored on metadata (wind fan corner, magnet centre, geyser vent…), the
+ * anchored on metadata (wind fan centre, magnet centre, geyser vent…), the
  * anchor is read from the built body's plugin — already mirrored — never
  * recomputed from the piece.
  */
@@ -26,6 +26,8 @@ import type { Piece } from '../../game/trackdef';
 import type Matter from 'matter-js';
 import { meta, W } from '../../game/track';
 import type { Meta } from '../../game/track';
+import { WIND_FAN_ART, windFanAnchor } from '../../game/wind-art';
+export { windFanAnchor } from '../../game/wind-art';
 import { CATAPULT_BASE, CATAPULT_ARM, CATAPULT_ARM_LENGTH, CATAPULT_ARM_AXIS, flipperArtRect, warDrumArtRect, warDrumArtAngle } from '../../game/launcher-art';
 
 export type Bounds = { min: { x: number; y: number }, max: { x: number; y: number } };
@@ -42,8 +44,8 @@ interface SpriteRect { x: number; y: number; w: number; h: number }
 
 /** Sprite local rects — the single set of render dimensions the editor uses. */
 const SPRITES = {
-  /** `drawWind`: translate(windFanAnchor), drawSprite('wind', 0, 0, 28, 20). */
-  windFan: { x: 0, y: 0, w: 28, h: 20 },
+  /** Same enlarged machine rectangle used by drawWind. */
+  windFan: WIND_FAN_ART,
   /** `drawMagnet`: translate(centre), drawSprite('magnet', 0, 0, 48, 45). */
   magnet: { x: 0, y: 0, w: 48, h: 45 },
   /** `drawGeyser`: translate(cx, topY - 8), drawSprite('geyser', 0, -6, 34, 44). */
@@ -60,19 +62,6 @@ const TUNNEL_HOLE: SpriteRect = { x: 0, y: 0, w: 34 * 3.1, h: 34 * 3.1 };
 /** Plugin metadata of a built body, if it carries any. */
 function metaOf(b: Matter.Body | undefined): Meta | undefined {
   return b ? (meta(b) as Meta | undefined) : undefined;
-}
-
-/**
- * Where `drawWind` paints the fan box: the leading corner of the field along
- * the blow direction.  Exported so the renderer (and its upcoming alignment
- * pass) can share the one placement formula instead of growing a second copy.
- */
-export function windFanAnchor(wind: { ux: number; uy: number; box: { x: number; y: number; w: number; h: number } }): { x: number; y: number } {
-  const { x: lx, y: ly, w: bw, h: bh } = wind.box;
-  return {
-    x: wind.ux <= 0 ? lx + 14 : lx + bw - 14,
-    y: wind.uy >= 0 ? ly + 12 : ly + bh - 12,
-  };
 }
 
 /** Mutable AABB accumulator. */
@@ -176,9 +165,7 @@ export function visualBoundsForPiece(piece: Piece, bodies: Matter.Body[]): Bound
       break;
     }
     case 'wind': {
-      // The editable field stays selectable in full, and the fan box joins it
-      // at the corner the renderer paints it — the old fixed 28×20 box at the
-      // field's centre covered nothing that was drawn there.
+      // The full field and enlarged machine at its upwind edge remain selectable.
       const md = metaOf(bodyWith(bodies, 'wind'))?.wind;
       if (md) {
         box.addRect(md.box.x, md.box.y, md.box.x + md.box.w, md.box.y + md.box.h);
