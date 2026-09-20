@@ -47,7 +47,7 @@ export default function PiecePalette({ active, onPick }: Props) {
           data-tile={tile.id}
         >
           <span className="palette-art">
-            {src ? <img src={src} alt="" draggable={false} /> : <i className="palette-art-fallback" aria-hidden="true" />}
+            {src ? <img src={src} alt="" draggable={false} style={tile.id === 'flipper-right' ? { transform: 'scaleX(-1)' } : undefined} /> : <i className="palette-art-fallback" aria-hidden="true" />}
           </span>
           <span className="palette-label">{tile.label}</span>
         </button>;

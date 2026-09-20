@@ -25,6 +25,7 @@ const S = {
 };
 
 function save(name, img) {
+  if (process.argv.length > 2 && !process.argv.slice(2).includes(name)) return;
   writeFileSync(join(OUT, name), encodePng(img.w, img.h, img.px));
   console.log(`wrote ${name} ${img.w}x${img.h}`);
 }
@@ -66,7 +67,8 @@ save('barricade.png', cut(1, 58, 368, 496, 566, 140, 60));
 save('blade.png', cut(1, 642, 294, 816, 672, 70, 170));
 save('blast.png', cut(1, 1068, 320, 1350, 602, 96, 96));
 save('boulder.png', cut(1, 172, 584, 380, 788, 76, 76));
-save('flipper.png', cut(1, 576, 676, 830, 766, 160, 48));
+// The iron-bound tapered bat is the bottom-left sprite on sheet 2.
+save('flipper.png', cut(2, 8, 826, 712, 1028, 320, 96, { pad: 0 }));
 save('cannon.png', cut(1, 916, 602, 1406, 818, 192, 48));
 save('catapult.png', cut(1, 54, 786, 904, 1048, 224, 64));
 save('arrow.png', cut(1, 960, 918, 1406, 1004, 132, 24));

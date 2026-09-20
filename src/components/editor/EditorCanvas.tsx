@@ -985,7 +985,7 @@ export default function EditorCanvas(props: Props) {
       };
       // Preserve def pieces on rig for handle hit testing
       // (TrackEditor writes rig.defPieces each render)
-      render(ctx, stage, rig.camera, width, height, now, { minimap: false, shake: false });
+      render(ctx, stage, rig.camera, width, height, now, { minimap: false, shake: false, workshopPreview: true });
       if (gridRef.current) drawGrid(ctx, overlayView);
       if (rulerRef.current) drawRuler(ctx, overlayView);
       drawCursorMark(ctx, overlayView);

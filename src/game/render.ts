@@ -1,10 +1,11 @@
 import Matter from 'matter-js';
 import { Game, Marble } from './engine';
 import { hingeTimerState, hingeIsOpen, trapdoorWarn, pistonState, beltDir } from './elements';
-import { meta, W, cannonAim, catapultAngle, flipperAngle } from './track';
+import { meta, W, cannonAim } from './track';
 import { MARBLE_RADIUS, ITEM_INFO, skinFor, themeIdFor } from './types';
 import { ballFor, bodyFrame, contentBox, currentSkin, drawRail, drawSprite, drawStrip, setSkin, sprite } from './sprites';
 import { windFanAnchor } from '../components/editor/bounds';
+import { CATAPULT_ARM, CATAPULT_BASE, CATAPULT_ARM_AXIS, CATAPULT_ARM_LENGTH, catapultArtAngle, flipperArtAngle, flipperArtRect } from './launcher-art';
 import repeatingBgUrl from '../assets/bg/repeating.webp';
 import mineEntranceUrl from '../assets/bg/mine-entrance.webp';
 import mineUrl from '../assets/bg/mine.webp';
@@ -402,7 +403,7 @@ function drawMarble(ctx: CanvasRenderingContext2D, game: Game, m: Marble, t: num
   ctx.restore();
 }
 
-export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, cw: number, ch: number, t: number, options: { minimap?: boolean; shake?: boolean } = {}) {
+export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, cw: number, ch: number, t: number, options: { minimap?: boolean; shake?: boolean; workshopPreview?: boolean } = {}) {
   ctx.clearRect(0, 0, cw, ch);
 
   const theme = game.track.theme;
@@ -922,7 +923,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
         drawSeesaw(ctx, b, md);
         break;
       case 'bridge':
-        drawBridgePlank(ctx, b, md);
+        drawBridgePlank(ctx, b, md, game);
         break;
       case 'conveyor':
         drawConveyor(ctx, b, md, game, t);
@@ -932,10 +933,10 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
         if (!b.isSensor) drawCannon(ctx, b, md, game, t);
         break;
       case 'catapult':
-        if (!b.isSensor) drawCatapult(ctx, b, md, game, t);
+        if (!b.isSensor) drawCatapult(ctx, b, md, game, options.workshopPreview ? t : undefined);
         break;
       case 'flipper':
-        drawFlipper(ctx, b, md, t);
+        drawFlipper(ctx, b, md, game.time, options.workshopPreview ? t : undefined);
         break;
       case 'sling':
         drawSling(ctx, b, md, game, t);
@@ -2352,25 +2353,39 @@ function drawCannon(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnTy
  * Catapult: a trebuchet frame with the arm reposing on its state clocks; the spoon cup rides
  * the tip and the frame shows a release flash for a beat after the throw.
  */
-function drawCatapult(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnType<typeof meta>, game: Game, _t: number) {
+function drawCatapult(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnType<typeof meta>, game: Game, previewTime?: number) {
   const ct = md.catapult;
   if (!ct) return;
-  const a = catapultAngle(ct, game.time);
+  const a = catapultArtAngle(ct, game.time, previewTime);
   const P = { x: ct.px, y: ct.py };
   ctx.save();
-  // A-frame stand
+  ctx.translate(P.x, P.y);
+  // The supplied A-frame stays planted; only the separate arm follows the clock.
+  const base = sprite('catapult_static');
+  const mirror = Math.cos(ct.restA) < 0 ? -1 : 1;
+  ctx.save();
+  ctx.scale(mirror, 1);
+  if (base) {
+    const k = ct.len / 600;
+    ctx.drawImage(base, -CATAPULT_BASE.pivotX * k, -CATAPULT_BASE.pivotY * k, CATAPULT_BASE.width * k, CATAPULT_BASE.height * k);
+  } else {
   ctx.strokeStyle = '#78350f';
   ctx.lineWidth = 7;
-  ctx.beginPath(); ctx.moveTo(P.x - 26, P.y + 34); ctx.lineTo(P.x, P.y - 6); ctx.lineTo(P.x + 26, P.y + 34); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-26, 34); ctx.lineTo(0, -6); ctx.lineTo(26, 34); ctx.stroke();
   ctx.strokeStyle = '#451a03';
   ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(P.x - 34, P.y + 34); ctx.lineTo(P.x + 34, P.y + 34); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-34, 34); ctx.lineTo(34, 34); ctx.stroke();
+  }
+  ctx.restore();
   // arm with spoon
-  ctx.translate(P.x, P.y);
   ctx.rotate(a);
-  // arm art spans the pivot..spoon rectangle [0, len+22] so the machine rides
-  // the arm instead of hanging backwards off the pivot
-  if (!drawSprite(ctx, 'catapult', (ct.len + 22) / 2, 0, ct.len + 22, 26)) {
+  ctx.scale(1, mirror);
+  const arm = sprite('catapult_arm');
+  if (arm) {
+    const k = ct.len / CATAPULT_ARM_LENGTH;
+    ctx.rotate(-CATAPULT_ARM_AXIS);
+    ctx.drawImage(arm, -CATAPULT_ARM.pivotX * k, -CATAPULT_ARM.pivotY * k, CATAPULT_ARM.width * k, CATAPULT_ARM.height * k);
+  } else {
     ctx.fillStyle = '#92610f';
     ctx.fillRect(0, -5, ct.len, 10);
     ctx.strokeStyle = '#451a03';
@@ -2395,15 +2410,17 @@ function drawCatapult(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: Return
 }
 
 /** Flipper: a lacquered bat on a brass pivot, pose read from its firedAt clock. */
-function drawFlipper(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnType<typeof meta>, t: number) {
+function drawFlipper(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnType<typeof meta>, gameTime: number, previewTime?: number) {
   const fl = md.flipper;
   if (!fl) return;
-  const a = flipperAngle(fl, t);
+  const a = flipperArtAngle(fl, gameTime, previewTime);
   ctx.save();
   ctx.translate(fl.px, fl.py);
   ctx.rotate(a);
-  // bat art runs from the pivot along +x like the fallback roundRect
-  if (!drawSpriteContent(ctx, 'flipper', 0, -8, fl.len, 8)) {
+  ctx.scale(1, fl.side);
+  const rect = flipperArtRect(fl.len);
+  // Keep the painted bolt on the hinge and mirror the right bat without turning its lighting upside down.
+  if (!drawSprite(ctx, 'flipper', rect.x, rect.y, rect.w, rect.h)) {
     ctx.fillStyle = '#9f1239';
     ctx.strokeStyle = '#4c0519';
     ctx.lineWidth = 2;
@@ -2412,13 +2429,13 @@ function drawFlipper(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnT
     ctx.fill(); ctx.stroke();
     ctx.fillStyle = '#fda4af';
     ctx.fillRect(fl.len - 12, -6, 10, 12);
+  // Fallback pivot cap; the supplied sprite already includes its iron hinge.
+  ctx.fillStyle = '#b45309';
+  ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#fde68a';
+  ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill();
   }
   ctx.restore();
-  // pivot cap
-  ctx.fillStyle = '#b45309';
-  ctx.beginPath(); ctx.arc(fl.px, fl.py, 7, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#fde68a';
-  ctx.beginPath(); ctx.arc(fl.px, fl.py, 3, 0, Math.PI * 2); ctx.fill();
 }
 
 /** Slingshot kicker: a rubber-banded wedge on the wall; the band snaps back for a beat after a kick. */
@@ -2947,41 +2964,85 @@ function drawSeesaw(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnTyp
   ctx.restore();
 }
 
-/** Rope bridge plank: timber slat with rope ties; end planks grow an anchor post. */
-function drawBridgePlank(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>) {
+/** Cache each plank's predecessor once; positions remain live as the bridge sags. */
+const bridgePredecessors = new WeakMap<Game['track'], Map<Matter.Body, Matter.Body | null>>();
+function bridgePredecessor(game: Game, body: Matter.Body): Matter.Body | null {
+  let links = bridgePredecessors.get(game.track);
+  if (!links) {
+    links = new Map();
+    let previous: Matter.Body | null = null;
+    for (const plank of game.track.bodies) {
+      const br = meta(plank).bridge;
+      if (!br) continue;
+      links.set(plank, br.idx === 0 ? null : previous);
+      previous = plank;
+    }
+    bridgePredecessors.set(game.track, links);
+  }
+  return links.get(body) ?? null;
+}
+
+/** Painted timber deck with continuous ropes following the existing live plank bodies. */
+function drawBridgePlank(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, game: Game) {
   const br = md.bridge;
   if (!br) return;
-  const angle = b.angle;
+  const previous = bridgePredecessor(game, b);
+  const points = [previous?.position ?? br.anchor[0], b.position];
+  if (br.idx === br.n - 1) points.push(br.anchor[1]);
   ctx.save();
-  ctx.translate(b.position.x, b.position.y);
-  ctx.rotate(angle);
-  if (!drawSprite(ctx, 'bridge', 0, 0, br.plankLen, 12)) {
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  // Continuous handrope and lower suspension rope, with a dark edge and a warm fibre highlight.
+  for (const lift of [-24, 5]) {
+    for (const [width, colour] of [[5, '#352215'], [3, '#a77c43'], [1, '#e4bd76']] as const) {
+      ctx.strokeStyle = colour;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      points.forEach((p, i) => i ? ctx.lineTo(p.x, p.y + lift) : ctx.moveTo(p.x, p.y + lift));
+      ctx.stroke();
+    }
+  }
+  // One timber surface per collider, not a miniature bridge repeated on every collider.
+  if (!drawRail(ctx, b, 'rail-wood', [], 1.55)) {
+    ctx.save();
+    ctx.translate(b.position.x, b.position.y);
+    ctx.rotate(b.angle);
     ctx.fillStyle = '#a3653d';
     ctx.strokeStyle = '#51321c';
-    ctx.lineWidth = 1.6;
-    ctx.beginPath(); ctx.roundRect(-br.plankLen / 2, -4.5, br.plankLen, 9, 2); ctx.fill(); ctx.stroke();
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(-br.plankLen / 2, -5, br.plankLen, 12, 2); ctx.fill(); ctx.stroke();
+    ctx.restore();
   }
-  // rope ties at the slat ends
-  ctx.strokeStyle = '#b45309';
-  ctx.lineWidth = 2;
-  for (const sx of [-1, 1]) {
-    ctx.beginPath();
-    ctx.moveTo((br.plankLen / 2 - 5) * sx, -8);
-    ctx.lineTo((br.plankLen / 2 - 5) * sx, 8);
-    ctx.stroke();
+  // Lash each slat to the handrope; these remain attached as the deck flexes.
+  ctx.strokeStyle = '#50351f';
+  ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(b.position.x, b.position.y - 24); ctx.lineTo(b.position.x, b.position.y + 7); ctx.stroke();
+  ctx.strokeStyle = '#d0a36a';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = '#493329';
+  ctx.beginPath(); ctx.arc(b.position.x, b.position.y, 2.5, 0, Math.PI * 2); ctx.fill();
+  // Two fixed anchor posts; the deck and ropes move independently beneath them.
+  for (const end of [0, 1]) {
+    if (br.idx !== (end === 0 ? 0 : br.n - 1)) continue;
+    const anchor = br.anchor[end];
+    ctx.save();
+    ctx.translate(anchor.x, anchor.y);
+    const wood = ctx.createLinearGradient(-6, 0, 6, 0);
+    wood.addColorStop(0, '#422817'); wood.addColorStop(0.4, '#aa7140'); wood.addColorStop(1, '#50301d');
+    ctx.fillStyle = wood;
+    ctx.strokeStyle = '#2b211b';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(-6, -38, 12, 46, 3); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#55514a';
+    ctx.fillRect(-7, -35, 14, 5); ctx.fillRect(-7, 0, 14, 5);
+    ctx.strokeStyle = '#c79a62'; ctx.lineWidth = 2;
+    for (let y = -27; y <= -21; y += 3) {
+      ctx.beginPath(); ctx.moveTo(-7, y); ctx.lineTo(7, y + 1); ctx.stroke();
+    }
+    ctx.restore();
   }
   ctx.restore();
-  // anchor posts at the chain ends
-  if (br.idx === 0 || br.idx === br.n - 1) {
-    const anchor = br.anchor[br.idx === 0 ? 0 : 1];
-    ctx.fillStyle = '#6b4423';
-    ctx.fillRect(anchor.x - 5, anchor.y - 34, 10, 36);
-    ctx.strokeStyle = '#3f2a14';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(anchor.x - 5, anchor.y - 34, 10, 36);
-    ctx.fillStyle = '#a8a29e';
-    ctx.beginPath(); ctx.arc(anchor.x, anchor.y - 36, 5, 0, Math.PI * 2); ctx.fill();
-  }
 }
 
 /**
