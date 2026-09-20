@@ -63,7 +63,7 @@ import { saveTemplate, snapshotTemplate } from './editor/templates';
 import { History } from './editor/history';
 import { buildEditorTrack } from './editor/build';
 import { applyHandle, movePieces, mirrorPiece } from './editor/handles';
-import { applyPlacementSettings } from './editor/pieceSettings';
+import { clampToRange, SETTING_RANGES } from './editor/pieceSettings';
 import { ROTATE_STEP_DEG, rotateSelection } from './editor/rotate';
 import { FINISH_H, START_H } from '../game/track';
 import type { Piece, TrackDef } from '../game/trackdef';
@@ -446,16 +446,23 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
         return;
       }
 
-      const piece = applyPlacementSettings(toAdd[0], (question, value) => window.prompt(question, value));
+      const piece = toAdd[0];
 
-      // The new piece is not selected: the tool stays armed so the player can keep placing. Select mode (E) edits.
+      // Automatically select the new piece and open settings if it needs configuration
+      const needsConfig = ['trapdoor', 'crusher', 'boulder', 'magnet', 'geyser', 'wind'].includes(piece.t);
+
       commit(
         (def) => {
           def.pieces.push(piece);
           return def;
         },
-        { select: [] },
+        { select: needsConfig ? [circuit.def.pieces.length] : [] },
       );
+      
+      if (needsConfig) {
+        setArmed(null);
+        setSettingsOpen(true);
+      }
     },
     [armed, grid, commit, circuit.def.pieces.length],
   );

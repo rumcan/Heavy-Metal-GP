@@ -29,16 +29,36 @@ import { getTemplates } from './templates';
  * Handle icons, drawn in screen space: a red disc with a four-way arrow to move, a parchment disc with a
  * curved arrow to rotate, and a small ringed dot for every other handle (ends, size, radius, direction...).
  */
-function drawHandleIcon(ctx: CanvasRenderingContext2D, x: number, y: number, id: string) {
+function drawHandleIcon(ctx: CanvasRenderingContext2D, x: number, y: number, id: string, hover: boolean = false) {
   ctx.save();
   ctx.shadowColor = 'rgba(0,0,0,0.6)';
   ctx.shadowBlur = 4;
   ctx.shadowOffsetY = 1;
-  if (id === 'move' || id === 'rot') {
+
+  if (id === 'settings') {
+    ctx.shadowColor = hover ? 'rgba(96,165,250,0.8)' : 'transparent';
+    ctx.shadowBlur = hover ? 8 : 0;
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = hover ? '#ffffff' : '#94a3b8';
+    ctx.stroke();
+    // gear inside
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.beginPath();
+    ctx.arc(x, y, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 2.5;
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(x + Math.cos(a) * 4.5, y + Math.sin(a) * 4.5);
+      ctx.lineTo(x + Math.cos(a) * 8, y + Math.sin(a) * 8);
+      ctx.stroke();
+    }
+  } else if (id === 'move' || id === 'rot') {
     const r = 12;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fillStyle = id === 'move' ? '#d63e2e' : '#ede3c7';
+    ctx.fillStyle = id === 'move' ? (hover ? '#fb923c' : '#d63e2e') : (hover ? '#ffffff' : '#ede3c7');
     ctx.fill();
     ctx.shadowColor = 'transparent';
     ctx.lineWidth = 2;
@@ -82,13 +102,13 @@ function drawHandleIcon(ctx: CanvasRenderingContext2D, x: number, y: number, id:
       ctx.fill();
     }
   } else {
+    const r = 8;
     ctx.beginPath();
-    ctx.arc(x, y, 6, 0, Math.PI * 2);
-    ctx.fillStyle = '#ede3c7';
+    ctx.arc(x, y, hover ? r + 1 : r, 0, Math.PI * 2);
+    ctx.fillStyle = hover ? '#60a5fa' : '#1e3a8a';
     ctx.fill();
-    ctx.shadowColor = 'transparent';
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = '#d63e2e';
+    ctx.lineWidth = hover ? 2.5 : 2;
+    ctx.strokeStyle = hover ? '#ffffff' : '#93c5fd';
     ctx.stroke();
   }
   ctx.restore();
@@ -232,10 +252,13 @@ export default function EditorCanvas(props: Props) {
     type PieceDrag = { startWorld: Point; lastWorld: Point };
     type BoxDrag = { startWorld: Point; curWorld: Point };
     let handleDrag: HandleDrag | null = null;
+    let pendingSettingsClick: HandleDrag | null = null;
     let pieceDrag: PieceDrag | null = null;
     let boxDrag: BoxDrag | null = null;
     let pendingPlace: Point | null = null;
     let downPoint: Point | null = null;
+    let hoveredHandle: HandleDrag | null = null;
+
 
     const spreadOf = () => {
       const [a, b] = [...pointers.values()];
@@ -262,6 +285,11 @@ export default function EditorCanvas(props: Props) {
       const piece = pieces[idx];
       if (!piece) return null;
       const handles = handlesFor(piece);
+      const bounds = pbRef.current[idx];
+      if (bounds) {
+        handles.push({ id: 'settings', x: bounds.max.x + 25, y: bounds.min.y - 25, cursor: 'pointer', label: 'Settings' });
+      }
+
       const camScale = camera().scale;
       const radiusWorld = HANDLE_SCREEN / camScale;
       let best: HandleDrag | null = null;
@@ -302,6 +330,10 @@ export default function EditorCanvas(props: Props) {
         if (!armedRef.current) {
           const h = hitHandleReal(worldRaw);
           if (h) {
+            if (h.handleId === 'settings') {
+              pendingSettingsClick = h;
+              return;
+            }
             handleDrag = h;
             startTxRef.current();
             // Prevent pan
@@ -363,6 +395,8 @@ export default function EditorCanvas(props: Props) {
         boxDrag = null;
         pendingPlace = null;
         pan = null;
+        hoveredHandle = null;
+
         const middle = localPoint(middleOf().x, middleOf().y);
         pinch = { spread: spreadOf(), world: worldAt(camera(), middle.x, middle.y, width, height), scale: camera().scale };
       }
@@ -391,6 +425,14 @@ export default function EditorCanvas(props: Props) {
         const newCam = { x: pinch.world.x - (middle.x - width / 2) / scale, y: pinch.world.y - (middle.y - height / 2) / scale, scale };
         rig.camera = clampCamera(newCam, width, height, trackHeight());
         return;
+      }
+
+      if (!handleDrag && !pieceDrag && !boxDrag && !pan && !armedRef.current && !pendingPlace) {
+        hoveredHandle = hitHandleReal(worldRaw);
+        canvas.style.cursor = hoveredHandle ? 'pointer' : 'crosshair';
+      } else {
+        hoveredHandle = null;
+        if (!pan) canvas.style.cursor = 'crosshair';
       }
 
       if (handleDrag) {
@@ -450,6 +492,8 @@ export default function EditorCanvas(props: Props) {
       const wasBox = boxDrag;
       const wasPan = pan;
       const wasPendingPlace = pendingPlace;
+      const wasPendingSettingsClick = pendingSettingsClick;
+
       const down = downPoint;
       const isClick = down && Math.hypot(event.clientX - down.x, event.clientY - down.y) <= DRAG_SLOP;
 
@@ -498,6 +542,15 @@ export default function EditorCanvas(props: Props) {
       }
       if (wasPendingPlace && isClick) {
         onPlaceRef.current(world);
+      } else if (wasPendingSettingsClick && isClick) {
+        const panel = document.querySelector('.editor-inspector');
+        if (panel) {
+          panel.scrollTo({ top: 0, behavior: 'smooth' });
+          const originalBg = (panel as HTMLElement).style.backgroundColor;
+          (panel as HTMLElement).style.backgroundColor = '#1e293b';
+          setTimeout(() => { (panel as HTMLElement).style.backgroundColor = originalBg; }, 400);
+        }
+        pendingSettingsClick = null;
       } else if (!wasHandle && !wasPiece && !wasBox && !wasPan && isClick) {
         // Empty click (no handle/piece/box/pan/place)
         // If hit nothing and not armed, clear selection
@@ -658,6 +711,10 @@ export default function EditorCanvas(props: Props) {
         const piece = pieces[idx];
         if (!piece) return;
         const handles = handlesFor(piece);
+        const bounds = pb[idx];
+        if (bounds) {
+          handles.push({ id: 'settings', x: bounds.max.x + 25, y: bounds.min.y - 25, cursor: 'pointer', label: 'Settings' });
+        }
         // Rotate handle: a stalk from the centre with a curved arrow, drawn under the knobs.
         const rot = handles.find((h) => h.id === 'rot');
         const centre = handles[0];
@@ -675,9 +732,11 @@ export default function EditorCanvas(props: Props) {
           ctx.setLineDash([]);
           ctx.restore();
         }
+
         for (const h of handles) {
           const s = toScreen(h);
-          drawHandleIcon(ctx, s.x, s.y, h.id);
+          const isHover = hoveredHandle?.pieceIndex === idx && hoveredHandle?.handleId === h.id;
+          drawHandleIcon(ctx, s.x, s.y, h.id, isHover);
         }
         // Direction arrows for pad/boost/hoop etc: draw line from move handle to dir handle
         const move = handles.find((h) => h.id === 'move');

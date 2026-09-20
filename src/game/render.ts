@@ -1457,19 +1457,14 @@ function drawSaw(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<t
   // the slot bed (static path), drawn each frame under the disc — cheap: two rails and shadow
   if (motion.a.x !== motion.b.x || motion.a.y !== motion.b.y) {
     ctx.save();
-    ctx.strokeStyle = '#52341c';
-    ctx.lineWidth = r * 1.5;
-    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(120,113,108,0.5)';
+    ctx.setLineDash([6, 6]);
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(motion.a.x, motion.a.y + r * 0.35);
-    ctx.lineTo(motion.b.x, motion.b.y + r * 0.35);
+    ctx.moveTo(motion.a.x, motion.a.y);
+    ctx.lineTo(motion.b.x, motion.b.y);
     ctx.stroke();
-    ctx.strokeStyle = '#2f2012';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(motion.a.x, motion.a.y + r * 0.9);
-    ctx.lineTo(motion.b.x, motion.b.y + r * 0.9);
-    ctx.stroke();
+    ctx.setLineDash([]);
     ctx.restore();
   }
   const spin = t * motion.spinW * 0.06 + motion.phaseMs * 0.01;
@@ -1885,9 +1880,11 @@ function drawTrapdoor(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnT
   ctx.rotate(b.angle);
   const img = sprite('trapdoor');
   if (img) {
-    // hinge sits at art's left edge, door extends dirX
-    if (dirX === 1) ctx.drawImage(img, 0, -thick * 1.2, len, thick * 2.4);
-    else { ctx.scale(-1, 1); ctx.drawImage(img, 0, -thick * 1.2, len, thick * 2.4); ctx.scale(-1, 1); }
+    // The trapdoor graphic has transparent padding on its sides.
+    // By shifting it left by ~25% of len, the visual metal hinge aligns with x=0.
+    const pad = len * 0.25;
+    if (dirX === 1) ctx.drawImage(img, -pad, -thick * 1.2, len + pad * 2, thick * 2.4);
+    else { ctx.scale(-1, 1); ctx.drawImage(img, -pad, -thick * 1.2, len + pad * 2, thick * 2.4); ctx.scale(-1, 1); }
   } else {
     // grating floor: frame + bars
     const x0 = dirX === 1 ? 0 : -len;
@@ -2485,36 +2482,42 @@ function drawWind(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<
   const w = md.wind;
   if (!w) return;
   const { x: lx, y: ly, w: bw, h: bh } = w.box;
-  const k = fieldPulse(t, w.pulseMs, w.phaseMs);
   ctx.save();
-  ctx.globalAlpha = 0.06 + 0.1 * k;
-  ctx.fillStyle = '#38bdf8';
-  ctx.fillRect(lx, ly, bw, bh);
-  ctx.globalAlpha = 1;
-  // drift ribbons sliding along the fan's push
-  const vx = w.ux, vy = w.uy;
-  ctx.strokeStyle = `rgba(125,211,252,${0.25 + 0.5 * k})`;
-  ctx.lineWidth = 2;
-  const travel = ((t * 0.14 * k) % Math.max(bh, 1)) | 0;
-  for (let i = 0; i < 4; i++) {
-    const oy = ((travel + i * (bh / 4)) % bh) - 6;
-    const cx = lx + bw / 2;
-    const cy = ly + oy;
+  
+  const cx = lx + bw / 2;
+  const cy = ly + bh / 2;
+  const angle = Math.atan2(w.uy, w.ux) + Math.PI / 2;
+  const fade = (Math.sin(t / (3000 / (Math.PI * 2))) + 1) / 2;
+  
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+  
+  ctx.strokeStyle = `rgba(125, 211, 252, ${0.2 * fade})`;
+  ctx.lineWidth = 15;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  
+  for (let i = -1; i <= 1; i++) {
+    const yOffset = i * 40;
     ctx.beginPath();
-    ctx.moveTo(cx - 12 + vx * 6, cy - vy * 6);
-    ctx.quadraticCurveTo(cx, cy - 2, cx + vx * 22, cy + vy * 22);
+    ctx.moveTo(-40, yOffset + 20);
+    ctx.lineTo(0, yOffset - 20);
+    ctx.lineTo(40, yOffset + 20);
     ctx.stroke();
   }
+  ctx.restore();
+
+  ctx.save();
   // the fan box rides the leading corner of the field — same placement
   // formula the editor's selection bounds use (windFanAnchor)
   const fan = windFanAnchor(w);
   ctx.translate(fan.x, fan.y);
-  // centred on the fan anchor, same rectangle the fallback fills
-  if (!drawSprite(ctx, 'wind', 0, 0, 28, 20)) {
+  // centred on the fan anchor, scaled up 400%
+  if (!drawSprite(ctx, 'wind', 0, 0, 112, 80)) {
     ctx.fillStyle = '#57534e';
-    ctx.fillRect(-14, -10, 28, 20);
+    ctx.fillRect(-56, -40, 112, 80);
     ctx.fillStyle = '#fbbf24';
-    ctx.fillRect(-4, -4, 8, 8);
+    ctx.fillRect(-16, -16, 32, 32);
   }
   ctx.restore();
   void b;
@@ -2550,20 +2553,10 @@ function drawMud(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<t
   const cx = b.position.x, cy = b.position.y;
   ctx.save();
   ctx.translate(cx, cy);
-  ctx.rotate(b.angle);
-  const len = mud.box.w * Math.abs(Math.cos(b.angle)) + mud.box.h * Math.abs(Math.sin(b.angle)) || mud.box.w;
-  void len;
-  // glossy tar band centred on the sensor band (18px tall); painted sheen over the base fill
-  ctx.fillStyle = '#1c1917';
-  ctx.beginPath(); ctx.ellipse(0, 0, mud.box.w / 2, 9, 0, 0, Math.PI * 2); ctx.fill();
-  drawSprite(ctx, 'mud', 0, 0, mud.box.w + 26, 26);
-  ctx.fillStyle = '#44403c';
-  const wob = Math.sin(t / 500) * 2;
-  ctx.beginPath(); ctx.ellipse(-mud.box.w / 5, -2 + wob, 4, 2.4, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(mud.box.w / 6, 1 - wob, 3, 2, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = 'rgba(120,113,108,0.5)';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.ellipse(0, 0, mud.box.w / 2, 9, 0, Math.PI, 0); ctx.stroke();
+
+  // Draw the normal graphic upright in the center
+  drawSprite(ctx, 'mud', 0, 0, mud.box.w, mud.box.h);
+
   ctx.restore();
 }
 
@@ -3097,9 +3090,15 @@ function drawConveyor(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: Return
   ctx.lineWidth = 3;
   for (let x = -L / 2 + offset; x < L / 2 - 8; x += 46) {
     ctx.beginPath();
-    ctx.moveTo(x - 6, -6);
-    ctx.lineTo(x + 5, 0);
-    ctx.lineTo(x - 6, 6);
+    if (dir === 1) {
+      ctx.moveTo(x - 6, -6);
+      ctx.lineTo(x + 5, 0);
+      ctx.lineTo(x - 6, 6);
+    } else {
+      ctx.moveTo(x + 6, -6);
+      ctx.lineTo(x - 5, 0);
+      ctx.lineTo(x + 6, 6);
+    }
     ctx.stroke();
   }
   ctx.restore();

@@ -917,7 +917,8 @@ export class Game {
         if (this.time < (m.slingAt ?? -1e9) + 900) break;
         m.slingAt = this.time;
         const bnc = 0.7 + 0.09 * (m.info.stats.bounce ?? 5);
-        const k = md.sling.strength * bnc;
+        const weightFactor = 1 + (5 - (m.info.stats.weight ?? 5)) * 0.1;
+        const k = md.sling.strength * bnc * weightFactor;
         const v = Body.getVelocity(m.body);
         Body.setVelocity(m.body, { x: v.x + md.sling.facing.x * k, y: v.y + md.sling.facing.y * k });
         md.sling.flashAt = this.time;

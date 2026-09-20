@@ -1781,8 +1781,10 @@ const segWheelLift: Seg = (b, y) => {
   b.waterWheel(300, y + 260, 130, 6, 3.2 + b.rng() * 1.0, 0, 300);
   // exit lane: catches the tip-out at (365, y+147) moving right+down
   b.ramp(370, y + 170, W - 20, y + 470);
+  b.scoop(W - 35, y + 470 - 15, 230, 800);
   // trough under the wheel for misses — converges beside the exit lane
   b.ramp(60, y + 420, W - 20, y + 492);
+  b.scoop(W - 35, y + 492 - 15, 230, 800);
   if (b.rng() < 0.4) b.itemBox(520 + b.rng() * 160, y + 360);
   return 540;
 };
@@ -1796,7 +1798,9 @@ const segScrewTower: Seg = (b, y) => {
   b.ramp(0, y + 330, 430, y + 440);
   b.screwLift(440, y + 440, 760, y + 120, 2400 + b.rng() * 800, 4);
   b.ramp(740, y + 140, W - 10, y + 300);
+  b.scoop(W - 25, y + 300 - 15, 230, 800);
   b.ramp(420, y + 480, W - 10, y + 530);
+  b.scoop(W - 25, y + 530 - 15, 230, 800);
   return 560;
 };
 
@@ -1809,6 +1813,7 @@ const segBeltway: Seg = (b, y) => {
   b.ramp(0, y + 30, 60, y + 70);
   b.conveyor(60, y + 70, 500, y + 285, 0.2 + b.rng() * 0.1, 6000 + b.rng() * 3000, 1);
   b.ramp(500, y + 285, W - 10, y + 420);
+  b.scoop(W - 25, y + 420 - 15, 230, 800);
   if (b.rng() < 0.5) b.itemBox(620 + b.rng() * 200, y + 330);
   return 460;
 };
@@ -1823,7 +1828,9 @@ const segTeeterCrossing: Seg = (b, y) => {
   b.ramp(0, y + 30, 330, y + 190);
   b.seesaw(360, y + 215, 380, 16, 0.88);
   b.ramp(500, y + 250, W - 10, y + 430);
+  b.scoop(W - 25, y + 430 - 15, 230, 800);
   b.ramp(150, y + 330, W - 10, y + 450);
+  b.scoop(W - 25, y + 450 - 15, 230, 800);
   return 500;
 };
 
@@ -1836,7 +1843,9 @@ const segRopeCrossing: Seg = (b, y) => {
   b.ramp(0, y + 60, 320, y + 180);
   b.ropeBridge(330, y + 205, 590, y + 215, 8, 34 + b.rng() * 14);
   b.ramp(590, y + 215, W - 10, y + 430);
+  b.scoop(W - 25, y + 430 - 15, 230, 800);
   b.ramp(330, y + 340, W - 10, y + 442);
+  b.scoop(W - 25, y + 442 - 15, 230, 800);
   return 480;
 };
 
@@ -1857,9 +1866,11 @@ const segCannonRun: Seg = (b, y) => {
   // the high shelf the shot lands on
   b.ramp(350, y + 120, 560, y + 180);
   b.ramp(560, y + 180, W - 20, y + 440);
+  b.scoop(W - 35, y + 440 - 15, 230, 800);
   // the catch lane underneath — walk-throughs and short shots land here, fluting to the out
   b.ramp(360, y + 200, 480, y + 260);
   b.ramp(480, y + 260, W - 10, y + 470);
+  b.scoop(W - 25, y + 470 - 15, 230, 800);
   return 520;
 };
 
@@ -1877,9 +1888,11 @@ const segCatapultLedge: Seg = (b, y) => {
   // the shelf the fling lands on — staged into the throw's wing (see mb10d-sanity), then on to the out
   b.ramp(310, y + 280, 520, y + 350);
   b.ramp(520, y + 350, W - 20, y + 450);
+  b.scoop(W - 35, y + 450 - 15, 230, 800);
   // the bowl's through lane — rises to graze the resting spoon so every passer earns a fling
   b.ramp(160, y + 330, 470, y + 420);
   b.ramp(470, y + 420, W - 10, y + 530);
+  b.scoop(W - 25, y + 530 - 15, 230, 800);
   return 550;
 };
 
@@ -1896,6 +1909,7 @@ const segFlipperAlley: Seg = (b, y) => {
   // the gap floor slides across regardless
   b.ramp(440, y + 250, 720, y + 340);
   b.ramp(720, y + 340, W - 10, y + 500);
+  b.scoop(W - 25, y + 500 - 15, 230, 800);
   if (b.rng() < 0.5) b.flipper(740, y + 356, 1, 108 + b.rng() * 14, 2.2 + b.rng() * 0.6, 1400 + b.rng() * 600, b.rng() * 1000);
   return 540;
 };
@@ -1917,6 +1931,7 @@ const segSlingChute: Seg = (b, y) => {
   b.sling(380, y + 485, 125, 305, 3.6 + b.rng() * 0.8);
   // funnel out
   b.ramp(340, y + 540, W - 10, y + 615);
+  b.scoop(W - 25, y + 615 - 15, 230, 800);
   return 660;
 };
 
@@ -1940,8 +1955,9 @@ const segScoopSubway: Seg = (b, y) => {
     b.scoop(545, y + 223, 279, 600 + b.rng() * 400);
   }
   b.ramp(640, y + 250, W - 10, y + 430);
+  b.scoop(W - 25, y + 430 - 15, 230, 800);
   // the subway surfaces here; its floor slides into the same out
-  if (subway) b.ramp(240, y + 460, W - 10, y + 520);
+  if (subway) { b.ramp(240, y + 460, W - 10, y + 520); b.scoop(W - 25, y + 520 - 15, 230, 800); }
   return 560;
 };
 
@@ -1960,8 +1976,10 @@ const segFanGarden: Seg = (b, y) => {
   // the fan: up-and-following, breathing on the race clock
   b.wind(360, y - 200, 560, y + 320, 300, 0.34 + b.rng() * 0.08, 2600 + b.rng() * 1600, b.rng() * 2600);
   b.ramp(560, y + 160, W - 20, y + 330); // the far shore
+  b.scoop(W - 35, y + 330 - 15, 230, 800);
   // under-trough: anything that sinks lands here — the low road still takes you out
   b.ramp(60, y + 320, W - 10, y + 440);
+  b.scoop(W - 25, y + 440 - 15, 230, 800);
   return 480;
 };
 
@@ -1982,6 +2000,7 @@ const segLodestoneWay: Seg = (b, y) => {
   b.magnet(190, y + 430, 175, 4.8 + b.rng() * 0.8, 4600 + b.rng() * 1200, b.rng() * 4600);
   b.ramp(120, y + 360, 660, y + 520);
   b.ramp(660, y + 520, W - 20, y + 630);
+  b.scoop(W - 35, y + 630 - 15, 230, 800);
   return 670;
 };
 
@@ -1996,6 +2015,7 @@ const segTarFlats: Seg = (b, y) => {
   b.ramp(260, y + 140, 560, y + 300);
   b.mud(430, y + 246, 700, y + 364, 0.26 + b.rng() * 0.08);
   b.ramp(560, y + 300, W - 10, y + 470);
+  b.scoop(W - 25, y + 470 - 15, 230, 800);
   return 510;
 };
 
@@ -2009,6 +2029,7 @@ const segSkippingPools: Seg = (b, y) => {
   b.pool(290, y + 170, 620, y + 170, 96, 6.5);
   // the exit ramp tip sits a hair under the waterline, so skimming marbles glide clear
   b.ramp(634, y + 186, W - 20, y + 340);
+  b.scoop(W - 35, y + 340 - 15, 230, 800);
   // left backstop above the waterline: drift-waders hit it and settle instead of rebounding out
   b.ramp(240, y + 190, 330, y + 230);
   return 380;
@@ -2030,6 +2051,7 @@ const segVentField: Seg = (b, y) => {
   b.ramp(590, y + 266, 660, y + 290);
   b.geyser(690, y + 280, 260, p3, b.rng() * p3);
   b.ramp(720, y + 298, W - 10, y + 420);
+  b.scoop(W - 25, y + 420 - 15, 230, 800);
   return 460;
 };
 
@@ -2048,8 +2070,10 @@ const segBounceNet: Seg = (b, y) => {
   b.trampoline(390, y + 250, 175, 1.1 + b.rng() * 0.5);
   // gully bottom: the low road for anyone under-sprung
   b.ramp(60, y + 330, W - 10, y + 440);
+  b.scoop(W - 25, y + 440 - 15, 230, 800);
   // landing shelf back up at water level, reachable off a real bounce
   b.ramp(540, y + 160, W - 20, y + 290);
+  b.scoop(W - 35, y + 290 - 15, 230, 800);
   return 480;
 };
 
@@ -2065,6 +2089,7 @@ const segTurnstileSquare: Seg = (b, y) => {
   b.ramp(470, y + 220, 180, y + 380);
   b.turnstile(200, y + 356, 3, 88, 1, 4200, b.rng() * 4200); // free spin on the clock
   b.ramp(180, y + 380, W - 20, y + 560);
+  b.scoop(W - 35, y + 560 - 15, 230, 800);
   return 600;
 };
 
@@ -2078,6 +2103,7 @@ const segTargetGate: Seg = (b, y) => {
   b.ramp(300, y + 170, 520, y + 186);
   b.targets(370, y + 178, 3 + Math.floor(b.rng() * 3), 5200 + b.rng() * 2200);
   b.ramp(520, y + 196, W - 20, y + 330);
+  b.scoop(W - 35, y + 330 - 15, 230, 800);
   return 380;
 };
 
@@ -2088,9 +2114,11 @@ const segTargetGate: Seg = (b, y) => {
  */
 const segVortexBowl: Seg = (b, y) => {
   b.flip = b.rng() < 0.5;
-  b.ramp(0, y + 30, 880, y + 300);
+  b.ramp(0, y + 30, W - 20, y + 270);
+  b.tunnel(W - 35, y + 270 - 15, W / 2, y + 360, 0, 1);
   b.vortex(560, y + 180, 175, 1.35 + b.rng() * 0.5, 34);
-  b.ramp(0, y + 420, 880, y + 560);
+  b.ramp(0, y + 420, W - 20, y + 540);
+  b.scoop(W - 35, y + 540 - 15, 230, 800);
   return 600;
 };
 
@@ -2102,8 +2130,10 @@ const segDrawbridgeGap: Seg = (b, y) => {
   b.flip = b.rng() < 0.5;
   b.ramp(0, y + 30, 380, y + 190);
   b.ramp(560, y + 190, W - 20, y + 340);
+  b.scoop(W - 35, y + 340 - 15, 230, 800);
   b.platform(405, y + 226, 535, y + 226, 130, 2200 + b.rng() * 900, 1500, b.rng() * 1800);
   b.ramp(60, y + 420, W - 10, y + 520);
+  b.scoop(W - 25, y + 520 - 15, 230, 800);
   return 560;
 };
 

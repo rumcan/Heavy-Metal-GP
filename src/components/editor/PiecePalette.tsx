@@ -1,5 +1,5 @@
 import { useState, useEffect, Fragment } from 'react';
-import { Settings } from 'lucide-react';
+import { Settings, Weight, Zap, CircleDot } from 'lucide-react';
 import { PALETTE } from './palette';
 import { getTemplates, deleteTemplate } from './templates';
 
@@ -12,6 +12,44 @@ interface Props {
   onPick: (id: string) => void;
   onShowToast?: (msg: string) => void;
 }
+
+const StatEffects = ({ effects }: { effects?: { weight?: number, speed?: number, bounce?: number } }) => {
+  if (!effects) return null;
+  const items = [
+    { icon: <Weight size={12} />, label: 'Weight', value: effects.weight, color: '#f59e0b' },
+    { icon: <Zap size={12} />, label: 'Speed', value: effects.speed, color: '#3b82f6' },
+    { icon: <CircleDot size={12} />, label: 'Bounce', value: effects.bounce, color: '#10b981' },
+  ].filter(i => i.value !== undefined);
+
+  if (items.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: '8px', background: '#161b22', borderRadius: '4px', padding: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      <div style={{ fontSize: '9px', color: '#8ea2b5', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>Stat Effects</div>
+      {items.map((it, idx) => (
+        <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#c9d1d9', width: '64px', fontSize: '10px' }}>
+            <span style={{ color: it.color, display: 'flex' }}>{it.icon}</span>
+            {it.label}
+          </div>
+          <div style={{ flex: 1, background: '#0d1117', height: '6px', borderRadius: '999px', position: 'relative', overflow: 'hidden' }}>
+            {/* Center marker */}
+            <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: '1px', background: '#30363d', zIndex: 10 }}></div>
+            {/* Gauge fill */}
+            <div style={{
+              position: 'absolute',
+              top: 0, bottom: 0,
+              left: it.value! < 0 ? `${50 + it.value! / 2}%` : '50%',
+              right: it.value! > 0 ? `${50 - it.value! / 2}%` : '50%',
+              backgroundColor: it.value! > 0 ? '#10b981' : '#f43f5e',
+              borderRadius: '999px'
+            }}></div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
 
 export default function PiecePalette({ active, onPick, onShowToast }: Props) {
   const [tab, setTab] = useState<'base' | 'templates'>('base');
@@ -69,24 +107,7 @@ export default function PiecePalette({ active, onPick, onShowToast }: Props) {
               }}>
                 <strong style={{ color: '#e6edf3', fontSize: '12px', letterSpacing: '0.5px' }}>{tile.label}</strong>
                 <p style={{ margin: 0, fontSize: '10px', lineHeight: 1.5, color: '#8ea2b5' }}>{tile.hint}</p>
-                <div style={{ marginTop: '4px', display: 'flex' }}>
-                  <button
-                    type="button"
-                    className="editor-tool-select"
-                    style={{ fontSize: '9px', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}
-                    onClick={() => {
-                      const msg = "Place this item on the track first, then select it to edit its settings.";
-                      if (onShowToast) {
-                        onShowToast(msg);
-                      } else {
-                        console.log(msg);
-                      }
-                    }}
-                  >
-                    <Settings size={12} style={{ marginRight: '4px' }} />
-                    Settings
-                  </button>
-                </div>
+                <StatEffects effects={tile.effects} />
               </div>
             )}
           </Fragment>
@@ -138,24 +159,6 @@ export default function PiecePalette({ active, onPick, onShowToast }: Props) {
                 }}>
                   <strong style={{ color: '#e6edf3', fontSize: '12px', letterSpacing: '0.5px' }}>{tpl.name}</strong>
                   <p style={{ margin: 0, fontSize: '10px', lineHeight: 1.5, color: '#8ea2b5' }}>A custom grouping of pieces saved as a template. Place it on the track to use it.</p>
-                  <div style={{ marginTop: '4px', display: 'flex' }}>
-                    <button
-                      type="button"
-                      className="editor-tool-select"
-                      style={{ fontSize: '9px', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}
-                      onClick={() => {
-                        const msg = "Place this template on the track first, then select its pieces to edit their settings.";
-                        if (onShowToast) {
-                          onShowToast(msg);
-                        } else {
-                          console.log(msg);
-                        }
-                      }}
-                    >
-                      <Settings size={12} style={{ marginRight: '4px' }} />
-                      Settings
-                    </button>
-                  </div>
                 </div>
               )}
             </Fragment>
