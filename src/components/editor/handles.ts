@@ -16,6 +16,7 @@ import { W } from '../../game/track';
 import { clampDeltaToExtent, xExtent } from './extent';
 import { fitGroupTranslation, translatePiece } from './translation';
 import { applyRotateHandle, hasFreeRotation, rotateHandlePoint } from './rotate';
+import { applyScaleHandle } from './scale';
 
 export interface Handle {
   id: string;
@@ -452,7 +453,8 @@ function baseHandles(piece: Piece): Handle[] {
 export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: number }, snap: boolean): Piece {
   // Handles of a flipped piece live in world space (see handlesFor); bring the pointer back into its stored space.
   if (piece.flip) to = { x: W - to.x, y: to.y };
-  if (handleId === 'rot') return applyRotateHandle(piece, to, snap);
+  if (handleId === 'rot' || handleId === 'box-rot') return applyRotateHandle(piece, to, snap);
+  if (handleId.startsWith('box-')) return applyScaleHandle(piece, handleId, to, snap);
   const sx = snap;
   switch (piece.t) {
     case 'ramp':

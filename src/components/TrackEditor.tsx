@@ -499,9 +499,9 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
   );
 
   const applyHandleChange = useCallback(
-    (pieceIndex: number, handleId: string, to: { x: number; y: number }) => {
+    (pieceIndex: number, handleId: string, to: { x: number; y: number }, initialPiece?: Piece) => {
       transact((def) => {
-        const p = def.pieces[pieceIndex];
+        const p = initialPiece || def.pieces[pieceIndex];
         if (!p) return def;
         def.pieces[pieceIndex] = applyHandle(p, handleId, to, grid);
         return def;

@@ -136,7 +136,7 @@ interface Props {
   onSelect: (indices: number[], additive: boolean) => void;
   onClear: () => void;
   onMoveSelected: (dx: number, dy: number) => void;
-  onHandleChange: (pieceIndex: number, handleId: string, to: Point) => void;
+  onHandleChange: (pieceIndex: number, handleId: string, to: Point, initialPiece?: any) => void;
   onOpenSettings: (pieceIndex: number) => void;
   startTransaction: () => void;
   transact: (mutate: (def: import('../../game/trackdef').TrackDef) => import('../../game/trackdef').TrackDef) => void;
@@ -251,7 +251,7 @@ export default function EditorCanvas(props: Props) {
     let pinch: { spread: number; world: Point; scale: number } | null = null;
 
     // drag modes
-    type HandleDrag = { pieceIndex: number; handleId: string };
+    type HandleDrag = { pieceIndex: number; handleId: string; initialPiece?: any };
     type PieceDrag = { startWorld: Point; lastWorld: Point };
     type BoxDrag = { startWorld: Point; curWorld: Point };
     let handleDrag: HandleDrag | null = null;
@@ -291,6 +291,12 @@ export default function EditorCanvas(props: Props) {
       const bounds = pbRef.current[idx];
       if (bounds) {
         handles.push({ id: 'settings', x: bounds.max.x + 25, y: bounds.min.y - 25, cursor: 'pointer', label: 'Settings' });
+        const mx = (bounds.min.x + bounds.max.x) / 2;
+        handles.push({ id: 'box-rot', x: mx, y: bounds.min.y - 25, cursor: 'grab', label: 'Rotate' });
+        handles.push({ id: 'box-nw', x: bounds.min.x, y: bounds.min.y, cursor: 'nwse-resize', label: 'Resize' });
+        handles.push({ id: 'box-ne', x: bounds.max.x, y: bounds.min.y, cursor: 'nesw-resize', label: 'Resize' });
+        handles.push({ id: 'box-sw', x: bounds.min.x, y: bounds.max.y, cursor: 'nesw-resize', label: 'Resize' });
+        handles.push({ id: 'box-se', x: bounds.max.x, y: bounds.max.y, cursor: 'nwse-resize', label: 'Resize' });
       }
 
       const camScale = camera().scale;
@@ -301,7 +307,7 @@ export default function EditorCanvas(props: Props) {
         const d = Math.hypot(h.x - world.x, h.y - world.y);
         if (d <= radiusWorld * 1.6 && d < bestDist) {
           bestDist = d;
-          best = { pieceIndex: idx, handleId: h.id };
+          best = { pieceIndex: idx, handleId: h.id, initialPiece: piece };
         }
       }
       return best;
@@ -440,7 +446,7 @@ export default function EditorCanvas(props: Props) {
 
       if (handleDrag) {
         // Drag handle to new world (snapped)
-        onHandleRef.current(handleDrag.pieceIndex, handleDrag.handleId, world);
+        onHandleRef.current(handleDrag.pieceIndex, handleDrag.handleId, world, handleDrag.initialPiece);
         return;
       }
 
@@ -711,6 +717,13 @@ export default function EditorCanvas(props: Props) {
         const bounds = pb[idx];
         if (bounds) {
           handles.push({ id: 'settings', x: bounds.max.x + 25, y: bounds.min.y - 25, cursor: 'pointer', label: 'Settings' });
+          const mx = (bounds.min.x + bounds.max.x) / 2;
+          // transform handles
+          handles.push({ id: 'box-rot', x: mx, y: bounds.min.y - 25, cursor: 'grab', label: 'Rotate' });
+          handles.push({ id: 'box-nw', x: bounds.min.x, y: bounds.min.y, cursor: 'nwse-resize', label: 'Resize' });
+          handles.push({ id: 'box-ne', x: bounds.max.x, y: bounds.min.y, cursor: 'nesw-resize', label: 'Resize' });
+          handles.push({ id: 'box-sw', x: bounds.min.x, y: bounds.max.y, cursor: 'nesw-resize', label: 'Resize' });
+          handles.push({ id: 'box-se', x: bounds.max.x, y: bounds.max.y, cursor: 'nwse-resize', label: 'Resize' });
         }
         // Rotate handle: a stalk from the centre with a curved arrow, drawn under the knobs.
         const rot = handles.find((h) => h.id === 'rot');
