@@ -673,7 +673,7 @@ export default function App() {
 
   const [pendingResult, setPendingResult] = useState<HeatResult[] | null>(null);
   const onHeatFinished = (results: HeatResult[]) => {
-    awardWinnings(results, !!(season && roundTrack(season, season.round)));
+    awardWinnings(results, !!(season && season.tracks?.[season.round]));
     setPendingResult(results);
     // Persist immediately, without replacing the active race's immutable roster or track.
     if (season) saveSeason(recordHeat(season, results));
@@ -826,7 +826,7 @@ export default function App() {
         profile={gp.profile}
         gridOrder={seasonGrid}
         trackDef={roundDef}
-        isCustom={!!roundDef}
+        isCustom={!!season.tracks?.[season.round]}
         title={roundName(season, season.round)}
         subtitle={`ROUND ${String(season.round + 1).padStart(2, '0')} / HEAT ${heatNo} OF ${HEATS_PER_GP}`}
         championship
