@@ -78,7 +78,7 @@ function buildDefault(type: PieceType, at: Point, snap = false): Piece {
     }
     case 'loop': {
       const r = 95;
-      // Loop's bottom sits at the cursor so the marble drops directly onto it.
+      // The ring bottom anchors the complete route assembled by placementPieces.
       return { t: 'loop', x: snap ? snapVal(cx) : cx, bottom: snap ? snapVal(cy) : cy, r };
     }
     case 'hoop': {

@@ -4,7 +4,7 @@ import { hingeTimerState, hingeIsOpen, trapdoorWarn, pistonState, beltDir } from
 import { meta, W, cannonAim } from './track';
 import { MARBLE_RADIUS, ITEM_INFO, skinFor, themeIdFor } from './types';
 import { ballFor, bodyFrame, contentBox, currentSkin, drawRail, drawSprite, drawStrip, setSkin, sprite } from './sprites';
-import { windFanAnchor } from '../components/editor/bounds';
+import { WIND_FAN_ART, windFanAnchor, windDustPose } from './wind-art';
 import { CATAPULT_ARM, CATAPULT_BASE, CATAPULT_ARM_AXIS, CATAPULT_ARM_LENGTH, catapultArtAngle, flipperArtAngle, flipperArtRect, warDrumArtRect, warDrumArtAngle } from './launcher-art';
 import repeatingBgUrl from '../assets/bg/repeating.webp';
 import mineEntranceUrl from '../assets/bg/mine-entrance.webp';
@@ -948,7 +948,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
         break;
       // ---- MB-10E: fields and surfaces ----
       case 'wind':
-        if (b.isSensor) drawWind(ctx, b, md, game, t);
+        if (b.isSensor) drawWind(ctx, b, md, game, options.workshopPreview ? t : game.time);
         break;
       case 'magnet':
         if (b.isSensor) drawMagnet(ctx, b, md, game, t);
@@ -2478,49 +2478,43 @@ function fieldPulse(t: number, pulseMs: number, phaseMs: number): number {
   return 0.35 + 0.65 * (0.5 + 0.5 * Math.cos((2 * Math.PI * (t + phaseMs)) / pulseMs));
 }
 
-function drawWind(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
+function drawWind(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
   const w = md.wind;
   if (!w) return;
   const { x: lx, y: ly, w: bw, h: bh } = w.box;
-  ctx.save();
-  
-  const cx = lx + bw / 2;
-  const cy = ly + bh / 2;
-  const angle = Math.atan2(w.uy, w.ux) + Math.PI / 2;
-  const fade = (Math.sin(t / (3000 / (Math.PI * 2))) + 1) / 2;
-  
-  ctx.translate(cx, cy);
-  ctx.rotate(angle);
-  
-  ctx.strokeStyle = `rgba(125, 211, 252, ${0.2 * fade})`;
-  ctx.lineWidth = 15;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  
-  for (let i = -1; i <= 1; i++) {
-    const yOffset = i * 40;
-    ctx.beginPath();
-    ctx.moveTo(-40, yOffset + 20);
-    ctx.lineTo(0, yOffset - 20);
-    ctx.lineTo(40, yOffset + 20);
-    ctx.stroke();
-  }
-  ctx.restore();
-
-  ctx.save();
-  // the fan box rides the leading corner of the field — same placement
-  // formula the editor's selection bounds use (windFanAnchor)
+  const k = fieldPulse(t, w.pulseMs, w.phaseMs);
   const fan = windFanAnchor(w);
+  const dust = windDustPose(w);
+  ctx.save();
+  // Keep the visible gust inside the force rectangle, including sideways and diagonal vents.
+  ctx.beginPath(); ctx.rect(lx, ly, bw, bh); ctx.clip();
   ctx.translate(fan.x, fan.y);
-  // centred on the fan anchor, scaled up 400%
-  if (!drawSprite(ctx, 'wind', 0, 0, 112, 80)) {
-    ctx.fillStyle = '#57534e';
-    ctx.fillRect(-56, -40, 112, 80);
-    ctx.fillStyle = '#fbbf24';
-    ctx.fillRect(-16, -16, 32, 32);
+  ctx.rotate(dust.angle);
+  // The narrow tip stays on the vent while the top sways and breathes gently.
+  ctx.transform(1, 0, Math.sin(t / 470) * 0.035, 1, 0, 0);
+  const width = dust.width * (0.94 + 0.035 * Math.sin(t / 310));
+  ctx.globalAlpha *= 0.6 + 0.12 * k;
+  if (!drawSprite(ctx, 'wind-dust', 0, -dust.height / 2, width, dust.height)) {
+    // Warm dust ribbons while the supplied texture loads; no blue fill or wind strokes.
+    ctx.strokeStyle = '#c49a68';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 4; i++) {
+      const u = ((t / 1800 + i / 4) % 1 + 1) % 1;
+      const y = -u * dust.height;
+      ctx.beginPath(); ctx.ellipse(0, y, Math.max(1, u * width / 2), 8, 0, 0.2, Math.PI * 1.7); ctx.stroke();
+    }
   }
   ctx.restore();
-  void b;
+  // The machine is fully opaque and drawn in front of the dust at four times the old size.
+  ctx.save();
+  ctx.translate(fan.x, fan.y);
+  const { w: fw, h: fh } = WIND_FAN_ART;
+  if (!drawSprite(ctx, 'wind', 0, 0, fw, fh)) {
+    ctx.fillStyle = '#57534e'; ctx.fillRect(-fw / 2, -fh / 2, fw, fh);
+    ctx.fillStyle = '#a16207'; ctx.fillRect(-fw * 0.4, -fh * 0.38, fw * 0.8, fh * 0.76);
+    ctx.fillStyle = '#292524'; ctx.beginPath(); ctx.arc(0, 0, fh * 0.32, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
 }
 
 function drawMagnet(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
@@ -2547,7 +2541,7 @@ function drawMagnet(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnTyp
   void b;
 }
 
-function drawMud(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
+function drawMud(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, _t: number) {
   const mud = md.mud;
   if (!mud) return;
   const cx = b.position.x, cy = b.position.y;

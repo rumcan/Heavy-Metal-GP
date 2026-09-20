@@ -187,7 +187,8 @@ test('Every palette tile previews real geometry, not a fallback dot', () => {
     const preview = ghostPreview(tile.id, CURSOR, snap);
     assert.ok(preview, `${tile.id} had no ghost at all`);
     assert.equal(preview!.label, tile.label);
-    assert.equal(preview!.pieces.length, 1, `${tile.id} previewed ${preview!.pieces.length} pieces, expected one`);
+    assert.equal(preview!.pieces.length, tile.id === 'loop' ? 4 : 1, `${tile.id} previewed the wrong number of pieces`);
+    assert.deepEqual(preview!.pieces.map(g => g.piece), placementPieces(tile.id, CURSOR, snap));
     const ghost = preview!.pieces[0];
     assert.ok(ghost.parts.length > 0, `${tile.id} previewed nothing`);
     const { minX, maxX, minY, maxY } = bbox(ghost.parts);
@@ -198,6 +199,21 @@ test('Every palette tile previews real geometry, not a fallback dot', () => {
     const placed = placementPieces(tile.id, CURSOR, snap)[0];
     assert.deepEqual(ghost.piece, placed);
     assert.deepEqual(ghost.handles, handlesFor(placed));
+  }
+});
+
+test('Loop placement fits its complete route at track edges without detaching the ramps', () => {
+  for (const x of [0, 450, W]) for (const snap of [false, true]) {
+    const pieces = placementPieces('loop', { x, y: 1500 }, snap)!;
+    const [loop, entry, boost, exit] = pieces;
+    assert.ok(loop.t === 'loop' && entry.t === 'curve' && boost.t === 'boost' && exit.t === 'curve');
+    assert.deepEqual(entry.b, [loop.x, loop.bottom]);
+    assert.deepEqual(exit.a, entry.b);
+    assert.equal(loop.x - entry.a[0], 470);
+    assert.equal(exit.b[0] - loop.x, 350);
+    assert.equal(boost.x, loop.x - 150);
+    assert.ok(entry.a[0] >= 0 && exit.b[0] <= W);
+    assert.deepEqual(ghostPreview('loop', { x, y: 1500 }, snap)!.pieces.map(g => g.piece), pieces);
   }
 });
 

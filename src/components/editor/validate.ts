@@ -225,6 +225,15 @@ function staticChecks(def: TrackDef, track: Track | null): ValidationIssue[] {
       const wantY = loop.bottom - need;
       let ok = false;
       for (const cand of def.pieces) {
+        if (cand.t === 'curve') {
+          const loopX = loop.flip ? W - loop.x : loop.x;
+          const nearBottom = [cand.a, cand.b].some(([x, y]) =>
+            Math.abs((cand.flip ? W - x : x) - loopX) < loop.r / 2 && Math.abs(y - loop.bottom) < 40);
+          if (nearBottom && Math.min(cand.a[1], cand.b[1]) < wantY) {
+            ok = true;
+            break;
+          }
+        }
         if (cand.t !== 'ramp' && cand.t !== 'ice') continue;
         const ys = [cand.a[1], cand.b[1]];
         const xs = [cand.a[0], cand.b[0]];

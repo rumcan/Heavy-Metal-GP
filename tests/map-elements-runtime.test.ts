@@ -6,6 +6,41 @@ import { PHYSICS_STEP } from '../src/game/physics';
 import { PALETTE } from '../src/components/editor/palette';
 import { defaultPiece } from '../src/components/editor/defaults';
 import type { Piece, TrackDef } from '../src/game/trackdef';
+import { placementPieces } from '../src/components/editor/ghost';
+import { W } from '../src/game/track';
+import { validateStatic } from '../src/components/editor/validate';
+
+test('Workshop loop route carries light and heavy marbles over the top and out in both directions', () => {
+  for (const flip of [false, true]) for (const weight of [2, 5, 9]) {
+    const pieces = placementPieces('loop', { x: 470, y: 1500 }, false)!.map(p => ({ ...p, flip }));
+    const def: TrackDef = { v: 1, seed: 19, name: 'Loop route', theme: 'classic', height: 4000, pieces };
+    assert.ok(!validateStatic(def).some(issue => issue.message.includes('no entry ramp found')));
+    assert.ok(validateStatic({ ...def, pieces: [pieces[0]] }).some(issue => issue.message.includes('no entry ramp found')));
+    const game = new Game(19, [{ id: 0, name: 'Probe', color: '#fff', isPlayer: true, stats: { weight, speed: 5, bounce: 5 } }], {
+      def, recovery: false, effects: false, aiItems: false, wireEvents: true,
+    });
+    try {
+      assert.equal(game.trackDefError, null);
+      game.openGate();
+      const marble = game.player;
+      // Drop from rest onto the high end, with no external launch or recovery.
+      Matter.Body.setPosition(marble.body, { x: flip ? W - 30 : 30, y: 1140 });
+      Matter.Body.setVelocity(marble.body, { x: 0, y: 0 });
+      let crossedTop = false, exited = false;
+      for (let step = 0; step < 1200; step++) {
+        game.step(PHYSICS_STEP);
+        crossedTop ||= marble.loopStage === 1 && marble.body.position.y < 1350;
+        if (crossedTop && marble.loopStage === 0 && (flip ? marble.body.position.x < 250 : marble.body.position.x > 650)) {
+          exited = true;
+          break;
+        }
+      }
+      assert.ok(crossedTop, `weight ${weight}, flip ${flip}: never reached the top`);
+      assert.ok(exited, `weight ${weight}, flip ${flip}: never cleared the exit`);
+      assert.equal(marble.recoveries, 0);
+    } finally { game.destroy(); }
+  }
+});
 
 // Every new palette variant receives a live physics safety probe. Behavioural
 // assertions for launchers/fields/set pieces also live in their proving grounds.

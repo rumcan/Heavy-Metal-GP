@@ -90,7 +90,7 @@ save('tunnel.png', cut(3, 1148, 326, 1374, 552, 100, 100));
 save('turnstile.png', cut(3, 56, 560, 306, 806, 160, 160));
 save('vortex.png', cut(3, 406, 562, 694, 824, 240, 240));
 save('wheel.png', cut(3, 788, 554, 1056, 812, 128, 128));
-save('wind.png', cut(3, 1150, 622, 1386, 772, 80, 56));
+save('wind.png', cut(3, 1150, 622, 1386, 772, 320, 224));
 save('conveyor.png', cut(3, 318, 920, 758, 976, 132, 22));
 save('seesaw.png', cut(3, 628, 404, 1056, 472, 140, 16));
 save('switchplate.png', cut(3, 114, 810, 222, 1058, 24, 120));

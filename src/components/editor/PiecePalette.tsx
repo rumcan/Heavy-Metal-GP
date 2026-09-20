@@ -1,5 +1,5 @@
 import { useState, useEffect, Fragment } from 'react';
-import { Settings, Weight, Zap, CircleDot } from 'lucide-react';
+import { Weight, Zap, CircleDot } from 'lucide-react';
 import { PALETTE } from './palette';
 import { getTemplates, deleteTemplate } from './templates';
 
@@ -51,7 +51,7 @@ const StatEffects = ({ effects }: { effects?: { weight?: number, speed?: number,
   );
 };
 
-export default function PiecePalette({ active, onPick, onShowToast }: Props) {
+export default function PiecePalette({ active, onPick }: Props) {
   const [tab, setTab] = useState<'base' | 'templates'>('base');
   const [templates, setTemplates] = useState(getTemplates());
 
