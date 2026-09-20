@@ -58,7 +58,6 @@ export const PALETTE: PaletteGroup[] = [
     label: 'Features',
     note: 'Things that happen to a marble',
     tiles: [
-      { id: 'loop', t: 'loop', label: 'Loop', sprite: 'loop-ring', hint: 'A complete loop with a curved entry, speed boost and exit ramp. Feed marbles onto the high end; move or mirror the selected parts together.', effects: { speed: 80, weight: -20 } },
       { id: 'hoop', t: 'hoop', label: 'Fire hoop', sprite: 'fire-hoop', hint: 'A hoop that launches a marble at speed.', effects: { speed: 60 } },
       { id: 'pad', t: 'pad', label: 'Spring sheep', sprite: 'sheep-spring', hint: 'A bouncy launch pad pointed left or right.', effects: { bounce: 70, weight: -80 } },
       { id: 'boost', t: 'boost', label: 'Boost', sprite: 'rail-chevron', hint: 'A chevron strip that accelerates whatever crosses it.', effects: { speed: 30 } },

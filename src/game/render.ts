@@ -4,7 +4,7 @@ import { hingeTimerState, hingeIsOpen, trapdoorWarn, pistonState, beltDir } from
 import { meta, W, cannonAim } from './track';
 import { MARBLE_RADIUS, ITEM_INFO, skinFor, themeIdFor } from './types';
 import { ballFor, bodyFrame, contentBox, currentSkin, drawRail, drawSprite, drawStrip, setSkin, sprite } from './sprites';
-import { WIND_FAN_ART, windFanAnchor, windDustPose } from './wind-art';
+import { WIND_FAN_ART, windFanAnchor } from './wind-art';
 import { CATAPULT_ARM, CATAPULT_BASE, CATAPULT_ARM_AXIS, CATAPULT_ARM_LENGTH, catapultArtAngle, flipperArtAngle, flipperArtRect, warDrumArtRect, warDrumArtAngle } from './launcher-art';
 import repeatingBgUrl from '../assets/bg/repeating.webp';
 import mineEntranceUrl from '../assets/bg/mine-entrance.webp';
@@ -2482,27 +2482,29 @@ function drawWind(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnType
   const w = md.wind;
   if (!w) return;
   const { x: lx, y: ly, w: bw, h: bh } = w.box;
-  const k = fieldPulse(t, w.pulseMs, w.phaseMs);
   const fan = windFanAnchor(w);
-  const dust = windDustPose(w);
+
   ctx.save();
-  // Keep the visible gust inside the force rectangle, including sideways and diagonal vents.
-  ctx.beginPath(); ctx.rect(lx, ly, bw, bh); ctx.clip();
-  ctx.translate(fan.x, fan.y);
-  ctx.rotate(dust.angle);
-  // The narrow tip stays on the vent while the top sways and breathes gently.
-  ctx.transform(1, 0, Math.sin(t / 470) * 0.035, 1, 0, 0);
-  const width = dust.width * (0.94 + 0.035 * Math.sin(t / 310));
-  ctx.globalAlpha *= 0.6 + 0.12 * k;
-  if (!drawSprite(ctx, 'wind-dust', 0, -dust.height / 2, width, dust.height)) {
-    // Warm dust ribbons while the supplied texture loads; no blue fill or wind strokes.
-    ctx.strokeStyle = '#c49a68';
-    ctx.lineWidth = 2;
-    for (let i = 0; i < 4; i++) {
-      const u = ((t / 1800 + i / 4) % 1 + 1) % 1;
-      const y = -u * dust.height;
-      ctx.beginPath(); ctx.ellipse(0, y, Math.max(1, u * width / 2), 8, 0, 0.2, Math.PI * 1.7); ctx.stroke();
-    }
+  const cx = lx + bw / 2;
+  const cy = ly + bh / 2;
+  const angle = Math.atan2(w.uy, w.ux) + Math.PI / 2;
+  const fade = (Math.sin(t / (3000 / (Math.PI * 2))) + 1) / 2;
+  
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+  
+  ctx.strokeStyle = `rgba(125, 211, 252, ${0.2 * fade})`;
+  ctx.lineWidth = 15;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  
+  for (let i = -1; i <= 1; i++) {
+    const yOffset = i * 40;
+    ctx.beginPath();
+    ctx.moveTo(-40, yOffset + 20);
+    ctx.lineTo(0, yOffset - 20);
+    ctx.lineTo(40, yOffset + 20);
+    ctx.stroke();
   }
   ctx.restore();
   // The machine is fully opaque and drawn in front of the dust at four times the old size.
