@@ -376,10 +376,12 @@ export function platformPose(motion: Extract<Motion, { mode: 'platform' }>, time
   const cycle = leg * 2;
   const t = ((time + motion.phaseMs) % cycle + cycle) % cycle;
   let u: number;
+  // dwell at a -> ride out -> dwell at b -> ride home. Each end holds for `pause`
+  // so boarding and stepping off happen on a still slab.
   if (t < motion.pauseMs) u = 0;
-  else if (t < motion.pauseMs + motion.travelMs) u = (t - motion.pauseMs) / motion.travelMs;
-  else u = 1;
-  if (t >= leg) u = 1 - u; // coming home: mirror the outbound run
+  else if (t < leg) u = (t - motion.pauseMs) / motion.travelMs;
+  else if (t < leg + motion.pauseMs) u = 1;
+  else u = 1 - (t - leg - motion.pauseMs) / motion.travelMs;
   const e = u * u * (3 - 2 * u); // smooth departs and arrives, pauses read as dwelling
   return { x: motion.a.x + (motion.b.x - motion.a.x) * e, y: motion.a.y + (motion.b.y - motion.a.y) * e };
 }
