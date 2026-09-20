@@ -187,6 +187,42 @@ export function drawStrip(ctx: CanvasRenderingContext2D, body: Matter.Body, name
   return true;
 }
 
+export interface ContentBox { x0: number; y0: number; x1: number; y1: number }
+const contentBoxes = new Map<string, ContentBox>();
+/**
+ * The sprite's visible (non-transparent) part as fractions of its frame. The
+ * slicing pipeline letterboxes art into stock dims, so the painted content can
+ * be a lot smaller than the frame (cannon); callers that must land the *art*
+ * on a gameplay rectangle measure through this instead of the frame.
+ */
+export function contentBox(name: string): ContentBox | null {
+  const hit = contentBoxes.get(name);
+  if (hit) return hit;
+  const img = sprite(name);
+  if (!img) return null;
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth;
+  c.height = img.naturalHeight;
+  const g = c.getContext('2d', { willReadFrequently: true })!;
+  g.drawImage(img, 0, 0);
+  const d = g.getImageData(0, 0, c.width, c.height).data;
+  let px0 = c.width, py0 = c.height, px1 = -1, py1 = -1;
+  for (let y = 0; y < c.height; y++) {
+    for (let x = 0; x < c.width; x++) {
+      if (d[(y * c.width + x) * 4 + 3] > 8) {
+        if (x < px0) px0 = x;
+        if (x > px1) px1 = x;
+        if (y < py0) py0 = y;
+        if (y > py1) py1 = y;
+      }
+    }
+  }
+  if (px1 < 0) return null;
+  const box = { x0: px0 / c.width, y0: py0 / c.height, x1: (px1 + 1) / c.width, y1: (py1 + 1) / c.height };
+  contentBoxes.set(name, box);
+  return box;
+}
+
 export function drawSprite(ctx: CanvasRenderingContext2D, name: string, x: number, y: number, w: number, h: number, angle = 0): boolean {
   const img = sprite(name);
   if (!img) return false;

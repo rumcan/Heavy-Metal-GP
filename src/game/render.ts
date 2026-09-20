@@ -3,10 +3,27 @@ import { Game, Marble } from './engine';
 import { hingeTimerState, hingeIsOpen, trapdoorWarn, pistonState, beltDir } from './elements';
 import { meta, W, cannonAim, catapultAngle, flipperAngle } from './track';
 import { MARBLE_RADIUS, ITEM_INFO, skinFor, themeIdFor } from './types';
-import { ballFor, bodyFrame, currentSkin, drawRail, drawSprite, drawStrip, setSkin, sprite } from './sprites';
+import { ballFor, bodyFrame, contentBox, currentSkin, drawRail, drawSprite, drawStrip, setSkin, sprite } from './sprites';
+import { windFanAnchor } from '../components/editor/bounds';
 import repeatingBgUrl from '../assets/bg/repeating.webp';
 import mineEntranceUrl from '../assets/bg/mine-entrance.webp';
 import mineUrl from '../assets/bg/mine.webp';
+
+/**
+ * drawSprite, but the rectangle names where the sprite's *visible content*
+ * should land rather than its letterboxed frame — the slicing pipeline pads
+ * some art with transparent margins (cannon above all), so a frame-centred
+ * draw leaves the painted machine floating short of its anchor. False until
+ * the art loads, so callers keep their vector fallback.
+ */
+function drawSpriteContent(ctx: CanvasRenderingContext2D, name: string, x0: number, y0: number, x1: number, y1: number): boolean {
+  const cb = contentBox(name);
+  if (!cb) return false;
+  const cw = cb.x1 - cb.x0, ch = cb.y1 - cb.y0;
+  if (cw <= 0 || ch <= 0) return false;
+  const w = (x1 - x0) / cw, h = (y1 - y0) / ch;
+  return drawSprite(ctx, name, x0 - cb.x0 * w + w / 2, y0 - cb.y0 * h + h / 2, w, h);
+}
 
 const loadImage = (src: string) => (typeof Image !== 'undefined' ? Object.assign(new Image(), { src }) : null);
 const skyBg = loadImage(repeatingBgUrl);
@@ -940,7 +957,9 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
         if (b.isSensor) drawPool(ctx, b, md, game, t);
         break;
       case 'geyser':
-        if (!b.isSensor) drawGeyser(ctx, b, md, game, t);
+        // the geyser metadata rides the blast-column sensor; the mound body
+        // below it carries none, so drawing the non-sensor body drew nothing
+        if (b.isSensor) drawGeyser(ctx, b, md, game, t);
         break;
       // ---- MB-10F: big set pieces ----
       case 'trampoline':
@@ -2298,7 +2317,10 @@ function drawCannon(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnTy
   ctx.setLineDash([]);
   // barrel
   ctx.rotate(a);
-  if (!drawSprite(ctx, 'cannon', 0, -11, cn.len + 10, 24)) {
+  // the barrel art runs from the breech at the pivot along +x (same local
+  // rectangle as the vector fallback); land the painted content, not the
+  // letterboxed frame, on that rectangle
+  if (!drawSpriteContent(ctx, 'cannon', 0, -14, cn.len + 6, 14)) {
     ctx.fillStyle = '#78350f';
     ctx.fillRect(0, -9, cn.len, 18);
     ctx.fillStyle = '#a16207';
@@ -2346,7 +2368,9 @@ function drawCatapult(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: Return
   // arm with spoon
   ctx.translate(P.x, P.y);
   ctx.rotate(a);
-  if (!drawSprite(ctx, 'catapult', 0, -7, ct.len + 22, 26)) {
+  // arm art spans the pivot..spoon rectangle [0, len+22] so the machine rides
+  // the arm instead of hanging backwards off the pivot
+  if (!drawSprite(ctx, 'catapult', (ct.len + 22) / 2, 0, ct.len + 22, 26)) {
     ctx.fillStyle = '#92610f';
     ctx.fillRect(0, -5, ct.len, 10);
     ctx.strokeStyle = '#451a03';
@@ -2378,7 +2402,8 @@ function drawFlipper(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnT
   ctx.save();
   ctx.translate(fl.px, fl.py);
   ctx.rotate(a);
-  if (!drawSprite(ctx, 'flipper', 2, -8, fl.len, 16)) {
+  // bat art runs from the pivot along +x like the fallback roundRect
+  if (!drawSpriteContent(ctx, 'flipper', 0, -8, fl.len, 8)) {
     ctx.fillStyle = '#9f1239';
     ctx.strokeStyle = '#4c0519';
     ctx.lineWidth = 2;
@@ -2400,25 +2425,31 @@ function drawFlipper(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnT
 function drawSling(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnType<typeof meta>, game: Game, _t: number) {
   const sl = md.sling;
   if (!sl) return;
+  const size = sl.size ?? 90;
   const fa = Math.atan2(sl.facing.y, sl.facing.x);
   const c = _b.position;
   const flash = game.time - sl.flashAt < 260;
   ctx.save();
   ctx.translate(c.x, c.y);
   ctx.rotate(fa + Math.PI); // artwork faces along the kick normal
-  if (!drawSprite(ctx, 'sling', -30, -34, 60, 68)) {
+  // In this local frame the actual collider triangle (whatever `size` the
+  // builder used) has its rubber face at x = size/6 spanning ±0.55·size and its
+  // point at x = −size/3. Art, wedge fallback and band all share those numbers
+  // so they scale together and stay on the body.
+  const face = size / 6, half = size * 0.55, tip = size / 3;
+  if (!drawSpriteContent(ctx, 'sling', -size * 0.38, -size * 0.62, size * 0.22, size * 0.62)) {
     ctx.fillStyle = '#713f12';
     ctx.strokeStyle = '#422006';
     ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(-26, -22); ctx.lineTo(26, -22); ctx.lineTo(0, 26); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(face, -half); ctx.lineTo(face, half); ctx.lineTo(-tip, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
   }
-  // the rubber band
-  const snap = flash ? 6 : 0;
+  // the rubber band across the face, snapping outwards for a beat after a kick
+  const snap = flash ? size * 0.07 : 0;
   ctx.strokeStyle = flash ? '#fef08a' : '#dc2626';
   ctx.lineWidth = flash ? 6 : 4;
   ctx.beginPath();
-  ctx.moveTo(-26 - snap, -18);
-  ctx.quadraticCurveTo(0, -10 - snap * 2, 26 + snap, -18);
+  ctx.moveTo(face + snap, -half * 0.9);
+  ctx.quadraticCurveTo(-2 * snap, 0, face + snap, half * 0.9);
   ctx.stroke();
   ctx.restore();
 }
@@ -2457,11 +2488,12 @@ function drawWind(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<
     ctx.quadraticCurveTo(cx, cy - 2, cx + vx * 22, cy + vy * 22);
     ctx.stroke();
   }
-  // the fan box rides the leading corner of the field
-  const fx = vx <= 0 ? lx + 14 : lx + bw - 14;
-  const fy = vy >= 0 ? ly + 12 : ly + bh - 12;
-  ctx.translate(fx, fy);
-  if (!drawSprite(ctx, 'wind', -14, -10, 28, 20)) {
+  // the fan box rides the leading corner of the field — same placement
+  // formula the editor's selection bounds use (windFanAnchor)
+  const fan = windFanAnchor(w);
+  ctx.translate(fan.x, fan.y);
+  // centred on the fan anchor, same rectangle the fallback fills
+  if (!drawSprite(ctx, 'wind', 0, 0, 28, 20)) {
     ctx.fillStyle = '#57534e';
     ctx.fillRect(-14, -10, 28, 20);
     ctx.fillStyle = '#fbbf24';
@@ -2484,7 +2516,8 @@ function drawMagnet(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnTyp
   ctx.beginPath(); ctx.arc(0, 0, g.r, 0, Math.PI * 2); ctx.stroke();
   ctx.beginPath(); ctx.arc(0, 0, g.r * (0.72 + 0.05 * Math.sin(t / 220)), 0, Math.PI * 2); ctx.stroke();
   ctx.globalAlpha = 1;
-  if (!drawSprite(ctx, 'magnet', -24, -22, 48, 45)) {
+  // centred on the field centre, matching the horseshoe fallback
+  if (!drawSprite(ctx, 'magnet', 0, 0, 48, 45)) {
     ctx.fillStyle = '#ef4444';
     ctx.fillRect(-20, -2, 10, 16);
     ctx.fillRect(10, -2, 10, 16);
@@ -2553,15 +2586,17 @@ function drawPool(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<
   void b;
 }
 
-function drawGeyser(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
+function drawGeyser(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
   const gy = md.geyser;
   if (!gy) return;
-  const p = b.position;
   const tt = (((t + gy.phaseMs) % gy.periodMs) + gy.periodMs) % gy.periodMs;
   const erupting = tt >= 900 && tt < 900 + gy.burstMs;
   ctx.save();
-  ctx.translate(p.x, p.y - 8); // sprite sits on the mound
-  if (!drawSprite(ctx, 'geyser', -17, -20, 34, 44)) {
+  // anchor on the mound the metadata describes (the sensor column that carries
+  // it floats half the blast height above), keeping the sit-on-mound offset
+  ctx.translate(gy.cx, gy.topY - 8);
+  // centred over the mound: art base lands on the fallback mound's base
+  if (!drawSprite(ctx, 'geyser', 0, -6, 34, 44)) {
     ctx.fillStyle = '#78350f';
     ctx.beginPath(); ctx.moveTo(-12, 16); ctx.lineTo(0, -12); ctx.lineTo(12, 16); ctx.fill();
   }
@@ -2749,7 +2784,8 @@ function drawScoop(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType
   ctx.save();
   ctx.translate(p.x, p.y);
   ctx.globalAlpha = busy ? 0.65 : 1;
-  if (!drawSprite(ctx, 'scoop', -20, -12, 40, 24)) {
+  // centred on the pocket/hole the sensor marks
+  if (!drawSprite(ctx, 'scoop', 0, 0, 40, 24)) {
     ctx.fillStyle = '#0c0a09';
     ctx.beginPath(); ctx.ellipse(0, 0, 18, 10, 0, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = '#b45309';
