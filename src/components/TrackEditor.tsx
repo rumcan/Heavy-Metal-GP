@@ -1200,6 +1200,10 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
                 onClear={handleClear}
                 onMoveSelected={handleMoveSelected}
                 onHandleChange={applyHandleChange}
+                onOpenSettings={(pieceIndex) => {
+                  setSelected([pieceIndex]);
+                  setSettingsOpen(true);
+                }}
                 startTransaction={startTransaction}
                 transact={transact}
                 endTransaction={endTransaction}

@@ -470,6 +470,42 @@ test('Browser: War Drum and translucent Updraft dust use the supplied artwork', 
   } finally { await page.close(); }
 });
 
+test('Browser: canvas settings cog opens the selected piece dialog without moving it', { timeout: 60000 }, async () => {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
+  try {
+    // Record the rendered cog centre so the test clicks its actual canvas hit target.
+    await page.addInitScript(() => {
+      const arc = CanvasRenderingContext2D.prototype.arc;
+      CanvasRenderingContext2D.prototype.arc = function (x, y, radius, start, end, anticlockwise) {
+        if (this.canvas.classList.contains('editor-canvas') && radius === 4.5) {
+          (window as any).settingsCog = { x, y };
+        }
+        return arc.call(this, x, y, radius, start, end, anticlockwise);
+      };
+    });
+    await page.goto(`${baseUrl}/tests/editor-template-fixture.html`, { waitUntil: 'networkidle' });
+    await page.locator('[data-tile="conveyor"]').click();
+    const canvas = page.locator('.editor-canvas');
+    const box = await canvas.boundingBox();
+    assert.ok(box);
+    const centre = { x: box.width / 2, y: box.height / 2 };
+    await canvas.click({ position: centre });
+    await page.waitForFunction(() => (window as any).templateFixture.readDraft().pieces.length === 1);
+    await page.keyboard.press('Escape');
+    await canvas.click({ position: centre });
+    await page.waitForFunction(() => (window as any).settingsCog);
+    const before = await page.evaluate(() => (window as any).templateFixture.readDraft());
+    const cog = await page.evaluate(() => (window as any).settingsCog);
+    await canvas.click({ position: cog });
+    const dialog = page.getByRole('dialog', { name: 'Conveyor belt settings', exact: true });
+    await dialog.waitFor();
+    assert.deepEqual(await page.evaluate(() => (window as any).templateFixture.readDraft()), before);
+    await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+    await canvas.click({ position: cog });
+    await dialog.waitFor();
+  } finally { await page.close(); }
+});
+
 test('Browser: Workshop loop shows its entry and exit route', { timeout: 60000 }, async () => {
   const page = await browser.newPage({ viewport: { width: 900, height: 950 } });
   const errors: string[] = [];
