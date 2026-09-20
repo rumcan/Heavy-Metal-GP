@@ -11,6 +11,7 @@
 import type { Piece } from '../../game/trackdef';
 import { W } from '../../game/track';
 import { clampToRange, SETTING_RANGES } from './pieceSettings';
+import { HANDLE_RANGES } from './handles';
 
 interface Props {
   selected: number[];
@@ -341,7 +342,7 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
         <>
           <NumField label="X" value={piece.x} min={0} max={W} onValue={(v) => update({ x: clampNum(v, 0, W) } as unknown as Piece)} />
           <NumField label="Top Y" value={piece.y} onValue={(v) => update({ y: v } as unknown as Piece)} />
-          <NumField label="Plate W" value={piece.w} min={40} max={400} step={5} onValue={(v) => update({ w: clampNum(v, 40, 400) } as unknown as Piece)} />
+          <NumField label="Plate W" value={piece.w} min={HANDLE_RANGES.crusherW.min} max={HANDLE_RANGES.crusherW.max} step={5} onValue={(v) => update({ w: clampNum(v, HANDLE_RANGES.crusherW.min, HANDLE_RANGES.crusherW.max) } as unknown as Piece)} />
           <NumField label="Travel" value={piece.travel} min={30} max={600} step={5} onValue={(v) => update({ travel: clampNum(v, 30, 600) } as unknown as Piece)} />
           <NumField label="Period (ms)" value={piece.period} min={SETTING_RANGES.crusher.period.min} max={SETTING_RANGES.crusher.period.max} step={100} onValue={(v) => update({ period: clampToRange(v, SETTING_RANGES.crusher.period) } as unknown as Piece)} />
           <NumField label="At floor (ms)" value={piece.floor} min={SETTING_RANGES.crusher.floor.min} max={SETTING_RANGES.crusher.floor.max} step={50} onValue={(v) => update({ floor: clampToRange(v, SETTING_RANGES.crusher.floor) } as unknown as Piece)} />
@@ -447,7 +448,7 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
         <>
           <NumField label="Pivot X" value={piece.x} min={0} max={W} onValue={(v) => update({ x: clampNum(v, 0, W) } as unknown as Piece)} />
           <NumField label="Pivot Y" value={piece.y} onValue={(v) => update({ y: v } as unknown as Piece)} />
-          <NumField label="Arm length" value={piece.len} min={120} max={400} step={10} onValue={(v) => update({ len: clampNum(v, 120, 400) } as unknown as Piece)} />
+          <NumField label="Arm length" value={piece.len} min={HANDLE_RANGES.catapultLen.min} max={HANDLE_RANGES.catapultLen.max} step={10} onValue={(v) => update({ len: clampNum(v, HANDLE_RANGES.catapultLen.min, HANDLE_RANGES.catapultLen.max) } as unknown as Piece)} />
           <NumField label="Reload (ms)" value={piece.reload} min={600} max={3000} step={100} onValue={(v) => update({ reload: Math.round(clampNum(v, 600, 3000)) } as unknown as Piece)} />
           <NumField label="Direction (0 throws right)" value={piece.dir} min={0} max={1} step={1} onValue={(v) => update({ dir: (v >= 1 ? 1 : 0) as 0 | 1 } as unknown as Piece)} />
         </>
@@ -469,7 +470,7 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
         <>
           <NumField label="X" value={piece.x} min={0} max={W} onValue={(v) => update({ x: clampNum(v, 0, W) } as unknown as Piece)} />
           <NumField label="Y" value={piece.y} onValue={(v) => update({ y: v } as unknown as Piece)} />
-          <NumField label="Size" value={piece.size} min={40} max={180} step={5} onValue={(v) => update({ size: clampNum(v, 40, 180) } as unknown as Piece)} />
+          <NumField label="Size" value={piece.size} min={HANDLE_RANGES.slingSize.min} max={HANDLE_RANGES.slingSize.max} step={5} onValue={(v) => update({ size: clampNum(v, HANDLE_RANGES.slingSize.min, HANDLE_RANGES.slingSize.max) } as unknown as Piece)} />
           <NumField label="Facing (deg)" value={piece.facing} min={0} max={360} step={5} onValue={(v) => update({ facing: (((v % 360) + 360) % 360) } as unknown as Piece)} />
           <NumField label="Strength" value={piece.strength} min={1} max={9} step={0.5} onValue={(v) => update({ strength: clampNum(v, 1, 9) } as unknown as Piece)} />
         </>
@@ -580,11 +581,11 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
 
       {piece.t === 'platform' && (
         <>
-          <NumField label="Width" value={piece.w} min={40} max={300} step={5} onValue={(v) => update({ w: Math.round(clampNum(v, 40, 300)) } as unknown as Piece)} />
+          <NumField label="Width" value={piece.w} min={HANDLE_RANGES.platformW.min} max={HANDLE_RANGES.platformW.max} step={5} onValue={(v) => update({ w: Math.round(clampNum(v, HANDLE_RANGES.platformW.min, HANDLE_RANGES.platformW.max)) } as unknown as Piece)} />
           <NumField label="Travel (ms, one way)" value={piece.travel} min={800} max={20000} step={100} onValue={(v) => update({ travel: Math.round(clampNum(v, 800, 20000)) } as unknown as Piece)} />
           <NumField label="Pause (ms each end)" value={piece.pause} min={0} max={10000} step={100} onValue={(v) => update({ pause: Math.round(clampNum(v, 0, 10000)) } as unknown as Piece)} />
           <NumField label="Phase (ms)" value={piece.phase} min={0} max={20000} step={100} onValue={(v) => update({ phase: Math.round(clampNum(v, 0, 20000)) } as unknown as Piece)} />
-          <p className="hint">Drag the two end handles to set the ferry route.</p>
+          <p className="hint">Drag the two end handles to set the ferry route, and the deck edge handle to set its width.</p>
         </>
       )}
 

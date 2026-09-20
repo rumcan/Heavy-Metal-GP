@@ -44,6 +44,68 @@ function moveDelta(piece: Piece, toX: number, anchorX: number, snap: boolean): n
   return clampDeltaToExtent(xExtent(piece), withSnap(toX, snap) - anchorX);
 }
 
+/**
+ * The size ranges a handle may drive.  These are the SAME bounds the settings panel offers and the
+ * `TrackDef` schema accepts (`src/game/trackdef.ts`), and they are imported back by
+ * `PropertiesPanel.tsx` so the three can never drift apart.
+ *
+ * The prompted timing fields a placement asks about (`trapdoor.open`, `crusher.period`, `boulder.rest`,
+ * …) are #71's and live beside that path in `pieceSettings.ts` as `SETTING_RANGES`: those are the
+ * numbers a player types, these are the numbers a drag owns. Both read the schema, neither copies it.
+ */
+export const HANDLE_RANGES = {
+  /** `catapult.len` — the throw arm. */
+  catapultLen: { min: 120, max: 400 },
+  /** `sling.size` — the rubber wedge. */
+  slingSize: { min: 40, max: 180 },
+  /** `crusher.w` — the piston plate. */
+  crusherW: { min: 40, max: 400 },
+  /** `platform.w` — the ferry deck. */
+  platformW: { min: 40, max: 300 },
+} as const;
+
+/** `Builder.crusher`'s plate height: the deck the width handle is measured across. */
+export const CRUSHER_PLATE_H = 44;
+
+/**
+ * Catapult arm geometry, shared by the code that draws the length handle and the code that decodes a
+ * drag of it — the bug this replaced was one formula each: the handle was drawn at `0.7 * len` on
+ * both axes but read back as a radius divided by `1.2`, so grabbing it without moving it rewrote a
+ * 230 arm as 189.74.
+ *
+ * `Builder.catapult` rests the arm at 135° for `dir` 0 and 45° for `dir` 1 in the piece's stored
+ * space (`handlesFor` mirrors `flip` on top), and the handle hangs on that line at
+ * `CATAPULT_ARM_SCALE` of the arm length — the diagonal of the offset it has always been drawn with.
+ */
+const CATAPULT_ARM_T = 0.7;
+/** Radius multiplier of the drawn handle: the diagonal of its per-axis offset. */
+export const CATAPULT_ARM_SCALE = Math.hypot(CATAPULT_ARM_T, CATAPULT_ARM_T);
+
+export function catapultArmDir(piece: { dir: 0 | 1 }): readonly [number, number] {
+  const restA = ((piece.dir === 0 ? 135 : 45) * Math.PI) / 180;
+  return [Math.cos(restA), Math.sin(restA)];
+}
+
+/** Where the catapult's length handle is drawn (stored space, i.e. before the flip mirror). */
+export function catapultArmHandle(piece: { x: number; y: number; len: number; dir: 0 | 1 }) {
+  const [ux, uy] = catapultArmDir(piece);
+  return { x: piece.x + ux * piece.len * CATAPULT_ARM_SCALE, y: piece.y + uy * piece.len * CATAPULT_ARM_SCALE };
+}
+
+/** The inverse of `catapultArmHandle`: the arm length a pointer at `to` decodes to, before clamping. */
+export function catapultLenAt(piece: { x: number; y: number; dir: 0 | 1 }, to: { x: number; y: number }) {
+  const [ux, uy] = catapultArmDir(piece);
+  // Project onto the arm line rather than taking a radial distance: pulling the handle along the arm
+  // is what owns the length, and the projection is exactly the offset the handle was drawn with.
+  return ((to.x - piece.x) * ux + (to.y - piece.y) * uy) / CATAPULT_ARM_SCALE;
+}
+
+/** Sling wedge: `Builder.sling` builds it entirely behind its anchor, opposite the kick normal. */
+export function slingBackDir(piece: { facing: number }): readonly [number, number] {
+  const fa = (piece.facing * Math.PI) / 180;
+  return [-Math.cos(fa), -Math.sin(fa)];
+}
+
 /** World positions of every handle for `piece`. The first entry is always the "move" handle (centre). */
 export function handlesFor(piece: Piece): Handle[] {
   const handles = baseHandles(piece);
@@ -212,10 +274,11 @@ function baseHandles(piece: Piece): Handle[] {
       ];
     }
     case 'crusher': {
-      // Top moves; the deck handle sets the slam travel.
+      // Top moves; the deck handle sets the slam travel; the plate-edge handle sets the plate width.
       return [
         { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
-        { id: 'travel', x: piece.x, y: piece.y + piece.travel + 44, cursor: 'ns-resize', label: 'Travel' },
+        { id: 'travel', x: piece.x, y: piece.y + piece.travel + CRUSHER_PLATE_H, cursor: 'ns-resize', label: 'Travel' },
+        { id: 'w', x: piece.x + piece.w / 2, y: piece.y + CRUSHER_PLATE_H / 2, cursor: 'ew-resize', label: 'Plate width' },
       ];
     }
     case 'boulder': {
@@ -268,16 +331,25 @@ function baseHandles(piece: Piece): Handle[] {
       ];
     }
     // ---- MB-10D ----
-    case 'cannon':
-    case 'sling': {
-      // Aim fan / facing are property fields; the collar drags as one point.
+    case 'cannon': {
+      // Aim fan / power are property fields; the collar drags as one point.
       return [{ id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' }];
     }
+    case 'sling': {
+      // Anchor is the kick tip; the size handle sits one wedge behind it, so its distance reads the
+      // wedge size directly and stays on the drawn triangle for a mirrored piece too.
+      const [bx, by] = slingBackDir(piece);
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
+        { id: 'size', x: piece.x + bx * piece.size, y: piece.y + by * piece.size, cursor: 'nwse-resize', label: 'Size' },
+      ];
+    }
     case 'catapult': {
-      // Pivot moves; the arm-end drag sets the length.
+      // Pivot moves; the arm-end drag sets the length, out along the resting arm it resizes.
+      const arm = catapultArmHandle(piece);
       return [
         { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Pivot' },
-        { id: 'len', x: piece.x + (piece.dir === 0 ? -1 : 1) * piece.len * 0.7, y: piece.y + piece.len * 0.7, cursor: 'ew-resize', label: 'Arm length' },
+        { id: 'len', x: arm.x, y: arm.y, cursor: 'ew-resize', label: 'Arm length' },
       ];
     }
     case 'flipper': {
@@ -353,12 +425,17 @@ function baseHandles(piece: Piece): Handle[] {
         { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
         { id: 'r', x: piece.x + piece.r, y: piece.y, cursor: 'ew-resize', label: 'Bowl radius' },
       ];
-    case 'platform':
+    case 'platform': {
+      // The deck rides the path midpoint, so the width handle measures from there; ends stay separate.
+      const mx = (piece.ax + piece.bx) / 2;
+      const my = (piece.ay + piece.by) / 2;
       return [
-        { id: 'move', x: (piece.ax + piece.bx) / 2, y: (piece.ay + piece.by) / 2, cursor: 'move', label: 'Move path' },
+        { id: 'move', x: mx, y: my, cursor: 'move', label: 'Move path' },
         { id: 'a', x: piece.ax, y: piece.ay, cursor: 'crosshair', label: 'End A' },
         { id: 'b', x: piece.bx, y: piece.by, cursor: 'crosshair', label: 'End B' },
+        { id: 'w', x: mx + piece.w / 2, y: my, cursor: 'ew-resize', label: 'Deck width' },
       ];
+    }
     case 'geyser':
       return [
         { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
@@ -621,8 +698,15 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
     case 'crusher': {
       if (handleId === 'move') return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
       if (handleId === 'travel') {
-        const travel = Math.max(30, Math.min(600, withSnap(to.y, sx) - piece.y - 44));
+        const travel = Math.max(30, Math.min(600, withSnap(to.y, sx) - piece.y - CRUSHER_PLATE_H));
         return { ...piece, travel: clampNum(withSnap(travel, sx), 30, 600) };
+      }
+      if (handleId === 'w') {
+        // The plate is an axis-aligned box centred on x, so the handle's distance from the centre
+        // is half the width. Snap the width, not the pointer.
+        const w = Math.abs(to.x - piece.x) * 2;
+        const { min, max } = HANDLE_RANGES.crusherW;
+        return { ...piece, w: clampNum(withSnap(w, sx), min, max) };
       }
       return piece;
     }
@@ -699,16 +783,29 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       return piece;
     }
     // ---- MB-10D ----
-    case 'cannon':
+    case 'cannon': {
+      if (handleId === 'move') return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
+      return piece;
+    }
     case 'sling': {
       if (handleId === 'move') return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
+      if (handleId === 'size') {
+        // The handle is one `size` out from the anchor, so the distance decodes 1:1. Snap the size
+        // itself — snapping the pointer first would move it off the wedge's back line.
+        const size = Math.hypot(to.x - piece.x, to.y - piece.y);
+        const { min, max } = HANDLE_RANGES.slingSize;
+        return { ...piece, size: clampNum(withSnap(size, sx), min, max) };
+      }
       return piece;
     }
     case 'catapult': {
       if (handleId === 'move') return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
       if (handleId === 'len') {
-        const len = Math.max(120, Math.min(400, Math.hypot(withSnap(to.x, sx) - piece.x, to.y - piece.y) / 1.2));
-        return { ...piece, len: clampNum(withSnap(len, sx), 120, 400) };
+        // Undo the shared arm offset (see `catapultArmHandle`) and snap the length it decodes to,
+        // never the pointer first — that is what made an unmoved handle jump the arm.
+        const len = catapultLenAt(piece, to);
+        const { min, max } = HANDLE_RANGES.catapultLen;
+        return { ...piece, len: clampNum(withSnap(len, sx), min, max) };
       }
       return piece;
     }
@@ -807,9 +904,17 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
     }
     case 'platform': {
+      const mx = (piece.ax + piece.bx) / 2;
       if (handleId === 'a') return { ...piece, ax: clampX(withSnap(to.x, sx)), ay: withSnap(to.y, sx) };
       if (handleId === 'b') return { ...piece, bx: clampX(withSnap(to.x, sx)), by: withSnap(to.y, sx) };
-      const ddx = moveDelta(piece, to.x, (piece.ax + piece.bx) / 2, sx);
+      if (handleId === 'w') {
+        // `Builder.platform` builds an axis-aligned deck of `w` centred on the path midpoint, so the
+        // handle reads as twice its distance from that midpoint. The route (a/b) stays its own control.
+        const w = Math.abs(to.x - mx) * 2;
+        const { min, max } = HANDLE_RANGES.platformW;
+        return { ...piece, w: clampNum(withSnap(w, sx), min, max) };
+      }
+      const ddx = moveDelta(piece, to.x, mx, sx);
       const ddy = withSnap(to.y, sx) - (piece.ay + piece.by) / 2;
       return { ...piece, ax: piece.ax + ddx, ay: piece.ay + ddy, bx: piece.bx + ddx, by: piece.by + ddy };
     }
