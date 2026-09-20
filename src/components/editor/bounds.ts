@@ -26,7 +26,7 @@ import type { Piece } from '../../game/trackdef';
 import type Matter from 'matter-js';
 import { meta, W } from '../../game/track';
 import type { Meta } from '../../game/track';
-import { CATAPULT_BASE, CATAPULT_ARM, CATAPULT_ARM_LENGTH, CATAPULT_ARM_AXIS, flipperArtRect } from '../../game/launcher-art';
+import { CATAPULT_BASE, CATAPULT_ARM, CATAPULT_ARM_LENGTH, CATAPULT_ARM_AXIS, flipperArtRect, warDrumArtRect, warDrumArtAngle } from '../../game/launcher-art';
 
 export type Bounds = { min: { x: number; y: number }, max: { x: number; y: number } };
 
@@ -169,18 +169,10 @@ export function visualBoundsForPiece(piece: Piece, bodies: Matter.Body[]): Bound
       break;
     }
     case 'sling': {
-      // drawSling anchors the crate art (and wedge fallback) on the triangle
-      // body, rotated to face along the kick normal, scaled by the builder
-      // size: the painted content lands on [-0.38s, 0.22s] × ±0.62s in that
-      // frame — so the box follows Size and Facing, and the Builder has
-      // already mirrored `facing` for flipped slings.
+      // The drum's head follows the kick direction; its body extends behind it.
       const b = bodyWith(bodies, 'sling');
       const md = metaOf(b)?.sling;
-      if (b && md) {
-        const s = md.size ?? 90;
-        const fa = Math.atan2(md.facing.y, md.facing.x);
-        box.addSprite(b.position, fa + Math.PI, { x: -0.08 * s, y: 0, w: 0.6 * s, h: 1.24 * s });
-      }
+      if (b && md) box.addSprite(b.position, warDrumArtAngle(md.facing), warDrumArtRect(md.size ?? 90));
       break;
     }
     case 'wind': {

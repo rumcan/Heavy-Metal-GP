@@ -96,7 +96,7 @@ save('seesaw.png', cut(3, 628, 404, 1056, 472, 140, 16));
 save('switchplate.png', cut(3, 114, 810, 222, 1058, 24, 120));
 save('crusher-house.png', cut(3, 832, 842, 1042, 1046, 170, 46));
 save('bridge.png', cut(3, 1280, 85, 1410, 145, 56, 14));
-save('sling.png', cut(3, 1100, 780, 1448, 1080, 120, 136));
+// War Drum uses the supplied standalone artwork in sling.webp; do not regenerate the old wedge.
 
 // screw: the banded log is horizontal on the sheet; stand it up
 save('screw.png', rotCW(cut(2, 14, 832, 702, 1022, 112, 64)));

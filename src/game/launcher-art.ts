@@ -24,3 +24,12 @@ export function flipperArtRect(len: number) {
   const w = len / 0.875, h = w * 96 / 320;
   return { x: w * (0.5 - 0.105), y: 0, w, h };
 }
+
+/** War Drum keeps the legacy sling ID for saved tracks; its painted head faces local -Y. */
+export function warDrumArtRect(size: number) {
+  const w = size * 1.24;
+  return { x: 0, y: size * 0.16, w, h: w * 502 / 640 };
+}
+export function warDrumArtAngle(facing: { x: number; y: number }) {
+  return Math.atan2(facing.y, facing.x) + Math.PI / 2;
+}
