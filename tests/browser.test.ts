@@ -387,3 +387,45 @@ test('Browser: template dialog blocks editor shortcuts and preserves the saved g
     await context.close();
   }
 });
+
+test('Browser: workshop launchers animate on the correct clock and bridge art follows the deck', { timeout: 60000 }, async () => {
+  const page = await browser.newPage({ viewport: { width: 900, height: 950 } });
+  const errors: string[] = [];
+  page.on('pageerror', e => errors.push(e.message));
+  try {
+    await page.goto(`${baseUrl}/tests/workshop-art-fixture.html`);
+    await page.waitForFunction(() => (window as any).workshopArt?.ready);
+    const leftIcon = page.locator('[data-tile="flipper"] img');
+    const rightIcon = page.locator('[data-tile="flipper-right"] img');
+    await rightIcon.waitFor();
+    assert.match(await leftIcon.getAttribute('src') ?? '', /flipper\.png/);
+    assert.equal(await leftIcon.getAttribute('src'), await rightIcon.getAttribute('src'));
+    assert.equal(await rightIcon.evaluate(img => getComputedStyle(img).transform), 'matrix(-1, 0, 0, 1, 0, 0)');
+    const rest = await page.evaluate(() => (window as any).workshopArt.frame(1000));
+    await page.screenshot({ path: join(artifacts, 'workshop-art-rest.png') });
+    const swing = await page.evaluate(() => (window as any).workshopArt.frame(1640));
+    await page.screenshot({ path: join(artifacts, 'workshop-art-swing.png') });
+    const draws = (frame: any, name: string) => frame.calls.filter((c: any) => c.name === name);
+    assert.equal(draws(swing, 'flipper').length, 2);
+    draws(swing, 'flipper').forEach((call: any, i: number) => {
+      const expected = swing.expectedFlipper[i];
+      assert.ok(Math.abs(Math.sin(call.angle) - Math.sin(expected)) < 1e-9);
+      assert.ok(Math.abs(Math.cos(call.angle) - Math.cos(expected)) < 1e-9);
+      assert.notDeepEqual(call.matrix, draws(rest, 'flipper')[i].matrix);
+    });
+    assert.equal(draws(swing, 'catapult_arm').length, 2);
+    assert.notDeepEqual(draws(rest, 'catapult_arm'), draws(swing, 'catapult_arm'));
+    assert.deepEqual(draws(rest, 'catapult_static'), draws(swing, 'catapult_static'), 'base must not rotate with its arm');
+    assert.equal(draws(swing, 'bridge').length, 0, 'never tile a whole bridge sprite on every plank');
+    const previewRest = await page.evaluate(() => (window as any).workshopArt.frame(1000, true));
+    const previewSwing = await page.evaluate(() => (window as any).workshopArt.frame(110, true));
+    assert.ok(previewRest.unchanged && previewSwing.unchanged, 'preview must not change physics or trigger clocks');
+    assert.notDeepEqual(draws(previewRest, 'flipper'), draws(previewSwing, 'flipper'));
+    await page.evaluate(() => (window as any).workshopArt.frame(1640));
+    const beforeSag = await page.locator('canvas').screenshot();
+    await page.evaluate(() => (window as any).workshopArt.sagBridge());
+    await page.screenshot({ path: join(artifacts, 'workshop-art-sag.png') });
+    assert.notDeepEqual(await page.locator('canvas').screenshot(), beforeSag);
+    assert.deepEqual(errors, []);
+  } finally { await page.close(); }
+});
