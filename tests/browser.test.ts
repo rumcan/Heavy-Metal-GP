@@ -64,10 +64,20 @@ async function dismissGate(page: Page) {
   await page.getByRole('button', { name: /Enter the paddock|Lights out/ }).click({ timeout: 9000 }).catch(() => { /* no gate on this page */ });
 }
 
+/**
+ * Dismiss the "What's new" dialog. It is shown once per app version and every run starts from a
+ * brand-new browser profile, so it is always up on the first load — and it is modal, so nothing
+ * in the garage can be clicked until it is gone (a click just lands on the backdrop).
+ */
+async function dismissWhatsNew(page: Page) {
+  await page.getByRole('button', { name: "Let's race" }).click({ timeout: 9000 }).catch(() => { /* not this load */ });
+}
+
 async function ready(page: Page, path = '/') {
   await page.goto(`${baseUrl}${path}`, { waitUntil: 'networkidle' });
   await page.evaluate(() => Promise.race([document.fonts.ready, new Promise((resolve) => setTimeout(resolve, 3500))]));
   await dismissGate(page);
+  await dismissWhatsNew(page);
 }
 
 test('Browser: garage controls preserve budget and select the actual circuit', { timeout: 60000 }, async () => {
@@ -172,7 +182,12 @@ test('Browser: results have readable contrast, real finish times and accessible 
   } finally { await context.close(); }
 });
 
-test('Browser: a complete long heat pays winnings and the saved season advances correctly', { timeout: 540000 }, async () => {
+// A whole heat, at a fake clock, in a real browser: a Marblehurst heat is some seven minutes of
+// race clock on today's three-times-longer circuits, and driving the page's fake clock through it
+// costs a little over seven minutes of wall time even with the page rendering at 10 Hz — the
+// frames are cheap, the simulation they span is not. The budget is twice the measured run so the
+// test still passes on a loaded machine (it is the long pole of the whole suite).
+test('Browser: a complete long heat pays winnings and the saved season advances correctly', { timeout: 900000 }, async () => {
   const context = await browser.newContext({ viewport: { width: 900, height: 560 }, deviceScaleFactor: 1 });
   const page = await context.newPage();
   const errors: string[] = [];

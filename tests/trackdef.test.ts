@@ -13,9 +13,9 @@
 //      equality is possible because a def records the *builder calls* — the
 //      mirror flag included — rather than pre-mirrored coordinates.
 //   2. THE SAME RACE — two engines, procedural vs def-built, are stepped in
-//      lockstep through a full Marblehurst heat (105s of simulation) and have
-//      to agree on every marble position, every finish time and the
-//      classification.
+//      lockstep through a whole Marblehurst heat (a few minutes of race clock
+//      on today's three-times-longer circuits) and have to agree on every
+//      marble position, every finish time and the classification.
 //   3. UNTRUSTED INPUT — a def arrives from a save, a share code or the
 //      network, so the loader validates before it builds. A malformed def is
 //      refused with a readable reason, is never half-built, and never throws
@@ -30,11 +30,13 @@ import { TrackDefError, buildTrackFromDef, generateTrackDef, validateTrackDef } 
 import type { TrackDef } from '../src/game/trackdef';
 import { CALENDAR } from '../src/game/season';
 import { Game } from '../src/game/engine';
-import { PHYSICS_STEP } from '../src/game/physics';
+import { HEAT_TIME_LIMIT, PHYSICS_STEP } from '../src/game/physics';
 import { AI_COLORS, AI_NAMES, ITEM_TYPES, TRACK_THEMES, mulberry32, randomStats, themeIdFor } from '../src/game/types';
 import type { MarbleInfo } from '../src/game/types';
 
 const SEEDS = [1, 7, 1234, 2026];
+/** The game's own nine-minute heat limit, in physics steps. */
+const HEAT_LIMIT_STEPS = Math.ceil(HEAT_TIME_LIMIT / PHYSICS_STEP);
 const PROFILES = [
   ...CALENDAR.map((gp) => ({ name: gp.short, profile: gp.profile })),
   { name: 'DEFAULT', profile: DEFAULT_PROFILE },
@@ -120,7 +122,11 @@ test('TrackDef: a def-built circuit races exactly like the procedural one', { ti
     procedural.openGate();
     fromDef.openGate();
     let steps = 0;
-    while ((!procedural.allFinished() || !fromDef.allFinished()) && steps < 40000) {
+    // One heat's worth of steps. A circuit is three times the length it used to be (the calendar
+    // multiplies its segments by `CIRCUIT_LENGTH_MULTIPLIER`), so this heat runs some four minutes
+    // of race clock rather than the 105 s this test was written against; the bound is the game's
+    // own nine-minute heat limit, and the claim is that the field beats it.
+    while ((!procedural.allFinished() || !fromDef.allFinished()) && steps < HEAT_LIMIT_STEPS) {
       procedural.step(PHYSICS_STEP);
       fromDef.step(PHYSICS_STEP);
       steps++;
@@ -133,7 +139,13 @@ test('TrackDef: a def-built circuit races exactly like the procedural one', { ti
         }
       }
     }
-    assert.ok(procedural.allFinished() && fromDef.allFinished(), `race did not finish in ${steps} steps`);
+    assert.ok(
+      procedural.allFinished() && fromDef.allFinished(),
+      `race did not finish inside the heat limit (${(HEAT_LIMIT_STEPS * PHYSICS_STEP / 1000).toFixed(0)}s): ` +
+        `${procedural.finishOrder.length} of ${procedural.marbles.length} home procedurally, ` +
+        `${fromDef.finishOrder.length} of ${fromDef.marbles.length} home from the def, after ` +
+        `${(steps * PHYSICS_STEP / 1000).toFixed(1)}s of race clock`,
+    );
     const ids = (game: Game) => game.finishOrder.map((m) => m.info.id);
     assert.deepEqual(ids(fromDef), ids(procedural), 'classification differs');
     assert.deepEqual(fromDef.marbles.map((m) => m.finishedAt), procedural.marbles.map((m) => m.finishedAt), 'finish times differ');

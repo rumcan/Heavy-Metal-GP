@@ -75,6 +75,18 @@ const { Engine, Bodies, Body, Composite, Events, Query } = Matter;
 const ITEM_POOL = ITEM_TYPES;
 const TICK = 1000 / 60;
 
+/**
+ * MB-10B: how long a kinematic machine may hold the stuck watchdog for one marble, in ms.
+ *
+ * A marble resting on a moving platform, waiting out a trapdoor or riding a belt is not
+ * stuck, so contact with a machine holds the watchdog — but a marble a crusher has pinned
+ * against the deck is stalling, not travelling, and a hold with no end is a marble that
+ * never finishes. One beat of the slowest machine (a crusher's default period is 4.2 s) is
+ * the longest a machine legitimately needs; after that the normal watchdog owns the marble
+ * and the marshal frees it.
+ */
+export const MACHINE_HOLD_MS = 5000;
+
 export interface Marble {
   info: MarbleInfo;
   body: Matter.Body;
@@ -133,6 +145,14 @@ export interface Marble {
   crushMarkAt: number;
   /** Number of times this marble has been crushed. */
   crushCount: number;
+  /**
+   * MB-10B: how much "the machine is dealing with it" credit this marble has left, in ms.
+   * Resting against a kinematic machine holds the stuck watchdog; the credit is what stops
+   * that hold from becoming a permanent amnesty for a marble a crusher has pinned. Only new
+   * depth refills it: the race is a descent, and a machine that carries a marble down and
+   * back up again has got it nowhere.
+   */
+  machineHeld: number;
   /** MB-10D: per-marble slingshot cooldown so a resting marble isn't machine-gunned. */
   slingAt?: number;
   /** MB-10D: last flipper kick clock, so one swing delivers one swat per marble. */
@@ -247,6 +267,8 @@ export class Game {
   /** MB-10A: per-marble tunnel-entry counts, so up-exits can't make an infinite loop (cap per hole). */
   private tunnelVisits = new Map<number, Map<number, number>>();
   private staticBins = new Map<number, Matter.Body[]>();
+  /** MB-10B: every body the track moves itself (platforms, crushers, blades, belts …). */
+  private machines: Matter.Body[] = [];
   private globalBodies: Matter.Body[] = [];
   private loadedBodies = new Map<number, Matter.Body>();
   private loadedCells = '';
@@ -284,6 +306,10 @@ export class Game {
     // build the identical circuit from the seed, so an index IS the body — and
     // an index either end can check against `track.bodies.length`.
     this.bodyIndex = new Map(this.track.bodies.map((body, i) => [body, i]));
+    // MB-10B: the bodies the race clock drives. Collected once — the watchdog asks about them
+    // every frame for every marble, and a scan of all 1 000-odd track bodies per marble per
+    // frame costs more than the whole of Matter.
+    this.machines = this.track.bodies.filter((body) => !!meta(body).motion);
     this.recoveryEnabled = opts.recovery !== false;
     this.effectsEnabled = opts.effects !== false;
     this.aiItemsEnabled = opts.aiItems !== false;
@@ -338,6 +364,7 @@ export class Game {
         crushedUntil: 0,
         crushMarkAt: 0,
         crushCount: 0,
+        machineHeld: MACHINE_HOLD_MS,
       };
       this.marbles.push(m);
       this.byId.set(info.id, m);
@@ -524,6 +551,7 @@ export class Game {
       m.motionAt = m.depthAt = this.time;
       m.motionAnchor = { ...m.body.position };
       m.deepestY = m.body.position.y;
+      m.machineHeld = MACHINE_HOLD_MS;
     });
   }
 
@@ -1947,6 +1975,7 @@ export class Game {
     m.motionAnchor = { ...m.body.position };
     m.motionAt = m.depthAt = this.time;
     m.deepestY = m.body.position.y;
+    m.machineHeld = MACHINE_HOLD_MS;
     if (hold.kind === 'tunnel') {
       this.sfx('rumble', m, exit.x, exit.y);
       this.effects.push({ type: 'snow', x: exit.x, y: exit.y, ttl: 26, maxTtl: 26, color: '#b8a88f', particles: this.makeParticles(exit.x, exit.y, 8, 2.5) });
@@ -2029,20 +2058,24 @@ export class Game {
     if (p.y > m.deepestY + 16) {
       m.deepestY = p.y;
       m.depthAt = this.time;
+      // New depth is the one thing that refills a machine's credit: the race is a descent, and
+      // a marble that is genuinely deeper than it has ever been is not stuck, whatever carried
+      // it there. Motion alone does not count — a crusher rides a marble down and back up.
+      m.machineHeld = MACHINE_HOLD_MS;
     }
-    // MB-10B: kinematic machines glide; they never prove the marble itself moved. A marble pinned
-    // by a crusher or boxed in by a blade is stalling, not travelling.
-    const seen = new Set<Matter.Body>();
-    for (const v of m.body.vertices) {
-      for (const hit of Query.point(this.track.bodies, v)) {
-        if (seen.has(hit) || !hit.isStatic) continue;
-        seen.add(hit);
-        const md = meta(hit);
-        if (!md?.motion) continue;
-        m.motionAnchor = { ...p };
-        m.motionAt = m.depthAt = this.time;
-        m.deepestY = p.y;
-      }
+    // MB-10B: kinematic machines glide; they never prove the marble itself moved. A marble
+    // pinned by a crusher or boxed in by a blade is stalling, not travelling — so contact
+    // with a machine only HOLDS the watchdog, and only while the marble has credit left.
+    // A machine that is genuinely carrying the marble refills the credit by moving it (above);
+    // one that has it pinned spends the credit and then loses it.
+    if (m.machineHeld > 0 && this.machineUnder(m)) {
+      m.machineHeld -= dt;
+      // Hold both clocks (a marble riding a machine is not stalling) and the anchor, so a
+      // machine that only rocks the marble in place cannot buy itself a fresh 26-unit move.
+      // `deepestY` is deliberately left alone: a crusher that carries a marble down and back
+      // up again has made no depth, and it is depth — not motion — that refills the credit.
+      m.motionAnchor = { ...p };
+      m.motionAt = m.depthAt = this.time;
     }
     const stalled = this.time - m.motionAt;
     const noDescent = this.time - m.depthAt;
@@ -2059,6 +2092,26 @@ export class Game {
       m.lastRecoveryAt = this.time;
       m.nudges++;
     }
+  }
+
+  /**
+   * MB-10B: is this marble resting against (or boxed in by) a body the track moves itself?
+   *
+   * A bounds test over the machine list — the machines are the only bodies that can hold a
+   * marble without it moving, and there are a few dozen of them against a thousand bodies.
+   */
+  private machineUnder(m: Marble): boolean {
+    if (!this.machines.length) return false;
+    const bounds = m.body.bounds;
+    for (const body of this.machines) {
+      const md = meta(body);
+      if (md.destroyed) continue;
+      const b = body.bounds;
+      if (bounds.min.x > b.max.x || bounds.max.x < b.min.x) continue;
+      if (bounds.min.y > b.max.y || bounds.max.y < b.min.y) continue;
+      return true;
+    }
+    return false;
   }
 
   private recoverMarble(m: Marble) {
@@ -2106,6 +2159,7 @@ export class Game {
     m.motionAnchor = { ...destination };
     m.motionAt = m.depthAt = m.lastRecoveryAt = this.time;
     m.deepestY = destination.y;
+    m.machineHeld = MACHINE_HOLD_MS; // a fresh start deserves a whole credit
     m.recoveryUntil = this.time + 1600;
     m.recoveries++;
     this.effects.push({ type: 'ring', ...destination, ttl: 30, maxTtl: 30, color: '#d63e2e' });
