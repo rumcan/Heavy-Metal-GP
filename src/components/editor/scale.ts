@@ -2,7 +2,7 @@ import { Piece } from '../../game/trackdef';
 import { Point } from './camera';
 import { pieceCentre } from './rotate';
 
-export function applyScaleHandle(piece: Piece, handleId: string, to: Point, snap: boolean): Piece {
+export function applyScaleHandle(piece: Piece, _handleId: string, to: Point, _snap: boolean): Piece {
   const c = pieceCentre(piece);
   // Compute scale based on pointer distance from center vs piece's natural size
   const dx = Math.abs(to.x - c.x);
