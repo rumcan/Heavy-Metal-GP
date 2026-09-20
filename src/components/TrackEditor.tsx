@@ -983,7 +983,7 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
             </button>
           </header>
           <button className="button-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={() => setShowNew(true)}><LayoutGrid size={13} /> New track</button>
-          <PiecePalette active={armed} onPick={(id) => setArmed((cur) => (cur === id ? null : id))} />
+          <PiecePalette active={armed} onPick={(id) => setArmed((cur) => (cur === id ? null : id))} onShowToast={(msg) => { setDraftMsg(msg); setTimeout(() => setDraftMsg(null), 3500); }} />
           <div className="editor-inspector">
             <header className="eyebrow"><b>02</b> PROPERTIES</header>
             <PropertiesPanel selected={selected} pieces={circuit.def.pieces} onChange={handlePropChange} onChangeMany={handleBulkChange} />

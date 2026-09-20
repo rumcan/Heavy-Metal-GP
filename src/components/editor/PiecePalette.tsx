@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
+import { Settings } from 'lucide-react';
 import { PALETTE } from './palette';
 import { getTemplates, deleteTemplate } from './templates';
 
@@ -9,9 +10,10 @@ interface Props {
   /** Armed tile id. */
   active: string | null;
   onPick: (id: string) => void;
+  onShowToast?: (msg: string) => void;
 }
 
-export default function PiecePalette({ active, onPick }: Props) {
+export default function PiecePalette({ active, onPick, onShowToast }: Props) {
   const [tab, setTab] = useState<'base' | 'templates'>('base');
   const [templates, setTemplates] = useState(getTemplates());
 
@@ -36,21 +38,59 @@ export default function PiecePalette({ active, onPick }: Props) {
       <div className="palette-tiles">{group.tiles.map((tile) => {
         const src = artFor(tile.sprite);
         const armed = active === tile.id;
-        return <button
-          key={tile.id}
-          type="button"
-          className={`palette-tile ${armed ? 'armed' : ''}`}
-          aria-pressed={armed}
-          title={`${tile.label} — ${tile.hint}`}
-          onClick={() => onPick(tile.id)}
-          data-coach={`palette-${tile.id}`}
-          data-tile={tile.id}
-        >
-          <span className="palette-art">
-            {src ? <img src={src} alt="" draggable={false} style={tile.id === 'flipper-right' ? { transform: 'scaleX(-1)' } : undefined} /> : <i className="palette-art-fallback" aria-hidden="true" />}
-          </span>
-          <span className="palette-label">{tile.label}</span>
-        </button>;
+        return (
+          <Fragment key={tile.id}>
+            <button
+              type="button"
+              className={`palette-tile ${armed ? 'armed' : ''}`}
+              aria-pressed={armed}
+              title={`${tile.label} — ${tile.hint}`}
+              onClick={() => onPick(tile.id)}
+              data-coach={`palette-${tile.id}`}
+              data-tile={tile.id}
+            >
+              <span className="palette-art">
+                {src ? <img src={src} alt="" draggable={false} style={tile.id === 'flipper-right' ? { transform: 'scaleX(-1)' } : undefined} /> : <i className="palette-art-fallback" aria-hidden="true" />}
+              </span>
+              <span className="palette-label">{tile.label}</span>
+            </button>
+            {armed && (
+              <div className="palette-tile-details" style={{
+                gridColumn: '1 / -1',
+                padding: '12px',
+                background: '#0b1016',
+                border: '1px solid var(--accent)',
+                borderRadius: '6px',
+                marginTop: '4px',
+                marginBottom: '8px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px'
+              }}>
+                <strong style={{ color: '#e6edf3', fontSize: '12px', letterSpacing: '0.5px' }}>{tile.label}</strong>
+                <p style={{ margin: 0, fontSize: '10px', lineHeight: 1.5, color: '#8ea2b5' }}>{tile.hint}</p>
+                <div style={{ marginTop: '4px', display: 'flex' }}>
+                  <button
+                    type="button"
+                    className="editor-tool-select"
+                    style={{ fontSize: '9px', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}
+                    onClick={() => {
+                      const msg = "Place this item on the track first, then select it to edit its settings.";
+                      if (onShowToast) {
+                        onShowToast(msg);
+                      } else {
+                        console.log(msg);
+                      }
+                    }}
+                  >
+                    <Settings size={12} style={{ marginRight: '4px' }} />
+                    Settings
+                  </button>
+                </div>
+              </div>
+            )}
+          </Fragment>
+        );
       })}</div>
     </section>)}
 
@@ -61,26 +101,65 @@ export default function PiecePalette({ active, onPick }: Props) {
         {templates.map((tpl) => {
           const src = artFor(tpl.sprite);
           const armed = active === tpl.id;
-          return <div key={tpl.id} className="palette-tile-wrapper" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <button
-              type="button"
-              className={`palette-tile ${armed ? 'armed' : ''}`}
-              aria-pressed={armed}
-              title={tpl.name}
-              onClick={() => onPick(tpl.id)}
-            >
-              <span className="palette-art">
-                {src ? <img src={src} alt="" draggable={false} /> : <i className="palette-art-fallback" aria-hidden="true" />}
-              </span>
-              <span className="palette-label">{tpl.name}</span>
-            </button>
-            <button className="text-button" style={{ fontSize: 10, padding: 2 }} onClick={(e) => {
-              e.stopPropagation();
-              deleteTemplate(tpl.id);
-              setTemplates(getTemplates());
-              if (active === tpl.id) onPick(tpl.id);
-            }}>Delete</button>
-          </div>;
+          return (
+            <Fragment key={tpl.id}>
+              <div className="palette-tile-wrapper" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <button
+                  type="button"
+                  className={`palette-tile ${armed ? 'armed' : ''}`}
+                  aria-pressed={armed}
+                  title={tpl.name}
+                  onClick={() => onPick(tpl.id)}
+                >
+                  <span className="palette-art">
+                    {src ? <img src={src} alt="" draggable={false} /> : <i className="palette-art-fallback" aria-hidden="true" />}
+                  </span>
+                  <span className="palette-label">{tpl.name}</span>
+                </button>
+                <button className="text-button" style={{ fontSize: 10, padding: 2 }} onClick={(e) => {
+                  e.stopPropagation();
+                  deleteTemplate(tpl.id);
+                  setTemplates(getTemplates());
+                  if (active === tpl.id) onPick(tpl.id);
+                }}>Delete</button>
+              </div>
+              {armed && (
+                <div className="palette-tile-details" style={{
+                  gridColumn: '1 / -1',
+                  padding: '12px',
+                  background: '#0b1016',
+                  border: '1px solid var(--accent)',
+                  borderRadius: '6px',
+                  marginTop: '4px',
+                  marginBottom: '8px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px'
+                }}>
+                  <strong style={{ color: '#e6edf3', fontSize: '12px', letterSpacing: '0.5px' }}>{tpl.name}</strong>
+                  <p style={{ margin: 0, fontSize: '10px', lineHeight: 1.5, color: '#8ea2b5' }}>A custom grouping of pieces saved as a template. Place it on the track to use it.</p>
+                  <div style={{ marginTop: '4px', display: 'flex' }}>
+                    <button
+                      type="button"
+                      className="editor-tool-select"
+                      style={{ fontSize: '9px', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}
+                      onClick={() => {
+                        const msg = "Place this template on the track first, then select its pieces to edit their settings.";
+                        if (onShowToast) {
+                          onShowToast(msg);
+                        } else {
+                          console.log(msg);
+                        }
+                      }}
+                    >
+                      <Settings size={12} style={{ marginRight: '4px' }} />
+                      Settings
+                    </button>
+                  </div>
+                </div>
+              )}
+            </Fragment>
+          );
         })}
       </div>
     </section>}

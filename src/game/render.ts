@@ -2802,12 +2802,12 @@ function drawScoop(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType
   ctx.translate(p.x, p.y);
   ctx.globalAlpha = busy ? 0.65 : 1;
   // centred on the pocket/hole the sensor marks
-  if (!drawSprite(ctx, 'scoop', 0, 0, 40, 24)) {
+  if (!drawSprite(ctx, 'scoop', 0, 0, 80, 48)) {
     ctx.fillStyle = '#0c0a09';
-    ctx.beginPath(); ctx.ellipse(0, 0, 18, 10, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(0, 0, 36, 20, 0, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = '#b45309';
     ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.ellipse(0, 0, 18, 10, 0, Math.PI, 0, false); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(0, 0, 36, 20, 0, Math.PI, 0, false); ctx.stroke();
   }
   // direction chevrons (or the subway portal)
   if (md.exit) {

@@ -531,13 +531,7 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
         </>
       )}
 
-      {piece.t === 'pool' && (
-        <>
-          <NumField label="Depth" value={piece.depth} min={40} max={200} step={4} onValue={(v) => update({ depth: Math.round(clampNum(v, 40, 200)) } as unknown as Piece)} />
-          <NumField label="Skip speed" value={piece.skip} min={4} max={14} step={0.5} onValue={(v) => update({ skip: clampNum(v, 4, 14) } as unknown as Piece)} />
-          <p className="hint">Drag the edges; depth handle sits below the waterline.</p>
-        </>
-      )}
+
 
       {piece.t === 'trampoline' && (
         <>
