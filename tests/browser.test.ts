@@ -74,7 +74,7 @@ async function dismissWhatsNew(page: Page) {
 }
 
 async function ready(page: Page, path = '/') {
-  await page.goto(`${baseUrl}${path}`, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}${path}`, { waitUntil: 'networkidle', timeout: 60000 });
   await page.evaluate(() => Promise.race([document.fonts.ready, new Promise((resolve) => setTimeout(resolve, 3500))]));
   await dismissGate(page);
   await dismissWhatsNew(page);
