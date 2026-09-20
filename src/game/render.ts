@@ -454,9 +454,11 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
   const bodies = game.track.bodies;
   for (const b of bodies) {
     if (b.label === 'marble') continue;
-    if (b.bounds.max.y < viewTop || b.bounds.min.y > viewBottom) continue;
-    if (b.bounds.max.x < viewLeft || b.bounds.min.x > viewRight) continue;
     const md = meta(b);
+    // Workshop bodies stay at rest while their artwork previews the swing.
+    const artReach = md?.catapult ? md.catapult.len * 1.4 : md?.flipper?.len ?? 0;
+    if (b.bounds.max.y + artReach < viewTop || b.bounds.min.y - artReach > viewBottom) continue;
+    if (b.bounds.max.x + artReach < viewLeft || b.bounds.min.x - artReach > viewRight) continue;
     if (md?.destroyed || STATIC_KINDS.has(md?.kind)) continue;
     switch (md?.kind) {
       case 'ramp':
@@ -2369,12 +2371,12 @@ function drawCatapult(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: Return
     const k = ct.len / 600;
     ctx.drawImage(base, -CATAPULT_BASE.pivotX * k, -CATAPULT_BASE.pivotY * k, CATAPULT_BASE.width * k, CATAPULT_BASE.height * k);
   } else {
-  ctx.strokeStyle = '#78350f';
-  ctx.lineWidth = 7;
-  ctx.beginPath(); ctx.moveTo(-26, 34); ctx.lineTo(0, -6); ctx.lineTo(26, 34); ctx.stroke();
-  ctx.strokeStyle = '#451a03';
-  ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(-34, 34); ctx.lineTo(34, 34); ctx.stroke();
+    ctx.strokeStyle = '#78350f';
+    ctx.lineWidth = 7;
+    ctx.beginPath(); ctx.moveTo(-26, 34); ctx.lineTo(0, -6); ctx.lineTo(26, 34); ctx.stroke();
+    ctx.strokeStyle = '#451a03';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(-34, 34); ctx.lineTo(34, 34); ctx.stroke();
   }
   ctx.restore();
   // arm with spoon
@@ -2429,11 +2431,11 @@ function drawFlipper(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnT
     ctx.fill(); ctx.stroke();
     ctx.fillStyle = '#fda4af';
     ctx.fillRect(fl.len - 12, -6, 10, 12);
-  // Fallback pivot cap; the supplied sprite already includes its iron hinge.
-  ctx.fillStyle = '#b45309';
-  ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#fde68a';
-  ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill();
+    // Fallback pivot cap; the supplied sprite already includes its iron hinge.
+    ctx.fillStyle = '#b45309';
+    ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fde68a';
+    ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill();
   }
   ctx.restore();
 }
@@ -2964,30 +2966,35 @@ function drawSeesaw(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnTyp
   ctx.restore();
 }
 
-/** Cache each plank's predecessor once; positions remain live as the bridge sags. */
-const bridgePredecessors = new WeakMap<Game['track'], Map<Matter.Body, Matter.Body | null>>();
-function bridgePredecessor(game: Game, body: Matter.Body): Matter.Body | null {
-  let links = bridgePredecessors.get(game.track);
+type BridgeNeighbours = { previous: Matter.Body | null; next: Matter.Body | null };
+/** Cache neighbours once; positions remain live as the bridge sags. */
+const bridgeNeighbours = new WeakMap<Game['track'], Map<Matter.Body, BridgeNeighbours>>();
+function neighboursForBridge(game: Game, body: Matter.Body): BridgeNeighbours {
+  let links = bridgeNeighbours.get(game.track);
   if (!links) {
     links = new Map();
     let previous: Matter.Body | null = null;
     for (const plank of game.track.bodies) {
       const br = meta(plank).bridge;
       if (!br) continue;
-      links.set(plank, br.idx === 0 ? null : previous);
+      if (br.idx === 0) previous = null;
+      links.set(plank, { previous, next: null });
+      if (previous) links.get(previous)!.next = plank;
       previous = plank;
     }
-    bridgePredecessors.set(game.track, links);
+    bridgeNeighbours.set(game.track, links);
   }
-  return links.get(body) ?? null;
+  return links.get(body) ?? { previous: null, next: null };
 }
 
 /** Painted timber deck with continuous ropes following the existing live plank bodies. */
 function drawBridgePlank(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, game: Game) {
   const br = md.bridge;
   if (!br) return;
-  const previous = bridgePredecessor(game, b);
-  const points = [previous?.position ?? br.anchor[0], b.position];
+  const neighbours = neighboursForBridge(game, b);
+  const previous = neighbours.previous?.position ?? br.anchor[0];
+  const next = neighbours.next?.position ?? br.anchor[1];
+  const points = [previous, b.position];
   if (br.idx === br.n - 1) points.push(br.anchor[1]);
   ctx.save();
   ctx.lineCap = 'round';
@@ -3002,17 +3009,24 @@ function drawBridgePlank(ctx: CanvasRenderingContext2D, b: Matter.Body, md: Retu
       ctx.stroke();
     }
   }
-  // One timber surface per collider, not a miniature bridge repeated on every collider.
-  if (!drawRail(ctx, b, 'rail-wood', [], 1.55)) {
-    ctx.save();
-    ctx.translate(b.position.x, b.position.y);
-    ctx.rotate(b.angle);
+  // Follow the deck tangent even before the first physics tick in the workshop.
+  // The collision planks overlap for safety; painted boards meet at their midpoint instead.
+  const angle = Math.atan2(next.y - previous.y, next.x - previous.x);
+  const ux = Math.cos(angle), uy = Math.sin(angle);
+  const before = (b.position.x - previous.x) * ux + (b.position.y - previous.y) * uy;
+  const after = (next.x - b.position.x) * ux + (next.y - b.position.y) * uy;
+  const left = br.idx === 0 ? before : before / 2;
+  const right = br.idx === br.n - 1 ? after : after / 2;
+  ctx.save();
+  ctx.translate(b.position.x, b.position.y);
+  ctx.rotate(angle);
+  if (!drawSpriteContent(ctx, 'rail-wood', -left - 1, -5, right + 1, 9)) {
     ctx.fillStyle = '#a3653d';
     ctx.strokeStyle = '#51321c';
     ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.roundRect(-br.plankLen / 2, -5, br.plankLen, 12, 2); ctx.fill(); ctx.stroke();
-    ctx.restore();
+    ctx.beginPath(); ctx.roundRect(-left, -5, left + right, 12, 2); ctx.fill(); ctx.stroke();
   }
+  ctx.restore();
   // Lash each slat to the handrope; these remain attached as the deck flexes.
   ctx.strokeStyle = '#50351f';
   ctx.lineWidth = 4;

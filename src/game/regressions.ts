@@ -357,9 +357,9 @@ add('MB-10E fields: every field fires and nobody drowns', 'Race safety', async (
 });
 
 add('MB-10F set pieces: every big toy fires and nobody is penned', 'Race safety', async () => {
-  // Proving-ground circuit: each MB-10F set piece once on tuned geometry (mirrored in
-  // scripts/mb10f-sanity.mjs). Asserts the wire events move too: target pins drop and
-  // re-arm, the turnstile ratchets, the vortex drops.
+  // Proving-ground circuit: each MB-10F set piece once on tuned geometry. Asserts the wire
+  // events move too: target pins drop and re-arm, the turnstile ratchets, the vortex drops.
+  // (The calendar-scale pressure for these pieces lives in scripts/mb10f-sanity.mjs.)
   const def = {
     v: 1, name: 'MB-10F proving ground', seed: 11, theme: 'classic', height: 3100,
     pieces: [
@@ -372,9 +372,12 @@ add('MB-10F set pieces: every big toy fires and nobody is penned', 'Race safety'
       { t: 'ramp', a: [470, 710], b: [180, 880] },
       { t: 'turnstile', x: 200, y: 856, arms: 3, r: 88, mode: 1, period: 4200, phase: 400 },
       { t: 'ramp', a: [180, 880], b: [880, 1040] },
-      { t: 'ramp', a: [0, 1110], b: [300, 1250] },
-      { t: 'ramp', a: [300, 1250], b: [520, 1266] },
-      { t: 'targets', x: 370, y: 1260, count: 4, reset: 5600 },
+      // The pack leaves the second turnstile riding the right-hand wall, so the drop-target bank
+      // used to sit on a ledge on the far side of the pipe that no marble ever rolled across: the
+      // pins never fired and this check failed on every seed. This switchback catches the wall
+      // riders and carries them left, over the bank, and on into the vortex bowl.
+      { t: 'ramp', a: [880, 1060], b: [340, 1200] },
+      { t: 'targets', x: 600, y: 1133, count: 4, reset: 5600 },
       { t: 'ramp', a: [520, 1276], b: [890, 1410] },
       { t: 'ramp', a: [0, 1500], b: [880, 1780] },
       { t: 'vortex', x: 560, y: 1660, r: 175, spin: 1.4, hole: 34 },

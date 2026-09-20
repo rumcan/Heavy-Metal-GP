@@ -28,7 +28,10 @@ const commands = [
     'tests/rank-view.test.ts',
     // MP-CHAT: driver talk — the line, the log, the cooldown and the speaker
     // (pure), and the two surfaces that paint it (lobby-ui.tsx).
-    'tests/chat.test.ts'],
+    'tests/chat.test.ts',
+    // Playtest: the race screen's input wiring (the online loop that forgot to hand
+    // the held keys to the session) and the steering rule itself.
+    'tests/race-input.test.ts'],
 ];
 
 for (const args of commands) {

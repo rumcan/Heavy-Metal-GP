@@ -101,12 +101,18 @@ function probeRun(def: TrackDef, tweak: ((s: MarbleInfo['stats']) => MarbleInfo[
   }
 }
 
+// The net needs headroom: a taut trampoline caps its launch at 24 units a step, so a featherweight
+// bounce build climbs ~600 units off a 220-unit drop. Hung 250 units under the pipe's mouth (as the
+// old fixture had it) every light marble simply pinned itself to the ceiling and the probe measured
+// the ceiling, not the spring. Deep in the pipe the two builds separate cleanly.
+const NET_Y = 800;
+const NET_DROP = 220;
 const NET_DEF = {
   v: 1, name: 'net', seed: 11, theme: 'classic', height: 2000,
   pieces: [
-    { t: 'ramp', a: [0, 60], b: [300, 180] },
-    { t: 'trampoline', x: 390, y: 250, w: 175, tension: 1.3 },
-    { t: 'ramp', a: [60, 330], b: [880, 440] },
+    { t: 'ramp', a: [0, NET_Y - 400], b: [300, NET_Y - 300] },
+    { t: 'trampoline', x: 390, y: NET_Y, w: 175, tension: 1.3 },
+    { t: 'ramp', a: [60, NET_Y + 120], b: [880, NET_Y + 220] },
   ],
 } as unknown as TrackDef;
 
@@ -119,20 +125,25 @@ const TS_DEF = {
 } as unknown as TrackDef;
 
 test('MB-10F trampoline: bounce-savvy light marbles out-jump heavy ones', () => {
+  // Both builds are dropped from the same height onto the middle of the net, and the apex is only
+  // read once the marble has actually reached it — so the plant height (which sits above the net)
+  // can never be mistaken for a spring, and neither can a marble that sailed over without landing.
   const apex = (tweak: (s: MarbleInfo['stats']) => MarbleInfo['stats']): number => {
     let minY = Infinity;
-    let touched = false;
-    probeRun(NET_DEF, tweak, { x: 250, y: 60 }, { x: 4, y: 2 }, (_g, m) => {
-      if (m.body.position.y < 260) touched = true;
-      if (touched) minY = Math.min(minY, m.body.position.y);
+    let landed = false;
+    probeRun(NET_DEF, tweak, { x: 390, y: NET_Y - NET_DROP }, { x: 0, y: 2 }, (_g, m) => {
+      if (m.body.position.y > NET_Y - 30) landed = true;
+      if (landed) minY = Math.min(minY, m.body.position.y);
       return false;
-    }, 260);
+    }, 500);
     return minY;
   };
   const lightApex = apex((s) => { s.bounce = 9; s.weight = 2; return s; });
   const heavyApex = apex((s) => { s.bounce = 2; s.weight = 9; return s; });
-  assert.ok(lightApex > 0 && lightApex < 245 && lightApex < heavyApex, 'the light marble sprang somewhere above the net');
-  assert.ok(heavyApex > lightApex + 30, `heavy barely springs: light apex ${lightApex.toFixed(0)} vs heavy ${heavyApex.toFixed(0)}`);
+  // Above the net, and still inside the pipe: the ceiling is at y = -20, so a marble that has
+  // been fired into it reads an apex of about -6 — a measurement of the pipe, not the spring.
+  assert.ok(lightApex > 0 && lightApex < NET_Y - 60, `the light marble sprang somewhere above the net (apex ${lightApex.toFixed(0)})`);
+  assert.ok(heavyApex > lightApex + 200, `heavy barely springs: light apex ${lightApex.toFixed(0)} vs heavy ${heavyApex.toFixed(0)}`);
 });
 
 test('MB-10F turnstile: a rolling shove ratchets the hub and emits the wire event', () => {

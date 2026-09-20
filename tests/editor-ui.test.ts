@@ -194,7 +194,12 @@ test('Editor grid: every snap is a whole 25 units, and the lattice keeps up with
 
 test('Palette: the ticket\'s groups, every piece a def can store, and the race art', () => {
   assert.deepEqual(PALETTE.map((g) => g.label), ['Rails', 'Features', 'Pegs', 'Walls', 'Secrets', 'Danger', 'Movers', 'Launchers', 'Fields & surfaces', 'Big set pieces']);
-  assert.deepEqual(PALETTE.map((g) => g.tiles.length), [4, 7, 5, 2, 7, 6, 6, 6, 5, 5]);
+  // Rails 4 · Features 7 · Pegs 5 · Walls 2 · Secrets 7 · Danger 5 · Movers 6 · Launchers 6 ·
+  // Fields 5 · Set pieces 5. Counts are tiles, not types: Pegs/Secrets/Movers/Launchers carry a
+  // second variant each (orange and item pegs, the tough barricade and the weight trapdoor, the
+  // reversed belt, the right-hand flipper). Danger has no variant — five kinds, five tiles. The
+  // line below is the one that matters: every type the def format can store is in the palette.
+  assert.deepEqual(PALETTE.map((g) => g.tiles.length), [4, 7, 5, 2, 7, 5, 6, 6, 5, 5]);
   const types = [...new Set(TILES.map((tile) => tile.t))].sort();
   assert.deepEqual(types, ['barricade', 'blade', 'block', 'boost', 'boulder', 'breakable', 'bridge', 'bucket', 'cannon', 'catapult', 'conveyor', 'crumble', 'crusher', 'curve', 'flipper', 'geyser', 'hoop', 'ice', 'itembox', 'loop', 'mace', 'magnet', 'mud', 'pad', 'peg', 'platform', 'pool', 'ppeg', 'ramp', 'saw', 'scoop', 'screw', 'seesaw', 'sling', 'spinner', 'switch', 'targets', 'trampoline', 'trapdoor', 'tunnel', 'turnstile', 'vortex', 'wall', 'wheel', 'wind', 'wrecker'], 'the palette should cover exactly the def format\'s placeable pieces');
   const ids = TILES.map((tile) => tile.id);

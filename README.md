@@ -497,8 +497,10 @@ with MB-04.
   ruler down the left edge, which also marks START and FINISH and the camera's own height.
 - The course map on the right is the race minimap's data — sectors, rail surfaces, the finish — drawn as a
   scrollbar: drag it to move the camera, and the red window is what the canvas is showing.
-- The piece palette groups the fifteen pieces a `TrackDef` can store, each tile showing the sprite the race
-  draws it with; arming a tile is the shell's whole canvas interaction for now.
+- The piece palette groups the forty-six piece types a `TrackDef` can store into ten drawers, each tile
+  showing the sprite the race draws it with (a second tile carries the variants — the orange and item
+  pegs, the tough barricade, the weight trapdoor, the reversed belt, the right-hand flipper); arming a
+  tile is the shell's whole canvas interaction for now.
 - An edit rebuilds the circuit and drops the game's baked static chunks (`clearStaticChunks`), so no frame
   is ever drawn from an out-of-date bake.
 - On a phone the palette collapses into a bottom drawer, and the header carries a Workshop button.
@@ -517,6 +519,14 @@ local marshal reset. Jittering without descent is detected separately. This is
 applied equally to player and AI, is never allowed to reset past the finish, and
 does not cancel freeze or oil penalties. Recovery clears trails so reset positions
 do not draw lines across the circuit.
+
+The machines that move themselves — platforms, crushers, blades, belts — hold the
+watchdog while a marble is resting on one, because a marble riding a machine is not
+stuck. The hold is a credit, not an amnesty (`MACHINE_HOLD_MS`): one beat of the
+slowest machine, refilled only by real progress downhill. A crusher that carries a
+marble down and back up again makes no depth, so it spends the credit and then loses
+it — the marshal frees a marble the machine has pinned instead of leaving it there
+for the rest of the heat.
 
 Races continue until all ten finish, with a nine-minute safety limit for the longer circuits. Once the
 player finishes, the camera follows the remaining field and offers 2x spectating.

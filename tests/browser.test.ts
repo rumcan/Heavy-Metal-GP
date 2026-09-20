@@ -64,10 +64,20 @@ async function dismissGate(page: Page) {
   await page.getByRole('button', { name: /Enter the paddock|Lights out/ }).click({ timeout: 9000 }).catch(() => { /* no gate on this page */ });
 }
 
+/**
+ * Dismiss the "What's new" dialog. It is shown once per app version and every run starts from a
+ * brand-new browser profile, so it is always up on the first load — and it is modal, so nothing
+ * in the garage can be clicked until it is gone (a click just lands on the backdrop).
+ */
+async function dismissWhatsNew(page: Page) {
+  await page.getByRole('button', { name: "Let's race" }).click({ timeout: 9000 }).catch(() => { /* not this load */ });
+}
+
 async function ready(page: Page, path = '/') {
   await page.goto(`${baseUrl}${path}`, { waitUntil: 'networkidle' });
   await page.evaluate(() => Promise.race([document.fonts.ready, new Promise((resolve) => setTimeout(resolve, 3500))]));
   await dismissGate(page);
+  await dismissWhatsNew(page);
 }
 
 test('Browser: garage controls preserve budget and select the actual circuit', { timeout: 60000 }, async () => {
@@ -172,7 +182,12 @@ test('Browser: results have readable contrast, real finish times and accessible 
   } finally { await context.close(); }
 });
 
-test('Browser: a complete long heat pays winnings and the saved season advances correctly', { timeout: 540000 }, async () => {
+// A whole heat, at a fake clock, in a real browser: a Marblehurst heat is some seven minutes of
+// race clock on today's three-times-longer circuits, and driving the page's fake clock through it
+// costs a little over seven minutes of wall time even with the page rendering at 10 Hz — the
+// frames are cheap, the simulation they span is not. The budget is twice the measured run so the
+// test still passes on a loaded machine (it is the long pole of the whole suite).
+test('Browser: a complete long heat pays winnings and the saved season advances correctly', { timeout: 900000 }, async () => {
   const context = await browser.newContext({ viewport: { width: 900, height: 560 }, deviceScaleFactor: 1 });
   const page = await context.newPage();
   const errors: string[] = [];
@@ -371,4 +386,46 @@ test('Browser: template dialog blocks editor shortcuts and preserves the saved g
   } finally {
     await context.close();
   }
+});
+
+test('Browser: workshop launchers animate on the correct clock and bridge art follows the deck', { timeout: 60000 }, async () => {
+  const page = await browser.newPage({ viewport: { width: 900, height: 950 } });
+  const errors: string[] = [];
+  page.on('pageerror', e => errors.push(e.message));
+  try {
+    await page.goto(`${baseUrl}/tests/workshop-art-fixture.html`);
+    await page.waitForFunction(() => (window as any).workshopArt?.ready);
+    const leftIcon = page.locator('[data-tile="flipper"] img');
+    const rightIcon = page.locator('[data-tile="flipper-right"] img');
+    await rightIcon.waitFor();
+    assert.match(await leftIcon.getAttribute('src') ?? '', /flipper\.png/);
+    assert.equal(await leftIcon.getAttribute('src'), await rightIcon.getAttribute('src'));
+    assert.equal(await rightIcon.evaluate(img => getComputedStyle(img).transform), 'matrix(-1, 0, 0, 1, 0, 0)');
+    const rest = await page.evaluate(() => (window as any).workshopArt.frame(1000));
+    await page.screenshot({ path: join(artifacts, 'workshop-art-rest.png') });
+    const swing = await page.evaluate(() => (window as any).workshopArt.frame(1640));
+    await page.screenshot({ path: join(artifacts, 'workshop-art-swing.png') });
+    const draws = (frame: any, name: string) => frame.calls.filter((c: any) => c.name === name);
+    assert.equal(draws(swing, 'flipper').length, 2);
+    draws(swing, 'flipper').forEach((call: any, i: number) => {
+      const expected = swing.expectedFlipper[i];
+      assert.ok(Math.abs(Math.sin(call.angle) - Math.sin(expected)) < 1e-9);
+      assert.ok(Math.abs(Math.cos(call.angle) - Math.cos(expected)) < 1e-9);
+      assert.notDeepEqual(call.matrix, draws(rest, 'flipper')[i].matrix);
+    });
+    assert.equal(draws(swing, 'catapult_arm').length, 2);
+    assert.notDeepEqual(draws(rest, 'catapult_arm'), draws(swing, 'catapult_arm'));
+    assert.deepEqual(draws(rest, 'catapult_static'), draws(swing, 'catapult_static'), 'base must not rotate with its arm');
+    assert.equal(draws(swing, 'bridge').length, 0, 'never tile a whole bridge sprite on every plank');
+    const previewRest = await page.evaluate(() => (window as any).workshopArt.frame(1000, true));
+    const previewSwing = await page.evaluate(() => (window as any).workshopArt.frame(110, true));
+    assert.ok(previewRest.unchanged && previewSwing.unchanged, 'preview must not change physics or trigger clocks');
+    assert.notDeepEqual(draws(previewRest, 'flipper'), draws(previewSwing, 'flipper'));
+    await page.evaluate(() => (window as any).workshopArt.frame(1640));
+    const beforeSag = await page.locator('canvas').screenshot();
+    await page.evaluate(() => (window as any).workshopArt.sagBridge());
+    await page.screenshot({ path: join(artifacts, 'workshop-art-sag.png') });
+    assert.notDeepEqual(await page.locator('canvas').screenshot(), beforeSag);
+    assert.deepEqual(errors, []);
+  } finally { await page.close(); }
 });

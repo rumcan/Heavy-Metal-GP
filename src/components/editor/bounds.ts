@@ -26,6 +26,7 @@ import type { Piece } from '../../game/trackdef';
 import type Matter from 'matter-js';
 import { meta, W } from '../../game/track';
 import type { Meta } from '../../game/track';
+import { CATAPULT_BASE, CATAPULT_ARM, CATAPULT_ARM_LENGTH, CATAPULT_ARM_AXIS, flipperArtRect } from '../../game/launcher-art';
 
 export type Bounds = { min: { x: number; y: number }, max: { x: number; y: number } };
 
@@ -260,6 +261,42 @@ export function visualBoundsForPiece(piece: Piece, bodies: Matter.Body[]): Bound
         if (md?.kind !== 'tunnel') continue;
         box.addSprite(b.position, 0, TUNNEL_HOLE);
         if (md.exit) box.addSprite(md.exit, 0, TUNNEL_HOLE);
+      }
+      break;
+    }
+    case 'flipper': {
+      const fl = metaOf(bodyWith(bodies, 'flipper'))?.flipper;
+      if (fl) {
+        // Include the visible bat through its preview swing, while retaining the saved hinge.
+        for (let i = 0; i <= 12; i++) {
+          box.addSprite({ x: fl.px, y: fl.py }, fl.restA + (fl.swingA - fl.restA) * i / 12, flipperArtRect(fl.len));
+        }
+      }
+      break;
+    }
+    case 'catapult': {
+      const ct = metaOf(bodyWith(bodies, 'catapult'))?.catapult;
+      if (ct) {
+        const pivot = { x: ct.px, y: ct.py };
+        const mirror = Math.cos(ct.restA) < 0 ? -1 : 1;
+        const k = ct.len / 600;
+        box.addSprite(pivot, 0, { x: mirror * (CATAPULT_BASE.width / 2 - CATAPULT_BASE.pivotX) * k, y: (CATAPULT_BASE.height / 2 - CATAPULT_BASE.pivotY) * k, w: CATAPULT_BASE.width * k, h: CATAPULT_BASE.height * k });
+        const s = ct.len / CATAPULT_ARM_LENGTH;
+        for (let i = 0; i <= 24; i++) {
+          box.addSprite(pivot, ct.restA + (ct.releaseA - ct.restA) * i / 24 - mirror * CATAPULT_ARM_AXIS, {
+            x: (CATAPULT_ARM.width / 2 - CATAPULT_ARM.pivotX) * s,
+            y: mirror * (CATAPULT_ARM.height / 2 - CATAPULT_ARM.pivotY) * s,
+            w: CATAPULT_ARM.width * s, h: CATAPULT_ARM.height * s,
+          });
+        }
+      }
+      break;
+    }
+    case 'bridge': {
+      for (const b of bodies) {
+        if (!metaOf(b)?.bridge) continue;
+        box.addCentred(b.position.x, b.position.y - 10, 12, 38);
+        for (const anchor of metaOf(b)!.bridge!.anchor) box.addCentred(anchor.x, anchor.y - 15, 16, 50);
       }
       break;
     }
