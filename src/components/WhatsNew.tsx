@@ -12,7 +12,7 @@ const COMING = [
   ['A', 'Shortcuts and secrets', 'no-entry signs, cliff tunnels, crumbling walls, trapdoors, switches'],
   ['B', 'Blades and crushers', 'swinging blades, saws, crusher pistons, rolling boulders, mace sweepers'],
   ['C', 'Mechanical movers', 'water wheels, screw lifts, conveyors, seesaws, rope bridges'],
-  ['D', 'Launchers and pinball', 'cannons, catapults, flippers, slingshot kickers, scoops'],
+  ['D', 'Launchers and pinball', 'cannons, catapults, flippers, War Drums, scoops'],
   ['E', 'Fields and surfaces', 'wind fans, magnets, mud pits, water pools, geysers'],
   ['F', 'Big set pieces', 'trampolines, turnstiles, drop targets, vortex funnels, moving platforms'],
 ] as const;

@@ -5,7 +5,7 @@ import { meta, W, cannonAim } from './track';
 import { MARBLE_RADIUS, ITEM_INFO, skinFor, themeIdFor } from './types';
 import { ballFor, bodyFrame, contentBox, currentSkin, drawRail, drawSprite, drawStrip, setSkin, sprite } from './sprites';
 import { windFanAnchor } from '../components/editor/bounds';
-import { CATAPULT_ARM, CATAPULT_BASE, CATAPULT_ARM_AXIS, CATAPULT_ARM_LENGTH, catapultArtAngle, flipperArtAngle, flipperArtRect } from './launcher-art';
+import { CATAPULT_ARM, CATAPULT_BASE, CATAPULT_ARM_AXIS, CATAPULT_ARM_LENGTH, catapultArtAngle, flipperArtAngle, flipperArtRect, warDrumArtRect, warDrumArtAngle } from './launcher-art';
 import repeatingBgUrl from '../assets/bg/repeating.webp';
 import mineEntranceUrl from '../assets/bg/mine-entrance.webp';
 import mineUrl from '../assets/bg/mine.webp';
@@ -2440,36 +2440,34 @@ function drawFlipper(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnT
   ctx.restore();
 }
 
-/** Slingshot kicker: a rubber-banded wedge on the wall; the band snaps back for a beat after a kick. */
-function drawSling(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnType<typeof meta>, game: Game, _t: number) {
+/** War Drum: the supplied painted drum, with a brief drumhead pulse after a kick. */
+function drawSling(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, game: Game, _t: number) {
   const sl = md.sling;
   if (!sl) return;
   const size = sl.size ?? 90;
-  const fa = Math.atan2(sl.facing.y, sl.facing.x);
-  const c = _b.position;
-  const flash = game.time - sl.flashAt < 260;
+  const rect = warDrumArtRect(size);
+  const age = game.time - sl.flashAt;
+  const impact = age >= 0 && age < 260 ? 1 - age / 260 : 0;
   ctx.save();
-  ctx.translate(c.x, c.y);
-  ctx.rotate(fa + Math.PI); // artwork faces along the kick normal
-  // In this local frame the actual collider triangle (whatever `size` the
-  // builder used) has its rubber face at x = size/6 spanning ±0.55·size and its
-  // point at x = −size/3. Art, wedge fallback and band all share those numbers
-  // so they scale together and stay on the body.
-  const face = size / 6, half = size * 0.55, tip = size / 3;
-  if (!drawSpriteContent(ctx, 'sling', -size * 0.38, -size * 0.62, size * 0.22, size * 0.62)) {
-    ctx.fillStyle = '#713f12';
-    ctx.strokeStyle = '#422006';
-    ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(face, -half); ctx.lineTo(face, half); ctx.lineTo(-tip, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.translate(b.position.x, b.position.y);
+  ctx.rotate(warDrumArtAngle(sl.facing));
+  if (!drawSprite(ctx, 'sling', rect.x, rect.y, rect.w, rect.h)) {
+    ctx.fillStyle = '#783f23';
+    ctx.strokeStyle = '#33271d';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.roundRect(-rect.w / 2, -size * 0.16, rect.w, rect.h * 0.76, 8); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#e2c79b';
+    ctx.beginPath(); ctx.ellipse(0, -size * 0.16, rect.w / 2, size * 0.22, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   }
-  // the rubber band across the face, snapping outwards for a beat after a kick
-  const snap = flash ? size * 0.07 : 0;
-  ctx.strokeStyle = flash ? '#fef08a' : '#dc2626';
-  ctx.lineWidth = flash ? 6 : 4;
-  ctx.beginPath();
-  ctx.moveTo(face + snap, -half * 0.9);
-  ctx.quadraticCurveTo(-2 * snap, 0, face + snap, half * 0.9);
-  ctx.stroke();
+  if (impact > 0) {
+    // A drumhead resonance ring replaces the old rubber-band stroke.
+    ctx.globalAlpha *= impact * 0.65;
+    ctx.strokeStyle = '#ffe2a3';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(0, -size * 0.12, size * (0.4 + (1 - impact) * 0.15), size * (0.17 + (1 - impact) * 0.07), 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
   ctx.restore();
 }
 

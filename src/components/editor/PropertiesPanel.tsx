@@ -68,7 +68,7 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
   return (
     <div className="prop-panel">
       <header className="prop-head">
-        <strong>{piece.t.toUpperCase()}</strong>
+        <strong>{(piece.t === 'sling' ? 'War Drum' : piece.t).toUpperCase()}</strong>
         <span>#{index}</span>
       </header>
 
