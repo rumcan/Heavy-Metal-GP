@@ -491,16 +491,16 @@ body { min-width: 0; }
 }
 
 /* ---------- what's new ---------- */
-.whats-new { width: 600px; }
-.whats-new h2 { margin: 6px 0 12px; }
+.whats-new { width: 620px; }
+.whats-new h2 { margin: 4px 0 10px; }
 .whats-new-version { margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: var(--accent); color: #fff3dc; font: 700 11px var(--mono); letter-spacing: .5px; }
-.whats-new-list, .whats-new-coming { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.whats-new-feature { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; padding: 10px 12px; background: #0e1a28; border: 1px solid #3b2a20; border-radius: 6px; }
+.whats-new-list, .whats-new-coming { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.whats-new-feature { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; padding: 8px 12px; background: #0e1a28; border: 1px solid #3b2a20; border-radius: 6px; }
 .whats-new-feature > svg { color: var(--accent); margin-top: 2px; }
-.whats-new-feature strong, .whats-new-coming strong { display: block; font: 700 16px/1.2 var(--display); letter-spacing: .4px; text-transform: uppercase; color: #ede3c7; }
-.whats-new-feature p { margin: 3px 0 0; font-size: 12px; line-height: 1.5; color: #b9c3cc; }
-.whats-new-feature .button-primary { margin-top: 8px; min-height: 34px; padding: 6px 12px; font-size: 13px; }
-.whats-new-subtitle { margin: 14px 0 6px; font: 600 12px var(--display); letter-spacing: 1.2px; text-transform: uppercase; color: #c9c0a6; }
+.whats-new-feature strong, .whats-new-coming strong { display: block; font: 700 15px/1.2 var(--display); letter-spacing: .4px; text-transform: uppercase; color: #ede3c7; }
+.whats-new-feature p { margin: 2px 0 0; font-size: 11.5px; line-height: 1.45; color: #b9c3cc; }
+.whats-new-feature .button-primary { margin-top: 8px; min-height: 32px; padding: 5px 12px; font-size: 12px; }
+.whats-new-subtitle { margin: 10px 0 4px; font: 600 12px var(--display); letter-spacing: 1.2px; text-transform: uppercase; color: #c9c0a6; }
 .whats-new-coming > li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; color: #8d99a8; }
 .whats-new-coming > li > svg { margin-top: 2px; color: #c9c0a6; }
 .whats-new-coming strong { font-size: 14px; }
