@@ -1097,6 +1097,26 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
 /** Art skin drawn over the physics vectors. Each sprite is optional; missing art falls back to the vector look. */
 function drawDecor(ctx: CanvasRenderingContext2D, game: Game, viewTop: number, viewBottom: number) {
   for (const d of game.track.decor) {
+    if (d.type === 'curve') {
+      // Fill gaps between rail segments at sharp bends by drawing a thick path
+      // behind the individual rail sprites. Only visible where segments don't overlap.
+      const pts = d.points;
+      if (pts.length < 2) continue;
+      const minY = Math.min(...pts.map(p => p.y));
+      const maxY = Math.max(...pts.map(p => p.y));
+      if (maxY < viewTop - 40 || minY > viewBottom + 40) continue;
+      ctx.save();
+      ctx.strokeStyle = '#4a2810';
+      ctx.lineWidth = 22;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.stroke();
+      ctx.restore();
+      continue;
+    }
     if (d.type !== 'loop' || d.y + d.r * 2 < viewTop || d.y - d.r * 2 > viewBottom) continue;
     const img = sprite('loop-ring');
     if (!img) continue;
@@ -2513,17 +2533,11 @@ function drawSling(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType
 
 
 
-// the five fields share a clock pulse with the engine: same phase, same windows
-function fieldPulse(t: number, pulseMs: number, phaseMs: number): number {
-  if (pulseMs <= 0) return 1;
-  return 0.35 + 0.65 * (0.5 + 0.5 * Math.cos((2 * Math.PI * (t + phaseMs)) / pulseMs));
-}
-
 function drawWind(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
   const w = md.wind;
   if (!w) return;
   const { x: lx, y: ly, w: bw, h: bh } = w.box;
-  const k = fieldPulse(t, w.pulseMs, w.phaseMs);
+  
   const fan = windFanAnchor(w);
   const dust = windDustPose(w);
   ctx.save();
@@ -2531,20 +2545,29 @@ function drawWind(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnType
   ctx.beginPath(); ctx.rect(lx, ly, bw, bh); ctx.clip();
   ctx.translate(fan.x, fan.y);
   ctx.rotate(dust.angle);
-  // The narrow tip stays on the vent while the top sways and breathes gently.
-  ctx.transform(1, 0, Math.sin(t / 470) * 0.035, 1, 0, 0);
-  const width = dust.width * (0.94 + 0.035 * Math.sin(t / 310));
-  ctx.globalAlpha *= 0.6 + 0.12 * k;
-  if (!drawSprite(ctx, 'wind-dust', 0, -dust.height / 2, width, dust.height)) {
-    // Warm dust ribbons while the supplied texture loads; no blue fill or wind strokes.
-    ctx.strokeStyle = '#c49a68';
-    ctx.lineWidth = 2;
-    for (let i = 0; i < 4; i++) {
-      const u = ((t / 1800 + i / 4) % 1 + 1) % 1;
-      const y = -u * dust.height;
-      ctx.beginPath(); ctx.ellipse(0, y, Math.max(1, u * width / 2), 8, 0, 0.2, Math.PI * 1.7); ctx.stroke();
-    }
+
+  // Fade in and out over 3 seconds
+  const cycle = (t % 3000) / 3000;
+  const alpha = 0.2 * (0.5 + 0.5 * Math.sin(cycle * Math.PI * 2));
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = 'rgba(173, 216, 230, 1)'; // light blue, base opacity
+
+  // 3 large chevrons
+  const chevronWidth = dust.width * 0.8;
+  const chevronHeight = 30;
+  const spacing = 60;
+  for (let i = 0; i < 3; i++) {
+    const cy = -80 - i * spacing;
+    ctx.beginPath();
+    ctx.moveTo(0, cy - chevronHeight / 2);
+    ctx.lineTo(chevronWidth / 2, cy + chevronHeight / 2);
+    ctx.lineTo(chevronWidth / 2 - 20, cy + chevronHeight / 2);
+    ctx.lineTo(0, cy - chevronHeight / 2 + 10);
+    ctx.lineTo(-chevronWidth / 2 + 20, cy + chevronHeight / 2);
+    ctx.lineTo(-chevronWidth / 2, cy + chevronHeight / 2);
+    ctx.fill();
   }
+
   ctx.restore();
   // The machine is fully opaque and drawn in front of the dust at four times the old size.
   ctx.save();
@@ -2589,8 +2612,19 @@ function drawMud(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<t
   ctx.save();
   ctx.translate(cx, cy);
 
-  // Draw the normal graphic upright in the center
-  drawSprite(ctx, 'mud', 0, 0, mud.box.w, mud.box.h);
+  // Blue oil slick procedural drawing
+  const w = mud.box.w;
+  const h = mud.box.h;
+  const r = Math.max(w, h) / 2;
+  
+  ctx.beginPath();
+  ctx.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2);
+  const og = ctx.createRadialGradient(0, 0, 4, 0, 0, r);
+  og.addColorStop(0, '#1e3a8a'); // dark blue
+  og.addColorStop(0.7, '#2563eb'); // mid blue
+  og.addColorStop(1, 'rgba(37,99,235,0)'); // transparent blue
+  ctx.fillStyle = og;
+  ctx.fill();
 
   ctx.restore();
 }
@@ -2639,11 +2673,11 @@ function drawGeyser(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnTy
   ctx.save();
   // anchor on the mound the metadata describes (the sensor column that carries
   // it floats half the blast height above), keeping the sit-on-mound offset
-  ctx.translate(gy.cx, gy.topY - 8);
+  ctx.translate(gy.cx, gy.topY - 32);
   // centred over the mound: art base lands on the fallback mound's base
-  if (!drawSprite(ctx, 'geyser', 0, -6, 34, 44)) {
+  if (!drawSprite(ctx, 'geyser', 0, -24, 136, 176)) {
     ctx.fillStyle = '#78350f';
-    ctx.beginPath(); ctx.moveTo(-12, 16); ctx.lineTo(0, -12); ctx.lineTo(12, 16); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-48, 64); ctx.lineTo(0, -48); ctx.lineTo(48, 64); ctx.fill();
   }
   if (erupting) {
     const k = 0.6 + 0.4 * Math.sin(t / 60);
@@ -2671,7 +2705,16 @@ function drawGeyser(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnTy
 function drawTrampoline(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, _t: number) {
   const tp = md.trampoline;
   if (!tp) return;
-  const sag = md.tramp?.depth ?? 0;
+  
+  let sag = 0;
+  if (md.tramp && md.tramp.at) {
+    const elapsed = _game.time - md.tramp.at;
+    if (elapsed < 400) {
+      // Elastic snap back
+      sag = md.tramp.depth * Math.max(0, 1 - elapsed / 400) * Math.cos(elapsed * 0.03);
+    }
+  }
+
   ctx.save();
   ctx.translate(b.position.x, b.position.y);
   // wooden posts (painted art, mirrored at the far end); procedural frame if art is missing
@@ -2682,20 +2725,21 @@ function drawTrampoline(ctx: CanvasRenderingContext2D, b: Matter.Body, md: Retur
     ctx.fillRect(tp.half, -4, 10, 14);
   }
   // the net: a catenary that deepens when it takes a landing
+  const netY = -12; // Aligned with the crossbars of the struts
   ctx.strokeStyle = '#d4a04a';
   ctx.lineWidth = 3;
   ctx.beginPath();
   const dip = 3 + sag * 16;
-  ctx.moveTo(-tp.half, 0);
-  ctx.quadraticCurveTo(0, dip * 2, tp.half, 0);
+  ctx.moveTo(-tp.half, netY);
+  ctx.quadraticCurveTo(0, netY + dip * 2, tp.half, netY);
   ctx.stroke();
   ctx.lineWidth = 1;
   ctx.strokeStyle = 'rgba(212,160,74,0.6)';
   for (let k = 1; k < 6; k++) {
     const xk = -tp.half + (2 * tp.half * k) / 6;
     ctx.beginPath();
-    ctx.moveTo(xk, 0);
-    ctx.quadraticCurveTo(xk * 0.5, dip, xk * -0.5 * -1 + xk * 0.18, dip);
+    ctx.moveTo(xk, netY);
+    ctx.quadraticCurveTo(xk * 0.5, netY + dip, xk * -0.5 * -1 + xk * 0.18, netY + dip);
     ctx.stroke();
   }
   ctx.restore();

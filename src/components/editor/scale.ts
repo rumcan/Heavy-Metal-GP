@@ -44,11 +44,14 @@ export function applyScaleHandle(piece: Piece, _handleId: string, to: Point, _sn
       const r = Math.max(20, Math.hypot(dx, dy));
       const oldR = Math.hypot(piece.a[0] - c.x, piece.a[1] - c.y) || 1;
       const scale = r / oldR;
+      const oldN = piece.n ?? 12;
+      const newN = Math.round(Math.max(2, Math.min(64, oldN * scale)));
       return {
         ...piece,
         a: [c.x + (piece.a[0] - c.x) * scale, c.y + (piece.a[1] - c.y) * scale],
         b: [c.x + (piece.b[0] - c.x) * scale, c.y + (piece.b[1] - c.y) * scale],
         c: [c.x + (piece.c[0] - c.x) * scale, c.y + (piece.c[1] - c.y) * scale],
+        n: newN,
       } as unknown as Piece;
     }
     default:

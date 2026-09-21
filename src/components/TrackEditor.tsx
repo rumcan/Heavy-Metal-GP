@@ -834,9 +834,9 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
       // Child-owned modals (including coach marks) must also own their keys.
       if (editorModalOpen || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       if (testing) {
-        // While test drive is active its own canvas owns Esc.  We only
-        // handle Esc here as a fallback if the test canvas lost focus.
-        if (e.key === 'Escape') {
+        // While test drive is active its own canvas owns Esc and Space.
+        // We only handle them here as a fallback if the test canvas lost focus.
+        if (e.key === 'Escape' || e.code === 'Space') {
           e.preventDefault();
           setTesting(false);
         }
@@ -844,6 +844,12 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
       }
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+
+      if (e.code === 'Space') {
+        e.preventDefault();
+        enterTest();
+        return;
+      }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
         e.preventDefault();
         handleUndo();

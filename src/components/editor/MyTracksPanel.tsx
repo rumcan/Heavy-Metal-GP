@@ -158,7 +158,7 @@ export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, on
                   onDevLoadOfficial(generateTrackDef(gpSeed(0, gp.id), gp.profile, gp.name));
                 }}
               >
-                Load {gp.id}
+                Load {gp.name}
               </button>
               <button
                 className="button-primary"
@@ -173,7 +173,7 @@ export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, on
                   });
                 }}
               >
-                Archive {gp.id}
+                Archive {gp.name}
               </button>
             </div>
           ))}

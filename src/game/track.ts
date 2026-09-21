@@ -1,5 +1,5 @@
 import Matter from 'matter-js';
-import { buildCourse } from './course-builder';
+import { buildCourse } from './course-builder'; import { buildExperimentalCourse } from './course-builder-experimental';
 import { massForWeight, mulberry32, TrackProfile, TrackTheme, ITEM_TYPES, CIRCUIT_LENGTH_MULTIPLIER, TRACK_THEMES } from './types';
 import type { ItemType } from './types';
 import { rampSurface } from './physics';
@@ -1189,9 +1189,9 @@ export class Builder {
    */
   geyser(x: number, y: number, h = 300, periodMs = 4200, phaseMs = 0) {
     const cx = this.X(x);
-    const mound = Bodies.rectangle(cx, y + 8, 56, 18, { ...STATIC_OPTS, label: 'geyser', friction: 0.02, chamfer: { radius: 4 } });
+    const mound = Bodies.rectangle(cx, y + 32, 224, 72, { ...STATIC_OPTS, label: 'geyser', friction: 0.02, chamfer: { radius: 16 } });
     this.bodies.push(mound);
-    const column = Bodies.rectangle(cx, y - h / 2, 44, h, { ...SENSOR_OPTS, label: 'geyser' });
+    const column = Bodies.rectangle(cx, y - h / 2, 176, h, { ...SENSOR_OPTS, label: 'geyser' });
     column.plugin = {
       kind: 'geyser',
       geyser: { cx, topY: y, h, periodMs, phaseMs, burstMs: 1100 },
@@ -2030,22 +2030,6 @@ const segTarFlats: Seg = (b, y) => {
 };
 
 /**
- * Skipping Pools: a stone-skimming pond on the main line. Fast and flat and it skips across;
- * slow and steep and it splashes in, then the wade carries you out. Neither ending is a trap.
- */
-const segSkippingPools: Seg = (b, y) => {
-  b.flip = b.rng() < 0.5;
-  b.ramp(0, y + 30, 240, y + 150);
-  b.pool(290, y + 170, 620, y + 170, 96, 6.5);
-  // the exit ramp tip sits a hair under the waterline, so skimming marbles glide clear
-  b.ramp(634, y + 186, W - 20, y + 340);
-  b.scoop(W - 35, y + 340 - 15, 230, 800);
-  // left backstop above the waterline: drift-waders hit it and settle instead of rebounding out
-  b.ramp(240, y + 190, 330, y + 230);
-  return 380;
-};
-
-/**
  * Vent Field: three timed geysers erupt through plinths on the bowl run. The bubble beat warns
  * you; park on the vent at the wrong (right) moment and you get chucked up the course. All timing
  * is the race clock: no wire traffic at all.
@@ -2186,7 +2170,7 @@ const POOL: { seg: Seg; name: string; weight: number }[] = [
   { seg: segFanGarden, name: 'Fan Garden', weight: 0.4 },
   { seg: segLodestoneWay, name: 'Lodestone Way', weight: 0.4 },
   { seg: segTarFlats, name: 'Tar Flats', weight: 0.4 },
-  { seg: segSkippingPools, name: 'Skipping Pools', weight: 0.4 },
+  
   { seg: segVentField, name: 'Vent Field', weight: 0.4 },
   // MB-10F: the carnival big-toys — same cameo treatment
   { seg: segBounceNet, name: 'Trampoline Alley', weight: 0.4 },
@@ -2296,6 +2280,57 @@ export function assembleTrack(b: Builder, seed: number, profile: TrackProfile): 
     seed,
     bodies: b.bodies,
     height,
+    segments,
+    spinners: b.spinners,
+    turnstiles: b.turnstiles,
+    itemBoxes: b.itemBoxes,
+    ramps: b.bodies.filter((body) => !!meta(body).surface),
+    buckets: b.buckets,
+    targetBanks: b.targetBanks,
+    pegCount: b.pegCount,
+    gate,
+    startY,
+    finishY,
+    theme: profile.theme,
+    decor: b.decor,
+    wreckers: b.wreckers,
+  };
+}
+
+
+export function assembleExperimentalTrack(b: Builder, seed: number, profile: TrackProfile): Track {
+  const segments: SegmentInfo[] = [];
+  let y = 0;
+
+  const startY = y + GATE_TOP - 14;
+  const hStart = segStart(b, y);
+  const gate = b.bodies.find((bd) => meta(bd).kind === 'gate')!;
+  segments.push({ name: 'Start', y, h: hStart });
+  y += hStart;
+
+  b.beginDefinition();
+  // We must import it dynamically or require it if we don't have it imported statically
+  // Actually I will add the import at the top using another command!
+  const course = buildExperimentalCourse(b, seed, profile, y);
+  b.endDefinition();
+  segments.push(...course);
+  y = course.at(-1)!.y + course.at(-1)!.h;
+
+  const finishTop = y;
+  const finishY = finishTop + 40;
+  segFinish(b, finishTop);
+
+  b.flip = false;
+  b.wall(-100, y / 2, 200, y + 400);
+  b.wall(900 + 100, y / 2, 200, y + 400);
+  b.wall(900 / 2, -30, 900, 20);
+
+  segments.push({ name: 'Finish', y: finishTop, h: FINISH_H });
+
+  return {
+    seed,
+    bodies: b.bodies,
+    height: y,
     segments,
     spinners: b.spinners,
     turnstiles: b.turnstiles,

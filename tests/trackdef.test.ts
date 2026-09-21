@@ -171,7 +171,7 @@ test('TrackDef: malformed defs are refused with a readable reason', () => {
     ['unknown piece type', { ...good, pieces: [{ t: 'teleporter', x: 10, y: 10 }] }, /unknown piece type "teleporter"/],
     ['non-finite coordinate', { ...good, pieces: [{ t: 'peg', x: Number.NaN, y: 10, r: 9 }] }, /pieces\[0\]\.x must be a finite number/],
     ['string coordinate', { ...good, pieces: [{ t: 'peg', x: '10', y: 10, r: 9 }] }, /pieces\[0\]\.x must be a finite number/],
-    ['outside the pipe', { ...good, pieces: [{ t: 'breakable', x: 1000, y: 10, w: 30, h: 60, req: 5 }] }, /is 1000; expected 0\.\.900/],
+    ['outside the pipe', { ...good, pieces: [{ t: 'breakable', x: 5000, y: 10, w: 30, h: 60, req: 5 }] }, /is 5000; expected 0\.\.900/],
     ['below the circuit height', { ...good, height: 900, pieces: [{ t: 'peg', x: 10, y: 5000, r: 9 }] }, /below the circuit's height/],
     ['bad peg colour', { ...good, pieces: [{ t: 'ppeg', x: 10, y: 10, color: 'red', r: 9 }] }, /color must be blue, orange or green/],
     ['unknown item drop', { ...good, pieces: [{ t: 'ppeg', x: 10, y: 10, color: 'green', r: 13, item: 'laser' }] }, /item must be one of/],

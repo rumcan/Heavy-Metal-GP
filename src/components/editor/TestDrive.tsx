@@ -20,7 +20,7 @@ import { buildTrackFromDef } from '../../game/trackdef';
 import { W } from '../../game/track';
 import { PHYSICS_STEP, formatTime } from '../../game/physics';
 import { render, clearStaticChunks } from '../../game/render';
-import { AI_COLORS, randomStats, mulberry32 } from '../../game/types';
+import { AI_COLORS, randomStats, mulberry32, ITEM_TYPES } from '../../game/types';
 import type { MarbleInfo } from '../../game/types';
 import { RIVALS } from '../../game/characters';
 import type { TrackDef } from '../../game/trackdef';
@@ -233,7 +233,7 @@ export default function TestDrive({ def, driver, seed, ghost, spawnAt, onExit }:
     raf = requestAnimationFrame(loop);
 
     const onKey = (e: KeyboardEvent, down: boolean) => {
-      if (e.code === 'Escape' && down && !e.repeat) {
+      if ((e.code === 'Escape' || e.code === 'Space') && down && !e.repeat) {
         e.preventDefault();
         exit();
         return;
@@ -243,9 +243,20 @@ export default function TestDrive({ def, driver, seed, ghost, spawnAt, onExit }:
         setPaused((v) => !v);
         return;
       }
+      if (down && e.code.startsWith('Numpad')) {
+        const num = parseInt(e.code.replace('Numpad', ''), 10);
+        if (num >= 1 && num <= 9) {
+          e.preventDefault();
+          if (gameRef.current) {
+            const item = ITEM_TYPES[num - 1];
+            gameRef.current.player.inventory[item] = 99;
+            gameRef.current.useItem(gameRef.current.player, item);
+          }
+        }
+      }
       if (e.code === 'ArrowLeft' || e.code === 'KeyA') controls.current.left = down;
       if (e.code === 'ArrowRight' || e.code === 'KeyD') controls.current.right = down;
-      if (['ArrowLeft', 'ArrowRight', 'KeyA', 'KeyD', 'Space'].includes(e.code)) e.preventDefault();
+      if (['ArrowLeft', 'ArrowRight', 'KeyA', 'KeyD'].includes(e.code)) e.preventDefault();
     };
     const keyDown = (e: KeyboardEvent) => onKey(e, true);
     const keyUp = (e: KeyboardEvent) => onKey(e, false);
@@ -289,7 +300,34 @@ export default function TestDrive({ def, driver, seed, ghost, spawnAt, onExit }:
           </button>
         </div>
       </div>
-      <p className="testdrive-help">A/D or ←/→ to nudge · P to pause · Esc to return · Camera follows test marble · Ghost toggle in editor</p>
+      <p className="testdrive-help">A/D or \u2190/\u2192 to nudge | P to pause | Space/Esc to return | Camera follows test marble | Ghost toggle in editor</p>
+
+      {/* Infinite skills drawer */}
+      <div style={{ position: 'absolute', bottom: 10, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 6, background: 'rgba(0,0,0,0.85)', padding: '6px 12px', borderRadius: 12, border: '1px solid #444', alignItems: 'center' }}>
+        <span style={{ color: '#aaa', fontSize: 10, marginRight: 8, fontFamily: 'var(--mono)', letterSpacing: 1 }}>SKILLS</span>
+        {ITEM_TYPES.slice(0, 9).map((item, i) => (
+          <button 
+            key={item} 
+            onClick={() => { 
+              if (gameRef.current) {
+                gameRef.current.player.inventory[item] = 99;
+                gameRef.current.useItem(gameRef.current.player, item);
+              }
+            }}
+            style={{ 
+              color: '#fff', background: '#222', border: '1px solid #555', borderRadius: 4, 
+              padding: '4px 8px', fontSize: 10, cursor: 'pointer', fontFamily: 'var(--mono)',
+              transition: 'background 0.1s'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.background = '#444'}
+            onMouseOut={(e) => e.currentTarget.style.background = '#222'}
+            title={`Press Numpad ${i + 1} to use`}
+          >
+            <span style={{ color: '#888', marginRight: 4 }}>{i + 1}</span>
+            {item.toUpperCase()}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

@@ -21,7 +21,7 @@
  */
 import { ITEM_TYPES, THEME_IDS, themeFor, themeIdFor } from './types';
 import type { ItemType, ThemeId, TrackProfile } from './types';
-import { Builder, DEFAULT_PROFILE, FINISH_H, GATE_TOP, START_H, T, W, assembleTrack, meta, segFinish, segStart } from './track';
+import { Builder, DEFAULT_PROFILE, FINISH_H, GATE_TOP, START_H, T, W, assembleTrack, assembleExperimentalTrack, meta, segFinish, segStart } from './track';
 import type { Kind, PegColor, SegmentInfo, Track } from './track';
 
 /** Only version 1 exists. A def from a newer build is refused rather than guessed at. */
@@ -233,11 +233,11 @@ class DefRecorder extends Builder {
     return this.capture(() => super.hoop(x, y, dirX, dirY), () => ({ t: 'hoop', x, y, dir: [dirX, dirY], flip: this.mirrored }));
   }
 
-  override wrecker(px: number, py: number, chain: number, amp: number, speed: number) {
+  override wrecker(px: number, py: number, chain: number, amp: number, speed: number, phase?: number) {
     if (this.quiet || !this.capturing) return super.wrecker(px, py, chain, amp, speed);
     // The phase is a rolled value, not a parameter: roll it here (same RNG draw, same order) and record it.
-    const phase = this.rollPhase();
-    return this.capture(() => super.wrecker(px, py, chain, amp, speed, phase), () => ({ t: 'wrecker', pivot: [px, py], chain, amp, speed, phase, flip: this.mirrored }));
+    const usedPhase = phase ?? this.rollPhase();
+    return this.capture(() => super.wrecker(px, py, chain, amp, speed, usedPhase), () => ({ t: 'wrecker', pivot: [px, py], chain, amp, speed, phase: usedPhase, flip: this.mirrored }));
   }
 
   override pad(cx: number, topY: number, w: number, launchDirX: number) {
@@ -503,7 +503,7 @@ export function generateTrackDef(seed: number, profile: TrackProfile = DEFAULT_P
     seed,
     theme: themeIdFor(profile.theme),
     height: track.height,
-    segments: track.segments.map((s) => ({ ...s })),
+    segments: track.segments.map((s: any) => ({ ...s })),
     pieces: recorder.pieces.map(compact),
   });
 }
@@ -598,7 +598,7 @@ export function buildTrackFromDef(value: unknown): Track {
 
   const gate = b.bodies.find((body) => meta(body).kind === 'gate')!;
   const segments: SegmentInfo[] = def.segments?.length
-    ? def.segments.map((s) => ({ ...s }))
+    ? def.segments.map((s: any) => ({ ...s }))
     : [
       { name: 'Start', y: 0, h: hStart },
       { name: 'Custom', y: hStart, h: Math.max(1, finishTop - hStart) },
@@ -764,7 +764,7 @@ function vec(value: unknown, at: string, problems: Problems): Vec {
     problems.add(`${at} must be [x, y].`);
     return [NaN, NaN];
   }
-  return [number(value[0], `${at}[0]`, 0, W, problems), real(value[1], `${at}[1]`, problems)];
+  return [number(value[0], `${at}[0]`, -200, W + 200, problems), real(value[1], `${at}[1]`, problems)];
 }
 
 /** A direction or boost vector. The builder normalises it, so only zero and nonsense are rejected. */
@@ -832,7 +832,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
     case 'trampoline':
       return {
         t: 'trampoline',
-        x: number(raw.x, `${at}.x`, 0, W, problems),
+        x: number(raw.x, `${at}.x`, -200, W + 200, problems),
         y: real(raw.y, `${at}.y`, problems),
         w: number(raw.w, `${at}.w`, 60, 400, problems),
         tension: number(raw.tension, `${at}.tension`, 0.5, 3, problems),
@@ -841,7 +841,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
     case 'turnstile':
       return {
         t: 'turnstile',
-        x: number(raw.x, `${at}.x`, 0, W, problems),
+        x: number(raw.x, `${at}.x`, -200, W + 200, problems),
         y: real(raw.y, `${at}.y`, problems),
         arms: number(raw.arms, `${at}.arms`, 2, 5, problems),
         r: number(raw.r, `${at}.r`, 30, 160, problems),
@@ -853,7 +853,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
     case 'targets':
       return {
         t: 'targets',
-        x: number(raw.x, `${at}.x`, 0, W, problems),
+        x: number(raw.x, `${at}.x`, -200, W + 200, problems),
         y: real(raw.y, `${at}.y`, problems),
         count: number(raw.count, `${at}.count`, 3, 5, problems),
         reset: number(raw.reset, `${at}.reset`, 1000, 30000, problems),
@@ -862,7 +862,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
     case 'vortex':
       return {
         t: 'vortex',
-        x: number(raw.x, `${at}.x`, 0, W, problems),
+        x: number(raw.x, `${at}.x`, -200, W + 200, problems),
         y: real(raw.y, `${at}.y`, problems),
         r: number(raw.r, `${at}.r`, 60, 300, problems),
         spin: number(raw.spin, `${at}.spin`, 0.5, 4, problems),
@@ -872,9 +872,9 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
     case 'platform':
       return {
         t: 'platform',
-        ax: number(raw.ax, `${at}.ax`, 0, W, problems),
+        ax: number(raw.ax, `${at}.ax`, -200, W + 200, problems),
         ay: real(raw.ay, `${at}.ay`, problems),
-        bx: number(raw.bx, `${at}.bx`, 0, W, problems),
+        bx: number(raw.bx, `${at}.bx`, -200, W + 200, problems),
         by: real(raw.by, `${at}.by`, problems),
         w: number(raw.w, `${at}.w`, 40, 300, problems),
         travel: number(raw.travel, `${at}.travel`, 800, 20000, problems),
@@ -883,9 +883,9 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
         ...body,
       };
     case 'loop':
-      return { t: 'loop', x: number(raw.x, `${at}.x`, 0, W, problems), bottom: real(raw.bottom, `${at}.bottom`, problems), r: number(raw.r, `${at}.r`, 40, 300, problems), ...body };
+      return { t: 'loop', x: number(raw.x, `${at}.x`, -200, W + 200, problems), bottom: real(raw.bottom, `${at}.bottom`, problems), r: number(raw.r, `${at}.r`, 40, 300, problems), ...body };
     case 'hoop':
-      return { t: 'hoop', x: number(raw.x, `${at}.x`, 0, W, problems), y: real(raw.y, `${at}.y`, problems), dir: direction(raw.dir, `${at}.dir`, problems), ...body };
+      return { t: 'hoop', x: number(raw.x, `${at}.x`, -200, W + 200, problems), y: real(raw.y, `${at}.y`, problems), dir: direction(raw.dir, `${at}.dir`, problems), ...body };
     case 'wrecker':
       return {
         t: 'wrecker',
@@ -899,12 +899,12 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
     case 'pad': {
       const dir = raw.dir === -1 || raw.dir === 1 ? raw.dir : undefined;
       if (dir === undefined) problems.add(`${at}.dir must be -1 or 1.`);
-      return { t: 'pad', x: number(raw.x, `${at}.x`, 0, W, problems), y: real(raw.y, `${at}.y`, problems), w: number(raw.w, `${at}.w`, 8, W, problems), dir: dir ?? 1, ...body };
+      return { t: 'pad', x: number(raw.x, `${at}.x`, -200, W + 200, problems), y: real(raw.y, `${at}.y`, problems), w: number(raw.w, `${at}.w`, 8, W, problems), dir: dir ?? 1, ...body };
     }
     case 'boost':
       return {
         t: 'boost',
-        x: number(raw.x, `${at}.x`, 0, W, problems),
+        x: number(raw.x, `${at}.x`, -200, W + 200, problems),
         y: real(raw.y, `${at}.y`, problems),
         len: number(raw.len, `${at}.len`, 8, 4000, problems),
         thick: number(raw.thick, `${at}.thick`, 4, 400, problems),
@@ -914,7 +914,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
     case 'spinner':
       return {
         t: 'spinner',
-        x: number(raw.x, `${at}.x`, 0, W, problems),
+        x: number(raw.x, `${at}.x`, -200, W + 200, problems),
         y: real(raw.y, `${at}.y`, problems),
         len: number(raw.len, `${at}.len`, 20, W, problems),
         speed: number(raw.speed, `${at}.speed`, -0.5, 0.5, problems),
@@ -924,7 +924,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
     case 'breakable':
       return {
         t: 'breakable',
-        x: number(raw.x, `${at}.x`, 0, W, problems),
+        x: number(raw.x, `${at}.x`, -200, W + 200, problems),
         y: real(raw.y, `${at}.y`, problems),
         w: number(raw.w, `${at}.w`, 8, W, problems),
         h: number(raw.h, `${at}.h`, 8, 4000, problems),
@@ -932,7 +932,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
         ...body,
       };
     case 'peg':
-      return { t: 'peg', x: number(raw.x, `${at}.x`, 0, W, problems), y: real(raw.y, `${at}.y`, problems), r: number(raw.r, `${at}.r`, 2, 100, problems), ...body };
+      return { t: 'peg', x: number(raw.x, `${at}.x`, -200, W + 200, problems), y: real(raw.y, `${at}.y`, problems), r: number(raw.r, `${at}.r`, 2, 100, problems), ...body };
     case 'ppeg': {
       const color = raw.color === 'blue' || raw.color === 'orange' || raw.color === 'green' ? raw.color : undefined;
       if (!color) problems.add(`${at}.color must be blue, orange or green.`);
@@ -940,17 +940,17 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
         ? undefined
         : (ITEM_TYPES as readonly string[]).includes(raw.item as string) ? raw.item as ItemType : undefined;
       if (raw.item !== undefined && item === undefined) problems.add(`${at}.item must be one of ${ITEM_TYPES.join(', ')}.`);
-      return { t: 'ppeg', x: number(raw.x, `${at}.x`, 0, W, problems), y: real(raw.y, `${at}.y`, problems), color: color ?? 'blue', r: number(raw.r, `${at}.r`, 2, 100, problems), item, ...body };
+      return { t: 'ppeg', x: number(raw.x, `${at}.x`, -200, W + 200, problems), y: real(raw.y, `${at}.y`, problems), color: color ?? 'blue', r: number(raw.r, `${at}.r`, 2, 100, problems), item, ...body };
     }
     case 'itembox':
-      return { t: 'itembox', x: number(raw.x, `${at}.x`, 0, W, problems), y: real(raw.y, `${at}.y`, problems), ...body };
+      return { t: 'itembox', x: number(raw.x, `${at}.x`, -200, W + 200, problems), y: real(raw.y, `${at}.y`, problems), ...body };
     case 'bucket':
       return { t: 'bucket', y: real(raw.y, `${at}.y`, problems), phase: raw.phase === undefined ? undefined : real(raw.phase, `${at}.phase`, problems), ...body };
     case 'wall':
     case 'block':
       return {
         t: raw.t,
-        x: number(raw.x, `${at}.x`, 0, W, problems),
+        x: number(raw.x, `${at}.x`, -200, W + 200, problems),
         y: real(raw.y, `${at}.y`, problems),
         w: number(raw.w, `${at}.w`, 2, 4000, problems),
         h: number(raw.h, `${at}.h`, 2, 4000, problems),
@@ -960,7 +960,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
     case 'barricade':
       return {
         t: 'barricade',
-        x: number(raw.x, `${at}.x`, 0, W, problems),
+        x: number(raw.x, `${at}.x`, -200, W + 200, problems),
         y: real(raw.y, `${at}.y`, problems),
         w: number(raw.w, `${at}.w`, 8, W, problems),
         h: number(raw.h, `${at}.h`, 8, 2000, problems),
@@ -970,7 +970,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
     case 'crumble':
       return {
         t: 'crumble',
-        x: number(raw.x, `${at}.x`, 0, W, problems),
+        x: number(raw.x, `${at}.x`, -200, W + 200, problems),
         y: real(raw.y, `${at}.y`, problems),
         w: number(raw.w, `${at}.w`, 8, W, problems),
         h: number(raw.h, `${at}.h`, 8, 2000, problems),
@@ -982,7 +982,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
       if (raw.two !== undefined && two === undefined) problems.add(`${at}.two must be true when present.`);
       return compact({
         t: 'tunnel' as const,
-        x: number(raw.x, `${at}.x`, 0, W, problems),
+        x: number(raw.x, `${at}.x`, -200, W + 200, problems),
         y: real(raw.y, `${at}.y`, problems),
         exit: vec(raw.exit, `${at}.exit`, problems),
         edir: direction(raw.edir, `${at}.edir`, problems),
@@ -999,7 +999,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
       if (mode === undefined) problems.add(`${at}.mode must be 'timer' or 'weight'.`);
       return {
         t: 'trapdoor',
-        x: number(raw.x, `${at}.x`, 0, W, problems),
+        x: number(raw.x, `${at}.x`, -200, W + 200, problems),
         y: real(raw.y, `${at}.y`, problems),
         w: number(raw.w, `${at}.w`, 40, W, problems),
         hinge: hinge ?? 1,
@@ -1017,7 +1017,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
       if (side === undefined) problems.add(`${at}.side must be 0 (left) or 1 (right).`);
       return {
         t: 'switch',
-        x: number(raw.x, `${at}.x`, 0, W, problems),
+        x: number(raw.x, `${at}.x`, -200, W + 200, problems),
         y: real(raw.y, `${at}.y`, problems),
         len: number(raw.len, `${at}.len`, 40, 400, problems),
         angle: number(raw.angle, `${at}.angle`, 0.1, 1.35, problems),
@@ -1051,7 +1051,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
     case 'crusher':
       return {
         t: 'crusher',
-        x: number(raw.x, `${at}.x`, 0, W, problems),
+        x: number(raw.x, `${at}.x`, -200, W + 200, problems),
         y: real(raw.y, `${at}.y`, problems),
         w: number(raw.w, `${at}.w`, 40, 400, problems),
         travel: number(raw.travel, `${at}.travel`, 30, 600, problems),
@@ -1079,7 +1079,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
     case 'mace':
       return {
         t: 'mace',
-        x: number(raw.x, `${at}.x`, 0, W, problems),
+        x: number(raw.x, `${at}.x`, -200, W + 200, problems),
         y: real(raw.y, `${at}.y`, problems),
         arm: number(raw.arm, `${at}.arm`, 60, 400, problems),
         arc: number(raw.arc, `${at}.arc`, 0.4, 2.6, problems),
@@ -1093,7 +1093,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
     case 'wheel':
       return {
         t: 'wheel',
-        x: number(raw.x, `${at}.x`, 0, W, problems),
+        x: number(raw.x, `${at}.x`, -200, W + 200, problems),
         y: real(raw.y, `${at}.y`, problems),
         r: number(raw.r, `${at}.r`, 60, 200, problems),
         buckets: number(raw.buckets, `${at}.buckets`, 4, 10, problems),
@@ -1126,7 +1126,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
     case 'seesaw':
       return {
         t: 'seesaw',
-        x: number(raw.x, `${at}.x`, 0, W, problems),
+        x: number(raw.x, `${at}.x`, -200, W + 200, problems),
         y: real(raw.y, `${at}.y`, problems),
         len: number(raw.len, `${at}.len`, 140, 420, problems),
         lim: number(raw.lim, `${at}.lim`, 6, 28, problems),
@@ -1146,7 +1146,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
     case 'cannon':
       return {
         t: 'cannon',
-        x: number(raw.x, `${at}.x`, 0, W, problems),
+        x: number(raw.x, `${at}.x`, -200, W + 200, problems),
         y: real(raw.y, `${at}.y`, problems),
         aimMin: number(raw.aimMin, `${at}.aimMin`, 0, 360, problems),
         aimMax: number(raw.aimMax, `${at}.aimMax`, 0, 360, problems),
@@ -1158,7 +1158,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
     case 'catapult':
       return {
         t: 'catapult',
-        x: number(raw.x, `${at}.x`, 0, W, problems),
+        x: number(raw.x, `${at}.x`, -200, W + 200, problems),
         y: real(raw.y, `${at}.y`, problems),
         len: number(raw.len, `${at}.len`, 120, 400, problems),
         reload: number(raw.reload, `${at}.reload`, 600, 3000, problems),
@@ -1168,7 +1168,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
     case 'flipper':
       return {
         t: 'flipper',
-        x: number(raw.x, `${at}.x`, 0, W, problems),
+        x: number(raw.x, `${at}.x`, -200, W + 200, problems),
         y: real(raw.y, `${at}.y`, problems),
         side: (raw.side === 0 || raw.side === 1 ? raw.side : (problems.add(`${at}.side must be 0 or 1.`), 0 as 0 | 1)),
         angle: raw.angle === undefined ? 0 : number(raw.angle, `${at}.angle`, -180, 180, problems),
@@ -1181,7 +1181,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
     case 'sling':
       return {
         t: 'sling',
-        x: number(raw.x, `${at}.x`, 0, W, problems),
+        x: number(raw.x, `${at}.x`, -200, W + 200, problems),
         y: real(raw.y, `${at}.y`, problems),
         size: number(raw.size, `${at}.size`, 40, 180, problems),
         facing: number(raw.facing, `${at}.facing`, 0, 360, problems),
@@ -1191,7 +1191,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
     case 'scoop':
       return {
         t: 'scoop',
-        x: number(raw.x, `${at}.x`, 0, W, problems),
+        x: number(raw.x, `${at}.x`, -200, W + 200, problems),
         y: real(raw.y, `${at}.y`, problems),
         deg: number(raw.deg, `${at}.deg`, 0, 360, problems),
         hold: number(raw.hold, `${at}.hold`, 400, 1200, problems),
@@ -1199,7 +1199,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
           ? {
               exit: (Array.isArray(raw.exit) && raw.exit.length === 3
                 ? [
-                    number(raw.exit[0], `${at}.exit[0]`, 0, W, problems),
+                    number(raw.exit[0], `${at}.exit[0]`, -200, W + 200, problems),
                     real(raw.exit[1], `${at}.exit[1]`, problems),
                     number(raw.exit[2], `${at}.exit[2]`, 600, 6000, problems),
                   ]
@@ -1222,7 +1222,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
     case 'magnet':
       return {
         t: 'magnet',
-        x: number(raw.x, `${at}.x`, 0, W, problems),
+        x: number(raw.x, `${at}.x`, -200, W + 200, problems),
         y: real(raw.y, `${at}.y`, problems),
         r: number(raw.r, `${at}.r`, 40, 400, problems),
         str: number(raw.str, `${at}.str`, 1, 10, problems),
@@ -1250,7 +1250,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
     case 'geyser':
       return {
         t: 'geyser',
-        x: number(raw.x, `${at}.x`, 0, W, problems),
+        x: number(raw.x, `${at}.x`, -200, W + 200, problems),
         y: real(raw.y, `${at}.y`, problems),
         h: number(raw.h, `${at}.h`, 80, 600, problems),
         period: number(raw.period, `${at}.period`, 1500, 20000, problems),
@@ -1342,4 +1342,18 @@ function pieceYs(piece: Piece): number[] {
     case 'platform':
       return [Math.min(piece.ay, piece.by) - 20, Math.max(piece.ay, piece.by) + 20];
   }
+}
+
+export function generateExperimentalTrackDef(seed: number, profile: TrackProfile = DEFAULT_PROFILE, name = 'Untitled circuit'): TrackDef {
+  const recorder = new DefRecorder(seed);
+  const track = assembleExperimentalTrack(recorder, seed, profile);
+  return compact({
+    v: TRACKDEF_VERSION,
+    name: name.slice(0, MAX_NAME),
+    seed,
+    theme: themeIdFor(profile.theme),
+    height: track.height,
+    segments: track.segments.map((s: any) => ({ ...s })),
+    pieces: recorder.pieces.map(compact),
+  });
 }

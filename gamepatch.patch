@@ -1,0 +1,771 @@
+diff --git a/src/game/course-plan.ts b/src/game/course-plan.ts
+--- a/src/game/course-plan.ts
++++ b/src/game/course-plan.ts
+@@ -1,13 +1,50 @@
+ import { mulberry32, themeIdFor } from './types';
+ import type { TrackProfile } from './types';
+ 
+-export type CourseFeature = 'mass' | 'rebound' | 'burrow' | 'sprint' | 'peggle' | 'crane' | 'lift';
++/**
++ * Chapter layout library. The first five are circuit-neutral archetypes; the rest are the Grand Prix
++ * signatures (three per calendar round) that give every circuit its own feel. Yas Marble, the finale,
++ * draws from all of them.
++ */
++export const COURSE_LAYOUTS = [
++  // neutral archetypes
++  'sweeper', 'split', 'slalom', 'terraces', 'arena',
++  // Marblehurst — fairground
++  'fairground', 'watermill', 'funhouse',
++  // Monte Pipo — urban heist
++  'tunnelrun', 'cannonalley', 'bladestreet',
++  // Silverpeg — peggle championship
++  'pegboard', 'targetrange', 'turnstiles',
++  // Spa — ice & speed
++  'icecascade', 'looprun', 'rapids',
++  // Suzuka — canyon gauntlet
++  'macealley', 'magnetcave', 'boulderrun',
++] as const;
++export type CourseLayout = typeof COURSE_LAYOUTS[number];
++
++/** Feature overlays dress a layout's return road with a second, smaller mechanic. */
++export const COURSE_FEATURES = [
++  'banking', 'peggle', 'ice', 'boost', 'machines',
++  'pinball', 'hazards', 'transport', 'fields', 'loops',
++] as const;
++export type CourseOverlay = typeof COURSE_FEATURES[number];
++
++/** The seven specialist chapters plus every signature layout (a layout chapter reports its layout as its feature). */
++export type CourseFeature = 'mass' | 'rebound' | 'burrow' | 'sprint' | 'peggle' | 'crane' | 'lift' | CourseLayout;
+ export interface CourseChapter {
+   feature: CourseFeature;
+   mirror: boolean;
+   variant: number;
++  /** Set on signature chapters: which layout template builds it. */
++  layout?: CourseLayout;
++  /** Set on signature chapters: the overlay dressing its return road. */
++  overlay?: CourseOverlay;
+ }
+ 
++export function isCourseLayout(feature: string): feature is CourseLayout {
++  return (COURSE_LAYOUTS as readonly string[]).includes(feature);
++}
++
+ const WEIGHTS: Record<CourseFeature, string[]> = {
+   mass: ['Crack Wall Shortcut', 'Crumbling Wall', 'Trapdoor Drop'],
+   rebound: ['Bounce Ramp', 'Trampoline Alley', 'Flipper Alley'],
+@@ -16,8 +53,76 @@
+   peggle: ['Peggle Board', 'Peg Field'],
+   crane: ['Chicane', 'Crusher Alley', 'Mace Sweep', 'Blade Gauntlet'],
+   lift: ['Wheel Lift', 'Screw Tower', 'Drawbridge Gap'],
++  // layouts map onto the calendar's legacy sector weights so a GP's tuning still biases its own chapters
++  sweeper: ['Curve Drop', 'Zigzag Pipes'],
++  split: ['Splitter', 'Funnel'],
++  slalom: ['Chicane', 'Peg Field'],
++  terraces: ['Switchback Lanes', 'Zigzag Pipes'],
++  arena: ['Crack Wall Shortcut', 'Bounce Ramp'],
++  fairground: ['Rope Crossing', 'Teeter Crossing', 'Trampoline Alley'],
++  watermill: ['Wheel Lift', 'Screw Tower'],
++  funhouse: ['Flipper Alley', 'Sling Chute'],
++  tunnelrun: ['Tunnel Shortcut', 'Crumbling Wall'],
++  cannonalley: ['Cannon Run', 'Catapult Ledge'],
++  bladestreet: ['Blade Gauntlet', 'Saw Slot', 'Crusher Alley'],
++  pegboard: ['Peggle Board', 'Peg Field'],
++  targetrange: ['Target Gate', 'Flipper Alley'],
++  turnstiles: ['Turnstile Square', 'Peg Field'],
++  icecascade: ['Ice Slide', 'Fan Garden'],
++  looprun: ['Loop', 'Vent Field'],
++  rapids: ['Skipping Pools', 'Tar Flats'],
++  macealley: ['Mace Sweep', 'Blade Gauntlet'],
++  magnetcave: ['Lodestone Way', 'Vortex Bowl'],
++  boulderrun: ['Boulder Run', 'Beltway'],
+ };
+ 
++type AffinityKey = CourseLayout | CourseOverlay;
++const NEUTRAL: Partial<Record<AffinityKey, number>> = { sweeper: 2, split: 2, slalom: 2, terraces: 2, arena: 2 };
++
++/**
++ * How strongly each circuit theme wants a layout or overlay. A theme's own signatures sit at 4–5, the
++ * neutral archetypes at 2 and other circuits' signatures at 0.5, so `planCourse` naturally builds
++ * GP-appropriate chapters. Unlisted keys fall back to 0.5 (layouts) and 1 (overlays).
++ */
++export const AFFINITY: Record<string, Partial<Record<AffinityKey, number>>> = {
++  classic: { ...NEUTRAL, fairground: 5, watermill: 5, funhouse: 4, pinball: 4, transport: 4, loops: 3, banking: 2, peggle: 1 },
++  street: { ...NEUTRAL, tunnelrun: 5, cannonalley: 5, bladestreet: 4, hazards: 5, boost: 3, machines: 3, banking: 2 },
++  silver: { ...NEUTRAL, pegboard: 5, targetrange: 5, turnstiles: 4, peggle: 5, pinball: 4, banking: 1 },
++  forest: { ...NEUTRAL, icecascade: 5, looprun: 5, rapids: 4, ice: 5, boost: 3, fields: 3, loops: 3 },
++  worg: { ...NEUTRAL, macealley: 5, magnetcave: 5, boulderrun: 4, hazards: 4, fields: 4, machines: 4 },
++  dwarven: Object.fromEntries([...COURSE_LAYOUTS, ...COURSE_FEATURES].map(key => [key, 3])) as Partial<Record<AffinityKey, number>>,
++  default: { ...NEUTRAL, sweeper: 3, split: 3, slalom: 3 },
++};
++
++export function affinity(theme: string, key: AffinityKey): number {
++  const table = AFFINITY[theme] ?? AFFINITY.default;
++  const fallback = (COURSE_FEATURES as readonly string[]).includes(key) ? 1 : 0.5;
++  return table[key] ?? fallback;
++}
++
++/** Circuit tuning for a chapter: the mean of its legacy sector weights, clamped like the specialist chapters. */
++export function weight(theme: string, profile: TrackProfile, key: CourseFeature | CourseOverlay): number {
++  const keys = (WEIGHTS as Record<string, string[] | undefined>)[key] ?? [];
++  const tuning = keys.length
++    ? Math.max(0.1, keys.reduce((sum, name) => sum + Math.max(0, Math.min(5, profile.weights[name] ?? 1)), 0) / keys.length)
++    : 1;
++  return affinity(theme, key as AffinityKey) * tuning;
++}
++
++/** One RNG draw, weighted. Exactly one draw so the caller's RNG sequence stays predictable. */
++export function pick<T>(rng: () => number, items: readonly T[], weights: number[]): T {
++  let draw = rng() * weights.reduce((a, b) => a + b, 0);
++  return items.find((_, i) => (draw -= weights[i]) <= 0) ?? items[items.length - 1];
++}
++
++function pickLayout(rng: () => number, theme: string, profile: TrackProfile, used: CourseFeature[]): CourseLayout {
++  const last = used.at(-1);
++  let candidates = COURSE_LAYOUTS.filter(l => l !== last);
++  const fresh = candidates.filter(l => !used.includes(l));
++  if (fresh.length) candidates = fresh;
++  return pick(rng, candidates, candidates.map(l => weight(theme, profile, l)));
++}
++
+ /** Choose the experience first. Geometry is built afterwards against a shared entry/exit contract. */
+ export function planCourse(seed: number, profile: TrackProfile): CourseChapter[] {
+   const rng = mulberry32((seed ^ 0x43525345) >>> 0);
+@@ -35,6 +140,12 @@
+   if (already >= 0) required.splice(already, 1);
+   while (features.length < count) {
+     const remaining = required.filter(f => f !== features.at(-1));
++    if (!remaining.length) {
++      // Every specialist chapter is placed: the free slots become this circuit's signature chapters.
++      // One RNG draw, like a pool pick, so the specialist chapters keep their positions and variants.
++      features.push(pickLayout(rng, theme, profile, features));
++      continue;
++    }
+     let candidates = remaining.length ? remaining : pool.filter(f => f !== features.at(-1));
+     if (['crane', 'lift'].includes(features.at(-1)!)) {
+       const calmer = candidates.filter(f => f !== 'crane' && f !== 'lift');
+@@ -48,5 +159,12 @@
+     if (index >= 0) required.splice(index, 1);
+     features.push(next);
+   }
+-  return features.map(feature => ({ feature, mirror: (seed & 1) === 1, variant: Math.floor(rng() * 3) }));
++  const chapters: CourseChapter[] = features.map(feature => ({ feature, mirror: (seed & 1) === 1, variant: Math.floor(rng() * 3) }));
++  // Overlays are drawn after every variant so the specialist chapters' geometry is unchanged by this pass.
++  for (const chapter of chapters) {
++    if (!isCourseLayout(chapter.feature)) continue;
++    chapter.layout = chapter.feature;
++    chapter.overlay = pick(rng, COURSE_FEATURES, COURSE_FEATURES.map(f => weight(theme, profile, f)));
++  }
++  return chapters;
+ }
+diff --git a/src/game/course-builder.ts b/src/game/course-builder.ts
+--- a/src/game/course-builder.ts
++++ b/src/game/course-builder.ts
+@@ -1,7 +1,32 @@
+ import type { Builder, SegmentInfo } from './track';
+ import type { TrackProfile } from './types';
+ import { planCourse } from './course-plan';
++import type { CourseChapter, CourseLayout, CourseOverlay } from './course-plan';
+ 
++/** Sector names of every signature layout, keyed like `NAMES` below. */
++export const LAYOUT_NAMES: Record<CourseLayout, string> = {
++  sweeper: 'Grand Sweep · long outer curve / return road',
++  split: 'Fork Gap · inside drop / outer jump',
++  slalom: 'Slalom Pegs · weave / return road',
++  terraces: 'Terraces · four-tier switchback',
++  arena: 'Arena · smash floor / wrecking ball',
++  fairground: 'Fairground · rope bridge / seesaw / bounce net',
++  watermill: 'Watermill · bucket wheel / screw lift',
++  funhouse: 'Funhouse · flipper drop / sling wall',
++  tunnelrun: 'Tunnel Run · barricade drop / harbour burrow',
++  cannonalley: 'Cannon Alley · goblin cannon / catch lane',
++  bladestreet: 'Blade Street · crusher / pendulums / crumble drop',
++  pegboard: 'Pegboard · scoring pocket / moving bucket',
++  targetrange: 'Target Range · flipper drop / pin bank',
++  turnstiles: 'Turnstile Square · ratchet hub / free spinner',
++  icecascade: 'Ice Cascade · four-tier ice / tailwind',
++  looprun: 'Loop Run · ice loop / geyser step',
++  rapids: 'Rapids · skipping pool / tar strip',
++  macealley: 'Mace Alley · wrecking gap / mace turnaround',
++  magnetcave: 'Magnet Cave · vortex drop / lodestone road',
++  boulderrun: 'Boulder Run · beltway / rolling boulder',
++};
++
+ const NAMES = {
+   mass: 'Foundry Cut · weight gate / outer road',
+   rebound: 'Spring Exchange · upper shelf / lower road',
+@@ -10,8 +35,391 @@
+   peggle: 'Peg Bank · express gap / scoring pocket',
+   lift: 'Sky Ferry · lift / catch road',
+   crane: 'Crane Yard · ghost cut / outside bend',
++  ...LAYOUT_NAMES,
+ };
+ 
++/** Supply items the signature chapters hand out from their green pegs, per circuit flavour. */
++export const SUPPLY = {
++  fairground: ['jump', 'anvil'],
++  heist: ['ghost', 'shock'],
++  peggle: ['rocket', 'freeze'],
++  speed: ['aero', 'jump'],
++  canyon: ['ghost', 'shock'],
++} as const;
++
++const W = 900;
++
++/** The shared chapter frame: an outer road from the entry wall to `tip`, a return road from the far wall to `end`. */
++export interface Road {
++  tip: number;
++  end: number;
++  /** y of the return road at the far wall. */
++  back: number;
++  firstY: (x: number) => number;
++  secondY: (x: number) => number;
++}
++
++/**
++ * Lay the frame every layout shares. The outer road starts flush against the entry wall (x = 0, mirrored by
++ * the builder) and the return road starts flush against the far wall, so a marble that leaves either road only
++ * ever lands on the next one. Overlays that change the return surface (ice, belt, banked curve) are laid here.
++ */
++export function road(b: Builder, y: number, v: number,
++  opts: { back?: number; outer?: boolean; ret?: boolean; overlay?: CourseOverlay; plain?: boolean } = {}): Road {
++  const { back = 420, outer = true, ret = true, overlay, plain = false } = opts;
++  const tip = 730 + v * 20;
++  const end = 130 + v * 15;
++  if (outer) b.ramp(0, y + 50, tip, y + 250);
++  const surface = plain ? 'ramp' : overlay === 'ice' ? 'ice' : overlay === 'transport' ? 'conveyor' : overlay === 'banking' ? 'curve' : 'ramp';
++  if (!ret) { /* the layout lays its own return road along the same line */ }
++  else if (surface === 'ice') b.ice(W, y + back, end, y + back + 240);
++  else if (surface === 'conveyor') b.conveyor(W, y + back, end, y + back + 240, 0.24, undefined, b.flip ? 1 : 0);
++  else if (surface === 'curve') b.curve(W, y + back, 650, y + back + 90, end, y + back + 240, 10);
++  else b.ramp(W, y + back, end, y + back + 240);
++  const secondY = (x: number) => y + back + (W - x) * 240 / (W - end);
++  // Supply before the next decision, exactly like the specialist chapters.
++  b.itemBox(305, secondY(305) - 35);
++  b.ppeg(520, secondY(520) - 32, 'orange', 10);
++  return { tip, end, back, firstY: (x: number) => y + 50 + x * 200 / tip, secondY };
++}
++
++/** Additive overlays: small second mechanics that never block a road and never form a pocket. */
++export function feature(b: Builder, y: number, r: Road, overlay: CourseOverlay | undefined) {
++  const midY = (x: number) => (r.firstY(x) + r.secondY(x)) / 2;
++  switch (overlay) {
++    case 'boost':
++      b.boostOnRamp(W, y + r.back, r.end, y + r.back + 240, 0.45, 90);
++      break;
++    case 'peggle':
++      for (const x of [400, 620, 760]) b.ppeg(x, r.secondY(x) - 32, x === 620 ? 'orange' : 'blue', 9);
++      break;
++    case 'machines':
++      b.spinner(620, midY(620), 120, 0.035);
++      break;
++    case 'pinball':
++      b.sling(640, midY(640), 60, 160, 2.5);
++      break;
++    case 'hazards':
++      b.blade(560, r.secondY(560) - 190, 120, 0.6, 2400, 0, 6);
++      break;
++    case 'fields':
++      b.wind(300, r.secondY(300) - 90, 800, r.secondY(800) - 20, 180, 0.18, 0, 0);
++      break;
++    case 'loops':
++      // A net in the drop zone; the ejector strip means a dead-stopped marble still rolls off it.
++      b.trampoline(700, midY(700) + 40, 120, 1.1);
++      b.boost(700, midY(700) + 20, 110, 24, 1, 0);
++      break;
++    default:
++      // banking / ice / transport are laid by road(); nothing else to add.
++      break;
++  }
++}
++
++/** Outer road with a deliberate gap between `from` and `to`: fast marbles jump it, slow ones take the inside drop. */
++function gapRoad(b: Builder, y: number, r: Road, from: number, to: number) {
++  b.ramp(0, y + 50, from, r.firstY(from));
++  b.ramp(to, r.firstY(to), r.tip, y + 250);
++}
++
++/**
++ * Build one signature chapter at `y`. Returns its height. Every case keeps the frame contract: entry ramp flush
++ * against the entry wall, at least two rolling surfaces with |dy/dx| >= 0.22, a green supply peg, an item box,
++ * and the exit on the far side of the entry.
++ */
++export function buildChapter(b: Builder, y: number, chapter: CourseChapter): number {
++  const v = chapter.variant;
++  const ov = chapter.overlay;
++  const layout: CourseLayout = chapter.layout ?? 'sweeper';
++  switch (layout) {
++    // ------------------------------------------------------------------ neutral archetypes
++    case 'sweeper': {
++      const r = road(b, y, v, { outer: false, overlay: ov });
++      // A long banked outer curve in place of the straight outer road.
++      b.curve(0, y + 50, 350, y + 150, r.tip, y + 250, 10);
++      b.ppeg(250, y + 62, 'green', 10, 'aero');
++      b.ppeg(514, y + 155, 'orange', 10);
++      b.ppeg(660, y + 190, 'blue', 9);
++      feature(b, y, r, ov);
++      return 820;
++    }
++    case 'split': {
++      const r = road(b, y, v, { back: 440, outer: false, overlay: ov });
++      gapRoad(b, y, r, 380, 470);
++      b.ppeg(250, r.firstY(250) - 40, 'green', 10, 'jump');
++      b.ppeg(425, y + 310, 'orange', 10);
++      b.ppeg(600, r.firstY(600) - 32, 'blue', 9);
++      feature(b, y, r, ov);
++      return 860;
++    }
++    case 'slalom': {
++      const r = road(b, y, v, { back: 460, overlay: ov });
++      [200, 350, 500, 650].forEach((x, i) => b.ppeg(x, r.firstY(x) - 32, i % 2 ? 'orange' : 'blue', 9));
++      [300, 450, 600, 750].forEach((x, i) => b.ppeg(x, r.secondY(x) - 32, i % 2 ? 'blue' : 'orange', 9));
++      b.ppeg(120, r.firstY(120) - 40, 'green', 10, 'rocket');
++      feature(b, y, r, ov);
++      return 900;
++    }
++    case 'terraces': {
++      const tip = 730 + v * 20;
++      const end = 130 + v * 15;
++      b.ramp(0, y + 50, tip, y + 250);
++      b.ramp(W, y + 380, end, y + 620);
++      b.ramp(0, y + 710, tip, y + 910);
++      const r: Road = {
++        tip, end, back: 1040,
++        firstY: x => y + 710 + x * 200 / tip,
++        secondY: x => y + 1040 + (W - x) * 240 / (W - end),
++      };
++      b.ramp(W, y + 1040, end, y + 1280);
++      b.itemBox(305, r.secondY(305) - 35);
++      b.ppeg(250, y + 50 + 250 * 200 / tip - 40, 'green', 10, 'rocket');
++      b.ppeg(600, y + 380 + (W - 600) * 240 / (W - end) - 32, 'orange', 10);
++      b.ppeg(400, r.firstY(400) - 32, 'orange', 10);
++      b.ppeg(520, r.secondY(520) - 32, 'orange', 10);
++      feature(b, y, r, ov);
++      return 1360;
++    }
++    case 'arena': {
++      const r = road(b, y, v, { back: 520, outer: false, overlay: ov });
++      b.ramp(0, y + 50, 350, y + 155);
++      // A smashable floor covers the inside drop; the ejector strip keeps a stopped marble moving.
++      b.breakable(430, y + 167, 160, 24, 7);
++      b.boost(430, y + 133, 140, 24, 1, 0);
++      b.ramp(510, y + 155, r.tip, y + 250);
++      b.wrecker(650, y + 250, 150, 0.8, 0.05);
++      b.ppeg(250, y + 94, 'green', 10, 'anvil');
++      b.ppeg(620, y + 190, 'green', 10, 'ghost');
++      feature(b, y, r, ov === 'machines' ? 'fields' : ov);
++      return 1000;
++    }
++    // ------------------------------------------------------------------ Marblehurst — fairground
++    case 'fairground': {
++      const r = road(b, y, v, { back: 460, outer: false, overlay: ov });
++      b.ramp(0, y + 50, 310, y + 150);
++      b.ropeBridge(320, y + 172, 560, y + 182, 8, 36);
++      b.ramp(560, y + 182, r.tip, y + 270);
++      // Under the bridge: a seesaw for anyone who punches through the planks, ejector over the pivot.
++      b.seesaw(440, y + 390, 240, 16, 0.88);
++      b.boost(440, y + 370, 200, 24, 1, 0);
++      // Bounce net in the drop zone, pushing riders off towards the far wall.
++      b.trampoline(720, y + 420, 130, 1.15);
++      b.boost(720, y + 398, 120, 24, 1, 0);
++      b.ppeg(230, y + 84, 'green', 10, SUPPLY.fairground[0]);
++      b.ppeg(650, y + 190, 'green', 10, SUPPLY.fairground[1]);
++      feature(b, y, r, ov === 'loops' || ov === 'machines' ? 'peggle' : ov);
++      return 900;
++    }
++    case 'watermill': {
++      const r = road(b, y, v, { back: 540, outer: false, overlay: ov });
++      gapRoad(b, y, r, 380, 470);
++      // The bucket wheel sits under the gap and tips its riders out down-right onto the return road.
++      b.waterWheel(425, y + 330, 90, 6, 4, 0, 40, 0);
++      // A screw lift at the tip carries the first arrivals sideways; nothing it drops can reach its intake again.
++      b.screwLift(r.tip + 30, y + 262, 560, y + 330, 1500, 4);
++      b.ppeg(250, r.firstY(250) - 40, 'green', 10, SUPPLY.fairground[1]);
++      b.ppeg(600, r.firstY(600) - 30, 'green', 10, SUPPLY.fairground[0]);
++      feature(b, y, r, ov);
++      return 1000;
++    }
++    case 'funhouse': {
++      const r = road(b, y, v, { back: 440, outer: false, overlay: ov });
++      gapRoad(b, y, r, 380, 470);
++      // Inside drop lands on a flipper bat that swats it across; the drop zone has a sling wall.
++      b.flipper(380, y + 300, 0, 0, 110, 1.4, 0, 0);
++      b.sling(700, y + 330, 60, 160, 2.5);
++      b.ppeg(250, r.firstY(250) - 40, 'green', 10, SUPPLY.fairground[1]);
++      b.ppeg(600, r.firstY(600) - 30, 'green', 10, SUPPLY.fairground[0]);
++      feature(b, y, r, ov === 'pinball' ? 'peggle' : ov === 'machines' ? 'boost' : ov);
++      return 880;
++    }
++    // ------------------------------------------------------------------ Monte Pipo — urban heist
++    case 'tunnelrun': {
++      const r = road(b, y, v, { outer: false, overlay: ov });
++      // NO ENTRY plank over the inside drop: heavy kits smash it, Ghost phases, everyone else rolls over.
++      b.ramp(0, y + 50, 380, r.firstY(380));
++      b.barricade(425, r.firstY(425) + 12, 100, 22, 2);
++      b.boost(425, r.firstY(425) - 22, 90, 24, 1, 0);
++      b.ramp(470, r.firstY(470), r.tip, y + 250);
++      // The harbour burrow: a jump-access shelf with a roofed cliff tunnel into the next chapter.
++      b.ramp(590, y + 78, 745, y + 115);
++      b.ramp(550, y - 50, 790, y + 15);
++      b.tunnel(695, y + 78, 110, y + 745, -0.2, 1, 1100, 5);
++      b.ppeg(290, r.firstY(290) - 30, 'green', 10, SUPPLY.heist[0]);
++      b.ppeg(600, y + 55, 'green', 10, SUPPLY.heist[1]);
++      feature(b, y, r, ov);
++      return 840;
++    }
++    case 'cannonalley': {
++      const r = road(b, y, v, { back: 520, outer: false, overlay: ov });
++      b.ramp(0, y + 50, 150, y + 100);
++      // Collar trench: roll into the goblin cannon and get fired onto the high shelf.
++      b.ramp(150, y + 150, 360, y + 220);
++      b.cannon(220, y + 156, 288, 306, 12, 1600, 0);
++      b.ramp(350, y + 140, 560, y + 200);
++      b.ramp(560, y + 200, r.tip, y + 300);
++      // Catch lane under the shelf for walk-throughs and short shots.
++      b.ramp(360, y + 220, 480, y + 280);
++      b.ramp(480, y + 280, r.tip, y + 400);
++      b.catapult(660, y + 420, 150, 1200, 0);
++      b.ppeg(80, y + 45, 'green', 10, SUPPLY.heist[1]);
++      b.ppeg(600, y + 301, 'green', 10, SUPPLY.heist[0]);
++      feature(b, y, r, ov);
++      return 960;
++    }
++    case 'bladestreet': {
++      const r = road(b, y, v, { back: 460, outer: false, overlay: ov });
++      b.ramp(0, y + 50, 380, r.firstY(380));
++      // Crumbling floor over the inside drop: pack damage opens it for the rest of the race.
++      b.crumble(425, r.firstY(425) + 12, 100, 22, 3);
++      b.boost(425, r.firstY(425) - 22, 90, 24, 1, 0);
++      b.ramp(470, r.firstY(470), r.tip, y + 250);
++      b.crusher(320, y + 20, 80, 60, 3200, 300, 0);
++      b.blade(250, y, 100, 0.6, 2600, 900, 6);
++      b.blade(600, y + 70, 116, 0.7, 2200, 0, 6);
++      b.saw(805, y + 330, 24);
++      b.ppeg(150, r.firstY(150) - 40, 'green', 10, SUPPLY.heist[0]);
++      b.ppeg(650, r.firstY(650) - 30, 'green', 10, SUPPLY.heist[1]);
++      feature(b, y, r, ov);
++      return 900;
++    }
++    // ------------------------------------------------------------------ Silverpeg — peggle championship
++    case 'pegboard': {
++      const r = road(b, y, v, { back: 500, outer: false, overlay: ov });
++      b.ramp(0, y + 50, 345, y + 145);
++      b.ramp(540, y + 195, r.tip, y + 250);
++      b.boostOnRamp(0, y + 50, 345, y + 145, 0.65, 100);
++      // A dense scoring pocket under the express gap, then the moving bucket above the return road.
++      for (let row = 0; row < 4; row++) {
++        for (let col = 0; col < 3; col++) {
++          if (row === 1 && col === 1) continue;
++          b.ppeg(350 + col * 105 + (row % 2) * 28, y + 255 + row * 60,
++            (row + col) % 2 ? 'orange' : 'blue', 9);
++        }
++      }
++      b.ppeg(483, y + 315, 'green', 10, SUPPLY.peggle[1]);
++      b.bucket(y + 460, 0);
++      b.scatterPegs(y, 940);
++      b.ppeg(240, y + 86, 'green', 10, SUPPLY.peggle[0]);
++      feature(b, y, r, ov === 'pinball' || ov === 'machines' ? 'boost' : ov);
++      return 940;
++    }
++    case 'targetrange': {
++      const r = road(b, y, v, { back: 460, outer: false, overlay: ov });
++      gapRoad(b, y, r, 380, 470);
++      // Inside drop onto a right-hinged flipper; a drop-target bank scores off the side.
++      b.flipper(560, y + 330, 1, 0, 110, 1.6, 0, 0);
++      b.targets(160, y + 340, 3, 5000);
++      b.sling(720, y + 330, 60, 160, 2.5);
++      b.ppeg(250, r.firstY(250) - 40, 'green', 10, SUPPLY.peggle[1]);
++      b.ppeg(600, r.firstY(600) - 30, 'green', 10, SUPPLY.peggle[0]);
++      feature(b, y, r, ov === 'pinball' ? 'peggle' : ov === 'machines' ? 'boost' : ov);
++      return 880;
++    }
++    case 'turnstiles': {
++      const r = road(b, y, v, { back: 440, overlay: ov });
++      // Ratchet hub on the outer road, free spinner on the return road, a small peg maze in the drop zone.
++      b.turnstile(455, r.firstY(455) - 24, 4, 78, 0, 0, 0);
++      b.turnstile(300, r.secondY(300) - 24, 3, 88, 1, 4200, 0);
++      b.ppeg(780, y + 330, 'blue', 9);
++      b.ppeg(840, y + 380, 'orange', 9);
++      b.ppeg(790, y + 430, 'blue', 9);
++      b.ppeg(250, r.firstY(250) - 40, 'green', 10, SUPPLY.peggle[1]);
++      b.ppeg(650, r.firstY(650) - 30, 'green', 10, SUPPLY.peggle[0]);
++      feature(b, y, r, ov);
++      return 860;
++    }
++    // ------------------------------------------------------------------ Spa — ice & speed
++    case 'icecascade': {
++      const tip = 730 + v * 20;
++      const end = 130 + v * 15;
++      b.ice(0, y + 50, tip, y + 250);
++      b.ice(W, y + 380, end, y + 620);
++      // Tailwind down the second tier.
++      b.wind(200, y + 380, 880, y + 560, 180, 0.2, 0, 0);
++      b.ice(0, y + 710, tip, y + 910);
++      b.boostOnRamp(0, y + 710, tip, y + 910, 0.5, 100);
++      const r: Road = {
++        tip, end, back: 1040,
++        firstY: x => y + 710 + x * 200 / tip,
++        secondY: x => y + 1040 + (W - x) * 240 / (W - end),
++      };
++      b.ice(W, y + 1040, end, y + 1280);
++      b.itemBox(305, r.secondY(305) - 35);
++      b.ppeg(250, y + 50 + 250 * 200 / tip - 40, 'green', 10, SUPPLY.speed[0]);
++      b.ppeg(400, r.firstY(400) - 30, 'green', 10, SUPPLY.speed[1]);
++      b.ppeg(520, r.secondY(520) - 32, 'orange', 10);
++      feature(b, y, r, ov);
++      return 1360;
++    }
++    case 'looprun': {
++      const r = road(b, y, v, { back: 540, outer: false, ret: false, plain: true });
++      // Fast ice run-in, a loop-the-loop, and an exit ramp off the loop's far side.
++      b.ice(0, y + 50, 330, y + 215);
++      b.loop(400, y + 230, 60);
++      b.ramp(455, y + 232, r.tip, y + 340);
++      // The return road is a geyser step: two ramps around a timed vent that hurls slow riders on their way.
++      b.ramp(W, y + 540, 640, y + 620);
++      b.geyser(610, y + 618, 240, 4200, 0);
++      b.ramp(580, y + 634, r.end, y + 780);
++      b.ppeg(150, y + 85, 'green', 10, SUPPLY.speed[0]);
++      b.ppeg(600, y + 255, 'green', 10, SUPPLY.speed[1]);
++      feature(b, y, r, ov === 'ice' || ov === 'transport' || ov === 'banking' ? 'boost' : ov);
++      return 950;
++    }
++    case 'rapids': {
++      const r = road(b, y, v, { back: 440, outer: false, overlay: ov });
++      b.ramp(0, y + 50, 240, y + 170);
++      // Skipping pool: fast and flat skims across; slow entries wade out on the current.
++      b.pool(290, y + 190, 620, y + 190, 96, 6.5);
++      b.wind(290, y + 90, 620, y + 190, 0, 0.22, 0, 0);
++      b.ramp(240, y + 210, 330, y + 250);
++      b.ramp(634, y + 206, r.tip + 40, y + 330);
++      b.mud(600, r.secondY(600) - 13, 440, r.secondY(440) - 13, 0.12);
++      b.ppeg(150, y + 85, 'green', 10, SUPPLY.speed[0]);
++      b.ppeg(720, y + 237, 'green', 10, SUPPLY.speed[1]);
++      feature(b, y, r, ov);
++      return 920;
++    }
++    // ------------------------------------------------------------------ Suzuka — canyon gauntlet
++    case 'macealley': {
++      const r = road(b, y, v, { back: 460, outer: false, overlay: ov });
++      gapRoad(b, y, r, 480, 560);
++      // Wrecking ball under the gap, a pendulum over the entry, the mace brushing the outer turnaround.
++      b.wrecker(520, y + 250, 130, 0.7, 0.05);
++      b.blade(250, y - 30, 120, 0.6, 2400, 0, 6);
++      b.mace(840, y + 310, 120, 0.45, 1600, 450, v * 700, 23);
++      b.ppeg(150, r.firstY(150) - 40, 'green', 10, SUPPLY.canyon[0]);
++      b.ppeg(650, r.firstY(650) - 30, 'green', 10, SUPPLY.canyon[1]);
++      feature(b, y, r, ov === 'machines' ? 'fields' : ov);
++      return 900;
++    }
++    case 'magnetcave': {
++      const r = road(b, y, v, { back: 450, outer: false, overlay: ov });
++      gapRoad(b, y, r, 560, 640);
++      // The inside drop falls straight into a vortex; a thrumming lodestone grips the return road.
++      b.vortex(600, y + 360, 100, 1.5, 30);
++      b.magnet(700, r.secondY(700) + 10, 130, 3, 3000, 0);
++      b.spinner(800, y + 350, 100, 0.04);
++      b.ppeg(250, r.firstY(250) - 40, 'green', 10, SUPPLY.canyon[0]);
++      b.ppeg(450, r.firstY(450) - 30, 'green', 10, SUPPLY.canyon[1]);
++      feature(b, y, r, ov === 'machines' ? 'fields' : ov);
++      return 880;
++    }
++    case 'boulderrun': {
++      const r = road(b, y, v, { back: 460, outer: false, overlay: ov });
++      b.conveyor(0, y + 50, r.tip, y + 250, 0.26, undefined, b.flip ? 1 : 0);
++      // A boulder rolls the return road with the pack; a spinner guards the middle of the canyon.
++      b.boulder([[870, r.secondY(870) - 26], [500, r.secondY(500) - 26], [r.end + 60, r.secondY(r.end + 60) - 26]], 22, 5, 800);
++      b.spinner(600, (r.firstY(600) + r.secondY(600)) / 2, 120, 0.035);
++      b.ppeg(250, r.firstY(250) - 40, 'green', 10, SUPPLY.canyon[1]);
++      b.ppeg(650, r.firstY(650) - 30, 'green', 10, SUPPLY.canyon[0]);
++      feature(b, y, r, ov === 'machines' ? 'peggle' : ov);
++      return 900;
++    }
++  }
++}
++
+ /** Every chapter receives marbles at the left edge and returns them there.
+  * Two overlapping banked roads catch misses; the next chapter catches the exit.
+  * Mirroring the entire course preserves that contract, unlike randomly flipping sections.
+@@ -26,6 +434,13 @@
+   let y = start + 260;
+   for (const chapter of planCourse(seed, profile)) {
+     b.flip = chapter.mirror;
++    if (chapter.layout) {
++      // Signature chapter: the circuit's own template, built against the same entry/exit contract.
++      const h = buildChapter(b, y, chapter);
++      segments.push({ name: NAMES[chapter.layout], y, h });
++      y += h;
++      continue;
++    }
+     const v = chapter.variant;
+     const tip = 730 + v * 20;
+     const end = 130 + v * 15;
+diff --git a/tests/course-generator.test.ts b/tests/course-generator.test.ts
+--- a/tests/course-generator.test.ts
++++ b/tests/course-generator.test.ts
+@@ -1,10 +1,14 @@
+ import { test } from 'node:test';
+ import assert from 'node:assert/strict';
+ import Matter from 'matter-js';
+-import { planCourse } from '../src/game/course-plan';
++import { planCourse, COURSE_LAYOUTS, COURSE_FEATURES, AFFINITY, isCourseLayout } from '../src/game/course-plan';
++import type { CourseLayout } from '../src/game/course-plan';
++import { buildChapter, LAYOUT_NAMES } from '../src/game/course-builder';
+ import { Game } from '../src/game/engine';
+ import { generateTrackDef, buildTrackFromDef } from '../src/game/trackdef';
+-import { meta } from '../src/game/track';
++import { Builder, START_H, generateTrack, meta } from '../src/game/track';
++import { CALENDAR } from '../src/game/season';
++import { HEAT_TIME_LIMIT, PHYSICS_STEP } from '../src/game/physics';
+ import { TRACK_THEMES, emptyInventory } from '../src/game/types';
+ import type { MarbleStats } from '../src/game/types';
+ 
+@@ -132,3 +136,149 @@
+   assert.ok(boarded && fired && captured,'the shortcut must use an accessible platform and dock');
+   assert.ok(game.player.body.position.y>=section.y+section.h);
+ });
++
++// ---------------------------------------------------------------------------------------------
++// Signature chapter library: every Grand Prix has its own layouts, chosen by theme affinity.
++// ---------------------------------------------------------------------------------------------
++
++const gp = (short: string) => CALENDAR.find(g => g.short === short)!;
++const SIGNATURES: Record<string, CourseLayout[]> = {
++  MARBLEHURST: ['fairground', 'watermill', 'funhouse'],
++  'MONTE PIPO': ['tunnelrun', 'cannonalley', 'bladestreet'],
++  SILVERPEG: ['pegboard', 'targetrange', 'turnstiles'],
++  SPA: ['icecascade', 'looprun', 'rapids'],
++  SUZUKA: ['macealley', 'magnetcave', 'boulderrun'],
++};
++const layoutCounts = (short: string, seeds = 256) => {
++  const counts = Object.fromEntries(COURSE_LAYOUTS.map(l => [l, 0])) as Record<CourseLayout, number>;
++  for (let seed = 0; seed < seeds; seed++) {
++    for (const chapter of planCourse(seed, gp(short).profile)) if (chapter.layout) counts[chapter.layout]++;
++  }
++  return counts;
++};
++
++test('the chapter library is large and every layout and feature has a builder name and an affinity', () => {
++  assert.ok(COURSE_LAYOUTS.length >= 20, 'five archetypes plus fifteen GP signatures');
++  assert.ok(COURSE_FEATURES.length >= 10, 'five original overlays plus five new ones');
++  for (const layout of COURSE_LAYOUTS) assert.ok(LAYOUT_NAMES[layout], `${layout} needs a sector name`);
++  for (const theme of ['classic', 'street', 'silver', 'forest', 'worg', 'dwarven']) assert.ok(AFFINITY[theme], `${theme} needs an affinity row`);
++  for (const [short, layouts] of Object.entries(SIGNATURES)) {
++    const theme = ['classic', 'street', 'silver', 'forest', 'worg'][Object.keys(SIGNATURES).indexOf(short)];
++    for (const layout of layouts) assert.ok((AFFINITY[theme][layout] ?? 0) >= 4, `${short} should favour ${layout}`);
++  }
++});
++
++test('signature chapters carry a layout and an overlay, never sit side by side with an identical layout, and stay deterministic', () => {
++  for (const round of CALENDAR) {
++    for (let seed = 0; seed < 64; seed++) {
++      const plan = planCourse(seed, round.profile);
++      const layouts = plan.filter(c => c.layout);
++      assert.ok(layouts.length >= 1, `${round.short} seed ${seed}: at least one signature chapter`);
++      for (const c of layouts) {
++        assert.ok(isCourseLayout(c.feature) && c.feature === c.layout);
++        assert.ok(c.overlay && (COURSE_FEATURES as readonly string[]).includes(c.overlay));
++      }
++      assert.ok(plan.every((c, i) => i === 0 || c.feature !== plan[i - 1].feature));
++      assert.deepEqual(planCourse(seed, round.profile), plan);
++    }
++  }
++});
++
++test('new layouts appear in generated plans where the theme bias should select them', () => {
++  for (const [short, layouts] of Object.entries(SIGNATURES)) {
++    const counts = layoutCounts(short, 64);
++    assert.ok(layouts.some(l => counts[l] > 0), `${short} never produced ${layouts.join('/')}`);
++  }
++  // The finale draws from the whole library.
++  const yas = layoutCounts('YAS MARBLE', 256);
++  assert.ok(COURSE_LAYOUTS.filter(l => yas[l] > 0).length >= 15, 'Yas Marble should use most of the library');
++});
++
++test('GP identity: over 256 seeds each circuit builds its own signature chapters far more often than the others do', () => {
++  const marblehurst = layoutCounts('MARBLEHURST'), montePipo = layoutCounts('MONTE PIPO'), silverpeg = layoutCounts('SILVERPEG');
++  const spa = layoutCounts('SPA'), suzuka = layoutCounts('SUZUKA');
++  const sum = (c: Record<CourseLayout, number>, ls: CourseLayout[]) => ls.reduce((n, l) => n + c[l], 0);
++  assert.ok(sum(silverpeg, ['pegboard', 'targetrange']) > sum(suzuka, ['pegboard', 'targetrange']) * 2, 'Silverpeg must out-peg Suzuka');
++  assert.ok(sum(suzuka, ['macealley', 'magnetcave']) > sum(marblehurst, ['macealley', 'magnetcave']) * 2, 'Suzuka must out-gauntlet Marblehurst');
++  assert.ok(sum(marblehurst, ['fairground', 'watermill']) > sum(silverpeg, ['fairground', 'watermill']) * 2, 'Marblehurst must out-fairground Silverpeg');
++  assert.ok(sum(montePipo, ['tunnelrun', 'cannonalley']) > sum(spa, ['tunnelrun', 'cannonalley']) * 2, 'Monte Pipo must out-heist Spa');
++  assert.ok(sum(spa, ['icecascade', 'looprun']) > sum(montePipo, ['icecascade', 'looprun']) * 2, 'Spa must out-ice Monte Pipo');
++});
++
++test('every layout template honours the chapter contract in both mirror states, all variants and all overlays', () => {
++  const y0 = START_H + 260;
++  for (const layout of COURSE_LAYOUTS) {
++    for (const mirror of [false, true]) {
++      for (let variant = 0; variant < 3; variant++) {
++        for (const overlay of COURSE_FEATURES) {
++          const b = new Builder(7);
++          b.flip = mirror;
++          const h = buildChapter(b, y0, { feature: layout, layout, overlay, mirror, variant });
++          const tag = `${layout} v${variant} ${overlay}${mirror ? ' mirrored' : ''}`;
++          assert.ok(h >= 800 && h <= 1400, `${tag}: height ${h}`);
++          const metas = b.bodies.map(meta);
++          const surfaces = b.bodies.filter(body => !!meta(body).surface && ['ramp', 'ice', 'conveyor'].includes(meta(body).kind));
++          assert.ok(surfaces.length >= 2, `${tag}: needs two rolling surfaces`);
++          assert.ok(metas.some(m => m.kind === 'ppeg' && m.pegColor === 'green' && !!m.itemDrop), `${tag}: needs a green supply peg`);
++          assert.ok(metas.some(m => m.kind === 'itembox'), `${tag}: needs an item box`);
++          // a) wall-flush entry ramp at the chapter's entry height
++          assert.ok(surfaces.some(body => {
++            const s = meta(body).surface!;
++            const nearWall = mirror ? Math.max(s.start.x, s.end.x) >= 896 : Math.min(s.start.x, s.end.x) <= 4;
++            return nearWall && Math.abs(Math.min(s.start.y, s.end.y) - (y0 + 50)) <= 2;
++          }), `${tag}: entry ramp must start flush against the entry wall`);
++          // b) minimum slope on every rolling surface
++          for (const body of surfaces) {
++            const s = meta(body).surface!;
++            assert.ok(Math.abs(s.tangent.y / s.tangent.x) >= 0.22 - 1e-6, `${tag}: surface slope ${(s.tangent.y / s.tangent.x).toFixed(3)} is too flat`);
++          }
++          // c) clean handover: the lowest surface ends on the far side from the entry
++          const lowest = surfaces.reduce((best, body) => {
++            const s = meta(body).surface!;
++            return Math.max(s.start.y, s.end.y) > best.y ? { y: Math.max(s.start.y, s.end.y), x: s.start.y > s.end.y ? s.start.x : s.end.x } : best;
++          }, { y: -Infinity, x: 0 });
++          assert.ok(mirror ? lowest.x >= 650 : lowest.x <= 250, `${tag}: exit must be on the far side (x=${lowest.x})`);
++          assert.ok(lowest.y < y0 + h + 85, `${tag}: exit must hand over above the next entry ramp`);
++          // d) mace arcs
++          for (const m of metas) if (m.motion?.mode === 'sweep') assert.ok(m.motion.arc >= 0.4 && m.motion.arc <= 2.6, `${tag}: mace arc ${m.motion.arc}`);
++          // e) everything inside the track walls
++          for (const body of b.bodies) {
++            assert.ok(body.bounds.min.x >= -40 && body.bounds.max.x <= 940, `${tag}: ${meta(body).kind} leaves the track at x ${body.bounds.min.x.toFixed(0)}..${body.bounds.max.x.toFixed(0)}`);
++          }
++        }
++      }
++    }
++  }
++});
++
++test('every calendar circuit records to a Workshop def that rebuilds body for body', () => {
++  for (const round of CALENDAR) {
++    const def = generateTrackDef(3, round.profile, round.name);
++    const rebuilt = buildTrackFromDef(def);
++    const original = generateTrack(3, round.profile);
++    assert.equal(rebuilt.bodies.length, original.bodies.length, `${round.short}: body count`);
++    assert.deepEqual(rebuilt.bodies.map(b => meta(b).kind), original.bodies.map(b => meta(b).kind), `${round.short}: body kinds`);
++    assert.ok(original.segments.some(s => Object.values(LAYOUT_NAMES).includes(s.name)), `${round.short}: a signature sector`);
++  }
++});
++
++for (const round of CALENDAR) {
++  for (const seed of [2, 3, 2026]) {
++    test(`${round.short} seed ${seed}: ten mixed kits finish with no stuck marbles and no recoveries`, () => {
++      const game = new Game(seed, roster(), { profile: round.profile, recovery: false, effects: false, aiItems: false });
++      try {
++        game.openGate();
++        const steps = Math.ceil(HEAT_TIME_LIMIT / PHYSICS_STEP);
++        for (let i = 0; i < steps && !game.allFinished(); i++) game.step(PHYSICS_STEP);
++        const stuck = game.marbles.filter(m => m.finishedAt === null);
++        assert.equal(stuck.length, 0, `${round.short} seed ${seed}: stuck at ${JSON.stringify(stuck.map(m => {
++          const p = m.body.position;
++          const sector = game.track.segments.find(s => p.y >= s.y && p.y < s.y + s.h);
++          return { x: Math.round(p.x), y: Math.round(p.y), sector: sector?.name };
++        }))}`);
++        assert.equal(game.marbles.reduce((n, m) => n + m.recoveries, 0), 0);
++        assert.ok(game.time <= HEAT_TIME_LIMIT);
++      } finally { game.destroy(); }
++    });
++  }
++}

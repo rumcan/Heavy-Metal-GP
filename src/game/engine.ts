@@ -629,7 +629,7 @@ export class Game {
         const anvil = this.time < m.anvilUntil ? 0.2 : 1;
         const vy = Math.min(24, v.y * k) * anvil;
         Body.setVelocity(m.body, { x: v.x * 0.92, y: -vy });
-        md.tramp = { depth: Math.min(1, v.y / 14) }; // skin sag read by render
+        md.tramp = { depth: Math.min(1, v.y / 14), at: this.time }; // skin sag read by render
         if (m.finishedAt === null) {
           this.sfx('boing', m, other.position.x, other.position.y);
           this.emit({ kind: 'sound', cue: v.y > 10 ? 'boing' : 'boing' });
