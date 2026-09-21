@@ -1,123 +1,140 @@
 import type { Builder, SegmentInfo } from './track';
-import type { TrackProfile } from './types';
+import type { ItemType, TrackProfile } from './types';
 import { planCourse } from './course-plan';
+import type { CourseChapter, CourseFeature, CourseLayout } from './course-plan';
 
-const NAMES = {
-  mass: 'Foundry Cut · weight gate / outer road',
-  rebound: 'Spring Exchange · upper shelf / lower road',
-  burrow: 'Smuggler Run · jump burrow / switchback',
-  sprint: 'Beltway · momentum / inside drop',
-  peggle: 'Peg Bank · express gap / scoring pocket',
-  lift: 'Sky Ferry · lift / catch road',
-  crane: 'Crane Yard · ghost cut / outside bend',
+// A runtime import from track would introduce a circular ESM initialization dependency.
+const W = 900;
+type Road = [number, number, number, number];
+type Point = [number, number];
+
+const NAMES: Record<CourseLayout, string> = {
+  sweeper: 'Grand Sweeper',
+  split: 'Dual-Carriageway Split',
+  slalom: 'High-Speed Slalom',
+  terraces: 'Stepped Terraces',
+  arena: 'Arena Bowl',
+};
+const SUPPLY: Record<CourseFeature, ItemType> = {
+  banking: 'aero', peggle: 'rocket', ice: 'aero', boost: 'jump', machines: 'ghost',
 };
 
-/** Every chapter receives marbles at the left edge and returns them there.
- * Two overlapping banked roads catch misses; the next chapter catches the exit.
- * Mirroring the entire course preserves that contract, unlike randomly flipping sections.
+/** Only right-going local roads use belts; the builder mirrors their tangent, not dir. */
+function road(b: Builder, chapter: CourseChapter, points: Road): void {
+  const [x1, y1, x2, y2] = points;
+  if (chapter.feature === 'ice') b.ice(...points);
+  else if (chapter.feature === 'machines') {
+    b.conveyor(...points, 0.16 + chapter.variant * 0.025, 0, b.flip ? 1 : 0);
+  } else if (chapter.feature === 'banking') {
+    b.curve(x1, y1, x1 + (x2 - x1) * 0.45, y1 + (y2 - y1) * 0.38, x2, y2, 10);
+  } else {
+    b.ramp(...points);
+    if (chapter.feature === 'boost') b.boostOnRamp(...points, 0.62, 85);
+  }
+}
+
+/** Features occupy open air, never a narrow pocket between a machine and a rail. */
+function feature(b: Builder, chapter: CourseChapter, [x, y]: Point): void {
+  if (chapter.feature === 'peggle') {
+    for (let row = 0; row < 2; row++) {
+      for (let col = 0; col < 2; col++) {
+        b.ppeg(x - 30 + col * 60, y - 24 + row * 48,
+          (row + col + chapter.variant) % 2 ? 'orange' : 'blue', 9);
+      }
+    }
+  } else if (chapter.feature === 'machines') {
+    if (chapter.variant === 2) b.mace(x, y - 70, 70, 0.65, 1100, 120, 500, 16);
+    else b.spinner(x, y, 70, (b.flip ? -1 : 1) * (0.035 + chapter.variant * 0.01));
+  }
+}
+
+function buildChapter(b: Builder, chapter: CourseChapter, y: number): number {
+  const tip = 700 + chapter.variant * 20;
+  let exit: Road;
+  let spot: Point;
+  let height: number;
+  switch (chapter.layout) {
+    case 'sweeper':
+      b.curve(0, y + 40, 250, y + 145, tip, y + 260, 14);
+      b.curve(W, y + 370, 650, y + 480, 160 + chapter.variant * 10, y + 680, 14);
+      exit = [0, y + 780, tip, y + 1000];
+      spot = [790, y + 340];
+      height = 1160;
+      break;
+    case 'split':
+      // Fast marbles clear the gap onto the high road; short jumps fall onto the highway.
+      b.ramp(0, y + 40, 320, y + 160);
+      b.boostOnRamp(0, y + 40, 320, y + 160, 0.65, 90);
+      road(b, chapter, [500, y + 250, 680, y + 310]);
+      b.curve(0, y + 340, 300, y + 460, 650, y + 610, 14);
+      // Wall riders and both roads meet above the final, unobstructed exit road.
+      b.ramp(W, y + 710, 610, y + 810);
+      exit = [0, y + 700, tip, y + 940];
+      spot = [390, y + 245];
+      height = 1100;
+      break;
+    case 'slalom':
+      road(b, chapter, [0, y + 40, tip, y + 280]);
+      b.ramp(W, y + 410, 160 + chapter.variant * 20, y + 670);
+      exit = [0, y + 790, tip, y + 1040];
+      spot = [790, y + 350];
+      height = 1200;
+      break;
+    case 'terraces':
+      road(b, chapter, [0, y + 40, 250, y + 180]);
+      // Ice terraces cannot trap a stopped low-bounce kit on a horizontal spring pad.
+      b.ice(160, y + 260, 540, y + 385);
+      b.ice(380, y + 470, 710, y + 590);
+      b.ramp(W, y + 640, 600, y + 770);
+      exit = [0, y + 700, tip, y + 940];
+      spot = [360, y + 220];
+      height = 1100;
+      break;
+    case 'arena':
+      b.curve(0, y + 40, 230, y + 150, 330, y + 250, 10);
+      b.ramp(W, y + 40, 570, y + 250);
+      // A broad drain and no solid bowl floor: gravity also provides an ordinary bypass.
+      b.vortex(450, y + 365, 110 + chapter.variant * 10, 0.5 + chapter.variant * 0.05, 76);
+      b.ramp(0, y + 560, 350, y + 740);
+      b.ramp(W, y + 560, 550, y + 740);
+      exit = [0, y + 850, tip, y + 1100];
+      spot = [450, y + 730];
+      height = 1260;
+      break;
+  }
+  road(b, chapter, exit);
+  feature(b, chapter, spot);
+  const at = (x: number) => exit[1] + (exit[3] - exit[1]) * x / exit[2];
+  b.ppeg(260, at(260) - 52, 'green', 13, SUPPLY[chapter.feature]);
+  b.itemBox(420, at(420) - 30);
+  return height + chapter.variant * 20;
+}
+
+/** Local entry is the left wall; local exit is the right-hand opening (at least 160 wide).
+ * Alternate mirrors to give the next wall-flush receiver the previous chapter's outlet.
+ * All gaps are over catch roads, and no rolling surface has a horizontal tangent.
  */
 export function buildCourse(b: Builder, seed: number, profile: TrackProfile, start: number): SegmentInfo[] {
+  const plan = planCourse(seed, profile);
   const segments: SegmentInfo[] = [];
   b.flip = false;
-  // Fair opening: all ten grid columns meet the same open collector, before any rewards.
   b.ramp(0, start + 20, 340, start + 160);
-  b.ramp(900, start + 20, 560, start + 160);
-  segments.push({ name: 'Choose your line', y: start, h: 260 });
-  let y = start + 260;
-  for (const chapter of planCourse(seed, profile)) {
+  b.ramp(W, start + 20, 560, start + 160);
+  // The open grid drains centrally, then this bank feeds the first chapter's actual entry side.
+  b.flip = !plan[0].mirror;
+  b.ramp(0, start + 280, 740, start + 520);
+  segments.push({ name: 'Open grid collector', y: start, h: 680 });
+  let y = start + 680;
+  for (const chapter of plan) {
     b.flip = chapter.mirror;
-    const v = chapter.variant;
-    const tip = 730 + v * 20;
-    const end = 130 + v * 15;
-    const firstY = (x: number) => y + 50 + x * 200 / tip;
-    const secondY = (x: number) => y + 420 + (900 - x) * 240 / (900 - end);
-    const height = chapter.feature === 'peggle' ? 900 : 820;
-    const lower = chapter.feature === 'peggle' ? 80 : 0;
-
-    // The return road is a real safety net, never a reset sensor or a distant flat platform.
-    b.ramp(900, y + 420 + lower, end, y + 660 + lower);
-    b.itemBox(305, secondY(305) + lower - 35);
-
-    if (chapter.feature === 'mass') {
-      b.ramp(0, y + 50, 350, y + 155);
-      b.trapdoor(430, y + 155, 160, -1, 'weight', 1100, 2200, 0, 1.5, 50);
-      // A light marble can roll across even after a collision removes all its momentum.
-      b.boost(430, y + 133, 140, 24, 1, 0);
-      b.ramp(510, y + 155, tip, y + 250);
-      b.ppeg(250, y + 94, 'green', 10, 'anvil');
-      // The opening cuts the long outer turnaround; regular kits can carry momentum over it.
-      b.ppeg(440, y + 300, 'orange', 10);
-      b.boostOnRamp(510, y + 155, tip, y + 250, 0.55, 80);
-    } else if (chapter.feature === 'rebound') {
-      b.ramp(0, y + 50, 330, y + 155);
-      b.trampoline(440, y + 245, 180, 1.05 + v * 0.12);
-      // A stopped low-bounce marble rolls off the net instead of waiting for a rescue.
-      b.boost(440, y + 224, 160, 26, 1, 0);
-      // Upper receiving shelf is above the lip: a rebound, not a decorative spring.
-      b.ramp(555, y + 95, 735, y + 130);
-      b.tunnel(685, y + 98, 110, y + 745, -0.2, 1, 1000, 5);
-      b.ramp(525, y - 45, 790, y + 20);
-      b.ppeg(245, y + 92, 'green', 10, 'jump');
-      b.ppeg(460, y + 155, 'orange', 10);
-      b.ppeg(540, y + 205, 'orange', 10);
-    } else if (chapter.feature === 'burrow') {
-      b.ramp(0, y + 50, tip, y + 250);
-      b.ppeg(290, firstY(290) - 30, 'green', 10, 'jump');
-      b.ramp(590, y + 85, 745, y + 115);
-      b.ramp(550, y - 50, 790, y + 15); // roof excludes accidental entrance from the chapter above
-      b.tunnel(695, y + 78, 110, y + 745, -0.2, 1, 1100, 5);
-      b.boostOnRamp(0, y + 50, tip, y + 250, 0.57, 90);
-      b.ppeg(490, firstY(490) - 32, 'orange', 10); // marks the jump timing window
-    } else if (chapter.feature === 'lift') {
-      b.ramp(0, y + 50, 345, y + 150);
-      b.platform(490, y + 200, 635, y + 120, 170, 1800, 650, v * 500);
-      b.ramp(685, y + 150, 810, y + 180);
-      // Upper-stop ejector: the moving slab cannot keep a motionless rider forever.
-      b.boost(675, y + 110, 110, 40, 1, 0.1);
-      b.tunnel(760, y + 143, 110, y + 745, -0.2, 1, 900, 5);
-      // The high dock must stay open to the airborne approach; a roof would catch the jump.
-      b.ppeg(245, y + 91, 'green', 10, 'jump');
-      b.ppeg(520, y + 250, 'orange', 10);
-    } else if (chapter.feature === 'sprint') {
-      // An open belt gap offers a deliberate inside drop; momentum carries the upper road.
-      b.conveyor(0, y + 50, 345, y + 145, 0.22 + v * 0.04, undefined, 0);
-      b.conveyor(485, y + 175, tip, y + 250, 0.28, undefined, 0);
-      b.ppeg(235, y + 84, 'green', 10, 'aero');
-      b.ppeg(425, y + 300, 'orange', 10);
-      b.mud(600, secondY(600) - 13, 440, secondY(440) - 13, 0.12);
-      b.ppeg(690, secondY(690) - 35, 'green', 10, 'jump');
-    } else if (chapter.feature === 'peggle') {
-      b.ramp(0, y + 50, 345, y + 145);
-      b.ramp(540, y + 195, tip, y + 250);
-      b.boostOnRamp(0, y + 50, 345, y + 145, 0.65, 100);
-      // A small, intentional scoring pocket under the racing gap. No field across every lane.
-      for (let row = 0; row < 3; row++) {
-        for (let col = 0; col < 3; col++) {
-          b.ppeg(350 + col * 105 + (row % 2) * 28, y + 255 + row * 65,
-            (row + col) % 2 ? 'orange' : 'blue', 9);
-        }
-      }
-      b.ppeg(240, y + 86, 'green', 10, 'rocket');
-    } else {
-      b.ramp(0, y + 50, 350, y + 155);
-      // A breakable floor covers the inner drop. Ghost can choose it without opening it for rivals.
-      b.barricade(430, y + 160, 160, 25, 2 + v);
-      b.boost(430, y + 137, 140, 24, 1, 0);
-      b.ramp(510, y + 165, tip, y + 250);
-      b.ppeg(250, y + 94, 'green', 10, 'ghost');
-      // The mace only brushes the outer turnaround; the inside drop avoids it completely.
-      b.mace(840, y + 270, 120, 0.42, 1600, 450, v * 700, 23);
-      b.ppeg(615, firstY(615) - 30, 'green', 10, 'shock');
-    }
-    // Supply before the next decision; reward on the main road is forfeited by upper shortcuts.
-    b.ppeg(520, secondY(520) + lower - 32, 'orange', 10);
-    segments.push({ name: NAMES[chapter.feature], y, h: height });
-    y += height;
+    const h = buildChapter(b, chapter, y);
+    segments.push({ name: `${NAMES[chapter.layout]} / ${chapter.feature}`, y, h });
+    y += h;
   }
-  // One final open race to the line. No random peg, machine or item on the finish approach.
-  b.flip = (seed & 1) === 1;
-  b.ramp(0, y + 40, 740, y + 240);
-  segments.push({ name: 'Home straight', y, h: 440 });
+  // The final receiver depends on chapter parity, not merely seed parity.
+  b.flip = !plan[plan.length - 1].mirror;
+  b.ramp(0, y + 40, 740, y + 300);
+  segments.push({ name: 'Home straight', y, h: 480 });
   b.flip = false;
   return segments;
 }
