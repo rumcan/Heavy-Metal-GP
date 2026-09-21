@@ -33,7 +33,7 @@ export function pieceCentre(piece: Piece): Point {
 
 /** Pieces with a free angle, and so a rotate handle. Boxes turn only by quarter turns, via R / the toolbar. */
 export function hasFreeRotation(piece: Piece): boolean {
-  return piece.t === 'ramp' || piece.t === 'ice' || piece.t === 'curve' || piece.t === 'boost' || piece.t === 'hoop' || piece.t === 'spinner' || piece.t === 'sling' || piece.t === 'flipper';
+  return piece.t === 'ramp' || piece.t === 'ice' || piece.t === 'curve' || piece.t === 'boost' || piece.t === 'hoop' || piece.t === 'spinner';
 }
 
 /** Current on-screen angle (radians) of a freely rotating piece. */

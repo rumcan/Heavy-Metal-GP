@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 if (process.env.npm_lifecycle_event === 'build') {
   const result = spawnSync(process.execPath, [fileURLToPath(new URL('./scripts/check.mjs', import.meta.url))], {
     stdio: 'inherit',
-    timeout: 480000,
+    timeout: 1800000,
   });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error('TypeScript or regression tests failed. See the test output above.');

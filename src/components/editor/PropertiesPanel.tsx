@@ -545,7 +545,7 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
             <>
               <NumField label="Subway exit X" value={piece.exit[0]} min={0} max={W} onValue={(v) => update({ exit: [clampNum(v, 0, W), piece.exit![1], piece.exit![2]] as [number, number, number] } as unknown as Piece)} />
               <NumField label="Subway exit Y" value={piece.exit[1]} onValue={(v) => update({ exit: [piece.exit![0], v, piece.exit![2]] as [number, number, number] } as unknown as Piece)} />
-              <NumField label="Transit Time (ms)" value={piece.exit[2]} min={600} max={6000} step={100} onValue={(v) => update({ exit: [piece.exit![0], piece.exit![1], Math.round(clampNum(v, 600, 6000))] as [number, number, number] } as unknown as Piece)} />
+              <NumField label="Transit (ms)" value={piece.exit[2]} min={600} max={6000} step={100} onValue={(v) => update({ exit: [piece.exit![0], piece.exit![1], Math.round(clampNum(v, 600, 6000))] as [number, number, number] } as unknown as Piece)} />
             </>
           ) : (
             <p className="hint">Choose Subway to add an exit, then drag its handle to set the destination.</p>

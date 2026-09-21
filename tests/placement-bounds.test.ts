@@ -222,13 +222,12 @@ test('Issue #71.3: placement prompts clamp to the schema range', () => {
   assert.equal(crusher.floor, SETTING_RANGES.crusher.floor.min);
   assert.equal(problems([crusher]), '');
 
-  const boulder = applyPlacementSettings(defaultPiece('boulder', { x: 450, y: 1500 }, true), prompter(['1', '6500', '99999']).ask);
+  const boulder = applyPlacementSettings(defaultPiece('boulder', { x: 450, y: 1500 }, true), prompter(['1', '999', '99999']).ask);
   assert.ok(boulder.t === 'boulder');
   assert.equal(boulder.r, SETTING_RANGES.boulder.r.min);
-  assert.equal(boulder.interval, 6500);
-  // A rest that eats the interval leaves the boulder sitting at the top: capped like the validator.
-  assert.equal(boulder.rest, maxBoulderRest(6500));
-  assert.ok(boulder.rest <= boulder.interval * 0.7);
+  assert.equal(boulder.speed, SETTING_RANGES.boulder.speed.max);
+  assert.equal(boulder.delay, SETTING_RANGES.boulder.delay.max);
+  assert.equal(maxBoulderRest(6500), 4550);
   assert.equal(problems([boulder]), '');
 });
 

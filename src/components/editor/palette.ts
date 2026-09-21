@@ -58,6 +58,7 @@ export const PALETTE: PaletteGroup[] = [
     label: 'Features',
     note: 'Things that happen to a marble',
     tiles: [
+      { id: 'loop', t: 'loop', label: 'Loop', sprite: 'loop-ring', hint: 'A complete loop with a curved entry, speed boost and exit ramp. Feed marbles onto the high end; move or mirror the selected parts together.', effects: { speed: 80, weight: -20 } },
       { id: 'hoop', t: 'hoop', label: 'Fire hoop', sprite: 'fire-hoop', hint: 'A hoop that launches a marble at speed.', effects: { speed: 60 } },
       { id: 'pad', t: 'pad', label: 'Spring sheep', sprite: 'sheep-spring', hint: 'A bouncy launch pad pointed left or right.', effects: { bounce: 70, weight: -80 } },
       { id: 'boost', t: 'boost', label: 'Boost', sprite: 'rail-chevron', hint: 'A chevron strip that accelerates whatever crosses it.', effects: { speed: 30 } },
@@ -98,7 +99,7 @@ export const PALETTE: PaletteGroup[] = [
       { id: 'crumble', t: 'crumble', label: 'Crumbling wall', sprite: 'crumble', hint: 'Weak stone the whole pack slowly knocks down.', effects: { weight: 70 } },
       { id: 'trapdoor', t: 'trapdoor', label: 'Trapdoor (clock)', sprite: 'trapdoor', hint: 'A hinged hatch that opens and shuts on a tick-tock.', effects: { speed: 50 } },
       { id: 'trapdoor-weight', t: 'trapdoor', label: 'Trapdoor (weight)', sprite: 'trapdoor', preset: { mode: 'weight' }, hint: 'A scale pan: enough marbles resting on it drops the hatch.', effects: { weight: 80 } },
-
+      { id: 'switch', t: 'switch', label: 'Track switch lever', sprite: 'switchplate', hint: 'Every marble that crosses it flips the split for the next one.' },
     ],
   },
   {
@@ -147,6 +148,7 @@ export const PALETTE: PaletteGroup[] = [
       { id: 'wind', t: 'wind', label: 'Updraft vent', sprite: 'wind', hint: 'A large vent whose dust vortex fills the rectangle. Light marbles sail on it, Heavy metal ignores it, Slipstream catches twice. Pulse it to breathe.', effects: { weight: -75 } },
       { id: 'magnet', t: 'magnet', label: 'Horseshoe magnet', sprite: 'magnet', hint: 'Drags runners off line, heavier iron harder. Anvil heavy metal sticks for a beat, then lets go — thrum it on a period for a softening window.', effects: { weight: 80 } },
       { id: 'mud', t: 'mud', label: 'Tar band', sprite: 'mud', hint: 'A strip of sticky tar. Rollers trudge, bounce builds hop it, the speed stat digs in, Slipstream sails over.', effects: { speed: 60 } },
+      { id: 'pool', t: 'pool', label: 'Skipping pond', sprite: 'pool', hint: 'A stone-skimming pond. Fast and flat and you skip across; slow and steep and you splash in, then the wade carries you out.' },
       { id: 'geyser', t: 'geyser', label: 'Geyser vent', sprite: 'geyser', hint: 'Bubbles for a beat, then blasts upward on a timer. Park on it and get chucked. All on the race clock.', effects: { weight: -50 } },
     ],
   },

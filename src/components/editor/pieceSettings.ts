@@ -45,6 +45,10 @@ export function clampToRange(value: number, range: SettingRange): number {
   return Math.max(range.min, Math.min(range.max, v));
 }
 
+export function maxBoulderRest(interval: number = 0): number {
+  return Math.max(0, Math.floor(interval * 0.7));
+}
+
 /**
  * Read a prompt answer: the number the player typed, inside the allowed range. Anything that is not
  * a number — a cancelled prompt, an empty box, "abc" — leaves `fallback` in place, which is the

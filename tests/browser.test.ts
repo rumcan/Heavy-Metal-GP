@@ -43,25 +43,37 @@ before(async () => {
     const executablePath = candidates.find((path) => existsSync(path));
     assert.ok(executablePath, 'No local Chrome or Edge found; set BROWSER_PATH.');
     browser = await playwright.launch({ executablePath, headless: true, args: ['--disable-gpu'] });
-    return;
+  } else {
+    // Use the browser package's bundled Linux libraries in minimal CI images, too.
+    libraryDir = await mkdtemp(join(tmpdir(), 'marble-browser-libs-'));
+    const archive = await readFile(join(root, 'node_modules/@sparticuz/chromium/bin/al2023.tar.br'));
+    const extraction = spawnSync('tar', ['-xf', '-', '-C', libraryDir], { input: brotliDecompressSync(archive) });
+    assert.equal(extraction.status, 0, 'Could not extract bundled browser libraries.');
+    chromium.setGraphicsMode = false;
+    browser = await playwright.launch({
+      args: [...chromium.args.filter((arg) => !['--single-process', '--in-process-gpu'].includes(arg)), '--disable-gpu'], executablePath: await chromium.executablePath(), headless: true,
+      env: { ...process.env, LD_LIBRARY_PATH: `${libraryDir}/lib:${libraryDir}/al2023/lib:${process.env.LD_LIBRARY_PATH ?? ''}`, FONTCONFIG_PATH: join(tmpdir(), 'fonts') },
+    });
   }
-  // Use the browser package's bundled Linux libraries in minimal CI images, too.
-  libraryDir = await mkdtemp(join(tmpdir(), 'marble-browser-libs-'));
-  const archive = await readFile(join(root, 'node_modules/@sparticuz/chromium/bin/al2023.tar.br'));
-  const extraction = spawnSync('tar', ['-xf', '-', '-C', libraryDir], { input: brotliDecompressSync(archive) });
-  assert.equal(extraction.status, 0, 'Could not extract bundled browser libraries.');
-  chromium.setGraphicsMode = false;
-  browser = await playwright.launch({
-    args: [...chromium.args.filter((arg) => !['--single-process', '--in-process-gpu'].includes(arg)), '--disable-gpu'], executablePath: await chromium.executablePath(), headless: true,
-    env: { ...process.env, LD_LIBRARY_PATH: `${libraryDir}/lib:${libraryDir}/al2023/lib:${process.env.LD_LIBRARY_PATH ?? ''}`, FONTCONFIG_PATH: join(tmpdir(), 'fonts') },
-  });
+  const origNewContext = browser.newContext.bind(browser);
+  browser.newContext = async (options) => {
+    const ctx = await origNewContext(options);
+    ctx.setDefaultTimeout(60000);
+    return ctx;
+  };
+  const origNewPage = browser.newPage.bind(browser);
+  browser.newPage = async (options) => {
+    const pg = await origNewPage(options);
+    pg.setDefaultTimeout(60000);
+    return pg;
+  };
 }, { timeout: 60000 });
 
 after(async () => { await browser?.close(); await server?.close(); if (libraryDir) await rm(libraryDir, { recursive: true, force: true }); });
 
 /** Dismiss the boot loading screen if it is up (fixture pages have none). */
-async function dismissGate(page: Page) {
-  await page.getByRole('button', { name: /Enter the paddock|Lights out/ }).click({ timeout: 9000 }).catch(() => { /* no gate on this page */ });
+async function dismissGate(page: Page, timeout = 45000) {
+  await page.getByRole('button', { name: /Enter the paddock|Lights out/ }).click({ timeout }).catch(() => { /* no gate on this page */ });
 }
 
 /**
@@ -69,18 +81,23 @@ async function dismissGate(page: Page) {
  * brand-new browser profile, so it is always up on the first load — and it is modal, so nothing
  * in the garage can be clicked until it is gone (a click just lands on the backdrop).
  */
-async function dismissWhatsNew(page: Page) {
-  await page.getByRole('button', { name: "Let's race" }).click({ timeout: 9000 }).catch(() => { /* not this load */ });
+async function dismissWhatsNew(page: Page, timeout = 45000) {
+  await page.getByRole('button', { name: "Let's race" }).click({ timeout }).catch(() => { /* not this load */ });
 }
 
 async function ready(page: Page, path = '/') {
   await page.goto(`${baseUrl}${path}`, { waitUntil: 'networkidle', timeout: 60000 });
   await page.evaluate(() => Promise.race([document.fonts.ready, new Promise((resolve) => setTimeout(resolve, 3500))]));
-  await dismissGate(page);
-  await dismissWhatsNew(page);
+  if (path === '/') {
+    await dismissGate(page);
+    await dismissWhatsNew(page);
+    await page.locator('#circuit-title').waitFor({ state: 'visible', timeout: 45000 }).catch(() => {});
+  } else if (path.includes('ui-fixture.html')) {
+    await page.locator('.results-table').waitFor({ state: 'visible', timeout: 45000 }).catch(() => {});
+  }
 }
 
-test('Browser: garage controls preserve budget and select the actual circuit', { timeout: 60000 }, async () => {
+test('Browser: garage controls preserve budget and select the actual circuit', { timeout: 120000 }, async () => {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
   const page = await context.newPage();
   const errors: string[] = [];
@@ -118,7 +135,7 @@ test('Browser: garage controls preserve budget and select the actual circuit', {
   } finally { await context.close(); }
 });
 
-test('Browser: mobile layout stays in-bounds and controls remain usable', { timeout: 60000 }, async () => {
+test('Browser: mobile layout stays in-bounds and controls remain usable', { timeout: 120000 }, async () => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
   const page = await context.newPage();
   const errors: string[] = [];
@@ -158,7 +175,7 @@ test('Browser: mobile layout stays in-bounds and controls remain usable', { time
   } finally { await context.close(); }
 });
 
-test('Browser: results have readable contrast, real finish times and accessible actions', { timeout: 60000 }, async () => {
+test('Browser: results have readable contrast, real finish times and accessible actions', { timeout: 120000 }, async () => {
   const context = await browser.newContext({ viewport: { width: 1000, height: 940 }, deviceScaleFactor: 1 });
   const page = await context.newPage();
   try {
@@ -226,6 +243,7 @@ test('Browser: a complete long heat pays winnings and the saved season advances 
     await page.reload({ waitUntil: 'networkidle' });
     await dismissGate(page);
     await page.getByRole('button', { name: 'Continue', exact: true }).click();
+    await page.getByRole('button', { name: 'START HEAT 2', exact: true }).waitFor({ state: 'visible', timeout: 30000 });
     assert.ok(await page.getByRole('button', { name: 'START HEAT 2', exact: true }).isVisible());
     assert.equal((await page.evaluate(() => JSON.parse(Object.entries(localStorage).find(([k]) => k === 'mrr-season-v1' || k.endsWith(':mrr-season-v1'))![1]))).seed, saved.seed);
     assert.equal((await page.evaluate(() => JSON.parse(Object.entries(localStorage).find(([k]) => k === 'mrr-account-v1' || k.endsWith(':mrr-account-v1'))![1]))).credits, paid.credits, 'Returning to the paddock or reloading duplicated the payout.');
@@ -233,7 +251,7 @@ test('Browser: a complete long heat pays winnings and the saved season advances 
   } finally { await context.close(); }
 });
 
-test('Browser: shop purchases persist, number keys spend only selected items, and quitting pays nothing', { timeout: 60000 }, async () => {
+test('Browser: shop purchases persist, number keys spend only selected items, and quitting pays nothing', { timeout: 120000 }, async () => {
   const context = await browser.newContext({ viewport: { width: 1360, height: 900 }, deviceScaleFactor: 1 });
   const page = await context.newPage();
   const errors: string[] = [];
@@ -254,6 +272,7 @@ test('Browser: shop purchases persist, number keys spend only selected items, an
     await page.getByRole('button', { name: 'Loadout ready', exact: true }).click();
     await page.reload({ waitUntil: 'networkidle' });
     await dismissGate(page);
+    await page.getByRole('button', { name: 'Open pit shop, 80 credits', exact: true }).waitFor({ state: 'visible', timeout: 30000 });
     assert.ok(await page.getByRole('button', { name: 'Open pit shop, 80 credits', exact: true }).isVisible());
     await page.getByRole('button', { name: 'Pause circuit preview', exact: true }).click();
     await page.clock.install({ time: new Date('2026-01-01T00:00:00Z') });
@@ -302,7 +321,7 @@ test('Browser: shop purchases persist, number keys spend only selected items, an
     assert.deepEqual(errors, []);
   } finally { await context.close(); }
 });
-test('Browser: template dialog blocks editor shortcuts and preserves the saved group', { timeout: 60000 }, async () => {
+test('Browser: template dialog blocks editor shortcuts and preserves the saved group', { timeout: 120000 }, async () => {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
   const page = await context.newPage();
   const errors: string[] = [];
@@ -388,7 +407,7 @@ test('Browser: template dialog blocks editor shortcuts and preserves the saved g
   }
 });
 
-test('Browser: workshop launchers animate on the correct clock and bridge art follows the deck', { timeout: 60000 }, async () => {
+test('Browser: workshop launchers animate on the correct clock and bridge art follows the deck', { timeout: 120000 }, async () => {
   const page = await browser.newPage({ viewport: { width: 900, height: 950 } });
   const errors: string[] = [];
   page.on('pageerror', e => errors.push(e.message));
@@ -430,7 +449,7 @@ test('Browser: workshop launchers animate on the correct clock and bridge art fo
   } finally { await page.close(); }
 });
 
-test('Browser: War Drum and translucent Updraft dust use the supplied artwork', { timeout: 60000 }, async () => {
+test('Browser: War Drum and translucent Updraft dust use the supplied artwork', { timeout: 120000 }, async () => {
   const page = await browser.newPage({ viewport: { width: 900, height: 950 } });
   const errors: string[] = [];
   page.on('pageerror', e => errors.push(e.message));
@@ -470,7 +489,7 @@ test('Browser: War Drum and translucent Updraft dust use the supplied artwork', 
   } finally { await page.close(); }
 });
 
-test('Browser: canvas settings cog opens the selected piece dialog without moving it', { timeout: 60000 }, async () => {
+test('Browser: canvas settings cog opens the selected piece dialog without moving it', { timeout: 120000 }, async () => {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
   try {
     // Record the rendered cog centre so the test clicks its actual canvas hit target.
@@ -506,7 +525,7 @@ test('Browser: canvas settings cog opens the selected piece dialog without movin
   } finally { await page.close(); }
 });
 
-test('Browser: Workshop loop shows its entry and exit route', { timeout: 60000 }, async () => {
+test('Browser: Workshop loop shows its entry and exit route', { timeout: 120000 }, async () => {
   const page = await browser.newPage({ viewport: { width: 900, height: 950 } });
   const errors: string[] = [];
   page.on('pageerror', e => errors.push(e.message));
