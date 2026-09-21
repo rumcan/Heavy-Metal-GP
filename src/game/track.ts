@@ -1,4 +1,5 @@
 import Matter from 'matter-js';
+import { buildCourse } from './course-builder';
 import { massForWeight, mulberry32, TrackProfile, TrackTheme, ITEM_TYPES, CIRCUIT_LENGTH_MULTIPLIER, TRACK_THEMES } from './types';
 import type { ItemType } from './types';
 import { rampSurface } from './physics';
@@ -2221,6 +2222,14 @@ export function assembleTrack(b: Builder, seed: number, profile: TrackProfile): 
   segments.push({ name: 'Start', y, h: hStart });
   y += hStart;
 
+  if (profile.generator !== 'legacy') {
+    b.beginDefinition();
+    const course = buildCourse(b, seed, profile, y);
+    b.endDefinition();
+    segments.push(...course);
+    y = course.at(-1)!.y + course.at(-1)!.h;
+  } else {
+  // Story retains its authored sector-number events and signature objectives.
   // choose the sequence using profile-weighted pool; guarantee the signature features
   const pool = POOL.map((p) => ({ ...p, weight: p.weight * (profile.weights[p.name] ?? 1) }));
   const chosen: { seg: Seg; name: string }[] = [];
@@ -2265,6 +2274,7 @@ export function assembleTrack(b: Builder, seed: number, profile: TrackProfile): 
     y += h;
   }
   b.endDefinition();
+  }
 
   const finishY = y + 40;
   const hFin = segFinish(b, y);

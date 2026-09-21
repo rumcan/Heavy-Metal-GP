@@ -46,7 +46,7 @@ export function storyWeights(def: ChapterDef): Record<string, number> | undefine
 
 export function profileWithStory(profile: TrackProfile, def: ChapterDef): TrackProfile {
   const weights = storyWeights(def);
-  return weights ? { ...profile, weights: { ...profile.weights, ...weights } } : profile;
+  return { ...profile, generator: 'legacy', weights: weights ? { ...profile.weights, ...weights } : profile.weights };
 }
 
 /** Cast id → marble id on the story grid, or null when that cast member is not racing. */

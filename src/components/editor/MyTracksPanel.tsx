@@ -14,7 +14,7 @@ import type { SavedTrack } from '../../game/tracks';
 import type { TrackDef } from '../../game/trackdef';
 import { validateTrack } from './validate';
 import type { ValidationResult } from './validate';
-import { CALENDAR, officialTracks } from '../../game/season';
+import { CALENDAR, gpSeed } from '../../game/season';
 import { generateTrackDef } from '../../game/trackdef';
 
 interface Props {
@@ -148,21 +148,14 @@ export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, on
 
       {import.meta.env.DEV && onDevLoadOfficial && (
         <div style={{ marginTop: 20, padding: 10, background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--line)', borderRadius: 4 }}>
-          <header className="eyebrow" style={{ marginBottom: 10, display: 'block' }}>DEV TOOLS: OFFICIAL TRACKS</header>
+          <header className="eyebrow" style={{ marginBottom: 10, display: 'block' }}>DEV TOOLS: GENERATED CIRCUITS</header>
           {CALENDAR.map((gp) => (
             <div key={gp.id} style={{ display: 'flex', gap: 5, marginBottom: 5 }}>
               <button 
                 className="button-secondary" 
                 style={{ flex: 1, padding: '4px 8px', fontSize: 10 }}
                 onClick={() => {
-                  const key = `./official-tracks/champ-${gp.id}.json`;
-                  if (officialTracks[key]) {
-                    onDevLoadOfficial(officialTracks[key]);
-                  } else {
-                    const profile = gp.profile;
-                    const def = generateTrackDef(0, profile, gp.name);
-                    onDevLoadOfficial(def);
-                  }
+                  onDevLoadOfficial(generateTrackDef(gpSeed(0, gp.id), gp.profile, gp.name));
                 }}
               >
                 Load {gp.id}
@@ -180,7 +173,7 @@ export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, on
                   });
                 }}
               >
-                Save {gp.id}
+                Archive {gp.id}
               </button>
             </div>
           ))}

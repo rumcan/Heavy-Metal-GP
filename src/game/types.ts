@@ -188,6 +188,8 @@ export interface TrackTheme {
 }
 
 export interface TrackProfile {
+  /** Story uses legacy section indices; free races use connected courses by default. */
+  generator?: 'legacy' | 'connected';
   segments: number;
   weights: Record<string, number>;
   theme: TrackTheme;

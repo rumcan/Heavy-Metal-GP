@@ -260,10 +260,10 @@ class DefRecorder extends Builder {
     return this.capture(() => super.peg(x, y, r), () => ({ t: 'peg', x, y, r, flip: this.mirrored }));
   }
 
-  override ppeg(x: number, y: number, color: PegColor, r = 10) {
-    if (this.quiet || !this.capturing) return super.ppeg(x, y, color, r);
+  override ppeg(x: number, y: number, color: PegColor, r = 10, fixedItem?: ItemType) {
+    if (this.quiet || !this.capturing) return super.ppeg(x, y, color, r, fixedItem);
     // Glowing pegs drop a rolled item: roll it here (same draw, same order) and record it.
-    const item = color === 'green' ? this.rollItem() : undefined;
+    const item = color === 'green' ? (fixedItem ?? this.rollItem()) : undefined;
     return this.capture(() => super.ppeg(x, y, color, r, item), () => ({ t: 'ppeg', x, y, color, r, item, flip: this.mirrored }));
   }
 

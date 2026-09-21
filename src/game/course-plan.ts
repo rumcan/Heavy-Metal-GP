@@ -1,7 +1,7 @@
 import { mulberry32, themeIdFor } from './types';
 import type { TrackProfile } from './types';
 
-export type CourseFeature = 'mass' | 'rebound' | 'burrow' | 'sprint' | 'peggle' | 'crane';
+export type CourseFeature = 'mass' | 'rebound' | 'burrow' | 'sprint' | 'peggle' | 'crane' | 'lift';
 export interface CourseChapter {
   feature: CourseFeature;
   mirror: boolean;
@@ -17,18 +17,22 @@ export function planCourse(seed: number, profile: TrackProfile): CourseChapter[]
   const signature: CourseFeature = theme === 'silver' ? 'peggle'
     : theme === 'forest' ? 'sprint' : theme === 'street' ? 'burrow'
       : theme === 'dwarven' ? 'mass' : theme === 'worg' ? 'crane' : 'rebound';
-  const count = Math.max(6, Math.min(14, Math.round(profile.segments / 3)));
+  const count = Math.max(8, Math.min(14, Math.round(profile.segments / 3)));
   // Each act has a different job. A calm run-up always precedes the first machinery.
   const opening: CourseFeature[] = ['mass', 'rebound', 'sprint'];
-  const required: CourseFeature[] = ['burrow', 'peggle', 'crane', signature];
-  const pool: CourseFeature[] = ['mass', 'rebound', 'burrow', 'sprint', 'peggle', 'crane', signature];
+  const required: CourseFeature[] = ['mass', 'rebound', 'burrow', 'peggle', 'crane', 'lift', signature];
+  const pool: CourseFeature[] = ['mass', 'rebound', 'burrow', 'sprint', 'peggle', 'crane', 'lift', signature];
   const features: CourseFeature[] = [opening[Math.floor(rng() * opening.length)]];
+  const already = required.indexOf(features[0]);
+  if (already >= 0) required.splice(already, 1);
   while (features.length < count) {
-    const next = required.length ? required.splice(Math.floor(rng() * required.length), 1)[0]
-      : pool[Math.floor(rng() * pool.length)];
-    if (next === features.at(-1)) { required.push(next); continue; }
+    const remaining = required.filter(f => f !== features.at(-1));
+    const candidates = remaining.length ? remaining : pool.filter(f => f !== features.at(-1));
+    const next = candidates[Math.floor(rng() * candidates.length)];
+    const index = required.indexOf(next);
+    if (index >= 0) required.splice(index, 1);
     features.push(next);
   }
-  return features.map((feature, i) => ({ feature, mirror: false,
+  return features.map((feature, i) => ({ feature, mirror: (seed & 1) === 1,
     variant: Math.floor(rng() * 3), seed: (seed + i * 0x9e3779b9) >>> 0 }));
 }

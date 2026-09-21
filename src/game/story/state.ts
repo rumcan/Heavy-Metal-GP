@@ -198,8 +198,8 @@ export function storyProfile(chapter: number): TrackProfile {
   const def = chapterDef(chapter);
   const base = CALENDAR[def.gp]?.profile;
   if (!base) throw new Error(`Story chapter ${chapter} points at Grand Prix ${def.gp}, which does not exist.`);
-  if (!def.weights) return base;
-  return { ...base, weights: { ...base.weights, ...def.weights } };
+  if (!def.weights) return { ...base, generator: 'legacy' };
+  return { ...base, generator: 'legacy', weights: { ...base.weights, ...def.weights } };
 }
 
 export function storyGrandPrix(chapter: number) {

@@ -2,9 +2,6 @@ import * as storage from './storage';
 import type { TrackDef } from './trackdef';
 import { GrandPrix, HeatResult, MarbleInfo, POINTS, FASTEST_BONUS, HEATS_PER_GP, TEAMS, Team, TrackProfile, CIRCUIT_LENGTH_MULTIPLIER, TRACK_THEMES, ThemeId } from './types';
 
-// Load static official tracks if they exist.
-export const officialTracks = import.meta.glob('./official-tracks/champ-*.json', { eager: true, import: 'default' }) as Record<string, TrackDef>;
-
 const P = (segments: number, weights: Record<string, number>, theme: ThemeId): TrackProfile => ({ segments: segments * CIRCUIT_LENGTH_MULTIPLIER, weights, theme: TRACK_THEMES[theme] });
 
 export const CALENDAR: GrandPrix[] = [
@@ -37,7 +34,8 @@ export interface SeasonState {
 export function roundTrack(season: SeasonState, round: number): TrackDef | null {
   const custom = season.tracks?.[round];
   if (custom) return custom;
-  return officialTracks[`./official-tracks/champ-${round}.json`] ?? null;
+  // The calendar now races the seeded connected generator. Saved Workshop overrides still win.
+  return null;
 }
 
 /** Display name of a round's circuit: the custom track's name, or the Grand Prix name. */
