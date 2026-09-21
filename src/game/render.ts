@@ -2100,6 +2100,36 @@ function paintStatic(ctx: CanvasRenderingContext2D, game: Game, top: number, bot
   drawSidesStatic(ctx, game, top, bottom);
   drawDecor(ctx, game, top, bottom);
 
+  // Route advice belongs to the course, before the commitment point. Cached with the rails.
+  // The seeded mirror moves signs but never reverses their lettering.
+  const mirrored = (game.track.seed & 1) === 1;
+  const arrow = mirrored ? '←' : '→';
+  for (const section of game.track.segments) {
+    if (!section.name.includes(' · ') || section.y + 300 < top || section.y - 20 > bottom) continue;
+    const sign = section.name.startsWith('Foundry Cut') ? ['MASS ↓', 430, 100]
+      : section.name.startsWith('Spring Exchange') ? [`BOUNCE ${arrow}`, 440, 175]
+      : section.name.startsWith('Smuggler Run') ? [`JUMP ${arrow} BURROW`, 430, 90]
+      : section.name.startsWith('Sky Ferry') ? [`JUMP ${arrow} LIFT`, 330, 65]
+      : section.name.startsWith('Crane Yard') ? ['GHOST ↓ / OUTSIDE ROAD', 430, 100]
+      : section.name.startsWith('Peg Bank') ? [`BOOST ${arrow} / PEGS ↓`, 335, 100]
+      : section.name.startsWith('Beltway') ? [`CARRY SPEED ${arrow}`, 270, 25] : null;
+    if (!sign) continue;
+    const [label, sx, sy] = sign as [string, number, number];
+    const x = mirrored ? W - sx : sx, y = section.y + sy;
+    ctx.save();
+    ctx.font = 'bold 17px sans-serif';
+    ctx.textAlign = 'center';
+    const width = ctx.measureText(label).width + 24;
+    ctx.fillStyle = '#201913';
+    ctx.strokeStyle = '#a58a52';
+    ctx.lineWidth = 2;
+    ctx.fillRect(x - width / 2, y - 22, width, 30);
+    ctx.strokeRect(x - width / 2, y - 22, width, 30);
+    ctx.fillStyle = '#f6df9b';
+    ctx.fillText(label, x, y);
+    ctx.restore();
+  }
+
   const fy = game.track.finishY;
   if (fy + 100 > top && fy - 100 < bottom) {
     const sq = 15;

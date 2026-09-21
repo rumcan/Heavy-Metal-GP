@@ -41,6 +41,8 @@ export function buildCourse(b: Builder, seed: number, profile: TrackProfile, sta
     if (chapter.feature === 'mass') {
       b.ramp(0, y + 50, 350, y + 155);
       b.trapdoor(430, y + 155, 160, -1, 'weight', 1100, 2200, 0, 1.5, 50);
+      // A light marble can roll across even after a collision removes all its momentum.
+      b.boost(430, y + 133, 140, 24, 1, 0);
       b.ramp(510, y + 155, tip, y + 250);
       b.ppeg(250, y + 94, 'green', 10, 'anvil');
       // The opening cuts the long outer turnaround; regular kits can carry momentum over it.
@@ -49,6 +51,8 @@ export function buildCourse(b: Builder, seed: number, profile: TrackProfile, sta
     } else if (chapter.feature === 'rebound') {
       b.ramp(0, y + 50, 330, y + 155);
       b.trampoline(440, y + 245, 180, 1.05 + v * 0.12);
+      // A stopped low-bounce marble rolls off the net instead of waiting for a rescue.
+      b.boost(440, y + 224, 160, 26, 1, 0);
       // Upper receiving shelf is above the lip: a rebound, not a decorative spring.
       b.ramp(555, y + 95, 735, y + 130);
       b.tunnel(685, y + 98, 110, y + 745, -0.2, 1, 1000, 5);
@@ -66,10 +70,12 @@ export function buildCourse(b: Builder, seed: number, profile: TrackProfile, sta
       b.ppeg(490, firstY(490) - 32, 'orange', 10); // marks the jump timing window
     } else if (chapter.feature === 'lift') {
       b.ramp(0, y + 50, 345, y + 150);
-      b.platform(425, y + 225, 635, y + 120, 130, 1800, 650, v * 500);
+      b.platform(490, y + 200, 635, y + 120, 170, 1800, 650, v * 500);
       b.ramp(685, y + 150, 810, y + 180);
+      // Upper-stop ejector: the moving slab cannot keep a motionless rider forever.
+      b.boost(675, y + 110, 110, 40, 1, 0.1);
       b.tunnel(760, y + 143, 110, y + 745, -0.2, 1, 900, 5);
-      b.ramp(630, y - 20, 825, y + 30);
+      // The high dock must stay open to the airborne approach; a roof would catch the jump.
       b.ppeg(245, y + 91, 'green', 10, 'jump');
       b.ppeg(520, y + 250, 'orange', 10);
     } else if (chapter.feature === 'sprint') {
@@ -96,6 +102,7 @@ export function buildCourse(b: Builder, seed: number, profile: TrackProfile, sta
       b.ramp(0, y + 50, 350, y + 155);
       // A breakable floor covers the inner drop. Ghost can choose it without opening it for rivals.
       b.barricade(430, y + 160, 160, 25, 2 + v);
+      b.boost(430, y + 137, 140, 24, 1, 0);
       b.ramp(510, y + 165, tip, y + 250);
       b.ppeg(250, y + 94, 'green', 10, 'ghost');
       // The mace only brushes the outer turnaround; the inside drop avoids it completely.

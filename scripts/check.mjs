@@ -10,7 +10,7 @@ const commands = [
     // Story mode (ST-01..ST-08): schema, engine and chapter modifiers. Pure node — they stub their own DOM.
     'tests/story-schema.test.ts', 'tests/story-engine.test.ts', 'tests/story-modifiers.test.ts',
     // Map builder (MB-01): the track definition format — recording, rebuild identity, validation.
-    'tests/trackdef.test.ts',
+    'tests/trackdef.test.ts', 'tests/course-generator.test.ts',
     // Map builder (MB-02): the editor shell — the camera's maths, the palette, and what the shell paints.
     'tests/editor-ui.test.ts', 'tests/editor-templates.test.ts', 'tests/map-builder-audit.test.ts', 'tests/editor-bounds.test.ts',
     'tests/map-builder-handles-preview.test.ts', 'tests/map-elements-runtime.test.ts', 'tests/mb10e.test.ts', 'tests/mb10f.test.ts',

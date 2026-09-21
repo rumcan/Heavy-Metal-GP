@@ -2229,51 +2229,51 @@ export function assembleTrack(b: Builder, seed: number, profile: TrackProfile): 
     segments.push(...course);
     y = course.at(-1)!.y + course.at(-1)!.h;
   } else {
-  // Story retains its authored sector-number events and signature objectives.
-  // choose the sequence using profile-weighted pool; guarantee the signature features
-  const pool = POOL.map((p) => ({ ...p, weight: p.weight * (profile.weights[p.name] ?? 1) }));
-  const chosen: { seg: Seg; name: string }[] = [];
-  const totalW = pool.reduce((s, p) => s + p.weight, 0);
-  let lastName = '';
-  let tries = 0;
-  while (chosen.length < segmentCount && tries++ < 500) {
-    let r = b.rng() * totalW;
-    let pick = pool[0];
-    for (const p of pool) {
-      r -= p.weight;
-      if (r <= 0) {
-        pick = p;
-        break;
+    // Story retains its authored sector-number events and signature objectives.
+    // choose the sequence using profile-weighted pool; guarantee the signature features
+    const pool = POOL.map((p) => ({ ...p, weight: p.weight * (profile.weights[p.name] ?? 1) }));
+    const chosen: { seg: Seg; name: string }[] = [];
+    const totalW = pool.reduce((s, p) => s + p.weight, 0);
+    let lastName = '';
+    let tries = 0;
+    while (chosen.length < segmentCount && tries++ < 500) {
+      let r = b.rng() * totalW;
+      let pick = pool[0];
+      for (const p of pool) {
+        r -= p.weight;
+        if (r <= 0) {
+          pick = p;
+          break;
+        }
       }
+      if (pick.name === lastName) continue;
+      chosen.push(pick);
+      lastName = pick.name;
     }
-    if (pick.name === lastName) continue;
-    chosen.push(pick);
-    lastName = pick.name;
-  }
-  const signatures = ['Crack Wall Shortcut', 'Bounce Ramp', 'Peggle Board', 'Loop'];
-  const ensure = (name: string, minimum = 1) => {
-    while (chosen.filter((c) => c.name === name).length < minimum) {
-      const counts = chosen.reduce<Record<string, number>>((all, c) => ({ ...all, [c.name]: (all[c.name] ?? 0) + 1 }), {});
-      const candidates = chosen.map((c, i) => ({ c, i })).filter(({ c }) => c.name !== name && (!signatures.includes(c.name) || counts[c.name] > 1));
-      const replacement = candidates[Math.floor(b.rng() * candidates.length)];
-      if (replacement) chosen[replacement.i] = POOL.find((p) => p.name === name)!;
-      else break;
-    }
-  };
-  ensure('Crack Wall Shortcut');
-  ensure('Bounce Ramp');
-  ensure('Peggle Board', Math.max(1, Math.floor(segmentCount / 5)));
-  ensure('Loop', Math.max(1, Math.floor(segmentCount / 8)));
+    const signatures = ['Crack Wall Shortcut', 'Bounce Ramp', 'Peggle Board', 'Loop'];
+    const ensure = (name: string, minimum = 1) => {
+      while (chosen.filter((c) => c.name === name).length < minimum) {
+        const counts = chosen.reduce<Record<string, number>>((all, c) => ({ ...all, [c.name]: (all[c.name] ?? 0) + 1 }), {});
+        const candidates = chosen.map((c, i) => ({ c, i })).filter(({ c }) => c.name !== name && (!signatures.includes(c.name) || counts[c.name] > 1));
+        const replacement = candidates[Math.floor(b.rng() * candidates.length)];
+        if (replacement) chosen[replacement.i] = POOL.find((p) => p.name === name)!;
+        else break;
+      }
+    };
+    ensure('Crack Wall Shortcut');
+    ensure('Bounce Ramp');
+    ensure('Peggle Board', Math.max(1, Math.floor(segmentCount / 5)));
+    ensure('Loop', Math.max(1, Math.floor(segmentCount / 8)));
 
-  // Everything between these two calls is a piece a TrackDef stores (see `Builder.beginDefinition`).
-  b.beginDefinition();
-  for (const c of chosen) {
-    const h = c.seg(b, y);
-    if (!['Peggle Board', 'Peg Field', 'Loop', 'Curve Drop'].includes(c.name)) b.scatterPegs(y, h);
-    segments.push({ name: c.name, y, h });
-    y += h;
-  }
-  b.endDefinition();
+    // Everything between these two calls is a piece a TrackDef stores (see `Builder.beginDefinition`).
+    b.beginDefinition();
+    for (const c of chosen) {
+      const h = c.seg(b, y);
+      if (!['Peggle Board', 'Peg Field', 'Loop', 'Curve Drop'].includes(c.name)) b.scatterPegs(y, h);
+      segments.push({ name: c.name, y, h });
+      y += h;
+    }
+    b.endDefinition();
   }
 
   const finishY = y + 40;

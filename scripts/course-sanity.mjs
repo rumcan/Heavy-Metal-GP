@@ -2,13 +2,14 @@
 import { Game } from '../src/game/engine.ts';
 import { TRACK_THEMES } from '../src/game/types.ts';
 const builds = [{weight:3,speed:9,bounce:3},{weight:9,speed:3,bounce:3},
-  {weight:3,speed:3,bounce:9},{weight:5,speed:5,bounce:5}];
+  {weight:3,speed:3,bounce:9},{weight:5,speed:5,bounce:5},
+  {weight:1,speed:10,bounce:4},{weight:10,speed:1,bounce:4},{weight:1,speed:4,bounce:10}];
 const seeds = process.argv.slice(2).map(Number);
 let failures = 0;
 for (const seed of seeds.length ? seeds : [2,3,7,42,777,2026]) {
   const theme = ['classic','street','silver','forest','worg','dwarven'][Math.abs(seed) % 6];
   const roster = Array.from({length:10}, (_,id) => ({id,name:`M${id}`,color:'#fff',
-    stats:builds[id % 4],isPlayer:false}));
+    stats:builds[id % builds.length],isPlayer:false}));
   const game = new Game(seed,roster,{profile:{segments:30,weights:{},theme:TRACK_THEMES[theme]},
     recovery:false,effects:false,aiItems:false});
   game.openGate();

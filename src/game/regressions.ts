@@ -227,10 +227,10 @@ add('Procedural tracks preserve all signature features', 'Race safety', async ()
   for (let seed = 1; seed <= 24; seed++) {
     const track = generateTrack(seed, CALENDAR[seed % CALENDAR.length].profile);
     const names = track.segments.map((s) => s.name);
-    for (const name of ['Bounce Ramp', 'Crack Wall Shortcut', 'Peggle Board']) ensure(names.includes(name), `Seed ${seed} is missing ${name}.`);
+    for (const name of ['Foundry Cut', 'Spring Exchange', 'Smuggler Run', 'Sky Ferry', 'Peg Bank', 'Crane Yard']) ensure(names.some(n => n.startsWith(name)), `Seed ${seed} is missing ${name}.`);
     for (const body of track.ramps) ensure(meta(body).surface!.normal.y < 0, 'Ramp surface is inverted.');
   }
-  return '24 seeds; correct ramp normals and all three signature sectors';
+  return '24 seeds; correct ramp normals and all six specialist route sectors';
 });
 
 add('MB-10D launchers: the whole field rides every toy', 'Race safety', async () => {
@@ -599,22 +599,25 @@ add('Freeze without a target, empty slots, and the start grid never spend a char
   } finally { game.destroy(); }
 });
 
-add('All six circuits are 3x longer with dense, marked item-peg fields', 'Race safety', async () => {
-  const originalSectors = [10, 11, 11, 12, 11, 14];
-  for (const [index, gp] of CALENDAR.entries()) {
+add('All six circuits have compact connected chapters with deliberate item supplies', 'Race safety', async () => {
+  for (const gp of CALENDAR) {
     const track = generateTrack(1234, gp.profile);
-    ensure(track.segments.length - 2 === originalSectors[index] * 3, 'Circuit sector count was not tripled.');
-    ensure(track.finishY > 11000, 'New circuit is unexpectedly short.');
-    ensure(track.pegCount.total > 400, `Only ${track.pegCount.total} disappearing pegs on ${gp.short}.`);
+    ensure(track.segments.length - 4 === Math.max(8, Math.min(14, Math.round(gp.profile.segments / 3))), 'Unexpected chapter count.');
+    ensure(track.finishY > 7000 && track.finishY < 14000, 'Course length is outside the compact race budget.');
+    ensure(track.pegCount.total > 20 && track.pegCount.total < 200, `Unexpected peg density on ${gp.short}.`);
     const glowing = track.bodies.filter((b) => meta(b).pegColor === 'green');
-    ensure(glowing.length >= 20, 'Not enough glowing pickup pegs.');
+    ensure(glowing.length >= 8, 'Not enough glowing pickup pegs.');
     ensure(glowing.every((b) => meta(b).itemDrop && ITEM_TYPES.includes(meta(b).itemDrop!)), 'Glowing peg has no valid item.');
     const repeated = generateTrack(1234, gp.profile);
     ensure(track.finishY === repeated.finishY && track.pegCount.total === repeated.pegCount.total, 'Same heat seed changed the track.');
     const game = new Game(1234, roster(), { track, effects: false });
-    try { ensure(Matter.Composite.allBodies(game.world).length < track.bodies.length / 2, 'Distant track geometry is needlessly in the solver.'); } finally { game.destroy(); }
+    try {
+      const active = Matter.Composite.allBodies(game.world).length;
+      ensure(track.bodies.length <= 350 ? active <= track.bodies.length + 10 : active < track.bodies.length / 2,
+        'Physics body budget exceeded; large courses must stream distant geometry.');
+    } finally { game.destroy(); }
   }
-  return '30-42 sectors, 400+ disappearing pegs per circuit, marked item drops and streamed physics';
+  return '8-14 connected chapters, deliberate item supplies and streamed physics';
 });
 
 export const regressionChecks: readonly RegressionCheck[] = checks;
