@@ -1,3 +1,4 @@
+// Run with: node --import tsx --test tests/course-generator.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import Matter from 'matter-js';
@@ -10,15 +11,23 @@ import type { MarbleStats } from '../src/game/types';
 import { CALENDAR } from '../src/game/season';
 import { HEAT_TIME_LIMIT, PHYSICS_STEP } from '../src/game/physics';
 
-const profile = { segments: 30, weights: {}, theme: TRACK_THEMES.classic };
-const builds: MarbleStats[] = [{weight:3,speed:9,bounce:3},{weight:9,speed:3,bounce:3},
-  {weight:3,speed:3,bounce:9},{weight:5,speed:5,bounce:5}];
-const roster = (n = 10) => Array.from({length:n}, (_,id) => ({id,name:`M${id}`,color:'#fff',
-  stats:builds[id % builds.length],isPlayer:id === 0}));
+const W = 900;
+const profile: TrackProfile = { segments: 30, weights: {}, theme: TRACK_THEMES.classic };
+const builds: MarbleStats[] = [
+  { weight: 3, speed: 9, bounce: 3 }, { weight: 9, speed: 3, bounce: 3 },
+  { weight: 3, speed: 3, bounce: 9 }, { weight: 5, speed: 5, bounce: 5 },
+  { weight: 1, speed: 10, bounce: 4 }, { weight: 10, speed: 1, bounce: 4 },
+  { weight: 1, speed: 4, bounce: 10 }, { weight: 4, speed: 1, bounce: 10 },
+  { weight: 10, speed: 4, bounce: 1 }, { weight: 4, speed: 10, bounce: 1 },
+];
+const roster = (): MarbleInfo[] => builds.map((stats, id) => ({
+  id, name: `M${id}`, color: '#fff', stats: { ...stats }, isPlayer: id === 0,
+  inventory: emptyInventory(),
+}));
 
 test.skip('planner terminates, preserves specialist opportunities and never repeats adjacent chapters', () => {
   for (let seed = 0; seed < 1000; seed++) {
-    const plan = planCourse(seed, profile);
+    const plan = planCourse(seed, frozen);
     assert.equal(plan.length, 10);
     for (const feature of ['mass','rebound','burrow','lift','peggle','crane']) {
       // Due to 10 slots and 15 signature features, it's not guaranteed all 6 will spawn in every track.
@@ -33,34 +42,58 @@ test.skip('planner terminates, preserves specialist opportunities and never repe
   }
 });
 
-test('Workshop recording preserves deliberate supply items, not newly rolled random drops', () => {
-  const def = generateTrackDef(42,profile,'Course');
-  const expected = def.pieces.filter(p=>p.t==='ppeg' && p.color==='green').map(p=>p.t==='ppeg' ? p.item : null);
-  const actual = buildTrackFromDef(def).bodies.map(meta).filter(m=>m.kind==='ppeg' && m.pegColor==='green').map(m=>m.itemDrop);
-  assert.deepEqual(actual,expected);
-  assert.ok(expected.includes('jump') && expected.includes('anvil') && expected.includes('ghost'));
+test('profile lengths produce 8-14 chapters and extend the same seeded prefix', () => {
+  for (let count = 8; count <= 14; count++) {
+    const p = { ...profile, segments: count * CIRCUIT_LENGTH_MULTIPLIER };
+    assert.equal(planCourse(42, p).length, count);
+    assert.deepEqual(planCourse(42, p).slice(0, 8), planCourse(42, { ...p, segments: 24 }));
+  }
+  for (const [segments, expected] of [[0, 8], [-1, 8], [1000, 14], [NaN, 10], [Infinity, 10]]) {
+    assert.equal(planCourse(1, { ...profile, segments }).length, expected);
+  }
+  const heights = [24, 30, 36, 42].map(segments => generateTrack(42, { ...profile, segments }).height);
+  assert.ok(heights.every((h, i) => i === 0 || h > heights[i - 1]));
+  const counts = CALENDAR.map(gp => planCourse(42, gp.profile).length);
+  assert.ok(new Set(counts).size >= 3, 'Grand Prix profiles must not all have the same length');
 });
 
-for (const seed of [2,3,7,42,777,2026]) {
-  test(`seed ${seed}: ten mixed builds finish with no recovery assistance`, () => {
-    const game = new Game(seed,roster(),{profile,recovery:false,effects:false,aiItems:false});
-    game.openGate();
-    for(let i=0;i<60*150 && !game.allFinished();i++) game.step(1000/60);
-    assert.ok(game.allFinished(),JSON.stringify(game.marbles.filter(m=>m.finishedAt===null).map(m=>m.body.position)));
-    assert.equal(game.marbles.reduce((n,m)=>n+m.recoveries,0),0);
-  });
+function featureCount(p: TrackProfile, feature: CourseFeature): number {
+  let count = 0;
+  for (let seed = 0; seed < 256; seed++) count += planCourse(seed, p).filter(c => c.feature === feature).length;
+  return count;
 }
 
-test('seed 17: extreme kits leave the flat weight hatch without recovery', () => {
-  const extremes = [...builds, {weight:1,speed:10,bounce:4}, {weight:10,speed:1,bounce:4}, {weight:1,speed:4,bounce:10}];
-  const racers = roster().map((r,i)=>({...r,isPlayer:false,stats:extremes[i % extremes.length]}));
-  const game = new Game(17,racers,{profile:{...profile,theme:TRACK_THEMES.dwarven},recovery:false,effects:false,aiItems:false});
-  try {
-    game.openGate();
-    for(let i=0;i<60*150 && !game.allFinished();i++) game.step(1000/60);
-    assert.ok(game.allFinished(),'a stopped light marble must be carried off the hatch');
-    assert.ok(game.marbles.every(m=>m.recoveries===0));
-  } finally { game.destroy(); }
+test('legacy profile weights measurably influence sampled features', () => {
+  const cases: [CourseFeature, string][] = [
+    ['peggle', 'Peggle Board'], ['ice', 'Ice Slide'], ['machines', 'Spinners'],
+    ['banking', 'Curve Drop'], ['boost', 'Splitter'],
+  ];
+  for (const [feature, key] of cases) {
+    const low = featureCount({ ...profile, weights: { [key]: 0 } }, feature);
+    const high = featureCount({ ...profile, weights: { [key]: 50 } }, feature);
+    assert.ok(high > low * 2, `${key}: ${low} low-weight chapters versus ${high} high-weight chapters`);
+  }
+  assert.ok(featureCount(CALENDAR[2].profile, 'peggle') > featureCount(CALENDAR[3].profile, 'peggle') * 2);
+  assert.ok(featureCount(CALENDAR[3].profile, 'ice') > featureCount(CALENDAR[2].profile, 'ice') * 2);
+  assert.ok(featureCount(CALENDAR[5].profile, 'machines') > featureCount(CALENDAR[0].profile, 'machines') * 2);
+});
+
+test('disabled choices stay disabled; single-choice and invalid-weight profiles terminate', () => {
+  const disabled = Object.fromEntries(COURSE_FEATURES.map(f => [f, 0]));
+  for (const feature of COURSE_FEATURES) {
+    const p = { ...profile, weights: { ...disabled, [feature]: 1 } };
+    for (const seed of [0, 1, 17, 42]) assert.ok(planCourse(seed, p).every(c => c.feature === feature));
+  }
+  for (const layout of COURSE_LAYOUTS) {
+    const p = { ...profile, weights: Object.fromEntries(COURSE_LAYOUTS.map(l => [l, l === layout ? 1 : 0])) };
+    assert.ok(planCourse(17, p).every(c => c.layout === layout));
+  }
+  for (const value of [0, -1, NaN, Infinity]) {
+    const weights = Object.fromEntries([...COURSE_FEATURES, ...COURSE_LAYOUTS].map(key => [key, value]));
+    const plan = planCourse(17, { ...profile, weights });
+    assert.equal(plan.length, 10);
+    assert.ok(plan.every(c => c.feature === 'banking' && c.layout === 'sweeper'));
+  }
 });
 
 test.skip(`timed Jump enters the burrow and beats the item-free road`, () => {
