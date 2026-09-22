@@ -1,6 +1,10 @@
 # Connected championship course generator
 
-Championship rounds now use seeded connected courses unless the player has selected a custom TrackDef. Archived championship JSONs remain available in the repository. Story mode explicitly retains the legacy generator because its objectives reference legacy sections.
+Championship rounds race the **archived official circuits** in `src/game/official-tracks/champ-<round>.json` (`src/game/official-tracks.ts` loads and validates them) unless the player has selected a custom TrackDef for that round. Nothing generates a calendar circuit at race time: the garage/championship menu demo and every heat rebuild exactly the bodies the archive records, so an edit archived from the Workshop is the edit the game races. A missing or refused archive falls back to the seeded generator inside `Game.trackFor` — that fallback is a safety net, not the path.
+
+The archives are produced by the dev workflow (Workshop → My tracks → Dev tools, dev builds only): **Generate** loads a fresh seeded circuit for a round into the editor, **Load saved** pulls the current archive back for another fixing pass, and **Archive** writes the editor's circuit to `champ-<round>.json` (Vite reloads; the next build ships it). Generation is a starting point — the fixing happens in the editor. The Workshop's New track dialog offers the same generator to players.
+
+Story mode explicitly retains the legacy generator because its objectives reference legacy sections.
 
 ## Design contract
 
@@ -25,7 +29,7 @@ The six existing theme palettes/art remain. Theme identity also changes the freq
 - `node --import tsx --test tests/course-generator.test.ts`: planner, no-rescue races, mirrored Jump time savings, heavy/light hatch and lift boarding tests.
 - `node --import tsx scripts/course-sanity.mjs 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17`: 180 marbles, including extreme builds, across six themes. Disables recovery and AI items. All completed in the checked revision.
 - `node --import tsx scripts/course-shots.mjs`: Linux browser screenshots in `tests/artifacts/course-*.png`.
-- Workshop → My Tracks → Generated Circuits: load an editable seeded circuit.
+- Workshop → My Tracks → Dev tools (dev builds only): Generate a fresh seeded circuit, Load saved to pull a round's archive back into the editor, Archive to write the current circuit back as that round's official track.
 
 Generated TrackDefs retain fixed supply items. Racing and editor rebuilds use the same geometry. Existing regression checks now enforce compact chapters, supply validity, determinism and streamed physics instead of the obsolete three-times-longer / 400-peg quota.
 

@@ -1,3 +1,10 @@
+# Heavy Metal GP v1.19.0 - Official Circuits Update
+
+### 🏁 Hand-Fixed Official Circuits
+- Championship and Quick Race calendar circuits are now **fixed official layouts** — generated once in the Workshop, hand-fixed, and archived with the game. No more per-season procedural generation of the main maps.
+- The menu's live demo now shows **exactly the circuit the heats race**, archive edits included: what you see in the preview is what you play.
+- Swapping a round for one of your own Workshop tracks still works as before (change it any time before the round's first heat; custom tracks pay 30% of the usual winnings).
+
 # Heavy Metal GP v1.18.0 - The Grand Scrapyard Expansion
 
 ### 🔨 Workshop Expansion: 30 New Items & Universal Handles

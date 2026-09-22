@@ -2,7 +2,8 @@
  * MB-02 + MB-03 + MB-04. The Workshop: editor shell plus direct manipulation
  * and test drive.
  *
- * Opens on a copy of the circuit the garage is showing (MB-01 def).  MB-02
+ * Opens on the open draft, else a copy of the circuit the garage is showing — the official
+ * archive when there is one (MB-01 def), else a generated circuit.  MB-02
  * provided the shell (camera, grid, palette, map).  MB-03 adds placing via
  * palette, selection via body bounds → piece index, handles per type,
  * multi-select/box/duplicate/delete/nudge/mirror and an undo/redo stack of
@@ -89,6 +90,12 @@ interface Props {
   seed: number;
   profile: TrackProfile;
   name: string;
+  /**
+   * Open on this circuit when there is no draft — the official archive of the circuit the garage
+   * is showing, so fixes start from the layout the game actually races. Falls back to generating
+   * from `seed` + `profile` when absent (no archive for this round).
+   */
+  initialDef?: TrackDef | null;
   driver: MarbleInfo;
   onExit: () => void;
   /** Open the Community tracks screen (the draft is saved first). */
@@ -226,12 +233,13 @@ function ensureHeight(def: TrackDef): TrackDef {
   return grown > def.height ? { ...def, height: grown } : def;
 }
 
-export default function TrackEditor({ seed, profile, name, driver, onExit, onCommunity }: Props) {
+export default function TrackEditor({ seed, profile, name, initialDef, driver, onExit, onCommunity }: Props) {
   const [publishOpen, setPublishOpen] = useState(false);
   const [templateSnapshot, setTemplateSnapshot] = useState<ReturnType<typeof snapshotTemplate> | null>(null);
   const [circuit, setCircuit] = useState<Circuit>(() => {
     const draft = loadDraftSync();
     if (draft) return { def: draft, build: 0 };
+    if (initialDef) return { def: cloneDef(initialDef), build: 0 };
     return { def: generateTrackDef(seed, profile, name), build: 0 };
   });
   // MB-06: My tracks + open draft persistence
@@ -1020,7 +1028,7 @@ export default function TrackEditor({ seed, profile, name, driver, onExit, onCom
               setSelected([]);
               setValidation(null);
               bumpHistory();
-              setDraftMsg(`Loaded official dev track`);
+              setDraftMsg(`Loaded the ${def.name} circuit into the editor`);
               setTimeout(() => setDraftMsg(null), 3000);
             }}
           />

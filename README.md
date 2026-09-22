@@ -10,7 +10,11 @@ Peggle-inspired sectors, and a six-event championship.
 - Use A/D or the arrow keys to nudge, keys 1-8 (or a toolbar click) to deploy an item,
   Space to repeat your last selection, and P to pause.
 - Touch controls are available on smaller screens.
-- Each Grand Prix has three heats on the same seeded track. Setups lock between heats.
+- Each Grand Prix has three heats on the same track. Setups lock between heats.
+- Calendar circuits are fixed official layouts, generated once in the Workshop, hand-fixed
+  and archived (`src/game/official-tracks/`) — the menu demo and the heats race the saved
+  file, and nothing is generated at race time. A round can still be swapped for one of your
+  own Workshop tracks until its first heat (reduced winnings).
 - Finishing points are 25/18/15/12/10/8/6/4/2/1. DNFs earn zero.
 - The fastest heat of a completed Grand Prix earns one bonus point.
 - Your season saves locally as soon as a heat finishes. No account or server is needed.

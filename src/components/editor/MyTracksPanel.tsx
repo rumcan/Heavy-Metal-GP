@@ -15,6 +15,7 @@ import type { TrackDef } from '../../game/trackdef';
 import { validateTrack } from './validate';
 import type { ValidationResult } from './validate';
 import { CALENDAR, gpSeed } from '../../game/season';
+import { officialTrack } from '../../game/official-tracks';
 import { generateTrackDef } from '../../game/trackdef';
 
 interface Props {
@@ -148,35 +149,55 @@ export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, on
 
       {import.meta.env.DEV && onDevLoadOfficial && (
         <div style={{ marginTop: 20, padding: 10, background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--line)', borderRadius: 4 }}>
-          <header className="eyebrow" style={{ marginBottom: 10, display: 'block' }}>DEV TOOLS: GENERATED CIRCUITS</header>
-          {CALENDAR.map((gp) => (
-            <div key={gp.id} style={{ display: 'flex', gap: 5, marginBottom: 5 }}>
-              <button 
-                className="button-secondary" 
-                style={{ flex: 1, padding: '4px 8px', fontSize: 10 }}
-                onClick={() => {
-                  onDevLoadOfficial(generateTrackDef(gpSeed(0, gp.id), gp.profile, gp.name));
-                }}
-              >
-                Load {gp.name}
-              </button>
-              <button
-                className="button-primary"
-                style={{ flex: 1, padding: '4px 8px', fontSize: 10 }}
-                onClick={() => {
-                  fetch(`/__dev/save-official-track?round=${gp.id}`, {
-                    method: 'POST',
-                    body: JSON.stringify(currentDef, null, 2),
-                  }).then((res) => {
-                    if (res.ok) alert(`Saved to src/game/official-tracks/champ-${gp.id}.json`);
-                    else alert('Failed to save official track');
-                  });
-                }}
-              >
-                Archive {gp.name}
-              </button>
-            </div>
-          ))}
+          <header className="eyebrow" style={{ marginBottom: 6, display: 'block' }}>DEV TOOLS: CHAMPIONSHIP CIRCUITS</header>
+          <p style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 10 }}>
+            The calendar races these archives — nothing is generated at race time. Generate a starting point (or load the saved circuit), fix it in the editor, then Archive to make it official. The page reloads and every demo and heat runs the new file.
+          </p>
+          {CALENDAR.map((gp) => {
+            const archived = officialTrack(gp.id);
+            return (
+              <div key={gp.id} style={{ display: 'flex', gap: 5, marginBottom: 5, alignItems: 'center' }}>
+                <span style={{ flex: '0 0 84px', fontSize: 10, color: 'var(--text-muted)' }} title={gp.name}>{gp.short}</span>
+                <button
+                  className="button-secondary"
+                  style={{ flex: 1, padding: '4px 8px', fontSize: 10 }}
+                  title={`Generate a fresh seeded ${gp.name} circuit into the editor`}
+                  onClick={() => {
+                    onDevLoadOfficial(generateTrackDef(gpSeed(0, gp.id), gp.profile, gp.name));
+                  }}
+                >
+                  Generate
+                </button>
+                <button
+                  className="button-secondary"
+                  style={{ flex: 1, padding: '4px 8px', fontSize: 10 }}
+                  disabled={!archived}
+                  title={archived ? `Load the archived circuit round ${gp.id + 1} currently races (${archived.pieces.length} pieces)` : 'No valid archive for this round'}
+                  onClick={() => {
+                    if (archived) onDevLoadOfficial(archived);
+                  }}
+                >
+                  Load saved
+                </button>
+                <button
+                  className="button-primary"
+                  style={{ flex: 1, padding: '4px 8px', fontSize: 10 }}
+                  title={`Write the current editor circuit to src/game/official-tracks/champ-${gp.id}.json`}
+                  onClick={() => {
+                    fetch(`/__dev/save-official-track?round=${gp.id}`, {
+                      method: 'POST',
+                      body: JSON.stringify(currentDef, null, 2),
+                    }).then((res) => {
+                      if (res.ok) alert(`Saved to src/game/official-tracks/champ-${gp.id}.json — the game races it from the next reload.`);
+                      else alert('Failed to save official track');
+                    });
+                  }}
+                >
+                  Archive
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
