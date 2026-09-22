@@ -16,6 +16,8 @@ const commands = [
     // Championship circuits: the archived official tracks and their precedence over player swap-ins.
     'tests/official-tracks.test.ts',
     // Map builder (MB-02): the editor shell — the camera's maths, the palette, and what the shell paints.
+    // #99 Part 1: the shared item base — one box, one rotate handle, corner resizes, the lock.
+    'tests/editor-base.test.ts',
     'tests/editor-ui.test.ts', 'tests/editor-templates.test.ts', 'tests/map-builder-audit.test.ts', 'tests/editor-bounds.test.ts',
     'tests/map-builder-handles-preview.test.ts', 'tests/map-elements-runtime.test.ts', 'tests/mb10e.test.ts', 'tests/mb10f.test.ts',
     // #99: the vortex funnel's teleport-to-another-funnel rule and the lone-funnel drop.

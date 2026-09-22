@@ -104,7 +104,7 @@ const RESIZE_SPECS: Partial<Record<Piece['t'], ResizeSpec>> = {
   mud: { pts: ['a', 'b'] },
   geyser: { y: { h: R(50, 4000) } },
   trampoline: { x: { w: R(10, 2000) } },
-  turnstile: { x: { r: R(10, 1000) } },
+  turnstile: { uniform: { r: R(10, 1000) } },
   vortex: { uniform: { r: R(40, 1200) } },
   platform: {
     ptPairs: [['ax', 'ay'], ['bx', 'by']],
@@ -112,11 +112,14 @@ const RESIZE_SPECS: Partial<Record<Piece['t'], ResizeSpec>> = {
   },
 };
 
-/** The corner's opposite side: `nw` grabs min-x/min-y, so the anchor is max/max. */
+/** The corner's opposite side: `box-nw` grabs min-x/min-y (so the anchor is max/max) — the id
+ * letters are read in order ('n'/'s' is the y side at index 4, 'w'/'e' the x side). */
 export function anchorFor(handleId: CornerHandleId, box: AnchorBox): { x: number; y: number } {
+  const north = handleId[4] === 'n';
+  const west = handleId[5] === 'w';
   return {
-    x: handleId.endsWith('w') ? box.max.x : box.min.x,
-    y: handleId.endsWith('n') ? box.max.y : box.min.y,
+    x: west ? box.max.x : box.min.x,
+    y: north ? box.max.y : box.min.y,
   };
 }
 
