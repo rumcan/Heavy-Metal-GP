@@ -1,4 +1,5 @@
 import * as storage from './storage';
+import { officialTrack } from './official-tracks';
 import type { TrackDef } from './trackdef';
 import { GrandPrix, HeatResult, MarbleInfo, POINTS, FASTEST_BONUS, HEATS_PER_GP, TEAMS, Team, TrackProfile, CIRCUIT_LENGTH_MULTIPLIER, TRACK_THEMES, ThemeId } from './types';
 
@@ -24,18 +25,23 @@ export interface SeasonState {
   fastest: (number | null)[]; // marble id awarded fastest-heat bonus per round
   complete: boolean;
   /**
-   * Per round, a player-built circuit that replaces the calendar track (null/missing = the calendar track).
-   * A copy of the def, not a My-tracks id, so editing or deleting the saved track can't change a season.
+   * Per round, a player-built circuit that replaces the round's official circuit (null/missing = the
+   * archived official track). A copy of the def, not a My-tracks id, so editing or deleting the saved
+   * track can't change a season.
    */
   tracks?: (TrackDef | null)[];
 }
 
-/** The player-built circuit a round runs on, or null for the calendar track. */
+/**
+ * The circuit a round races: the player's swap-in, else the shipped archive, else null (the
+ * seeded generator inside `Game`). Calendar rounds race the archived official circuits in
+ * `src/game/official-tracks` — generated once in the Workshop, hand-fixed, archived — so the
+ * same saved layout runs in the menu demo and in every heat, and nothing generates at race time.
+ */
 export function roundTrack(season: SeasonState, round: number): TrackDef | null {
   const custom = season.tracks?.[round];
   if (custom) return custom;
-  // The calendar now races the seeded connected generator. Saved Workshop overrides still win.
-  return null;
+  return officialTrack(round);
 }
 
 /** Display name of a round's circuit: the custom track's name, or the Grand Prix name. */
