@@ -1048,7 +1048,8 @@ export class Builder {
       { x: bx - nx * size * 0.55 - facing.x * size * 0.18, y: by - ny * size * 0.55 - facing.y * size * 0.18 },
       { x: bx + nx * size * 0.55 - facing.x * size * 0.18, y: by + ny * size * 0.55 - facing.y * size * 0.18 },
       { x: bx + facing.x * size * 0.32, y: by + facing.y * size * 0.32 },
-    ]], { ...STATIC_OPTS, label: 'sling', restitution: 0.4, friction: 0.001 });
+    // #99: war drums bounce — the rubber face now returns most of the impact energy
+    ]], { ...STATIC_OPTS, label: 'sling', restitution: 0.9, friction: 0.001 });
     tri.plugin = { kind: 'sling', sling: { facing, strength, flashAt: -1e9, size } } as Meta;
     this.bodies.push(tri);
     return tri;

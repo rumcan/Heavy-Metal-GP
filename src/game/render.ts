@@ -5,7 +5,7 @@ import { meta, W, cannonAim } from './track';
 import { MARBLE_RADIUS, ITEM_INFO, skinFor, themeIdFor } from './types';
 import { ballFor, bodyFrame, contentBox, currentSkin, drawRail, drawSprite, drawStrip, setSkin, sprite } from './sprites';
 import { WIND_FAN_ART, windFanAnchor, windDustPose } from './wind-art';
-import { CATAPULT_ARM, CATAPULT_BASE, CATAPULT_ARM_AXIS, CATAPULT_ARM_LENGTH, catapultArtAngle, flipperArtAngle, flipperArtRect, warDrumArtRect, warDrumArtAngle } from './launcher-art';
+import { CATAPULT_ARM, CATAPULT_BASE, CATAPULT_ARM_AXIS, CATAPULT_ARM_LENGTH, CATAPULT_ARM_DRAW, catapultArtAngle, flipperArtAngle, flipperArtRect, warDrumArtRect, warDrumArtAngle } from './launcher-art';
 import repeatingBgUrl from '../assets/bg/repeating.webp';
 import mineEntranceUrl from '../assets/bg/mine-entrance.webp';
 import mineUrl from '../assets/bg/mine.webp';
@@ -2327,7 +2327,7 @@ function drawCatapult(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: Return
   ctx.scale(1, mirror);
   const arm = sprite('catapult_arm');
   if (arm) {
-    const k = ct.len / CATAPULT_ARM_LENGTH;
+    const k = (ct.len / CATAPULT_ARM_LENGTH) * CATAPULT_ARM_DRAW;
     ctx.rotate(-CATAPULT_ARM_AXIS);
     ctx.drawImage(arm, -CATAPULT_ARM.pivotX * k, -CATAPULT_ARM.pivotY * k, CATAPULT_ARM.width * k, CATAPULT_ARM.height * k);
   } else {
@@ -2490,26 +2490,51 @@ function drawMagnet(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnTyp
   void b;
 }
 
-function drawMud(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, _t: number) {
+function drawMud(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
   const mud = md.mud;
   if (!mud) return;
   const cx = b.position.x, cy = b.position.y;
   ctx.save();
   ctx.translate(cx, cy);
 
-  // Blue oil slick procedural drawing
+  // #99: the tar band redrawn soft and squishy — a blobby outline that breathes with the clock
+  // and a deep glossy centre, replacing the hard-edged flat ellipse.
   const w = mud.box.w;
   const h = mud.box.h;
-  const r = Math.max(w, h) / 2;
-  
+  const r = Math.min(w, h) / 2;
+  const breathe = 1 + 0.02 * Math.sin(t / 640);
+
+  // squishy outline: a many-sided blob whose edge wobbles a little per vertex
   ctx.beginPath();
-  ctx.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2);
-  const og = ctx.createRadialGradient(0, 0, 4, 0, 0, r);
-  og.addColorStop(0, '#1e3a8a'); // dark blue
-  og.addColorStop(0.7, '#2563eb'); // mid blue
-  og.addColorStop(1, 'rgba(37,99,235,0)'); // transparent blue
+  const N = 14;
+  for (let k = 0; k <= N; k++) {
+    const a = (k / N) * Math.PI * 2;
+    const wob = 1 + 0.10 * Math.sin(a * 3 + t / 900) + 0.05 * Math.sin(a * 5 - t / 700);
+    const px = Math.cos(a) * (w / 2) * wob * breathe;
+    const py = Math.sin(a) * (h / 2) * wob;
+    if (k === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  const og = ctx.createRadialGradient(0, 0, 2, 0, 0, Math.max(w, h) / 2);
+  og.addColorStop(0, '#0c1a4a');       // deep tar-blue heart
+  og.addColorStop(0.55, '#1e3a8a');    // dark blue body
+  og.addColorStop(0.85, 'rgba(37,99,235,0.55)'); // soft wet edge
+  og.addColorStop(1, 'rgba(37,99,235,0)');       // feathered out
   ctx.fillStyle = og;
   ctx.fill();
+
+  // glossy sheen: two slow-drifting soft highlights so it reads as wet goo
+  ctx.globalAlpha = 0.28;
+  ctx.fillStyle = '#93c5fd';
+  ctx.beginPath();
+  ctx.ellipse(-w * 0.18 + Math.sin(t / 1200) * w * 0.05, -r * 0.28, w * 0.16, r * 0.22, -0.35, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 0.16;
+  ctx.beginPath();
+  ctx.ellipse(w * 0.22 + Math.cos(t / 1500) * w * 0.04, r * 0.12, w * 0.10, r * 0.16, 0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
 
   ctx.restore();
 }
@@ -2523,10 +2548,12 @@ function drawGeyser(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnTy
   // anchor on the mound the metadata describes (the sensor column that carries
   // it floats half the blast height above), keeping the sit-on-mound offset
   ctx.translate(gy.cx, gy.topY - 32);
-  // centred over the mound: art base lands on the fallback mound's base
-  if (!drawSprite(ctx, 'geyser', 0, -24, 136, 176)) {
+  // centred over the mound: art base lands on the fallback mound's base.
+  // #99: the vent places at half the former size (the source art upscaled 3x read as a blurry
+  // pixel slab; the base line is unchanged so the sit-on-mound offset still holds).
+  if (!drawSprite(ctx, 'geyser', 0, 20, 68, 88)) {
     ctx.fillStyle = '#78350f';
-    ctx.beginPath(); ctx.moveTo(-48, 64); ctx.lineTo(0, -48); ctx.lineTo(48, 64); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-24, 64); ctx.lineTo(0, -24); ctx.lineTo(24, 64); ctx.fill();
   }
   if (erupting) {
     const k = 0.6 + 0.4 * Math.sin(t / 60);
@@ -2574,7 +2601,8 @@ function drawTrampoline(ctx: CanvasRenderingContext2D, b: Matter.Body, md: Retur
     ctx.fillRect(tp.half, -4, 10, 14);
   }
   // the net: a catenary that deepens when it takes a landing
-  const netY = -12; // Aligned with the crossbars of the struts
+  // #99: level with the crossbar at the top of the post art (27% into the drawn 44px → -22)
+  const netY = -22;
   ctx.strokeStyle = '#d4a04a';
   ctx.lineWidth = 3;
   ctx.beginPath();
@@ -2975,11 +3003,11 @@ function drawConveyor(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: Return
     ctx.beginPath(); ctx.moveTo(0, -7); ctx.lineTo(0, 7); ctx.stroke();
     ctx.restore();
   }
-  // moving chevron tread
-  const offset = posMod(dir * t * belt.v * 60, 46);
-  ctx.strokeStyle = 'rgba(250,204,21,0.75)';
+  // moving chevron tread — #99: half the speed, half as many, 50% opacity
+  const offset = posMod(dir * t * belt.v * 30, 92);
+  ctx.strokeStyle = 'rgba(250,204,21,0.5)';
   ctx.lineWidth = 3;
-  for (let x = -L / 2 + offset; x < L / 2 - 8; x += 46) {
+  for (let x = -L / 2 + offset; x < L / 2 - 8; x += 92) {
     ctx.beginPath();
     if (dir === 1) {
       ctx.moveTo(x - 6, -6);

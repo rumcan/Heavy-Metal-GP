@@ -1705,8 +1705,19 @@ export class Game {
           });
           if (d < vo.holeR && this.time - (m.vortexDropAt ?? -1e9) > 900) {
             m.vortexDropAt = this.time;
+            // #99: with two or more funnels the marble teleports to a random OTHER vortex and
+            // pours out below it. A lone funnel keeps the old drop-straight-through swirl exit.
+            const others = elementBodies(this.track, 'vortex').filter((b2) => {
+              const vo2 = meta(b2)?.vortex;
+              return b2 !== body && !!vo2;
+            });
+            let out = vo as { cx: number; cy: number; r: number };
+            if (others.length) {
+              const pick = others[Math.floor(this.rng() * others.length)];
+              out = meta(pick).vortex!;
+            }
             Body.setVelocity(m.body, { x: v.x * 0.5, y: Math.max(9, v.y) });
-            Body.setPosition(m.body, { x: vo.cx, y: vo.cy + vo.r + 40 });
+            Body.setPosition(m.body, { x: out.cx, y: out.cy + out.r + 40 });
             this.sfx('whoosh', m, vo.cx, vo.cy);
             this.emit({ kind: 'sound', cue: 'whoosh' });
           }

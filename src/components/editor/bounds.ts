@@ -28,7 +28,7 @@ import { meta, W } from '../../game/track';
 import type { Meta } from '../../game/track';
 import { WIND_FAN_ART, windFanAnchor } from '../../game/wind-art';
 export { windFanAnchor } from '../../game/wind-art';
-import { CATAPULT_BASE, CATAPULT_ARM, CATAPULT_ARM_LENGTH, CATAPULT_ARM_AXIS, flipperArtRect, warDrumArtRect, warDrumArtAngle } from '../../game/launcher-art';
+import { CATAPULT_BASE, CATAPULT_ARM, CATAPULT_ARM_LENGTH, CATAPULT_ARM_DRAW, CATAPULT_ARM_AXIS, flipperArtRect, warDrumArtRect, warDrumArtAngle } from '../../game/launcher-art';
 
 export type Bounds = { min: { x: number; y: number }, max: { x: number; y: number } };
 
@@ -48,8 +48,8 @@ const SPRITES = {
   windFan: WIND_FAN_ART,
   /** `drawMagnet`: translate(centre), drawSprite('magnet', 0, 0, 48, 45). */
   magnet: { x: 0, y: 0, w: 48, h: 45 },
-  /** `drawGeyser`: translate(cx, topY - 8), drawSprite('geyser', 0, -6, 34, 44). */
-  geyser: { x: 0, y: -6, w: 34, h: 44 },
+  /** `drawGeyser`: translate(cx, topY - 32), drawSprite('geyser', 0, 20, 68, 88) — the half-size vent (#99). */
+  geyser: { x: 0, y: 0, w: 68, h: 88 },
   /** render.ts `case 'itembox'`: drawSprite('crate', 0, 0, 34, 30) at the body. */
   crate: { x: 0, y: 0, w: 34, h: 30 },
 } as const satisfies Record<string, SpriteRect>;
@@ -189,8 +189,9 @@ export function visualBoundsForPiece(piece: Piece, bodies: Matter.Body[]): Bound
       // plus the vent plinth icon at the mound.
       const md = metaOf(bodyWith(bodies, 'geyser'))?.geyser;
       if (md) {
-        // renderer translates to (cx, topY - 8): the sit-on-mound offset
-        box.addSprite({ x: md.cx, y: md.topY - 8 }, 0, SPRITES.geyser);
+        // renderer translates to (cx, topY - 32) and draws the vent centred at local (0, 20):
+        // the sit-on-mound offset lands the art's centre at (cx, topY - 12).
+        box.addSprite({ x: md.cx, y: md.topY - 12 }, 0, SPRITES.geyser);
         box.addRect(md.cx - 12, md.topY - 20, md.cx + 12, md.topY + 16); // procedural mound
       }
       break;
@@ -253,7 +254,7 @@ export function visualBoundsForPiece(piece: Piece, bodies: Matter.Body[]): Bound
         const mirror = Math.cos(ct.restA) < 0 ? -1 : 1;
         const k = ct.len / 600;
         box.addSprite(pivot, 0, { x: mirror * (CATAPULT_BASE.width / 2 - CATAPULT_BASE.pivotX) * k, y: (CATAPULT_BASE.height / 2 - CATAPULT_BASE.pivotY) * k, w: CATAPULT_BASE.width * k, h: CATAPULT_BASE.height * k });
-        const s = ct.len / CATAPULT_ARM_LENGTH;
+        const s = (ct.len / CATAPULT_ARM_LENGTH) * CATAPULT_ARM_DRAW;
         for (let i = 0; i <= 24; i++) {
           box.addSprite(pivot, ct.restA + (ct.releaseA - ct.restA) * i / 24 - mirror * CATAPULT_ARM_AXIS, {
             x: (CATAPULT_ARM.width / 2 - CATAPULT_ARM.pivotX) * s,

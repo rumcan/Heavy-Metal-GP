@@ -20,6 +20,10 @@ export const CATAPULT_BASE = { width: 648, height: 283, pivotX: 378, pivotY: 68 
 export const CATAPULT_ARM_AXIS = Math.atan2(CATAPULT_ARM.tipY - CATAPULT_ARM.pivotY, CATAPULT_ARM.tipX - CATAPULT_ARM.pivotX);
 export const CATAPULT_ARM_LENGTH = Math.hypot(CATAPULT_ARM.tipX - CATAPULT_ARM.pivotX, CATAPULT_ARM.tipY - CATAPULT_ARM.pivotY);
 
+/** #99: the catapult arm art draws at half its authored size (the throw itself — ct.len — is
+ * unchanged; only the painted arm shrinks). Multiply into every arm-art scale factor. */
+export const CATAPULT_ARM_DRAW = 0.5;
+
 export function flipperArtRect(len: number) {
   const w = len / 0.875, h = w * 96 / 320;
   return { x: w * (0.5 - 0.105), y: 0, w, h };
