@@ -19,7 +19,7 @@
 import { Builder, FINISH_H, W, meta, segFinish, segStart } from '../../game/track';
 import type { Track } from '../../game/track';
 import { themeFor } from '../../game/types';
-import { replayPiece, type TrackDef } from '../../game/trackdef';
+import { isRetiredPieceType, replayPiece, type TrackDef } from '../../game/trackdef';
 import { visualBoundsForPiece, type Bounds } from './bounds';
 
 export interface EditorBuild {
@@ -55,10 +55,11 @@ export function buildEditorTrack(def: TrackDef): { track: Track | null; bodyToPi
     segStart(b, 0);
     for (let i = beforeStart; i < b.bodies.length; i++) bodyToPiece[i] = -1;
 
-    // Every def piece, with mapping.
+    // Every def piece, with mapping. #99: retired types are skipped (same silent drop the
+    // loader performs) so legacy workshop drafts and shared tracks still open.
     def.pieces.forEach((piece, index) => {
       const before = b.bodies.length;
-      replayPiece(b, piece);
+      if (!isRetiredPieceType(piece.t)) replayPiece(b, piece);
       for (let i = before; i < b.bodies.length; i++) bodyToPiece[i] = index;
       pieceBounds[index] = visualBoundsForPiece(piece, b.bodies.slice(before, b.bodies.length));
     });

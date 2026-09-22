@@ -11,6 +11,8 @@ const commands = [
     'tests/story-schema.test.ts', 'tests/story-engine.test.ts', 'tests/story-modifiers.test.ts',
     // Map builder (MB-01): the track definition format — recording, rebuild identity, validation.
     'tests/trackdef.test.ts', 'tests/course-generator.test.ts',
+    // #99: the retired pieces (track switch lever, scoop, skipping pond) drop out of old saves and codes.
+    'tests/retired-pieces.test.ts',
     // Championship circuits: the archived official tracks and their precedence over player swap-ins.
     'tests/official-tracks.test.ts',
     // Map builder (MB-02): the editor shell — the camera's maths, the palette, and what the shell paints.

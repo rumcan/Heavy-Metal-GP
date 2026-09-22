@@ -167,15 +167,6 @@ test('platform route and slab art stay selectable, including when flipped', () =
   assert.equal(hit(editorM, moM.b.x, moM.b.y - 10), 0, 'mirrored route end B selectable');
 });
 
-test('scoop pocket art and subway exit both stay selectable', () => {
-  const piece: Piece = { t: 'scoop', x: 450, y: 1500, deg: 270, hold: 800, exit: [650, 1700, 1400] };
-  const editor = buildOne(piece);
-  assert.equal(hit(editor, 450, 1500), 0, 'pocket body selectable');
-  assert.equal(hit(editor, 650, 1700), 0, 'subway exit sensor selectable');
-  // The pocket sprite is offset (-20, -12) from the body: its far corner must be in bounds.
-  assert.ok(within(editor.pieceBounds[0], 450 - 40 + 1, 1500 - 24 + 1));
-});
-
 test('tunnel entrance and exit art are selectable in world coordinates', () => {
   const piece: Piece = { t: 'tunnel', x: 200, y: 1500, exit: [600, 1700], edir: [0, 1], ms: 900, speed: 7, flip: true };
   const editor = buildOne(piece);

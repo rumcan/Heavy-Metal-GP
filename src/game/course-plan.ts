@@ -16,8 +16,8 @@ export interface CourseChapter {
 const WEIGHTS: Record<CourseFeature, readonly string[]> = {
   banking: ['Curve Drop', 'Chicane', 'Funnel'],
   peggle: ['Peggle Board', 'Peg Field'],
-  ice: ['Ice Slide', 'Skipping Pools'],
-  boost: ['Zigzag Pipes', 'Splitter', 'Bounce Ramp', 'Trampoline Alley', 'Tunnel Shortcut', 'Scoop Subway'],
+  ice: ['Ice Slide'],
+  boost: ['Zigzag Pipes', 'Splitter', 'Bounce Ramp', 'Trampoline Alley', 'Tunnel Shortcut'],
   machines: ['Spinners', 'Beltway', 'Mace Sweep', 'Crusher Alley', 'Blade Gauntlet',
     'Wheel Lift', 'Screw Tower', 'Drawbridge Gap', 'Turnstile Square'],
 };

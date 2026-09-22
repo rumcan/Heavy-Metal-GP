@@ -15,7 +15,6 @@ export function applyScaleHandle(piece: Piece, _handleId: string, to: Point, _sn
     case 'wall':
     case 'barricade':
     case 'crumble':
-    case 'pool':
     case 'mud':
       return { ...piece, w: Math.max(10, dx * 2), h: Math.max(10, dy * 2) } as unknown as Piece;
     case 'flipper':

@@ -246,16 +246,6 @@ function baseHandles(piece: Piece): Handle[] {
         { id: 'dir', x: ax, y: ay, cursor: 'crosshair', label: 'Launch direction' },
       ];
     }
-    case 'switch': {
-      // Junction tip moves; blade length along its resting lean resizes.
-      const lean = piece.side === 1 ? -piece.angle : piece.angle;
-      const bx = piece.x + Math.sin(lean) * piece.len * 0.85;
-      const by = piece.y - Math.cos(lean) * piece.len * 0.85;
-      return [
-        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
-        { id: 'len', x: bx, y: by, cursor: 'ew-resize', label: 'Blade length' },
-      ];
-    }
     // ---- MB-10B ----
     case 'blade': {
       // Pivot moves; the arc handle sits at the tip of the swing for amplitude.
@@ -359,11 +349,6 @@ function baseHandles(piece: Piece): Handle[] {
         { id: 'len', x: piece.x + (piece.side === 0 ? 1 : -1) * piece.len, y: piece.y, cursor: 'ew-resize', label: 'Bat length' },
       ];
     }
-    case 'scoop': {
-      const out: Handle[] = [{ id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Pocket' }];
-      if (piece.exit) out.push({ id: 'exit', x: piece.exit[0], y: piece.exit[1], cursor: 'crosshair', label: 'Subway exit' });
-      return out;
-    }
     case 'peg':
     case 'ppeg': {
       return [
@@ -400,15 +385,6 @@ function baseHandles(piece: Piece): Handle[] {
         { id: 'a', x: piece.a[0], y: piece.a[1], cursor: 'crosshair', label: 'Start' },
         { id: 'b', x: piece.b[0], y: piece.b[1], cursor: 'crosshair', label: 'End' },
       ];
-    case 'pool': {
-      const top = Math.min(piece.a[1], piece.b[1]);
-      return [
-        { id: 'move', x: (piece.a[0] + piece.b[0]) / 2, y: (piece.a[1] + piece.b[1]) / 2, cursor: 'move', label: 'Move' },
-        { id: 'a', x: piece.a[0], y: piece.a[1], cursor: 'crosshair', label: 'Corner A' },
-        { id: 'b', x: piece.b[0], y: piece.b[1], cursor: 'crosshair', label: 'Corner B' },
-        { id: 'depth', x: piece.b[0], y: top + piece.depth, cursor: 'ns-resize', label: 'Depth' },
-      ];
-    }
     case 'trampoline':
       return [
         { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
@@ -651,16 +627,6 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       }
       return piece;
     }
-    case 'switch': {
-      if (handleId === 'move') return { ...piece, x: withSnap(to.x, sx), y: withSnap(to.y, sx) };
-      if (handleId === 'len') {
-        const dx = withSnap(to.x, sx) - piece.x;
-        const dy = withSnap(to.y, sx) - piece.y;
-        const len = Math.max(40, Math.min(400, Math.hypot(dx, dy) / 0.85));
-        return { ...piece, len: clampNum(withSnap(len, sx), 40, 400) };
-      }
-      return piece;
-    }
     // ---- MB-10B ----
     case 'blade': {
       if (handleId === 'move') return { ...piece, pivot: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number] };
@@ -819,13 +785,6 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       }
       return piece;
     }
-    case 'scoop': {
-      if (handleId === 'move') return { ...piece, x: clampX(withSnap(to.x, sx)), y: withSnap(to.y, sx) };
-      if (handleId === 'exit' && piece.exit) {
-        return { ...piece, exit: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx), piece.exit[2]] as [number, number, number] };
-      }
-      return piece;
-    }
     case 'peg': {
       if (handleId === 'move') return { ...piece, x: withSnap(to.x, sx), y: withSnap(to.y, sx) };
       if (handleId === 'r') {
@@ -875,18 +834,6 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
     case 'mud': {
       if (handleId === 'a') return { ...piece, a: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number] };
       if (handleId === 'b') return { ...piece, b: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number] };
-      const ddx = moveDelta(piece, to.x, (piece.a[0] + piece.b[0]) / 2, sx);
-      const ddy = withSnap(to.y, sx) - (piece.a[1] + piece.b[1]) / 2;
-      return { ...piece, a: [piece.a[0] + ddx, piece.a[1] + ddy], b: [piece.b[0] + ddx, piece.b[1] + ddy] };
-    }
-    case 'pool': {
-      if (handleId === 'a') return { ...piece, a: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number] };
-      if (handleId === 'b') return { ...piece, b: [clampX(withSnap(to.x, sx)), withSnap(to.y, sx)] as [number, number] };
-      if (handleId === 'depth') {
-        const top = Math.min(piece.a[1], piece.b[1]);
-        const depth = Math.max(40, Math.min(300, withSnap(to.y, sx) - top));
-        return { ...piece, depth: clampNum(withSnap(depth, sx), 40, 300) };
-      }
       const ddx = moveDelta(piece, to.x, (piece.a[0] + piece.b[0]) / 2, sx);
       const ddy = withSnap(to.y, sx) - (piece.a[1] + piece.b[1]) / 2;
       return { ...piece, a: [piece.a[0] + ddx, piece.a[1] + ddy], b: [piece.b[0] + ddx, piece.b[1] + ddy] };
@@ -991,8 +938,6 @@ export function mirrorPiece(piece: Piece): Piece {
       return { ...piece, x: mx(piece.x), hinge: piece.hinge === 1 ? -1 : 1 };
     case 'tunnel':
       return { ...piece, x: mx(piece.x), exit: [mx(piece.exit[0]), piece.exit[1]] as [number, number], edir: [-piece.edir[0], piece.edir[1]] as [number, number] };
-    case 'switch':
-      return { ...piece, x: mx(piece.x), side: piece.side === 1 ? 0 : 1 };
     // ---- MB-10B ----
     case 'blade':
       return { ...piece, pivot: [mx(piece.pivot[0]), piece.pivot[1]] };
@@ -1026,20 +971,12 @@ export function mirrorPiece(piece: Piece): Piece {
       return { ...piece, x: mx((piece as unknown as { x: number }).x), side: (piece.side === 1 ? 0 : 1) } as Piece;
     case 'sling':
       return { ...piece, x: mx(piece.x), facing: (180 - piece.facing + 360) % 360 };
-    case 'scoop':
-      return {
-        ...piece,
-        x: mx(piece.x),
-        deg: (180 - piece.deg + 360) % 360,
-        ...(piece.exit ? { exit: [mx((piece.exit as [number, number, number])[0]), (piece.exit as [number, number, number])[1], (piece.exit as [number, number, number])[2]] as [number, number, number] } : {}),
-      };
     case 'wind': {
       // Swap the ends and steer the blow like every other mirrored angle.
       const dir = ((180 - piece.dir) % 360 + 360) % 360;
       return { ...piece, a: [mx(piece.b[0]), piece.b[1]] as [number, number], b: [mx(piece.a[0]), piece.a[1]] as [number, number], dir };
     }
     case 'mud':
-    case 'pool':
       return {
         ...piece,
         a: [mx(piece.b[0]), piece.b[1]] as [number, number],

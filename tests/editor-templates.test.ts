@@ -55,20 +55,22 @@ for (const tile of TILES) {
 }
 
 test('Template origin is independent of first piece type and order, including paths, pivots, bottom and exits', () => {
-  const pieces = ['loop', 'blade', 'boulder', 'platform', 'tunnel', 'scoop', 'curve'].map((t, i) => ({
+  // #99: the piece roster here used to include the retired scoop; the tunnel's exit anchor
+  // keeps the "piece with a secondary point" coverage it provided.
+  const pieces = ['loop', 'blade', 'boulder', 'platform', 'tunnel', 'vortex', 'curve'].map((t, i) => ({
     ...defaultPiece(t as Piece['t'], { x: 350, y: 1500 }, false), flip: i % 2 === 0,
   } as Piece));
-  pieces.push({ t: 'scoop', x: 550, y: 1600, deg: 270, hold: 800, exit: [600, 1800, 1400], flip: true });
+  pieces.push({ t: 'tunnel', x: 550, y: 1600, exit: [600, 1800], edir: [1, 0], ms: 1400, speed: 8, flip: true });
   const expected = placeTemplate(template(pieces), { x: 450, y: 2500 }, false)!;
   for (let i = 0; i < pieces.length; i++) {
     const ordered = [...pieces.slice(i), ...pieces.slice(0, i)];
     const actual = placeTemplate(template(ordered), { x: 450, y: 2500 }, false)!;
     assert.deepEqual(actual, [...expected.slice(i), ...expected.slice(0, i)]);
   }
-  const scoop = expected[expected.length - 1];
-  assert.ok(scoop.t === 'scoop');
-  assert.equal(scoop.exit?.[2], 1400);
-  assert.equal(scoop.flip, true);
+  const tunnel = expected[expected.length - 1];
+  assert.ok(tunnel.t === 'tunnel');
+  assert.equal(tunnel.ms, 1400);
+  assert.equal(tunnel.flip, true);
 });
 
 test('Template edge placement clamps a single group delta, preserving paths and spacing', () => {
@@ -93,11 +95,11 @@ test('Template edge placement clamps a single group delta, preserving paths and 
 });
 
 test('Template snapshot is independent of later edits to selected paths and exits', () => {
-  const piece: Piece = { t: 'scoop', x: 300, y: 1500, deg: 270, hold: 800, exit: [500, 1700, 1400] };
+  const piece: Piece = { t: 'tunnel', x: 300, y: 1500, exit: [500, 1700], edir: [1, 0], ms: 1400, speed: 8 };
   const saved = template([piece, walls[1]]);
   const before = structuredClone(saved);
   piece.exit![0] = 800;
-  piece.exit![2] = 2000;
+  piece.ms = 2000;
   assert.deepEqual(saved, before);
 });
 

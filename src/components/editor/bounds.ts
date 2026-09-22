@@ -50,8 +50,6 @@ const SPRITES = {
   magnet: { x: 0, y: 0, w: 48, h: 45 },
   /** `drawGeyser`: translate(cx, topY - 8), drawSprite('geyser', 0, -6, 34, 44). */
   geyser: { x: 0, y: -6, w: 34, h: 44 },
-  /** `drawScoop`: translate(pocket), drawSprite('scoop', 0, 0, 40, 24). */
-  scoop: { x: 0, y: 0, w: 40, h: 24 },
   /** render.ts `case 'itembox'`: drawSprite('crate', 0, 0, 34, 30) at the body. */
   crate: { x: 0, y: 0, w: 34, h: 30 },
 } as const satisfies Record<string, SpriteRect>;
@@ -224,11 +222,6 @@ export function visualBoundsForPiece(piece: Piece, bodies: Matter.Body[]): Bound
         box.addSprite(md.a, 0, slab);
         box.addSprite(md.b, 0, slab);
       }
-      break;
-    }
-    case 'scoop': {
-      const b = bodyWith(bodies, 'scoop');
-      if (b) box.addSprite(b.position, 0, SPRITES.scoop); // chevrons stay within the pocket + padding
       break;
     }
     case 'tunnel': {

@@ -69,14 +69,6 @@ function drawPiece(ctx: CanvasRenderingContext2D, p: Piece, k: number) {
     case 'barricade': box(p.x, p.y, p.w, p.h, COLORS.crate); break;
     case 'crumble': box(p.x, p.y, p.w, p.h, COLORS.block); break;
     case 'trapdoor': box(p.x, p.y, p.w, 14, COLORS.pad); break;
-    case 'switch': {
-      const lean = p.side === 1 ? -p.angle : p.angle;
-      const bx = p.x + Math.sin(lean) * p.len * 0.85;
-      const by = p.y - Math.cos(lean) * p.len * 0.85;
-      line(p.x, p.y, bx, by, COLORS.spinner, Math.max(1.5, 6 * k));
-      dot(p.x, p.y, 8, COLORS.spinner);
-      break;
-    }
     case 'tunnel': {
       // Dotted bore from entrance to exit, holes at both ends.
       const mx = (p.flip ? W - p.x : p.x) * k;
@@ -213,15 +205,6 @@ function drawPiece(ctx: CanvasRenderingContext2D, p: Piece, k: number) {
       ctx.restore();
       break;
     }
-    case 'scoop': {
-      dot(p.x, p.y, 7, COLORS.launcher);
-      if (p.exit) line(p.x, p.y + 8, p.exit[0], p.exit[1], COLORS.launcher, Math.max(1, 1.5 * k));
-      else {
-        const ea = ((p.deg ?? 270) * Math.PI) / 180;
-        line(p.x, p.y, p.x + Math.cos(ea) * 30, p.y + Math.sin(ea) * 30, COLORS.launcher, Math.max(1, 2 * k));
-      }
-      break;
-    }
     // ---- MB-10E: fields and surfaces ----
     case 'wind': {
       // the field rectangle with a dir tick through its centre
@@ -252,17 +235,6 @@ function drawPiece(ctx: CanvasRenderingContext2D, p: Piece, k: number) {
     case 'mud':
       line(p.a[0], p.a[1], p.b[0], p.b[1], COLORS.field, Math.max(2, 5 * k));
       break;
-    case 'pool': {
-      const x0 = Math.min(p.a[0], p.b[0]), x1 = Math.max(p.a[0], p.b[0]);
-      const top = Math.min(p.a[1], p.b[1]);
-      ctx.save();
-      ctx.strokeStyle = COLORS.field;
-      ctx.lineWidth = Math.max(1, 1.5 * k);
-      ctx.strokeRect(X(x0), Y(top), (x1 - x0) * k, p.depth * k);
-      ctx.restore();
-      line(x0, top, x1, top, COLORS.field, Math.max(1.5, 2.5 * k));
-      break;
-    }
     case 'geyser': {
       dot(p.x, p.y, 6, COLORS.field);
       line(p.x, p.y, p.x, p.y - Math.min(p.h, 240), COLORS.field, Math.max(1, 1.5 * k));

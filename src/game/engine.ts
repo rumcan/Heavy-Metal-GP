@@ -111,10 +111,6 @@ export interface Marble {
   finishedAt: number | null;
   stuckTime: number;
   lastPickupAt: number;
-  /** MB-10E: last clock the pool surface skipped this marble, so one splash bounces once. */
-  poolSkipAt?: number;
-  /** MB-10E: drift banked on pool entry — the inertial carry that wades a sunken runner out. */
-  poolDrift?: number;
   /** MB-10E: last clock a magnet latched this marble, for the zap cue and a grab cooldown. */
   magnetGrabAt?: number;
   /** MB-10E: last clock the mud squelched for this marble (cue debounce). */
@@ -175,7 +171,7 @@ export interface OilSlick {
  * fields are host-side only.
  */
 export interface Hold {
-  kind: 'tunnel' | 'wheel' | 'screw' | 'cannon' | 'catapult' | 'scoop';
+  kind: 'tunnel' | 'wheel' | 'screw' | 'cannon' | 'catapult';
   until: number;
   /** Clocked at `until - transit`; the glide runs from then on. Host-only on the wire. */
   transit?: number;
@@ -905,10 +901,6 @@ export class Game {
         this.tryLoadCatapult(m, other);
         break;
       }
-      case 'scoop': {
-        this.tryLoadScoop(m, other);
-        break;
-      }
       case 'sling': {
         // The rubber face shoves back along its set normal, scaled by the marble's bounce stat.
         if (!md.sling) break;
@@ -935,19 +927,6 @@ export class Game {
           md.sagVel = (md.sagVel ?? 0) + imp;
           if (imp > 1.2) this.sfx('groan', m, other.position.x, other.position.y);
         }
-        break;
-      }
-      case 'switchPad': {
-        // Trip lever: flip the paired plate for the NEXT marble.
-        const plate = md.paired !== undefined ? this.track.bodies[md.paired] : undefined;
-        if (!plate || meta(plate).destroyed) break;
-        const ps = meta(plate);
-        ps.side = ps.side === 1 ? 0 : 1;
-        ps.flippedAt = this.time;
-        md.hitAt = this.time;
-        this.sfx('click', m, other.position.x, other.position.y);
-        this.emit({ kind: 'switch', i: this.indexOf(plate), side: ps.side! });
-        this.effects.push({ type: 'ring', x: other.position.x, y: other.position.y, ttl: 14, maxTtl: 14, color: '#fbbf24' });
         break;
       }
       // ---- MB-10B: blades and crushers (all kinematic; guests never simulate these contacts) ----
@@ -1564,17 +1543,6 @@ export class Game {
         }
       }
     }
-    if (hasElement(this.track, 'scoop')) {
-      for (const body of elementBodies(this.track, 'scoop')) {
-        const md = meta(body);
-        if (!md.scoop || md.scoop.loadedAt !== null) continue;
-        for (const m of this.marbles) {
-          if (m.hold || m.frozen || m.finishedAt !== null) continue;
-          if (Math.hypot(m.body.position.x - body.position.x, m.body.position.y - body.position.y) <= 40) { this.tryLoadScoop(m, body); break; }
-        }
-      }
-    }
-
     // ---------------- MB-10E: fields and surfaces ----------------
     // All of these are deterministic velocity nudges read straight off positions and the race
     // clock — no state crosses the wire, only sound cues do.
@@ -1654,49 +1622,6 @@ export class Game {
             m.mudSquelchAt = this.time;
             this.sfx('gurgle', m, p.x, p.y);
             this.emit({ kind: 'sound', cue: 'gurgle' });
-          }
-        }
-      }
-    }
-    if (hasElement(this.track, 'pool')) {
-      for (const body of elementBodies(this.track, 'pool')) {
-        const md = meta(body);
-        const pool = md.pool;
-        if (!pool) continue;
-        for (const m of this.marbles) {
-          if (m.finishedAt !== null || m.frozen || m.hold) continue;
-          const p = m.body.position;
-          const insideX = p.x > pool.box.x + 4 && p.x < pool.box.x + pool.box.w - 4;
-          if (!insideX) {
-            // walked out onto dry land: the drift story ends here
-            if (m.poolDrift !== undefined && p.y < pool.topY - 2) m.poolDrift = undefined;
-            continue;
-          }
-          if (p.y < pool.topY - 4 && m.poolDrift !== undefined) m.poolDrift = undefined;
-          const v = Body.getVelocity(m.body);
-          const belowTop = p.y > pool.topY - 4;
-          if (belowTop && p.y < pool.topY + pool.depth + 24) {
-            // was it flying above a beat ago? then this frame is an ENTRY — skip or splash
-            const skipCd = this.time - (m.poolSkipAt ?? -1e9) > 600;
-            const shallow = Math.abs(v.y) <= Math.abs(v.x) * 1.1;
-            const fast = Math.abs(v.x) >= pool.skip;
-            if (skipCd && v.y >= 1 && fast && shallow && p.y < pool.topY + 18) {
-              // stone skip: bounce off the skin, damping as you go
-              const bounce = m.info.stats.bounce ?? 5;
-              if (m.poolDrift === undefined) m.poolDrift = Math.max(-1.6, Math.min(1.6, (Math.abs(v.x) < 0.5 ? (v.x < 0 ? -0.35 : 0.35) : v.x * 0.28)));
-              m.poolSkipAt = this.time;
-              Body.setVelocity(m.body, { x: v.x * 0.86, y: -v.y * Math.min(0.7, 0.4 + bounce * 0.02) });
-              this.sfx('splash', m, p.x, pool.topY);
-              this.emit({ kind: 'sound', cue: 'splash' });
-              continue;
-            }
-            // submerged: buoyancy pulls light marbles up, and the runner's own inertial drift
-            // (banked on entry) wades everyone out at their own end of the basin — no drowning
-            const weight = m.info.stats.weight ?? 5;
-            const buoy = 0.55 * (1.25 - weight * 0.07);
-            if (m.poolDrift === undefined) m.poolDrift = Math.max(-1.6, Math.min(1.6, (Math.abs(v.x) < 0.5 ? (v.x < 0 ? -0.35 : 0.35) : v.x * 0.28)));
-            const nv = Body.getVelocity(m.body);
-            Body.setVelocity(m.body, { x: nv.x * 0.94 + m.poolDrift, y: nv.y * 0.95 - buoy });
           }
         }
       }
@@ -1843,7 +1768,7 @@ export class Game {
             if (along < 10 || along > fl.len + 6) continue;
             const across = -rx * uy + ry * ux;
             if (Math.abs(across) > 26) continue;
-            // surface velocity of the contact point: omega × r; only scoop marbles on the moving face
+            // surface velocity of the contact point: omega × r; only sweep marbles on the moving face
             const vPerp = omega * along;
             if (across * sign < 0 && Math.abs(vPerp) > 0.6) {
               m.flipperKickAt = this.time;
@@ -1905,35 +1830,6 @@ export class Game {
     this.emit({ kind: 'hold', seat: m.info.id, until, of: 'catapult' });
   }
 
-  /** MB-10D scoop swallowing, shared by the pocket sensor and the catch-up scan. */
-  private tryLoadScoop(m: Marble, pocket: Matter.Body) {
-    const md = meta(pocket);
-    if (m.hold || m.frozen || m.finishedAt !== null || !md.scoop || md.scoop.loadedAt !== null || this.time < m.tunnelSafeUntil) return;
-    if (Math.hypot(m.body.position.x - pocket.position.x, m.body.position.y - pocket.position.y) > 40) return;
-    const sc = md.scoop;
-    sc.loadedAt = this.time;
-    sc.seat = m.info.id;
-    let until: number;
-    if (md.exit) {
-      const transit = md.transit ?? 900;
-      until = this.time + transit;
-      sc.fireAt = until;
-      m.hold = { kind: 'scoop', until, at: this.time, transit, from: { x: pocket.position.x, y: pocket.position.y }, body: pocket, exit: md.exit };
-    } else {
-      until = this.time + sc.holdMs;
-      sc.fireAt = until;
-      m.hold = { kind: 'scoop', until, at: this.time, body: pocket, transit: 0 };
-    }
-    m.body.isSensor = true;
-    Body.setPosition(m.body, { x: pocket.position.x, y: pocket.position.y });
-    Body.setVelocity(m.body, { x: 0, y: 0 });
-    Body.setAngularVelocity(m.body, 0);
-    m.trail = [];
-    this.sfx('rumble', m, pocket.position.x, pocket.position.y);
-    this.emit({ kind: 'sound', cue: 'rumble', seat: m.info.id });
-    this.emit({ kind: 'hold', seat: m.info.id, until, of: 'scoop' });
-  }
-
   /** Let a held marble go: tunnels pop out of the exit hole, buckets tip at the release angle, screws hand off at the tube end. */
   private releaseHold(m: Marble) {
     const hold = m.hold;
@@ -1991,29 +1887,7 @@ export class Game {
       this.sfx('boing', m, mx, my);
       this.emit({ kind: 'sound', cue: 'boing' });
       this.effects.push({ type: 'ring', x: mx, y: my, ttl: 14, maxTtl: 14, color: '#fda4af' });
-    } else if (hold.kind === 'scoop' && !hold.exit) {
-      // MB-10D kickback: spring the marble back out along the set angle + seeded jitter.
-      const md = hold.body ? meta(hold.body) : null;
-      const sc = md?.scoop;
-      if (!sc) return;
-      const jit = (this.rng() * 2 - 1) * ((17 * Math.PI) / 180); // ±17° between 253° and 287°
-      const a = sc.deg + jit;
-      const dir = { x: Math.cos(a), y: Math.sin(a) };
-      const p = m.body.position;
-      exit = { x: p.x + dir.x * 34, y: p.y + dir.y * 34, dir, speed: 7.6 };
-      safe = 750;
-      sc.loadedAt = null;
-      sc.fireAt = null;
-      sc.seat = null;
-      this.sfx('boing', m, p.x, p.y);
-      this.emit({ kind: 'sound', cue: 'boing' });
-      this.effects.push({ type: 'ring', x: p.x, y: p.y, ttl: 12, maxTtl: 12, color: '#fde047' });
     } else {
-      // scoop-with-subway shares the generic glide: clear the pocket bookkeeping as it leaves.
-      if (hold.kind === 'scoop') {
-        const md = hold.body ? meta(hold.body) : null;
-        if (md?.scoop) { md.scoop.loadedAt = null; md.scoop.fireAt = null; md.scoop.seat = null; }
-      }
       if (!hold.exit) return;
       exit = hold.exit;
       if (hold.kind === 'screw') safe = 800;
@@ -2726,7 +2600,7 @@ export class Game {
     return this.marbles.every((m) => m.finishedAt !== null);
   }
 
-  /** MB-10A: an element's eased 0..1 pose (trapdoor swing, switch plate) for skins and previews. */
+  /** MB-10A: a trapdoor's eased 0..1 pose for skins and previews. */
   public ewma(b: Matter.Body): number {
     const md = meta(b);
     if (!md) return 0;
@@ -2737,10 +2611,6 @@ export class Game {
         return md.motion.openAngle !== 0 ? Math.min(1, Math.abs(st.angle / md.motion.openAngle)) : (st.angle !== 0 ? 1 : 0);
       }
       return 0;
-    }
-    if (md.kind === 'switch') {
-      const target = (md.side === 1 ? 1 : -1) * (md.swingAngle ?? 0.6);
-      return target !== 0 ? Math.min(1, Math.abs(b.angle / target)) : 0;
     }
     return 0;
   }

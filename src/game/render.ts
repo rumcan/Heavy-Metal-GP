@@ -901,12 +901,6 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
       case 'trapdoor':
         drawTrapdoor(ctx, b, md, game, t);
         break;
-      case 'switch':
-        drawSwitchBlade(ctx, b, md, game, t);
-        break;
-      case 'switchPad':
-        drawSwitchPad(ctx, b, md, game, t);
-        break;
       // ---- MB-10B: blades and crushers ----
       case 'blade':
         drawBlade(ctx, b, md, t);
@@ -950,10 +944,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
         drawFlipper(ctx, b, md, game.time, options.workshopPreview ? t : undefined);
         break;
       case 'sling':
-        drawSling(ctx, b, md, game, t);
-        break;
-      case 'scoop':
-        drawScoop(ctx, b, md, game, t);
+        if (!b.isSensor) drawSling(ctx, b, md, game, t);
         break;
       // ---- MB-10E: fields and surfaces ----
       case 'wind':
@@ -964,9 +955,6 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
         break;
       case 'mud':
         if (b.isSensor) drawMud(ctx, b, md, game, t);
-        break;
-      case 'pool':
-        if (b.isSensor) drawPool(ctx, b, md, game, t);
         break;
       case 'geyser':
         // the geyser metadata rides the blast-column sensor; the mound body
@@ -1988,105 +1976,6 @@ function drawTrapdoor(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnT
 }
 
 /** The flip-paddle in the road: fork blade + pivot + lantern; the blade leans toward the live route. */
-function drawSwitchBlade(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, game: Game, t: number) {
-  const pv = md.pivot ?? b.position;
-  const len = md.plateLen ?? 120;
-  const thick = 12;
-  // the blade as the eased physics pose has it: hinge at pivot, tip leaning to the live route
-  ctx.save();
-  ctx.translate(pv.x, pv.y);
-  ctx.rotate(b.angle);
-  const img = sprite('switchplate');
-  if (img) {
-    ctx.drawImage(img, -thick, -len, len, thick * 2);
-  } else {
-    ctx.fillStyle = '#8f4f2c';
-    ctx.strokeStyle = '#3c2412';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect(-thick / 2, -len, thick, len, 4);
-    ctx.fill();
-    ctx.stroke();
-    // route arrow toward the tip
-    ctx.fillStyle = 'rgba(255,240,200,0.8)';
-    ctx.font = 'bold 11px system-ui';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText((md.side ?? 0) === 1 ? '➜' : '⬅', 0, -len * 0.55);
-  }
-  ctx.restore();
-  // pivot post
-  ctx.fillStyle = '#2b3140';
-  ctx.beginPath();
-  ctx.arc(pv.x, pv.y, 8, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#5b6472';
-  ctx.beginPath();
-  ctx.arc(pv.x, pv.y, 3, 0, Math.PI * 2);
-  ctx.fill();
-  // lantern at the pivot; flares briefly when the pad flips the route (ghost preview for the next marble)
-  const sway = game.time - (md.flippedAt ?? -1e9);
-  const flicker = sway < 700 ? 1 : 0.55 + 0.45 * Math.sin(t / 260 + pv.x);
-  ctx.save();
-  ctx.globalAlpha = 0.5 + 0.5 * flicker;
-  ctx.drawImage(colorGlow('#ffd97a'), pv.x - 26, pv.y - 46, 52, 52);
-  ctx.globalAlpha = 1;
-  ctx.fillStyle = '#f2c14e';
-  ctx.beginPath();
-  ctx.arc(pv.x, pv.y - 20, 5.5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = '#463512';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-  ctx.restore();
-  if (sway < 900) {
-    // dashed arc between the two resting leans so the flip reads
-    const target = (md.side ?? 0) === 1 ? (md.swingAngle ?? 0.65) : -(md.swingAngle ?? 0.65);
-    const a0 = Math.min(b.angle, target), a1 = Math.max(b.angle, target);
-    ctx.save();
-    ctx.globalAlpha = Math.max(0, 0.5 * (1 - sway / 900));
-    ctx.strokeStyle = '#facc15';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([5, 6]);
-    ctx.beginPath();
-    ctx.arc(pv.x, pv.y, len * 0.55, -Math.PI / 2 + a0, -Math.PI / 2 + a1);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.restore();
-  }
-}
-
-/** The trigger paddle above the fork: a little lever sign that flashes when it trips. */
-function drawSwitchPad(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, game: Game, t: number) {
-  const { x, y } = b.position;
-  const pressed = game.time - (md.hitAt ?? -1e9) < 450;
-  ctx.save();
-  ctx.translate(x, y + (pressed ? 2 : 0));
-  ctx.fillStyle = pressed ? '#caa04e' : '#9fb2c6';
-  ctx.strokeStyle = '#2e3743';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.roundRect(-15, -7, 30, 12, 4);
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = '#2e3743';
-  ctx.beginPath();
-  ctx.arc(0, 0, 4, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-  const glow = pressed ? '#fbbf24' : '#8fb4d9';
-  const pulse = pressed ? 1 : 0.55 + 0.3 * Math.sin(t / 380 + x);
-  ctx.save();
-  ctx.globalAlpha = pulse;
-  ctx.drawImage(colorGlow(glow), x - 16, y - 36, 32, 32);
-  ctx.restore();
-  ctx.fillStyle = glow;
-  ctx.font = 'bold 13px system-ui';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('⇄', x, y - 20);
-}
-
 /** Bodies that never move or change; they are baked into the static layer instead of redrawn every frame. */
 const STATIC_KINDS = new Set<string | undefined>(['ramp', 'ice', 'wall', 'loop']);
 const CHUNK_H = 1024;
@@ -2095,8 +1984,6 @@ const STATIC_W = W - STATIC_X0 * 2;
 const STATIC_PAD = 2;
 /** Art the static layer depends on; chunks are only cached once all of it has loaded. */
 const STATIC_ART = ['tile-metal', 'mine-wall', 'mine-edge', 'rail-wood', 'strip-ice', 'loop-ring', 'rock-fill', 'cliff-left', 'cliff-right', 'tower-1', 'tower-2', 'tower-3', 'tower-4', 'balcony-crowd', 'balcony-horn', 'balcony-cannon', 'torch', 'goblin-crowd', 'flag-race'];
-
-/** Everything in the static layer, painted in world space between top and bottom. */
 function paintStatic(ctx: CanvasRenderingContext2D, game: Game, top: number, bottom: number) {
   const theme = game.track.theme;
   // track interior: semi-opaque so the backdrop faintly shows through
@@ -2527,8 +2414,6 @@ function drawSling(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType
   ctx.restore();
 }
 
-/** Scoop: a brass pocket lip with a chevron showing the kick direction; dimmed while it holds a rider. */
-
 // ---------------- MB-10E: fields and surfaces ----------------
 
 
@@ -2627,42 +2512,6 @@ function drawMud(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<t
   ctx.fill();
 
   ctx.restore();
-}
-
-function drawPool(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
-  const po = md.pool;
-  if (!po) return;
-  const lx = po.box.x, hx = po.box.x + po.box.w, top = po.topY;
-  // basin clay banks
-  ctx.fillStyle = '#475569';
-  ctx.fillRect(lx - 10, top, 10, po.depth + 12);
-  ctx.fillRect(hx, top, 10, po.depth + 12);
-  // water slab
-  ctx.fillStyle = 'rgba(3,105,161,0.55)';
-  ctx.fillRect(lx, top + 2, hx - lx, po.depth + 14);
-  // painted surface sheen: the puddle art stretched over the pool mouth
-  drawSprite(ctx, 'pool', (lx + hx) / 2, top + 4, (hx - lx) + 22, 22);
-  // wobbling surface line
-  ctx.strokeStyle = '#7dd3fc';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  for (let x = lx; x <= hx; x += 8) {
-    const y = top + 2 + Math.sin((x + t / 12) / 14) * 2;
-    if (x === lx) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-  }
-  ctx.stroke();
-  // slow ripples deeper down
-  ctx.strokeStyle = 'rgba(56,189,248,0.35)';
-  ctx.lineWidth = 1.5;
-  for (let d = 18; d < po.depth; d += 18) {
-    ctx.beginPath();
-    for (let x = lx + 6; x <= hx - 6; x += 14) {
-      const y = top + d + Math.sin((x + t / 20) / 18) * 1.4;
-      if (x === lx + 6) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-  }
-  void b;
 }
 
 function drawGeyser(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
@@ -2863,43 +2712,6 @@ function drawPlatform(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnT
   }
   ctx.restore();
   void t;
-}
-
-function drawScoop(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, _game: Game, t: number) {
-  const sc = md.scoop;
-  if (!sc) return;
-  const p = b.position;
-  const busy = sc.loadedAt !== null;
-  ctx.save();
-  ctx.translate(p.x, p.y);
-  ctx.globalAlpha = busy ? 0.65 : 1;
-  // centred on the pocket/hole the sensor marks
-  if (!drawSprite(ctx, 'scoop', 0, 0, 80, 48)) {
-    ctx.fillStyle = '#0c0a09';
-    ctx.beginPath(); ctx.ellipse(0, 0, 36, 20, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = '#b45309';
-    ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.ellipse(0, 0, 36, 20, 0, Math.PI, 0, false); ctx.stroke();
-  }
-  // direction chevrons (or the subway portal)
-  if (md.exit) {
-    const bob = Math.sin(t / 300) * 2;
-    ctx.strokeStyle = '#7dd3fc';
-    ctx.lineWidth = 4;
-    ctx.beginPath(); ctx.moveTo(-12, 8 + bob); ctx.lineTo(12, 8 + bob); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(-8, 20 - bob); ctx.lineTo(8, 20 - bob); ctx.stroke();
-  } else {
-    const pulse = 0.6 + 0.4 * Math.sin(t / 260);
-    ctx.rotate(sc.deg);
-    ctx.strokeStyle = `rgba(253,224,71,${pulse})`;
-    ctx.lineWidth = 4;
-    for (let i = 0; i < 2; i++) {
-      const o = 16 + i * 10;
-      ctx.beginPath(); ctx.moveTo(-8, -o); ctx.lineTo(0, -o - 7); ctx.lineTo(8, -o); ctx.stroke();
-    }
-  }
-  ctx.restore();
-  ctx.globalAlpha = 1;
 }
 
 function drawWheel(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, game: Game, t: number) {

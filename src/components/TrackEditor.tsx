@@ -171,7 +171,6 @@ function lowestPieceY(def: TrackDef): number {
       case 'barricade':
       case 'crumble':
       case 'trapdoor':
-      case 'switch':
         y = (p as { y: number }).y;
         break;
       case 'blade':

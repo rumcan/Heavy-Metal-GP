@@ -321,22 +321,7 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
         </>
       )}
 
-      {piece.t === 'switch' && (
-        <>
-          <NumField label="Position X" value={piece.x} min={0} max={W} onValue={(v) => update({ x: clampNum(v, 0, W) } as unknown as Piece)} />
-          <NumField label="Position Y" value={piece.y} min={0} max={10000} step={5} onValue={(v) => update({ y: v } as unknown as Piece)} />
-          <NumField label="Blade len" value={piece.len} min={40} max={400} step={5} onValue={(v) => update({ len: clampNum(v, 40, 400) } as unknown as Piece)} />
-          <NumField label="Lean (rad)" value={piece.angle} min={0.1} max={1.35} step={0.05} onValue={(v) => update({ angle: clampNum(v, 0.1, 1.35) } as unknown as Piece)} />
-          <label className="prop-field">
-            <span>Starts to</span>
-            <select value={piece.side} onChange={(e) => update({ side: Number(e.target.value) as 0 | 1 } as unknown as Piece)} onKeyDown={(e) => e.stopPropagation()}>
-              <option value={0}>Left</option>
-              <option value={1}>Right</option>
-            </select>
-          </label>
-        </>
-      )}
-
+      
       {piece.t === 'blade' && (
         <>
           <NumField label="Pivot X" value={piece.pivot[0]} min={0} max={W} onValue={(v) => update({ pivot: [clampNum(v, 0, W), piece.pivot[1]] } as unknown as Piece)} />
@@ -523,33 +508,6 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
           <NumField label="Size" value={piece.size} min={HANDLE_RANGES.slingSize.min} max={HANDLE_RANGES.slingSize.max} step={5} onValue={(v) => update({ size: clampNum(v, HANDLE_RANGES.slingSize.min, HANDLE_RANGES.slingSize.max) } as unknown as Piece)} />
           <NumField label="Facing (deg)" value={piece.facing} min={0} max={360} step={5} onValue={(v) => update({ facing: (((v % 360) + 360) % 360) } as unknown as Piece)} />
           <NumField label="Strength" value={piece.strength} min={1} max={9} step={0.5} onValue={(v) => update({ strength: clampNum(v, 1, 9) } as unknown as Piece)} />
-        </>
-      )}
-
-      {piece.t === 'scoop' && (
-        <>
-          <NumField label="Position X" value={piece.x} min={0} max={W} onValue={(v) => update({ x: clampNum(v, 0, W) } as unknown as Piece)} />
-          <NumField label="Position Y" value={piece.y} min={0} max={10000} step={5} onValue={(v) => update({ y: v } as unknown as Piece)} />
-          <NumField label="Eject Angle (deg)" value={piece.deg} min={0} max={360} step={5} onValue={(v) => update({ deg: (((v % 360) + 360) % 360) } as unknown as Piece)} />
-          <NumField label="Hold Time (ms)" desc="How long the marble is held before being ejected." value={piece.hold} min={400} max={1200} step={50} onValue={(v) => update({ hold: Math.round(clampNum(v, 400, 1200)) } as unknown as Piece)} />
-          <label className="prop-field">
-            <span>Mode</span>
-            <select value={piece.exit ? 'subway' : 'kickback'} onChange={(e) => update({
-              exit: e.target.value === 'subway' ? [clampNum(piece.x + 100, 0, W), piece.y, 1400] : undefined,
-            } as Partial<Piece>)}>
-              <option value="kickback">Kickback</option>
-              <option value="subway">Subway</option>
-            </select>
-          </label>
-          {piece.exit ? (
-            <>
-              <NumField label="Subway exit X" value={piece.exit[0]} min={0} max={W} onValue={(v) => update({ exit: [clampNum(v, 0, W), piece.exit![1], piece.exit![2]] as [number, number, number] } as unknown as Piece)} />
-              <NumField label="Subway exit Y" value={piece.exit[1]} onValue={(v) => update({ exit: [piece.exit![0], v, piece.exit![2]] as [number, number, number] } as unknown as Piece)} />
-              <NumField label="Transit (ms)" value={piece.exit[2]} min={600} max={6000} step={100} onValue={(v) => update({ exit: [piece.exit![0], piece.exit![1], Math.round(clampNum(v, 600, 6000))] as [number, number, number] } as unknown as Piece)} />
-            </>
-          ) : (
-            <p className="hint">Choose Subway to add an exit, then drag its handle to set the destination.</p>
-          )}
         </>
       )}
 
