@@ -363,12 +363,13 @@ export function buildChapter(b: Builder, chapter: CourseChapter, y: number): num
     /* ------------------------------------------------------------------ */
     case 'rapids': {
       const u1 = y + 55;
-      // Approach into the pool.
+      // Approach down into the run-out. #99 retired the skipping pool that used to bridge this
+      // stretch, so the ramp now carries the pack straight across.
       b.ramp(-100, u1, 260, y + 120);
       b.ppeg(200, uy(u1, y + 120, 260, 200) - 30, 'green', 10, SUPPLY.rapids);
 
-      // Long skimming pool.
-      b.pool(280, y + 140, 620, y + 140, 100, 9);
+      // Run-out into the tar.
+      b.ramp(260, y + 120, 640, y + 160);
       // Thick mud after the water.
       b.mud(640, y + 155, tip, y + 200, 0.28);
       b.ramp(630, y + 160, tip, y + 220);

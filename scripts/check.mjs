@@ -11,11 +11,17 @@ const commands = [
     'tests/story-schema.test.ts', 'tests/story-engine.test.ts', 'tests/story-modifiers.test.ts',
     // Map builder (MB-01): the track definition format — recording, rebuild identity, validation.
     'tests/trackdef.test.ts', 'tests/course-generator.test.ts',
+    // #99: the retired pieces (track switch lever, scoop, skipping pond) drop out of old saves and codes.
+    'tests/retired-pieces.test.ts',
     // Championship circuits: the archived official tracks and their precedence over player swap-ins.
     'tests/official-tracks.test.ts',
     // Map builder (MB-02): the editor shell — the camera's maths, the palette, and what the shell paints.
+    // #99 Part 1: the shared item base — one box, one rotate handle, corner resizes, the lock.
+    'tests/editor-base.test.ts',
     'tests/editor-ui.test.ts', 'tests/editor-templates.test.ts', 'tests/map-builder-audit.test.ts', 'tests/editor-bounds.test.ts',
     'tests/map-builder-handles-preview.test.ts', 'tests/map-elements-runtime.test.ts', 'tests/mb10e.test.ts', 'tests/mb10f.test.ts',
+    // #99: the vortex funnel's teleport-to-another-funnel rule and the lone-funnel drop.
+    'tests/vortex.test.ts',
     // MB-10F follow-up (CHAMP-05): the lift platform must dwell at both ends of its run.
     'tests/platform-pose.test.ts',
     // Map builder (#71): edge placement, moving against a boundary, and the placement prompts' bounds.

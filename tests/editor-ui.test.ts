@@ -194,14 +194,17 @@ test('Editor grid: every snap is a whole 25 units, and the lattice keeps up with
 
 test('Palette: the ticket\'s groups, every piece a def can store, and the race art', () => {
   assert.deepEqual(PALETTE.map((g) => g.label), ['Rails', 'Features', 'Pegs', 'Walls', 'Secrets', 'Danger', 'Movers', 'Launchers', 'Fields & surfaces', 'Big set pieces']);
-  // Rails 4 · Features 7 · Pegs 5 · Walls 2 · Secrets 7 · Danger 5 · Movers 6 · Launchers 6 ·
-  // Fields 5 · Set pieces 5. Counts are tiles, not types: Pegs/Secrets/Movers/Launchers carry a
+  // Rails 4 · Features 7 · Pegs 5 · Walls 2 · Secrets 6 · Danger 5 · Movers 6 · Launchers 5 ·
+  // Fields 4 · Set pieces 5. Counts are tiles, not types: Pegs/Secrets/Movers/Launchers carry a
   // second variant each (orange and item pegs, the tough barricade and the weight trapdoor, the
-  // reversed belt, the right-hand flipper). Danger has no variant — five kinds, five tiles. The
-  // line below is the one that matters: every type the def format can store is in the palette.
-  assert.deepEqual(PALETTE.map((g) => g.tiles.length), [4, 7, 5, 2, 7, 5, 6, 6, 5, 5]);
+  // reversed belt, the right-hand flipper). Danger has no variant — five kinds, five tiles.
+  // #99 retired three tiles: the track switch lever (Secrets), the scoop (Launchers) and the
+  // skipping pond (Fields). The line below is the one that matters: every type the def format
+  // can store is in the palette.
+  assert.deepEqual(PALETTE.map((g) => g.tiles.length), [4, 7, 5, 2, 6, 5, 6, 5, 4, 5]);
   const types = [...new Set(TILES.map((tile) => tile.t))].sort();
-  assert.deepEqual(types, ['barricade', 'blade', 'block', 'boost', 'boulder', 'breakable', 'bridge', 'bucket', 'cannon', 'catapult', 'conveyor', 'crumble', 'crusher', 'curve', 'flipper', 'geyser', 'hoop', 'ice', 'itembox', 'loop', 'mace', 'magnet', 'mud', 'pad', 'peg', 'platform', 'pool', 'ppeg', 'ramp', 'saw', 'scoop', 'screw', 'seesaw', 'sling', 'spinner', 'switch', 'targets', 'trampoline', 'trapdoor', 'tunnel', 'turnstile', 'vortex', 'wall', 'wheel', 'wind', 'wrecker'], 'the palette should cover exactly the def format\'s placeable pieces');
+  // #99: pool, scoop and switch are retired — the palette covers exactly the def format's remaining placeable pieces.
+  assert.deepEqual(types, ['barricade', 'blade', 'block', 'boost', 'boulder', 'breakable', 'bridge', 'bucket', 'cannon', 'catapult', 'conveyor', 'crumble', 'crusher', 'curve', 'flipper', 'geyser', 'hoop', 'ice', 'itembox', 'loop', 'mace', 'magnet', 'mud', 'pad', 'peg', 'platform', 'ppeg', 'ramp', 'saw', 'screw', 'seesaw', 'sling', 'spinner', 'targets', 'trampoline', 'trapdoor', 'tunnel', 'turnstile', 'vortex', 'wall', 'wheel', 'wind', 'wrecker'], 'the palette should cover exactly the def format\'s placeable pieces');
   const ids = TILES.map((tile) => tile.id);
   assert.equal(new Set(ids).size, ids.length, 'two tiles share an id');
   // A piece type may have variants (the Peggle peg colours): the plain tile's id is the bare type and it has no
@@ -321,11 +324,15 @@ test('Workshop: the def it opens on is version 1 and JSON-clean', () => {
 });
 
 
-test('Workshop: a fresh scoop offers a subway mode before it has an exit', async () => {
+test('Workshop: a trapdoor swaps its settings with its mode', async () => {
+  // #99: this used to be the scoop's kickback/subway toggle; the trapdoor exercises the same
+  // conditional-settings pattern (timer fields vs weight fields).
   const PropertiesPanel = (await server.ssrLoadModule('/src/components/editor/PropertiesPanel.tsx')).default;
-  const piece = { t: 'scoop', x: 450, y: 1500, deg: 270, hold: 800 };
+  const piece = { t: 'trapdoor', x: 450, y: 1500, w: 160, hinge: 1 as const, mode: 'weight' as const, open: 400, closed: 1600, phase: 0, kg: 2.5, hold: 800 };
   const markup = renderToStaticMarkup(createElement(PropertiesPanel, { selected: [0], pieces: [piece], onChange() {} }));
-  assert.match(markup, /<option value="subway">Subway<\/option>/);
-  const linked = renderToStaticMarkup(createElement(PropertiesPanel, { selected: [0], pieces: [{ ...piece, exit: [550, 1500, 1400] }], onChange() {} }));
-  assert.ok(linked.includes('Subway exit X') && linked.includes('Transit (ms)'));
+  assert.match(markup, /<option value="weight"[^>]*>Scale \(weight\)<\/option>/);
+  assert.ok(markup.includes('Needs (kg)'), 'weight mode shows the scale settings');
+  const timed = renderToStaticMarkup(createElement(PropertiesPanel, { selected: [0], pieces: [{ ...piece, mode: 'timer' as const }], onChange() {} }));
+  assert.ok(timed.includes('Open (ms)') && timed.includes('Closed (ms)'), 'timer mode shows the clock settings');
+  assert.ok(!timed.includes('Needs (kg)'));
 });

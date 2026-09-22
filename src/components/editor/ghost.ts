@@ -1,7 +1,7 @@
 /**
  * MB-03 / #75. What an armed click is about to place, and what its preview looks like.
  *
- * The ghost used to be a second, hand-written copy of the palette defaults: a switch on the armed
+ * The ghost used to be a second, hand-written copy of the palette defaults: a block on the armed
  * *string* with its own numbers (ramp 300, loop r 95, trapdoor width 110 centred on the cursor)
  * that never resolved a variant tile and had no template support at all. It has since become a
  * projection of the real placement instead:
@@ -273,11 +273,6 @@ export function ghostParts(piece: Piece): GhostPart[] {
       const open = along(hinge, pt(-Math.sin(Math.PI / 3) * piece.hinge, -Math.cos(Math.PI / 3)), piece.w);
       return [box(pt(piece.x, piece.y), piece.w, 12), ring(hinge, 6, true), path([hinge, open], 2), path([hinge, tip], 4)];
     }
-    case 'switch': {
-      const lean = (piece.side === 1 ? 1 : -1) * piece.angle;
-      const c = pt(piece.x + Math.sin(lean) * piece.len / 2, piece.y - Math.cos(lean) * piece.len / 2);
-      return [slanted(c, piece.len, 12, dirOf((lean * 180) / Math.PI)), box(pt(piece.x, piece.y - piece.len - 16), 30, 20)];
-    }
     case 'blade': {
       const pv = pt(piece.pivot[0], piece.pivot[1]);
       // `Builder.blade` swings from straight down, ±amp.
@@ -355,15 +350,6 @@ export function ghostParts(piece: Piece): GhostPart[] {
     }
     case 'sling':
       return [...slingWedge(piece), arrow(pt(piece.x, piece.y), along(pt(piece.x, piece.y), dirOf(piece.facing), piece.size * 0.8))];
-    case 'scoop': {
-      const c = pt(piece.x, piece.y);
-      const out = [ring(c, 26), arrow(c, along(c, dirOf(piece.deg), 46))];
-      if (piece.exit) {
-        const e = pt(piece.exit[0], piece.exit[1]);
-        out.push(ring(e, 30), path([c, e]));
-      }
-      return out;
-    }
     case 'wind': {
       const boxPart = fieldBox(piece.a, piece.b);
       return [boxPart, arrow(midpoint(piece.a, piece.b), along(midpoint(piece.a, piece.b), dirOf(piece.dir), 56))];
@@ -372,14 +358,6 @@ export function ghostParts(piece: Piece): GhostPart[] {
       return [ring(pt(piece.x, piece.y), piece.r), ring(pt(piece.x, piece.y), 12, true)];
     case 'mud':
       return [slab(piece.a, piece.b, 18)];
-    case 'pool': {
-      const { min, max } = corners(piece.a, piece.b);
-      const top = min[1];
-      return [
-        path([pt(min[0], top), pt(max[0], top)], 4),
-        path([pt(min[0], top), pt(min[0], top + piece.depth), pt(max[0], top + piece.depth), pt(max[0], top)], 2, true),
-      ];
-    }
     case 'geyser':
       return [box(pt(piece.x, piece.y + 8), 56, 18), box(pt(piece.x, piece.y - piece.h / 2), 44, piece.h), arrow(pt(piece.x, piece.y), pt(piece.x, piece.y - piece.h))];
     case 'trampoline':

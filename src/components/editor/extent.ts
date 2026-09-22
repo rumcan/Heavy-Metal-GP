@@ -41,7 +41,6 @@ export function pieceXs(piece: Piece): number[] {
     case 'barricade':
     case 'crumble':
     case 'trapdoor':
-    case 'switch':
     // ---- MB-10B ----
     case 'crusher':
     case 'mace':
@@ -66,10 +65,6 @@ export function pieceXs(piece: Piece): number[] {
     case 'flipper':
     case 'sling':
       return [(piece as unknown as { x: number }).x];
-    case 'scoop': {
-      const p = piece as unknown as { x: number; exit?: [number, number, number] };
-      return p.exit ? [p.x, p.exit[0]] : [p.x];
-    }
     case 'tunnel':
       return [piece.x, piece.exit[0]];
     case 'wrecker':
@@ -80,7 +75,6 @@ export function pieceXs(piece: Piece): number[] {
     // ---- MB-10E ----
     case 'wind':
     case 'mud':
-    case 'pool':
       return [(piece as unknown as { a: readonly [number, number] }).a[0], (piece as unknown as { b: readonly [number, number] }).b[0]];
     case 'magnet':
     case 'geyser':

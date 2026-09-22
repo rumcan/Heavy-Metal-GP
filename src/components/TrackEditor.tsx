@@ -171,7 +171,6 @@ function lowestPieceY(def: TrackDef): number {
       case 'barricade':
       case 'crumble':
       case 'trapdoor':
-      case 'switch':
         y = (p as { y: number }).y;
         break;
       case 'blade':
@@ -266,6 +265,8 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
   const [draftMsg, setDraftMsg] = useState<string | null>(null);
   const [shareMsg, setShareMsg] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // #99: locked pieces (by index) — unselectable until unlocked via the lock icon.
+  const [locked, setLocked] = useState<ReadonlySet<number>>(new Set());
   const [showNew, setShowNew] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [coachForced, setCoachForced] = useState(false);
@@ -507,11 +508,11 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
   );
 
   const applyHandleChange = useCallback(
-    (pieceIndex: number, handleId: string, to: { x: number; y: number }, initialPiece?: Piece) => {
+    (pieceIndex: number, handleId: string, to: { x: number; y: number }, initialPiece?: Piece, resizeAnchor?: { min: { x: number; y: number }; max: { x: number; y: number } }) => {
       transact((def) => {
         const p = initialPiece || def.pieces[pieceIndex];
         if (!p) return def;
-        def.pieces[pieceIndex] = applyHandle(p, handleId, to, grid);
+        def.pieces[pieceIndex] = applyHandle(p, handleId, to, grid, resizeAnchor);
         return def;
       });
     },
@@ -1227,6 +1228,17 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
                 onOpenSettings={(pieceIndex) => {
                   setSelected([pieceIndex]);
                   setSettingsOpen(true);
+                }}
+                locked={locked}
+                onToggleLock={(pieceIndex) => {
+                  setLocked((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(pieceIndex)) next.delete(pieceIndex);
+                    else next.add(pieceIndex);
+                    return next;
+                  });
+                  // A newly-locked item leaves the selection so it stops responding to edits.
+                  setSelected((prev) => prev.filter((i) => i !== pieceIndex));
                 }}
                 startTransaction={startTransaction}
                 transact={transact}

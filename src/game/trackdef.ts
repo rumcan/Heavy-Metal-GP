@@ -69,8 +69,6 @@ export interface TrapdoorPiece extends PieceBase {
   t: 'trapdoor'; x: number; y: number; w: number; hinge: -1 | 1;
   mode: 'timer' | 'weight'; open: number; closed: number; phase: number; kg: number; hold: number;
 }
-/** Track switch lever: plate of `len` leaning ±`angle` at a Y-junction; `side` is the initial route. */
-export interface SwitchPiece extends PieceBase { t: 'switch'; x: number; y: number; len: number; angle: number; side: 0 | 1 }
 // ---- MB-10B: blades and crushers (all kinematic — the race clock drives every pose) ----
 /** Swinging blade: pendulum arm `len` from `pivot`, swinging ±`amp` rad every `period` ms. */
 export interface BladePiece extends PieceBase { t: 'blade'; pivot: Vec; len: number; amp: number; period: number; phase: number; thin: number }
@@ -102,8 +100,6 @@ export interface CatapultPiece extends PieceBase { t: 'catapult'; x: number; y: 
 export interface FlipperPiece extends PieceBase { t: 'flipper'; x: number; y: number; side: 0 | 1; angle: number; len: number; strength: number; timer: number; phase: number }
 /** Slingshot kicker: rubber triangle `size` px at (x, y), face normal `facing` deg, impulse `strength` px/step scaled by bounce. */
 export interface SlingPiece extends PieceBase { t: 'sling'; x: number; y: number; size: number; facing: number; strength: number }
-/** Scoop / kickback hole: pocket at (x, y) holds a marble `hold` ms, kicks it along `deg` (seeded jitter); optional `exit` = subway chute link [x, y, transitMs]. */
-export interface ScoopPiece extends PieceBase { t: 'scoop'; x: number; y: number; deg: number; hold: number; exit?: [number, number, number] }
 
 // ---- MB-10E: fields and surfaces ----
 /** Wind fan / updraft vent: rect field [a1,b1] corner box, blowing along `dir` deg (canvas; 270 = up), `str` push scale. `pulse` ms > 0 makes it breathe on a timer (kinematic). */
@@ -112,8 +108,6 @@ export interface WindPiece extends PieceBase { t: 'wind'; a: Vec; b: Vec; dir: n
 export interface MagnetPiece extends PieceBase { t: 'magnet'; x: number; y: number; r: number; str: number; period: number; phase: number }
 /** Mud / tar pit: sticky strip along a→b with `drag` per-step fraction. Airborne marbles hop it. */
 export interface MudPiece extends PieceBase { t: 'mud'; a: Vec; b: Vec; drag: number }
-/** Water pool: basin [a1,a2] surface corners, `depth` deep; entries with horizontal speed over `skip` skim the surface. */
-export interface PoolPiece extends PieceBase { t: 'pool'; a: Vec; b: Vec; depth: number; skip: number }
 /** Geyser / steam vent: vent plinth at (x, y); eruption column `h` high every `period` ms (kinematic, off the race clock). */
 export interface GeyserPiece extends PieceBase { t: 'geyser'; x: number; y: number; h: number; period: number; phase: number }
 
@@ -132,12 +126,26 @@ export interface PlatformPiece extends PieceBase { t: 'platform'; ax: number; ay
 export type Piece =
   | RampPiece | CurvePiece | IcePiece | LoopPiece | HoopPiece | WreckerPiece | PadPiece | BoostPiece
   | SpinnerPiece | BreakablePiece | PegPiece | PPegPiece | ItemBoxPiece | BucketPiece | WallPiece | BlockPiece
-  | BarricadePiece | TunnelPiece | CrumblePiece | TrapdoorPiece | SwitchPiece
+  | BarricadePiece | TunnelPiece | CrumblePiece | TrapdoorPiece
   | BladePiece | SawPiece | CrusherPiece | BoulderPiece | MacePiece
   | WheelPiece | ScrewPiece | ConveyorPiece | SeesawPiece | BridgePiece
-  | CannonPiece | CatapultPiece | FlipperPiece | SlingPiece | ScoopPiece
-  | WindPiece | MagnetPiece | MudPiece | PoolPiece | GeyserPiece
+  | CannonPiece | CatapultPiece | FlipperPiece | SlingPiece
+  | WindPiece | MagnetPiece | MudPiece | GeyserPiece
   | TrampolinePiece | TurnstilePiece | TargetsPiece | VortexPiece | PlatformPiece;
+
+/**
+ * #99: pieces retired from the game and the Workshop (the track switch lever, the scoop and the
+ * skipping pond). The loader never builds these — it drops them silently — so saved tracks,
+ * community tracks and share codes written by an older build still load, just without the piece.
+ */
+export const RETIRED_PIECE_TYPES = ['switch', 'scoop', 'pool'] as const;
+export type RetiredPieceType = (typeof RETIRED_PIECE_TYPES)[number];
+
+/** #99: true for a piece type retired from the game — callers strip such pieces (they no longer
+ * build, draw, or validate). Accepts a raw string so JSON-shaped data can be tested before cast. */
+export function isRetiredPieceType(t: string): t is RetiredPieceType {
+  return (RETIRED_PIECE_TYPES as readonly string[]).includes(t);
+}
 
 export interface TrackDef {
   v: 1;
@@ -299,10 +307,6 @@ class DefRecorder extends Builder {
     );
   }
 
-  override switchLever(x: number, y: number, len = 120, angle = 0.65, side: 0 | 1 = 0) {
-    return this.capture(() => super.switchLever(x, y, len, angle, side), () => ({ t: 'switch', x, y, len, angle, side, flip: this.mirrored }));
-  }
-
   // ---- MB-10B ----
 
   override blade(px: number, py: number, len: number, amp = 0.9, periodMs = 2600, phaseMs = 0, thin = 8) {
@@ -391,13 +395,6 @@ class DefRecorder extends Builder {
     );
   }
 
-  override scoop(x: number, y: number, ejectDeg = 270, holdMs = 800, exit?: [number, number, number]) {
-    return this.capture(
-      () => super.scoop(x, y, ejectDeg, holdMs, exit),
-      () => ({ t: 'scoop', x, y, deg: ejectDeg, hold: holdMs, exit, flip: this.mirrored }),
-    );
-  }
-
   // ---- MB-10E ----
   override wind(x1: number, y1: number, x2: number, y2: number, dirDeg = 270, strength = 0.28, pulseMs = 0, phaseMs = 0) {
     return this.capture(
@@ -417,13 +414,6 @@ class DefRecorder extends Builder {
     return this.capture(
       () => super.mud(x1, y1, x2, y2, drag),
       () => ({ t: 'mud', a: [x1, y1] as Vec, b: [x2, y2] as Vec, drag, flip: this.mirrored }),
-    );
-  }
-
-  override pool(x1: number, y1: number, x2: number, y2: number, depth = 90, skip = 8) {
-    return this.capture(
-      () => super.pool(x1, y1, x2, y2, depth, skip),
-      () => ({ t: 'pool', a: [x1, y1] as Vec, b: [x2, y2] as Vec, depth, skip, flip: this.mirrored }),
     );
   }
 
@@ -535,7 +525,6 @@ export function replayPiece(b: Builder, piece: Piece) {
       case 'tunnel': b.tunnel(piece.x, piece.y, piece.exit[0], piece.exit[1], piece.edir[0], piece.edir[1], piece.ms, piece.speed, piece.two === true); break;
       case 'crumble': b.crumble(piece.x, piece.y, piece.w, piece.h, piece.tough); break;
       case 'trapdoor': b.trapdoor(piece.x, piece.y, piece.w, piece.hinge, piece.mode, piece.open, piece.closed, piece.phase, piece.kg, piece.hold); break;
-      case 'switch': b.switchLever(piece.x, piece.y, piece.len, piece.angle, piece.side); break;
       // ---- MB-10B ----
       case 'blade': b.blade(piece.pivot[0], piece.pivot[1], piece.len, piece.amp, piece.period, piece.phase, piece.thin); break;
       case 'saw': b.saw(piece.a[0], piece.a[1], piece.r, [piece.b[0], piece.b[1]], piece.period, piece.spin, piece.phase); break;
@@ -553,12 +542,10 @@ export function replayPiece(b: Builder, piece: Piece) {
       case 'catapult': b.catapult(piece.x, piece.y, piece.len, piece.reload, piece.dir); break;
       case 'flipper': b.flipper(piece.x, piece.y, piece.side, piece.angle, piece.len, piece.strength, piece.timer, piece.phase); break;
       case 'sling': b.sling(piece.x, piece.y, piece.size, piece.facing, piece.strength); break;
-      case 'scoop': b.scoop(piece.x, piece.y, piece.deg, piece.hold, piece.exit); break;
       // ---- MB-10E ----
       case 'wind': b.wind(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.dir, piece.str, piece.pulse, piece.phase); break;
       case 'magnet': b.magnet(piece.x, piece.y, piece.r, piece.str, piece.period, piece.phase); break;
       case 'mud': b.mud(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.drag); break;
-      case 'pool': b.pool(piece.a[0], piece.a[1], piece.b[0], piece.b[1], piece.depth, piece.skip); break;
       case 'geyser': b.geyser(piece.x, piece.y, piece.h, piece.period, piece.phase); break;
       case 'trampoline': b.trampoline(piece.x, piece.y, piece.w, piece.tension); break;
       case 'turnstile': b.turnstile(piece.x, piece.y, piece.arms, piece.r, piece.mode as 0 | 1, piece.period, piece.phase); break;
@@ -1012,19 +999,6 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
         ...body,
       };
     }
-    case 'switch': {
-      const side = raw.side === 0 || raw.side === 1 ? raw.side : undefined;
-      if (side === undefined) problems.add(`${at}.side must be 0 (left) or 1 (right).`);
-      return {
-        t: 'switch',
-        x: number(raw.x, `${at}.x`, -200, W + 200, problems),
-        y: real(raw.y, `${at}.y`, problems),
-        len: number(raw.len, `${at}.len`, 40, 400, problems),
-        angle: number(raw.angle, `${at}.angle`, 0.1, 1.35, problems),
-        side: side ?? 0,
-        ...body,
-      };
-    }
     // ---- MB-10B ----
     case 'blade':
       return {
@@ -1188,26 +1162,6 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
         strength: number(raw.strength, `${at}.strength`, 1, 9, problems),
         ...body,
       };
-    case 'scoop':
-      return {
-        t: 'scoop',
-        x: number(raw.x, `${at}.x`, -200, W + 200, problems),
-        y: real(raw.y, `${at}.y`, problems),
-        deg: number(raw.deg, `${at}.deg`, 0, 360, problems),
-        hold: number(raw.hold, `${at}.hold`, 400, 1200, problems),
-        ...(raw.exit !== undefined
-          ? {
-              exit: (Array.isArray(raw.exit) && raw.exit.length === 3
-                ? [
-                    number(raw.exit[0], `${at}.exit[0]`, -200, W + 200, problems),
-                    real(raw.exit[1], `${at}.exit[1]`, problems),
-                    number(raw.exit[2], `${at}.exit[2]`, 600, 6000, problems),
-                  ]
-                : (problems.add(`${at}.exit must be [x, y, transitMs].`), [0, 0, 900])) as [number, number, number],
-            }
-          : {}),
-        ...body,
-      };
     case 'wind':
       return {
         t: 'wind',
@@ -1238,15 +1192,6 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
         drag: number(raw.drag, `${at}.drag`, 0.05, 0.5, problems),
         ...body,
       };
-    case 'pool':
-      return {
-        t: 'pool',
-        a: vec(raw.a, `${at}.a`, problems),
-        b: vec(raw.b, `${at}.b`, problems),
-        depth: number(raw.depth, `${at}.depth`, 40, 300, problems),
-        skip: number(raw.skip, `${at}.skip`, 4, 14, problems),
-        ...body,
-      };
     case 'geyser':
       return {
         t: 'geyser',
@@ -1257,6 +1202,12 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
         phase: real(raw.phase, `${at}.phase`, problems),
         ...body,
       };
+    case 'switch':
+    case 'scoop':
+    case 'pool':
+      // #99: retired pieces — an old saved track, community track or share code that still names
+      // one loses just that piece; the rest of the def loads unchanged.
+      return null;
     default:
       problems.add(`${at}.t is unknown piece type ${JSON.stringify(raw.t)}.`);
       return null;
@@ -1274,8 +1225,6 @@ function pieceYs(piece: Piece): number[] {
       return [piece.bottom - piece.r * 2, piece.bottom];
     case 'tunnel':
       return [piece.y, piece.exit[1]];
-    case 'switch':
-      return [piece.y - piece.len, piece.y];
     case 'blade':
       return [piece.pivot[1], piece.pivot[1] + piece.len + piece.thin];
     case 'saw':
@@ -1303,16 +1252,12 @@ function pieceYs(piece: Piece): number[] {
       return [piece.y - piece.len, piece.y + 20];
     case 'sling':
       return [piece.y - 0.9 * piece.size, piece.y + 0.9 * piece.size];
-    case 'scoop':
-      return piece.exit ? [piece.y, piece.exit[1]] : [piece.y - 220, piece.y];
     case 'wind':
       return [piece.a[1], piece.b[1]];
     case 'magnet':
       return piece.period ? [piece.y - piece.r, piece.y + piece.r] : [piece.y];
     case 'mud':
       return [piece.a[1], piece.b[1]];
-    case 'pool':
-      return [Math.min(piece.a[1], piece.b[1]), Math.min(piece.a[1], piece.b[1]) + piece.depth + 12];
     case 'geyser':
       return [piece.y - piece.h, piece.y + 10];
     case 'hoop':

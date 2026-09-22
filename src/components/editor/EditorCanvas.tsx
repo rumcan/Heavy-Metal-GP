@@ -19,7 +19,7 @@ import type { CameraRig, EditorCamera, Point } from './camera';
 import { drawCursorMark, drawGrid, drawRuler, viewWindow } from './overlay';
 import type { OverlayView } from './overlay';
 import { hitPieceAt, piecesInBox } from './build';
-import { handlesFor } from './handles';
+import { handlesFor, baseBoxHandles, lockHandlePoint } from './handles';
 import { ghostPreview } from './ghost';
 import type { GhostPreview } from './ghost';
 import { getTemplates } from './templates';
@@ -54,7 +54,25 @@ function drawHandleIcon(ctx: CanvasRenderingContext2D, x: number, y: number, id:
       ctx.lineTo(x + Math.cos(a) * 8, y + Math.sin(a) * 8);
       ctx.stroke();
     }
-  } else if (id === 'move' || id === 'rot') {
+  } else if (id === 'lock') {
+    // #99 padlock: shackle arc over a body, steel-blue like the settings cog.
+    ctx.shadowColor = hover ? 'rgba(96,165,250,0.8)' : 'transparent';
+    ctx.shadowBlur = hover ? 8 : 0;
+    const ink = hover ? '#ffffff' : '#94a3b8';
+    ctx.strokeStyle = ink;
+    ctx.fillStyle = ink;
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.arc(x, y - 2.5, 4.2, Math.PI, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.rect(x - 6, y - 2.5, 12, 9);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(15,23,42,0.9)';
+    ctx.beginPath();
+    ctx.arc(x, y + 1, 1.6, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (id === 'move' || id === 'rot' || id === 'box-rot') {
     const r = 12;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
@@ -136,8 +154,11 @@ interface Props {
   onSelect: (indices: number[], additive: boolean) => void;
   onClear: () => void;
   onMoveSelected: (dx: number, dy: number) => void;
-  onHandleChange: (pieceIndex: number, handleId: string, to: Point, initialPiece?: any) => void;
+  onHandleChange: (pieceIndex: number, handleId: string, to: Point, initialPiece?: any, resizeAnchor?: { min: Point; max: Point }) => void;
   onOpenSettings: (pieceIndex: number) => void;
+  /** #99: locked pieces (by index) — unselectable; hovering shows a lock and clicking it unlocks. */
+  locked?: ReadonlySet<number>;
+  onToggleLock?: (pieceIndex: number) => void;
   startTransaction: () => void;
   transact: (mutate: (def: import('../../game/trackdef').TrackDef) => import('../../game/trackdef').TrackDef) => void;
   endTransaction: () => void;
@@ -173,6 +194,8 @@ export default function EditorCanvas(props: Props) {
   const onMoveRef = useRef(onMoveSelected);
   const onHandleRef = useRef(onHandleChange);
   const onSettingsRef = useRef(props.onOpenSettings);
+  const lockedRef = useRef(props.locked);
+  const onLockRef = useRef(props.onToggleLock);
   const startTxRef = useRef(startTransaction);
   const endTxRef = useRef(endTransaction);
   const spawnAtRef = useRef(spawnAt);
@@ -194,6 +217,8 @@ export default function EditorCanvas(props: Props) {
   onMoveRef.current = onMoveSelected;
   onHandleRef.current = onHandleChange;
   onSettingsRef.current = props.onOpenSettings;
+  lockedRef.current = props.locked;
+  onLockRef.current = props.onToggleLock;
   startTxRef.current = startTransaction;
   endTxRef.current = endTransaction;
   spawnAtRef.current = spawnAt;
@@ -251,16 +276,18 @@ export default function EditorCanvas(props: Props) {
     let pinch: { spread: number; world: Point; scale: number } | null = null;
 
     // drag modes
-    type HandleDrag = { pieceIndex: number; handleId: string; initialPiece?: any };
+    type HandleDrag = { pieceIndex: number; handleId: string; initialPiece?: any; resizeAnchor?: { min: Point; max: Point }; cursor?: string };
     type PieceDrag = { startWorld: Point; lastWorld: Point };
     type BoxDrag = { startWorld: Point; curWorld: Point };
     let handleDrag: HandleDrag | null = null;
     let pendingSettingsClick: HandleDrag | null = null;
+    let pendingLockClick: number | null = null;
     let pieceDrag: PieceDrag | null = null;
     let boxDrag: BoxDrag | null = null;
     let pendingPlace: Point | null = null;
     let downPoint: Point | null = null;
     let hoveredHandle: HandleDrag | null = null;
+    let hoveredLocked: number | null = null;
 
 
     const spreadOf = () => {
@@ -290,13 +317,10 @@ export default function EditorCanvas(props: Props) {
       const handles = handlesFor(piece);
       const bounds = pbRef.current[idx];
       if (bounds) {
-        handles.push({ id: 'settings', x: bounds.max.x + 25, y: bounds.min.y - 25, cursor: 'pointer', label: 'Settings' });
-        const mx = (bounds.min.x + bounds.max.x) / 2;
-        handles.push({ id: 'box-rot', x: mx, y: bounds.min.y - 25, cursor: 'grab', label: 'Rotate' });
-        handles.push({ id: 'box-nw', x: bounds.min.x, y: bounds.min.y, cursor: 'nwse-resize', label: 'Resize' });
-        handles.push({ id: 'box-ne', x: bounds.max.x, y: bounds.min.y, cursor: 'nesw-resize', label: 'Resize' });
-        handles.push({ id: 'box-sw', x: bounds.min.x, y: bounds.max.y, cursor: 'nesw-resize', label: 'Resize' });
-        handles.push({ id: 'box-se', x: bounds.max.x, y: bounds.max.y, cursor: 'nwse-resize', label: 'Resize' });
+        // #99 base overlay: shared by every item — source of truth is `baseBoxHandles`.
+        handles.push(...baseBoxHandles(piece, bounds));
+        const lk = lockHandlePoint(bounds);
+        handles.push({ id: 'lock', x: lk.x, y: lk.y, cursor: 'pointer', label: 'Lock' });
       }
 
       const camScale = camera().scale;
@@ -307,7 +331,7 @@ export default function EditorCanvas(props: Props) {
         const d = Math.hypot(h.x - world.x, h.y - world.y);
         if (d <= radiusWorld * 1.6 && d < bestDist) {
           bestDist = d;
-          best = { pieceIndex: idx, handleId: h.id, initialPiece: piece };
+          best = { pieceIndex: idx, handleId: h.id, initialPiece: piece, resizeAnchor: bounds, cursor: h.cursor };
         }
       }
       return best;
@@ -343,6 +367,10 @@ export default function EditorCanvas(props: Props) {
               pendingSettingsClick = h;
               return;
             }
+            if (h.handleId === 'lock') {
+              pendingLockClick = h.pieceIndex;
+              return;
+            }
             handleDrag = h;
             startTxRef.current();
             // Prevent pan
@@ -357,6 +385,11 @@ export default function EditorCanvas(props: Props) {
         // While placing, a click always drops a piece, even on top of another one: select mode (E) edits pieces.
         if (curTrack && b2p.length && !armedRef.current) {
           hit = hitPieceAt(worldRaw, curTrack, b2p, pbRef.current);
+          // #99: a locked item is unselectable — the click lands on its lock: it unlocks.
+          if (hit !== null && lockedRef.current?.has(hit)) {
+            pendingLockClick = hit;
+            return;
+          }
         }
 
         if (hit !== null) {
@@ -438,15 +471,25 @@ export default function EditorCanvas(props: Props) {
 
       if (!handleDrag && !pieceDrag && !boxDrag && !pan && !armedRef.current && !pendingPlace) {
         hoveredHandle = hitHandleReal(worldRaw);
-        canvas.style.cursor = hoveredHandle ? 'pointer' : 'crosshair';
+        // #99: hovering a locked item shows its lock icon (no other interaction).
+        hoveredLocked = null;
+        if (!hoveredHandle && lockedRef.current?.size) {
+          const curTrack = trackRef.current;
+          if (curTrack && b2pRef.current.length) {
+            const hp = hitPieceAt(worldRaw, curTrack, b2pRef.current, pbRef.current);
+            if (hp !== null && lockedRef.current.has(hp)) hoveredLocked = hp;
+          }
+        }
+        canvas.style.cursor = hoveredHandle ? (hoveredHandle.cursor ?? 'pointer') : hoveredLocked !== null ? 'pointer' : 'crosshair';
       } else {
         hoveredHandle = null;
+        hoveredLocked = null;
         if (!pan) canvas.style.cursor = 'crosshair';
       }
 
       if (handleDrag) {
         // Drag handle to new world (snapped)
-        onHandleRef.current(handleDrag.pieceIndex, handleDrag.handleId, world, handleDrag.initialPiece);
+        onHandleRef.current(handleDrag.pieceIndex, handleDrag.handleId, world, handleDrag.initialPiece, handleDrag.resizeAnchor);
         return;
       }
 
@@ -502,7 +545,9 @@ export default function EditorCanvas(props: Props) {
       const wasPan = pan;
       const wasPendingPlace = pendingPlace;
       const wasPendingSettingsClick = pendingSettingsClick;
+      const wasPendingLockClick = pendingLockClick;
       pendingSettingsClick = null;
+      pendingLockClick = null;
 
       const down = downPoint;
       const isClick = down && Math.hypot(event.clientX - down.x, event.clientY - down.y) <= DRAG_SLOP;
@@ -530,7 +575,7 @@ export default function EditorCanvas(props: Props) {
           // Small box = click without drag? If box small, treat as clear or no-op.
           if (Math.abs(maxX - minX) > 8 || Math.abs(maxY - minY) > 8) {
             if (curTrack && b2p.length && pbRef.current.length) {
-              const hitSet = piecesInBox({ minX, minY, maxX, maxY }, curTrack, b2p, pbRef.current);
+              const hitSet = piecesInBox({ minX, minY, maxX, maxY }, curTrack, b2p, pbRef.current, lockedRef.current ?? undefined);
               const indices = [...hitSet].sort((a, b) => a - b);
               if (indices.length) {
                 const additive = event.shiftKey;
@@ -554,6 +599,8 @@ export default function EditorCanvas(props: Props) {
         onPlaceRef.current(world);
       } else if (wasPendingSettingsClick && isClick) {
         onSettingsRef.current(wasPendingSettingsClick.pieceIndex);
+      } else if (wasPendingLockClick !== null && isClick) {
+        onLockRef.current?.(wasPendingLockClick);
       } else if (!wasHandle && !wasPiece && !wasBox && !wasPan && isClick) {
         // Empty click (no handle/piece/box/pan/place)
         // If hit nothing and not armed, clear selection
@@ -663,6 +710,26 @@ export default function EditorCanvas(props: Props) {
     window.addEventListener('keydown', onKey);
 
     // ---- render loop --------------------------------------------------------
+    // #99: hovering a locked item shows only its lock icon — click it to unlock.
+    const drawHoverLock = (ctx: CanvasRenderingContext2D, overlay: OverlayView) => {
+      if (hoveredLocked === null) return;
+      const bounds = pbRef.current[hoveredLocked];
+      if (!bounds) return;
+      const cam = overlay.camera;
+      const toScreen = (w: Point): Point => ({ x: (w.x - cam.x) * cam.scale + overlay.width / 2, y: (w.y - cam.y) * cam.scale + overlay.height / 2 });
+      const sMin = toScreen(bounds.min);
+      const sMax = toScreen(bounds.max);
+      ctx.save();
+      ctx.strokeStyle = 'rgba(148,163,184,0.9)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(sMin.x, sMin.y, sMax.x - sMin.x, sMax.y - sMin.y);
+      ctx.setLineDash([]);
+      ctx.restore();
+      const lk = toScreen(lockHandlePoint(bounds));
+      drawHandleIcon(ctx, lk.x, lk.y, 'lock', true);
+    };
+
     const drawSelection = (ctx: CanvasRenderingContext2D, overlay: OverlayView) => {
       const curTrack = trackRef.current;
       const sel = selectedRef.current;
@@ -716,20 +783,16 @@ export default function EditorCanvas(props: Props) {
         const handles = handlesFor(piece);
         const bounds = pb[idx];
         if (bounds) {
-          handles.push({ id: 'settings', x: bounds.max.x + 25, y: bounds.min.y - 25, cursor: 'pointer', label: 'Settings' });
-          const mx = (bounds.min.x + bounds.max.x) / 2;
-          // transform handles
-          handles.push({ id: 'box-rot', x: mx, y: bounds.min.y - 25, cursor: 'grab', label: 'Rotate' });
-          handles.push({ id: 'box-nw', x: bounds.min.x, y: bounds.min.y, cursor: 'nwse-resize', label: 'Resize' });
-          handles.push({ id: 'box-ne', x: bounds.max.x, y: bounds.min.y, cursor: 'nesw-resize', label: 'Resize' });
-          handles.push({ id: 'box-sw', x: bounds.min.x, y: bounds.max.y, cursor: 'nesw-resize', label: 'Resize' });
-          handles.push({ id: 'box-se', x: bounds.max.x, y: bounds.max.y, cursor: 'nwse-resize', label: 'Resize' });
+          // #99 base overlay: every item shows the same box controls; source is `baseBoxHandles`.
+          handles.push(...baseBoxHandles(piece, bounds));
+          const lk = lockHandlePoint(bounds);
+          handles.push({ id: 'lock', x: lk.x, y: lk.y, cursor: 'pointer', label: 'Lock' });
         }
-        // Rotate handle: a stalk from the centre with a curved arrow, drawn under the knobs.
-        const rot = handles.find((h) => h.id === 'rot');
+        // Rotate handle: a stalk from the box edge to the rotate pad, drawn under the knobs.
+        const rot = handles.find((h) => h.id === 'box-rot') ?? handles.find((h) => h.id === 'rot');
         const centre = handles[0];
         if (rot && centre) {
-          const sc = toScreen(centre);
+          const sc = bounds ? toScreen({ x: (bounds.min.x + bounds.max.x) / 2, y: bounds.min.y }) : toScreen(centre);
           const sr = toScreen(rot);
           ctx.save();
           ctx.strokeStyle = 'rgba(255,209,138,0.85)';
@@ -1077,6 +1140,7 @@ export default function EditorCanvas(props: Props) {
       if (rulerRef.current) drawRuler(ctx, overlayView);
       drawCursorMark(ctx, overlayView);
       drawSelection(ctx, overlayView);
+      drawHoverLock(ctx, overlayView);
       drawBox(ctx, overlayView);
       drawGhost(ctx, overlayView);
       drawSpawn(ctx, overlayView);
