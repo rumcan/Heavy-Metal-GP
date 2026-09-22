@@ -276,7 +276,7 @@ export default function EditorCanvas(props: Props) {
     let pinch: { spread: number; world: Point; scale: number } | null = null;
 
     // drag modes
-    type HandleDrag = { pieceIndex: number; handleId: string; initialPiece?: any; resizeAnchor?: { min: Point; max: Point } };
+    type HandleDrag = { pieceIndex: number; handleId: string; initialPiece?: any; resizeAnchor?: { min: Point; max: Point }; cursor?: string };
     type PieceDrag = { startWorld: Point; lastWorld: Point };
     type BoxDrag = { startWorld: Point; curWorld: Point };
     let handleDrag: HandleDrag | null = null;
@@ -331,7 +331,7 @@ export default function EditorCanvas(props: Props) {
         const d = Math.hypot(h.x - world.x, h.y - world.y);
         if (d <= radiusWorld * 1.6 && d < bestDist) {
           bestDist = d;
-          best = { pieceIndex: idx, handleId: h.id, initialPiece: piece, resizeAnchor: bounds };
+          best = { pieceIndex: idx, handleId: h.id, initialPiece: piece, resizeAnchor: bounds, cursor: h.cursor };
         }
       }
       return best;
@@ -480,7 +480,7 @@ export default function EditorCanvas(props: Props) {
             if (hp !== null && lockedRef.current.has(hp)) hoveredLocked = hp;
           }
         }
-        canvas.style.cursor = hoveredHandle || hoveredLocked !== null ? 'pointer' : 'crosshair';
+        canvas.style.cursor = hoveredHandle ? (hoveredHandle.cursor ?? 'pointer') : hoveredLocked !== null ? 'pointer' : 'crosshair';
       } else {
         hoveredHandle = null;
         hoveredLocked = null;
