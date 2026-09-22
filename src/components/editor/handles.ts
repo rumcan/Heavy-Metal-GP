@@ -15,8 +15,10 @@ import { SNAP } from './camera';
 import { W } from '../../game/track';
 import { clampDeltaToExtent, xExtent } from './extent';
 import { fitGroupTranslation, translatePiece } from './translation';
-import { applyRotateHandle, hasFreeRotation, rotateHandlePoint } from './rotate';
-import { applyScaleHandle } from './scale';
+import { applyRotateHandle } from './rotate';
+import { applyCornerResize, HANDLE_RANGES } from './scale';
+export { HANDLE_RANGES };
+import type { CornerHandleId } from './scale';
 
 export interface Handle {
   id: string;
@@ -54,16 +56,8 @@ function moveDelta(piece: Piece, toX: number, anchorX: number, snap: boolean): n
  * …) are #71's and live beside that path in `pieceSettings.ts` as `SETTING_RANGES`: those are the
  * numbers a player types, these are the numbers a drag owns. Both read the schema, neither copies it.
  */
-export const HANDLE_RANGES = {
-  /** `catapult.len` — the throw arm. */
-  catapultLen: { min: 120, max: 400 },
-  /** `sling.size` — the rubber wedge. */
-  slingSize: { min: 40, max: 180 },
-  /** `crusher.w` — the piston plate. */
-  crusherW: { min: 40, max: 400 },
-  /** `platform.w` — the ferry deck. */
-  platformW: { min: 40, max: 300 },
-} as const;
+// HANDLE_RANGES moved to scale.ts with the shared corner-resize model; re-exported above so the
+// settings panel keeps importing it from here.
 
 /** `Builder.crusher`'s plate height: the deck the width handle is measured across. */
 export const CRUSHER_PLATE_H = 44;
@@ -93,6 +87,52 @@ export function catapultArmHandle(piece: { x: number; y: number; len: number; di
   return { x: piece.x + ux * piece.len * CATAPULT_ARM_SCALE, y: piece.y + uy * piece.len * CATAPULT_ARM_SCALE };
 }
 
+// ── #99 Part 1: the shared item base ─────────────────────────────────────────────────────────
+// Every placeable item, whatever its type, presents the same base controls on top of its own
+// effect handles: a bounding box (drawn in EditorCanvas), four round corner resize dots, one
+// rotate handle, a settings cog — only when the item has settings beyond its position — and a
+// lock icon. Positions come from the piece's world-space visual bounds, so a flipped piece shows
+// them exactly where it is drawn; drags are mirrored back into stored space before they are read
+// (applyHandle already does that for every handle).
+
+/** Ramp and wall are the only two types whose whole "settings" is their position/shape — every
+ * other palette item has behaviour to configure, and so gets the cog. */
+export function pieceHasSettings(t: Piece['t']): boolean {
+  return t !== 'ramp' && t !== 'wall';
+}
+
+export interface SelectionBox {
+  min: { x: number; y: number };
+  max: { x: number; y: number };
+}
+
+/** Above-the-box stalk height in world units (screen-space constant would need the camera). */
+export const BASE_STALK = 25;
+
+/** The shared base handles of the selected piece: rotate stalk above the box, the four corner
+ * resize dots, the settings cog (items with settings only) and the lock icon. The bounding box
+ * itself is a canvas stroke, not a handle. */
+export function baseBoxHandles(piece: Piece, bounds: SelectionBox): Handle[] {
+  const midX = (bounds.min.x + bounds.max.x) / 2;
+  const top = bounds.min.y - BASE_STALK;
+  const handles: Handle[] = [
+    { id: 'box-rot', x: midX, y: top, cursor: 'grab', label: 'Rotate' },
+    { id: 'box-nw', x: bounds.min.x, y: bounds.min.y, cursor: 'nwse-resize', label: 'Resize' },
+    { id: 'box-ne', x: bounds.max.x, y: bounds.min.y, cursor: 'nesw-resize', label: 'Resize' },
+    { id: 'box-sw', x: bounds.min.x, y: bounds.max.y, cursor: 'nesw-resize', label: 'Resize' },
+    { id: 'box-se', x: bounds.max.x, y: bounds.max.y, cursor: 'nwse-resize', label: 'Resize' },
+  ];
+  if (pieceHasSettings(piece.t)) {
+    handles.push({ id: 'settings', x: bounds.max.x + BASE_STALK, y: top, cursor: 'pointer', label: 'Settings' });
+  }
+  return handles;
+}
+
+/** Where a locked (or unlocked) piece carries its lock icon: above the box's top-left corner. */
+export function lockHandlePoint(bounds: SelectionBox): { x: number; y: number } {
+  return { x: bounds.min.x, y: bounds.min.y - BASE_STALK };
+}
+
 /** The inverse of `catapultArmHandle`: the arm length a pointer at `to` decodes to, before clamping. */
 export function catapultLenAt(piece: { x: number; y: number; dir: 0 | 1 }, to: { x: number; y: number }) {
   const [ux, uy] = catapultArmDir(piece);
@@ -107,13 +147,11 @@ export function slingBackDir(piece: { facing: number }): readonly [number, numbe
   return [-Math.cos(fa), -Math.sin(fa)];
 }
 
-/** World positions of every handle for `piece`. The first entry is always the "move" handle (centre). */
+/** World positions of every handle for `piece`. The first entry is always the "move" handle (centre).
+ * #99: the old per-type rotate pads are gone — `box-rot` from `baseBoxHandles` is THE rotate
+ * handle now (one for every item, always), and `applyHandle` routes it like the old `rot`. */
 export function handlesFor(piece: Piece): Handle[] {
   const handles = baseHandles(piece);
-  if (hasFreeRotation(piece)) {
-    const r = rotateHandlePoint(piece);
-    handles.push({ id: 'rot', x: r.x, y: r.y, cursor: 'grab', label: 'Rotate' });
-  }
   // A flipped piece (common in copies of calendar circuits) stores mirrored coordinates and is drawn at W - x:
   // put its handles where it is drawn, not where its numbers point.
   return piece.flip ? handles.map((h) => ({ ...h, x: W - h.x })) : handles;
@@ -426,11 +464,42 @@ function baseHandles(piece: Piece): Handle[] {
  * `handleId` is one of the ids from `handlesFor(piece)` and `to` is the
  * new world position of that handle (already snapped if the grid is on).
  */
-export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: number }, snap: boolean): Piece {
+export interface ResizeAnchor {
+  min: { x: number; y: number };
+  max: { x: number; y: number };
+}
+
+/**
+ * Apply a handle drag.
+ * `handleId` is one of the ids from `handlesFor(piece)` and `to` is the
+ * new world position of that handle (already snapped if the grid is on).
+ * `resizeAnchor` is the piece's selection box at the START of a base-handle drag (world space) —
+ * the corner resize pins its far corner and needs that stable reference; without it (unit tests)
+ * a 1-unit box around the piece centre is used so the behaviour stays pure.
+ */
+export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: number }, snap: boolean, resizeAnchor?: ResizeAnchor): Piece {
   // Handles of a flipped piece live in world space (see handlesFor); bring the pointer back into its stored space.
-  if (piece.flip) to = { x: W - to.x, y: to.y };
-  if (handleId === 'rot' || handleId === 'box-rot') return applyRotateHandle(piece, to, snap);
-  if (handleId.startsWith('box-')) return applyScaleHandle(piece, handleId, to, snap);
+  let hId = handleId;
+  if (piece.flip) {
+    to = { x: W - to.x, y: to.y };
+    // The corner a flipped pointer grabs reads mirrored too: stored-space w ↔ world-space e.
+    if (/^box-[ns][we]$/.test(hId)) hId = hId.replace(/w$/, 'W').replace(/e$/, 'w').replace(/W$/, 'e');
+    if (resizeAnchor) {
+      resizeAnchor = {
+        min: { x: W - resizeAnchor.max.x, y: resizeAnchor.min.y },
+        max: { x: W - resizeAnchor.min.x, y: resizeAnchor.max.y },
+      };
+    }
+  }
+  if (hId === 'rot' || hId === 'box-rot') return applyRotateHandle(piece, to, snap);
+  if (/^box-[ns][we]$/.test(hId)) {
+    const anchor: ResizeAnchor = resizeAnchor ?? (() => {
+      // Fallback for direct calls: a degenerate box at the piece centre (uniform middle resize).
+      return { min: { x: to.x, y: to.y }, max: { x: to.x, y: to.y } };
+    })();
+    return applyCornerResize(piece, hId as CornerHandleId, to, anchor);
+  }
+  handleId = hId;
   const sx = snap;
   switch (piece.t) {
     case 'ramp':
