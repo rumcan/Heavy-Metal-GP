@@ -1711,15 +1711,35 @@ export class Game {
               const vo2 = meta(b2)?.vortex;
               return b2 !== body && !!vo2;
             });
-            let out = vo as { cx: number; cy: number; r: number };
-            if (others.length) {
-              const pick = others[Math.floor(this.rng() * others.length)];
-              out = meta(pick).vortex!;
-            }
-            Body.setVelocity(m.body, { x: v.x * 0.5, y: Math.max(9, v.y) });
-            Body.setPosition(m.body, { x: out.cx, y: out.cy + out.r + 40 });
             this.sfx('whoosh', m, vo.cx, vo.cy);
             this.emit({ kind: 'sound', cue: 'whoosh' });
+            if (others.length) {
+              const pick = others[Math.floor(this.rng() * others.length)];
+              const out = meta(pick).vortex!;
+              // MP-05: hop the hidden-transit channel (the tunnels' own glide): an instant
+              // setPosition crosses the wire as a teleport guests chase frame by frame; a hold
+              // with a transit keeps the position stream continuous — to a screen the marble
+              // still vanishes into one funnel and materialises from another.
+              const speed = Math.max(9, Math.abs(v.y));
+              // Transit proportional to the hop: the ease-in-out's peak rate is 1.5× its mean, and
+              // MP-05 budgets a guest frame at ~120 px, so the peak stays ≲ 74 px/frame.
+              const dist = Math.hypot(out.cx - vo.cx, out.cy + out.r + 40 - vo.cy);
+              const transit = Math.max(450, Math.min(2400, dist * 0.34));
+              const until = this.time + transit;
+              m.hold = {
+                kind: 'tunnel',
+                until,
+                transit,
+                from: { x: vo.cx, y: vo.cy },
+                body,
+                exit: { x: out.cx, y: out.cy + out.r + 40, dir: { x: 0, y: 1 }, speed },
+              };
+              m.tunnelSafeUntil = until + 600;
+              this.emit({ kind: 'hold', seat: m.info.id, until, of: 'tunnel' });
+              continue;
+            }
+            Body.setVelocity(m.body, { x: v.x * 0.5, y: Math.max(9, v.y) });
+            Body.setPosition(m.body, { x: vo.cx, y: vo.cy + vo.r + 40 });
           }
         }
       }
