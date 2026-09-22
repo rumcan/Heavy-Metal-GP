@@ -12,8 +12,9 @@ local positional coordinates can be negative or outside the world bounds.
   `(0, 0)`. Saving snapshots the pieces when the dialog opens. Placement translates
   that origin to the snapped click, without subtracting the first piece again.
   A `flip` still means `worldX = 900 - storedX`, just as in a TrackDef; therefore
-  flipped local stored coordinates can be greater than 900. Directions, dimensions,
-  angles, timing, and the scoop exit's third (transit duration) value are unchanged.
+  flipped local stored coordinates can be greater than 900. Directions, dimensions, angles and
+  timing values are unchanged. (#99 retired the scoop: templates saved with one simply leave it
+  out on placement.)
 - **Buckets:** the Piece format has no bucket x coordinate; the builder owns its
   horizontal route. V2 groups containing buckets carry `fixedOriginX`, pinning
   the entire group horizontally to its saved position so relative spacing cannot

@@ -42,6 +42,7 @@ import { circuitIndexOf, gridOrderOf, rosterOf } from './net/lobby';
 import type { SeatGarage } from './net/lobby';
 import { MarbleInfo, MarbleStats, AI_COLORS, randomStats, mulberry32, PLAYER_COLORS, HeatResult, HEATS_PER_GP } from './game/types';
 import { SeasonState, newSeason, recordHeat, gridOrder, gpSeed, CALENDAR, saveSeason, loadSeason, roundTrack, roundName, setRoundTrack } from './game/season';
+import { officialTrack } from './game/official-tracks';
 import { loadAccount, saveAccount, purchaseItem, onlineRaceId, settleOnlineRace, settleRace, settleCustomRace } from './game/economy';
 import type { RacerAccount, RacePayout } from './game/economy';
 import { loadTracksSync } from './game/tracks';
@@ -736,13 +737,15 @@ export default function App() {
     );
   }
 
-  // The Workshop (MB-02): the track editor, opening on a copy of the circuit the garage is showing.
+  // The Workshop (MB-02): the track editor, opening on a copy of the circuit the garage is showing
+  // (the official archive when there is one, else a generated circuit). Fixes start from the real thing.
   if (phase === 'editor') {
     const gp = CALENDAR[circuitIndex];
     return <TrackEditor
       seed={seed}
       profile={gp.profile}
       name={gp.name}
+      initialDef={officialTrack(circuitIndex)}
       driver={quickRoster[0]}
       onExit={() => setPhase('menu')}
       onCommunity={() => setPhase('community')}
@@ -884,16 +887,11 @@ export default function App() {
   // quick race
   const quickActions: RaceAction[] = [
     { label: 'Race again', onClick: launchQuickRace, primary: true },
-    {
-      label: 'New layout',
-      onClick: () => {
-        newSeed();
-        launchQuickRace();
-      },
-    },
     { label: 'Back to garage', onClick: () => setPhase('menu') },
   ];
-  // MB-08: quick race on a custom circuit — title/seed/profile follow the def when present
+  // MB-08: quick race on a custom circuit — title/seed/profile follow the def when present.
+  // Calendar circuits race the official archives: no quick-race layout is generated either.
+  const quickDef = customTrackDef ?? officialTrack(circuitIndex);
   const quickProfile = customTrackDef ? CALENDAR[0].profile : CALENDAR[circuitIndex].profile;
   const quickTitle = customTrackDef ? customTrackDef.name : CALENDAR[circuitIndex].name;
   const quickSubtitle = customTrackDef ? `QUICK RACE / CUSTOM // ${customTrackDef.pieces.length} PCS` : "QUICK RACE / SINGLE HEAT";
@@ -903,7 +901,7 @@ export default function App() {
       seed={seed}
       roster={quickRoster}
       profile={quickProfile}
-      trackDef={customTrackDef}
+      trackDef={quickDef}
       gridOrder={quickGrid}
       title={quickTitle}
       isCustom={!!customTrackDef}

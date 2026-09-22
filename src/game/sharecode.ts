@@ -258,13 +258,6 @@ function encodeBinary(def: TrackDef): Uint8Array {
         writeUVarint(out, Math.round(p.hold));
         break;
       }
-      case 'switch': {
-        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
-        writeUVarint(out, Math.round(p.len));
-        writeUVarint(out, Math.round(p.angle * 1000));
-        writeUVarint(out, p.side);
-        break;
-      }
       // MB-10B traps / hazards / treasure
       case 'blade': {
         writeUVarint(out, Math.round(p.pivot[0])); writeUVarint(out, Math.round(p.pivot[1]));
@@ -362,16 +355,6 @@ function encodeBinary(def: TrackDef): Uint8Array {
         writeUVarint(out, Math.round(p.strength * 100));
         break;
       }
-      case 'scoop': {
-        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
-        writeUVarint(out, Math.round(p.deg)); writeUVarint(out, Math.round(p.hold));
-        writeUVarint(out, p.exit ? 1 : 0);
-        if (p.exit) {
-          writeUVarint(out, Math.round(p.exit[0])); writeUVarint(out, Math.round(p.exit[1]));
-          writeUVarint(out, Math.round(p.exit[2]));
-        }
-        break;
-      }
       // MB-10E fields
       case 'wind': {
         writeUVarint(out, Math.round(p.a[0])); writeUVarint(out, Math.round(p.a[1]));
@@ -390,12 +373,6 @@ function encodeBinary(def: TrackDef): Uint8Array {
         writeUVarint(out, Math.round(p.a[0])); writeUVarint(out, Math.round(p.a[1]));
         writeUVarint(out, Math.round(p.b[0])); writeUVarint(out, Math.round(p.b[1]));
         writeUVarint(out, Math.round(p.drag * 100));
-        break;
-      }
-      case 'pool': {
-        writeUVarint(out, Math.round(p.a[0])); writeUVarint(out, Math.round(p.a[1]));
-        writeUVarint(out, Math.round(p.b[0])); writeUVarint(out, Math.round(p.b[1]));
-        writeUVarint(out, Math.round(p.depth)); writeUVarint(out, Math.round(p.skip * 10));
         break;
       }
       case 'geyser': {
@@ -465,7 +442,8 @@ function decodeBinary(bytes: Uint8Array, version = 1): TrackDef {
     const flip = flipFlag ? true : undefined;
     const t = PIECE_TYPES[typeId];
     if (!t) throw new ShareCodeError(`Unknown piece type id ${typeId}`);
-    let p: Piece;
+    // #99: retired types are read (their bytes keep the stream aligned) but dropped.
+    let p: Piece | null;
     switch (t) {
       case 'ramp': {
         const ax = readUVarint(bytes, pos), ay = readUVarint(bytes, pos), bx = readUVarint(bytes, pos), by = readUVarint(bytes, pos);
@@ -588,9 +566,9 @@ function decodeBinary(bytes: Uint8Array, version = 1): TrackDef {
         break;
       }
       case 'switch': {
-        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), len = readUVarint(bytes, pos);
-        const angle = readUVarint(bytes, pos)/1000, side = readUVarint(bytes, pos);
-        p = { t:'switch', x, y, len, angle, side: (side === 1 ? 1 : 0) as 0|1, ...(flip?{flip}:{}) };
+        readUVarint(bytes, pos); readUVarint(bytes, pos); readUVarint(bytes, pos);
+        readUVarint(bytes, pos); readUVarint(bytes, pos);
+        p = null; // #99: retired — the piece is dropped, the code still decodes
         break;
       }
       // MB-10B traps / hazards / treasure
@@ -695,11 +673,10 @@ function decodeBinary(bytes: Uint8Array, version = 1): TrackDef {
         break;
       }
       case 'scoop': {
-        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos);
-        const deg = readUVarint(bytes, pos), hold = readUVarint(bytes, pos);
-        const hasExit = readUVarint(bytes, pos) === 1;
-        const exit = hasExit ? ([readUVarint(bytes, pos), readUVarint(bytes, pos), readUVarint(bytes, pos)] as [number, number, number]) : undefined;
-        p = exit ? { t:'scoop', x, y, deg, hold, exit, ...(flip?{flip}:{}) } : { t:'scoop', x, y, deg, hold, ...(flip?{flip}:{}) };
+        readUVarint(bytes, pos); readUVarint(bytes, pos);
+        readUVarint(bytes, pos); readUVarint(bytes, pos);
+        if (readUVarint(bytes, pos) === 1) { readUVarint(bytes, pos); readUVarint(bytes, pos); readUVarint(bytes, pos); }
+        p = null; // #99: retired — the piece is dropped, the code still decodes
         break;
       }
       // MB-10E fields
@@ -723,9 +700,9 @@ function decodeBinary(bytes: Uint8Array, version = 1): TrackDef {
         break;
       }
       case 'pool': {
-        const ax = readUVarint(bytes, pos), ay = readUVarint(bytes, pos), bx = readUVarint(bytes, pos), by = readUVarint(bytes, pos);
-        const depth = readUVarint(bytes, pos), skip = readUVarint(bytes, pos)/10;
-        p = { t:'pool', a:[ax, ay] as Vec, b:[bx, by] as Vec, depth, skip, ...(flip?{flip}:{}) };
+        readUVarint(bytes, pos); readUVarint(bytes, pos); readUVarint(bytes, pos); readUVarint(bytes, pos);
+        readUVarint(bytes, pos); readUVarint(bytes, pos);
+        p = null; // #99: retired — the piece is dropped, the code still decodes
         break;
       }
       case 'geyser': {
@@ -769,7 +746,7 @@ function decodeBinary(bytes: Uint8Array, version = 1): TrackDef {
       }
       default: throw new ShareCodeError(`Unknown piece type ${t}`);
     }
-    pieces.push(p);
+    if (p) pieces.push(p);
   }
   // ensure no trailing bytes (tamper detection)
   if (pos.o !== bytes.length) throw new ShareCodeError('Extra bytes after track data.');

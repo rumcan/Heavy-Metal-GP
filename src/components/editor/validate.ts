@@ -82,8 +82,6 @@ function pieceYs(piece: Piece): number[] {
       return [piece.y];
     case 'tunnel':
       return [piece.y, piece.exit[1]];
-    case 'switch':
-      return [piece.y - piece.len, piece.y];
     // ---- MB-10B ----
     case 'blade':
       return [piece.pivot[1], piece.pivot[1] + piece.len + piece.thin];
@@ -115,8 +113,6 @@ function pieceYs(piece: Piece): number[] {
       return [piece.y - piece.len, piece.y + 20];
     case 'sling':
       return [piece.y - 0.9 * piece.size, piece.y + 0.9 * piece.size];
-    case 'scoop':
-      return piece.exit ? [piece.y, piece.exit[1]] : [piece.y - 220, piece.y];
     default: {
       const p = piece as { y: number };
       return [p.y];
@@ -279,9 +275,6 @@ function staticChecks(def: TrackDef, track: Track | null): ValidationIssue[] {
         }
       } else if (p.t === 'trapdoor') {
         if (p.y < START_H - 60) issues.push({ severity: 'error', message: `Trapdoor #${idx} too close to the start gate`, pos: { x: p.x, y: p.y }, pieceIndex: idx });
-      } else if (p.t === 'switch') {
-        const tip = p.y - p.len;
-        if (tip < 0 || p.y > def.height) issues.push({ severity: 'error', message: `Switch #${idx} rises outside the circuit`, pos: { x: p.x, y: tip }, pieceIndex: idx });
       }
     });
 

@@ -19,7 +19,7 @@
 import { Builder, FINISH_H, W, meta, segFinish, segStart } from '../../game/track';
 import type { Track } from '../../game/track';
 import { themeFor } from '../../game/types';
-import { replayPiece, type TrackDef } from '../../game/trackdef';
+import { isRetiredPieceType, replayPiece, type TrackDef } from '../../game/trackdef';
 import { visualBoundsForPiece, type Bounds } from './bounds';
 
 export interface EditorBuild {
@@ -55,10 +55,11 @@ export function buildEditorTrack(def: TrackDef): { track: Track | null; bodyToPi
     segStart(b, 0);
     for (let i = beforeStart; i < b.bodies.length; i++) bodyToPiece[i] = -1;
 
-    // Every def piece, with mapping.
+    // Every def piece, with mapping. #99: retired types are skipped (same silent drop the
+    // loader performs) so legacy workshop drafts and shared tracks still open.
     def.pieces.forEach((piece, index) => {
       const before = b.bodies.length;
-      replayPiece(b, piece);
+      if (!isRetiredPieceType(piece.t)) replayPiece(b, piece);
       for (let i = before; i < b.bodies.length; i++) bodyToPiece[i] = index;
       pieceBounds[index] = visualBoundsForPiece(piece, b.bodies.slice(before, b.bodies.length));
     });
@@ -125,7 +126,7 @@ export function bodyToPieceForDef(def: TrackDef): number[] {
  * Returns the piece index or null when the point is on empty space or on
  * a non-def body (the gate, a start wall, the finish).
  */
-export function hitPieceAt(point: { x: number; y: number }, track: Track, bodyToPiece: number[], pieceBounds: Bounds[]): number | null {
+export function hitPieceAt(point: { x: number; y: number }, track: Track, bodyToPiece: number[], pieceBounds: Bounds[], locked?: ReadonlySet<number>): number | null {
   // Reverse iteration: the last-drawn body is visually on top, so a click
   // on an overlap should pick the topmost piece — the same rule the race
   // renderer uses.
@@ -133,6 +134,7 @@ export function hitPieceAt(point: { x: number; y: number }, track: Track, bodyTo
   for (let i = track.bodies.length - 1; i >= 0; i--) {
     const piece = bodyToPiece[i];
     if (piece === -1 || piece === undefined) continue;
+    if (locked?.has(piece)) continue; // #99: a locked item is unselectable by click
     if (checked.has(piece)) continue;
     checked.add(piece);
     // Visual bounds (rendered world coordinates) — fall back to this body's
@@ -147,10 +149,11 @@ export function hitPieceAt(point: { x: number; y: number }, track: Track, bodyTo
 }
 
 /** Hit-test with an axis-aligned world rect (box select). All piece indices whose body bounds intersect the rect. */
-export function piecesInBox(box: { minX: number; minY: number; maxX: number; maxY: number }, _track: Track, _bodyToPiece: number[], pieceBounds: Bounds[]): Set<number> {
+export function piecesInBox(box: { minX: number; minY: number; maxX: number; maxY: number }, _track: Track, _bodyToPiece: number[], pieceBounds: Bounds[], locked?: ReadonlySet<number>): Set<number> {
   const out = new Set<number>();
   for (let i = 0; i < pieceBounds.length; i++) {
     if (!pieceBounds[i]) continue;
+    if (locked?.has(i)) continue; // #99: a locked item is unselectable by box/multi-select
     const { min, max } = pieceBounds[i];
     if (max.x >= box.minX && min.x <= box.maxX && max.y >= box.minY && min.y <= box.maxY) out.add(i);
   }

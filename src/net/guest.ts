@@ -647,9 +647,12 @@ export class RaceGuest {
         // holds (cannon/catapult/scoop) park the rider at the machine until the same clock says go.
         const m = marbles[event.seat];
         if (m) {
-          m.hold = { kind: event.of ?? 'tunnel', until: event.until };
+          // #99: `scoop` stays in the wire type for back-compat but no host can name it now —
+          // coerce it to the default tunnel form if one ever arrives anyway.
+          const of = event.of ?? 'tunnel';
+          m.hold = { kind: of === 'scoop' ? 'tunnel' : of, until: event.until };
           // mirror the machine's own bookkeeping so its skin lights up for us too
-          if ((event.of === 'cannon' || event.of === 'catapult' || event.of === 'scoop') && m.hold.kind !== 'tunnel') {
+          if ((event.of === 'cannon' || event.of === 'catapult') && m.hold && m.hold.kind !== 'tunnel') {
             m.hold.at = this.game.time;
           }
         }

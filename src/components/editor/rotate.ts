@@ -129,12 +129,6 @@ export function rotatePiece(piece: Piece, rad: number, c: Point): Piece {
       const [ex, ey] = at(piece.exit[0], piece.exit[1]);
       return { ...piece, x, y, exit: [ex, ey] as Vec, edir: turnDir(piece.edir, cos, sin) };
     }
-    case 'switch': {
-      const [x, y] = at(piece.x, piece.y);
-      // A half turn swaps which side the route leans to.
-      const side = (quarterTurns % 2 !== 0) ? (piece.side === 1 ? 0 : 1) : piece.side;
-      return { ...piece, x, y, side: side as 0 | 1 };
-    }
     // ---- MB-10B: machinery pivots move around the centre; the programs stay upright ----
     case 'blade': {
       const [x, y] = at(piece.pivot[0], piece.pivot[1]);
@@ -192,14 +186,6 @@ export function rotatePiece(piece: Piece, rad: number, c: Point): Piece {
       const facing = (((piece.facing + (rad * 180) / Math.PI) % 360) + 360) % 360;
       return { ...piece, x, y, facing };
     }
-    case 'scoop': {
-      const [x, y] = at(piece.x, piece.y);
-      const deg = (((piece.deg + (rad * 180) / Math.PI) % 360) + 360) % 360;
-      return {
-        ...piece, x, y, deg,
-        ...(piece.exit ? { exit: [...turn([piece.exit[0], piece.exit[1]], c, cos, sin), piece.exit[2]] as [number, number, number] } : {}),
-      };
-    }
     case 'peg':
     case 'ppeg':
     case 'itembox': {
@@ -212,14 +198,6 @@ export function rotatePiece(piece: Piece, rad: number, c: Point): Piece {
     }
     case 'mud':
       return { ...piece, a: turn(piece.a, c, cos, sin), b: turn(piece.b, c, cos, sin) };
-    case 'pool': {
-      // The water level stays horizontal: slide the corners but keep depth vertical.
-      const [ax, ay] = at(piece.a[0], piece.a[1]);
-      const [bx, by] = at(piece.b[0], piece.b[1]);
-      const lx = Math.min(ax, bx), hx = Math.max(ax, bx);
-      const top = Math.min(ay, by);
-      return { ...piece, a: [lx, top], b: [hx, top] };
-    }
     case 'magnet':
     case 'geyser': {
       const [x, y] = at(piece.x, piece.y);

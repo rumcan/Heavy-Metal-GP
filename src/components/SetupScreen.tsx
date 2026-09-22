@@ -6,6 +6,7 @@ import { DRIVER_NAMES, PLAYER_PORTRAIT_COUNT, RIVALS, characterOf } from '../gam
 import Portrait from './Portrait';
 import type { MarbleStats, MarbleInfo } from '../game/types';
 import { CALENDAR } from '../game/season';
+import { officialTrack } from '../game/official-tracks';
 import Brand from './Brand';
 import CircuitPreview from './CircuitPreview';
 import PhysicsLab from './PhysicsLab';
@@ -92,6 +93,10 @@ export default function SetupScreen(props: Props) {
   const ph = useMemo(() => statsToPhysics(stats), [stats]);
   const roster = useMemo<MarbleInfo[]>(() => [{ id: 0, name: 'You', color, stats, isPlayer: true, character: portrait }, ...rivals], [color, stats, rivals, portrait]);
   const circuit = CALENDAR[circuitIndex];
+  // The official archive for the selected circuit — the fixed layout the demo and any quick
+  // heat race. Null only if the archive is missing/refused, in which case the old seeded
+  // preview (and its Regenerate button) come back.
+  const official = officialTrack(circuitIndex);
   // MB-08: quick race can run a player-built circuit. Tabs are calendar vs My tracks.
   const myTracks = loadTracksSync();
   const selectedCustom = myTracks.find((t) => t.id === props.customTrackId) ?? null;
@@ -128,15 +133,15 @@ export default function SetupScreen(props: Props) {
 
     <main className="fit-main garage-fit">
       <section className="fit-pane circuit-panel" data-pane-id="circuit" aria-labelledby="circuit-title">
-        <div className="section-topline"><span className="eyebrow"><b>01</b> THE CIRCUIT</span><button className="text-button" onClick={onNewSeed}><Shuffle size={14} />Regenerate</button></div>
+        <div className="section-topline"><span className="eyebrow"><b>01</b> THE CIRCUIT</span>{circuitTab === 'calendar' && !official && <button className="text-button" onClick={onNewSeed}><Shuffle size={14} />Regenerate</button>}</div>
         {!seasonMode && <div className="circuit-tabs" role="tablist" aria-label="Circuit source">
           <button role="tab" aria-selected={circuitTab === 'calendar'} className={circuitTab === 'calendar' ? 'selected' : ''} onClick={() => { setCircuitTab('calendar'); props.onSelectCustom?.(null); }}>Calendar</button>
           <button role="tab" aria-selected={circuitTab === 'custom'} className={circuitTab === 'custom' ? 'selected' : ''} onClick={() => setCircuitTab('custom')}>My tracks{myTracks.length ? ` (${myTracks.length})` : ''}</button>
         </div>}
         {circuitTab === 'calendar' ? (
           <>
-            <div className="circuit-title-row"><div><h2 id="circuit-title">{circuit.short}</h2><span>{circuit.location}</span></div><span className="circuit-seed">SEED<br /><b>{seed.toString(16).slice(0, 6).toUpperCase()}</b></span></div>
-            <CircuitPreview seed={seed} roster={roster} profile={circuit.profile} />
+            <div className="circuit-title-row"><div><h2 id="circuit-title">{circuit.short}</h2><span>{circuit.location}</span></div>{official ? <span className="circuit-seed">OFFICIAL<br /><b>{official.pieces.length} PCS</b></span> : <span className="circuit-seed">SEED<br /><b>{seed.toString(16).slice(0, 6).toUpperCase()}</b></span>}</div>
+            <CircuitPreview seed={seed} roster={roster} profile={circuit.profile} def={official} />
             <div className="circuit-selector" aria-label="Select a circuit">{CALENDAR.map((gp, i) => <button key={gp.id} className={i === circuitIndex ? 'selected' : ''} aria-pressed={i === circuitIndex} onClick={() => { props.onSelectCustom?.(null); onCircuit(i); }}><span>{String(i + 1).padStart(2, '0')}</span><strong>{gp.short}</strong></button>)}</div>
           </>
         ) : (

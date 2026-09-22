@@ -48,12 +48,14 @@ test('Wind placement keeps its full field height with grid snapping enabled', ()
   assert.equal(snapped.a[1] % 25, 0);
 });
 
-test('Rotating a subway scoop preserves the transit duration and valid exit', () => {
-  const scoop: Piece = { t: 'scoop', x: 450, y: 1500, deg: 270, hold: 800, exit: [550, 1700, 1400] };
+test('Rotating a tunnel preserves the transit duration and valid exit', () => {
+  // #99: this used to cover the (retired) subway scoop; a tunnel is the other piece whose
+  // secondary anchor (its exit) must survive rotation with its timing untouched.
+  const tunnel: Piece = { t: 'tunnel', x: 450, y: 1500, exit: [550, 1700], edir: [1, 0], ms: 1400, speed: 8 };
   for (const deg of [15, 90, 180, -90]) {
-    const rotated = rotateSelection([scoop], [0], deg)[0];
-    assert.ok(rotated.t === 'scoop');
-    assert.equal(rotated.exit?.[2], 1400);
+    const rotated = rotateSelection([tunnel], [0], deg)[0];
+    assert.ok(rotated.t === 'tunnel');
+    assert.equal(rotated.ms, 1400);
     assert.ok(validateTrackDef(defFor(rotated)).ok);
     assert.ok(buildTrackFromDef(defFor(rotated)).bodies.length);
   }

@@ -18,7 +18,6 @@ function mapCoordinates(piece: Piece, point: (x: number, y: number) => Vec): Pie
     [p.bx, p.by] = point(p.bx, p.by);
   }
   if (p.t === 'tunnel') p.exit = point(...p.exit);
-  if (p.t === 'scoop' && p.exit) p.exit = [...point(p.exit[0], p.exit[1]), p.exit[2]];
   // Buckets have no authored x; their horizontal motion is fixed by the builder.
   if (p.t === 'bucket') p.y = point(W / 2, p.y)[1];
   return p;

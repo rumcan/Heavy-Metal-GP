@@ -1,4 +1,5 @@
 import * as storage from './storage';
+import { officialTrack } from './official-tracks';
 import type { TrackDef } from './trackdef';
 import { GrandPrix, HeatResult, MarbleInfo, POINTS, FASTEST_BONUS, HEATS_PER_GP, TEAMS, Team, TrackProfile, CIRCUIT_LENGTH_MULTIPLIER, TRACK_THEMES, ThemeId } from './types';
 
@@ -8,9 +9,9 @@ export const CALENDAR: GrandPrix[] = [
   { id: 0, name: 'Marblehurst Grand Prix', short: 'MARBLEHURST', location: 'Marblehurst Park', flag: '🇬🇧', desc: 'Seeded fairground switchbacks with weight cuts, spring shelves and timed ferries.', profile: P(10, { 'Rope Crossing': 1.4, 'Teeter Crossing': 1.3, 'Catapult Ledge': 1.4, 'Fan Garden': 1.3, 'Drawbridge Gap': 1.2 }, 'classic') },
   { id: 1, name: 'Monte Pipo Street Circuit', short: 'MONTE PIPO', location: 'Monte Pipo Harbour', flag: '🇲🇨', desc: 'Harbour switchbacks with jump-access burrows, cargo cuts and crane duels.', profile: P(11, { Chicane: 3, Funnel: 2.5, 'Zigzag Pipes': 1.5, 'Ice Slide': 0.2, Splitter: 0.3, 'Crumbling Wall': 1.6, 'Trapdoor Drop': 1.3, 'Crusher Alley': 1.5, 'Mace Sweep': 1.2, 'Wheel Lift': 1.5, 'Cannon Run': 1.5, 'Tar Flats': 1.2, 'Target Gate': 1.2 }, 'street') },
   { id: 2, name: 'Silverpeg Grand Prix', short: 'SILVERPEG', location: 'Silverpeg Circuit', flag: '🎯', desc: 'Small scoring pockets, express gaps and rebound shelves built into a connected race.', profile: P(11, { 'Peggle Board': 3.5, 'Peg Field': 2.5, Chicane: 0.4, 'Lodestone Way': 1.2, 'Turnstile Square': 1.2 }, 'silver') },
-  { id: 3, name: 'Spa-Francoroll', short: 'SPA', location: 'Ardennes Chutes', flag: '🇧🇪', desc: 'Fast beltways and momentum gaps through the forest, with useful inside cuts.', profile: P(12, { 'Ice Slide': 3, 'Zigzag Pipes': 2, Splitter: 1.5, 'Peg Field': 0.3, 'Tunnel Shortcut': 1.4, 'Boulder Run': 1.4, 'Screw Tower': 1.3, 'Scoop Subway': 0.9, 'Skipping Pools': 1.0, 'Vortex Bowl': 1.0 }, 'forest') },
+  { id: 3, name: 'Spa-Francoroll', short: 'SPA', location: 'Ardennes Chutes', flag: '🇧🇪', desc: 'Fast beltways and momentum gaps through the forest, with useful inside cuts.', profile: P(12, { 'Ice Slide': 3, 'Zigzag Pipes': 2, Splitter: 1.5, 'Peg Field': 0.3, 'Tunnel Shortcut': 1.4, 'Boulder Run': 1.4, 'Screw Tower': 1.3, 'Vortex Bowl': 1.0 }, 'forest') },
   { id: 4, name: 'Suzuka Spiral', short: 'SUZUKA', location: 'Suzuka Spiral', flag: '🇯🇵', desc: 'Canyon machinery, weight routes and timed ferries connected by banked roads.', profile: P(11, { Spinners: 3, Splitter: 2.5, Funnel: 1.5, 'Switchback Lanes': 1.7, 'Blade Gauntlet': 1.6, 'Saw Slot': 1.4, 'Beltway': 1.6, 'Teeter Crossing': 1.2, 'Flipper Alley': 1.6, 'Sling Chute': 1.5, 'Vent Field': 1.3, 'Trampoline Alley': 1.2 }, 'worg') },
-  { id: 5, name: 'Yas Marble Finale', short: 'YAS MARBLE', location: 'Yas Marble Island', flag: '🏁', desc: 'A seeded forge finale of pressure gates, upper shortcuts and a clean finishing straight.', profile: P(14, { 'Crack Wall Shortcut': 1.6, 'Bounce Ramp': 1.6, 'Peggle Board': 1.5, 'Tunnel Shortcut': 1.3, 'Switchback Lanes': 1.3, 'Crumbling Wall': 1.2, 'Trapdoor Drop': 1.2, 'Blade Gauntlet': 1.2, 'Saw Slot': 1.2, 'Crusher Alley': 1.2, 'Boulder Run': 1.3, 'Mace Sweep': 1.2, 'Wheel Lift': 1.1, 'Screw Tower': 1.1, 'Beltway': 1.1, 'Teeter Crossing': 1.1, 'Rope Crossing': 1.1, 'Cannon Run': 1.1, 'Catapult Ledge': 1.05, 'Flipper Alley': 1.05, 'Sling Chute': 1.05, 'Scoop Subway': 1.05, 'Fan Garden': 1.05, 'Lodestone Way': 1.0, 'Tar Flats': 1.0, 'Skipping Pools': 1.0, 'Vent Field': 1.0, 'Trampoline Alley': 1.0, 'Turnstile Square': 0.9, 'Target Gate': 0.9, 'Vortex Bowl': 0.9, 'Drawbridge Gap': 1.0 }, 'dwarven') },
+  { id: 5, name: 'Yas Marble Finale', short: 'YAS MARBLE', location: 'Yas Marble Island', flag: '🏁', desc: 'A seeded forge finale of pressure gates, upper shortcuts and a clean finishing straight.', profile: P(14, { 'Crack Wall Shortcut': 1.6, 'Bounce Ramp': 1.6, 'Peggle Board': 1.5, 'Tunnel Shortcut': 1.3, 'Switchback Lanes': 1.3, 'Crumbling Wall': 1.2, 'Trapdoor Drop': 1.2, 'Blade Gauntlet': 1.2, 'Saw Slot': 1.2, 'Crusher Alley': 1.2, 'Boulder Run': 1.3, 'Mace Sweep': 1.2, 'Wheel Lift': 1.1, 'Screw Tower': 1.1, 'Beltway': 1.1, 'Teeter Crossing': 1.1, 'Rope Crossing': 1.1, 'Cannon Run': 1.1, 'Catapult Ledge': 1.05, 'Flipper Alley': 1.05, 'Sling Chute': 1.05, 'Fan Garden': 1.05, 'Lodestone Way': 1.0, 'Tar Flats': 1.0, 'Vent Field': 1.0, 'Trampoline Alley': 1.0, 'Turnstile Square': 0.9, 'Target Gate': 0.9, 'Vortex Bowl': 0.9, 'Drawbridge Gap': 1.0 }, 'dwarven') },
 ];
 
 export const QUICK_PROFILE: TrackProfile = P(11, {}, 'classic');
@@ -24,18 +25,23 @@ export interface SeasonState {
   fastest: (number | null)[]; // marble id awarded fastest-heat bonus per round
   complete: boolean;
   /**
-   * Per round, a player-built circuit that replaces the calendar track (null/missing = the calendar track).
-   * A copy of the def, not a My-tracks id, so editing or deleting the saved track can't change a season.
+   * Per round, a player-built circuit that replaces the round's official circuit (null/missing = the
+   * archived official track). A copy of the def, not a My-tracks id, so editing or deleting the saved
+   * track can't change a season.
    */
   tracks?: (TrackDef | null)[];
 }
 
-/** The player-built circuit a round runs on, or null for the calendar track. */
+/**
+ * The circuit a round races: the player's swap-in, else the shipped archive, else null (the
+ * seeded generator inside `Game`). Calendar rounds race the archived official circuits in
+ * `src/game/official-tracks` — generated once in the Workshop, hand-fixed, archived — so the
+ * same saved layout runs in the menu demo and in every heat, and nothing generates at race time.
+ */
 export function roundTrack(season: SeasonState, round: number): TrackDef | null {
   const custom = season.tracks?.[round];
   if (custom) return custom;
-  // The calendar now races the seeded connected generator. Saved Workshop overrides still win.
-  return null;
+  return officialTrack(round);
 }
 
 /** Display name of a round's circuit: the custom track's name, or the Grand Prix name. */

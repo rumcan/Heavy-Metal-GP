@@ -157,9 +157,6 @@ function buildDefault(type: PieceType, at: Point, snap = false): Piece {
       const center_x = hx - hinge * w / 2;
       return { t: 'trapdoor', x: center_x, y: snap ? snapVal(cy) : cy, w, hinge, mode: 'timer' as 'timer' | 'weight', open: 1400, closed: 2800, phase: 0, kg: 2.4, hold: 300 };
     }
-    case 'switch': {
-      return { t: 'switch', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, len: 120, angle: 0.65, side: 0 as 0 | 1 };
-    }
     // ---- MB-10B: blades and crushers ----
     case 'blade': {
       return { t: 'blade', pivot: [snap ? snapVal(cx) : cx, snap ? snapVal(cy) : cy] as [number, number], len: 160, amp: 0.9, period: 2600, phase: 0, thin: 8 };
@@ -230,9 +227,6 @@ function buildDefault(type: PieceType, at: Point, snap = false): Piece {
     case 'sling': {
       return { t: 'sling', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, size: 90, facing: 245, strength: 4 };
     }
-    case 'scoop': {
-      return { t: 'scoop', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, deg: 270, hold: 800 };
-    }
     case 'wind': {
       return { t: 'wind', a: [snap ? snapVal(cx - 110) : cx - 110, snap ? snapVal(cy - 260) : cy - 260], b: [snap ? snapVal(cx + 110) : cx + 110, snap ? snapVal(cy) : cy], dir: 270, str: 0.34, pulse: 2600, phase: 0 };
     }
@@ -241,9 +235,6 @@ function buildDefault(type: PieceType, at: Point, snap = false): Piece {
     }
     case 'mud': {
       return { t: 'mud', a: [snap ? snapVal(cx - 130) : cx - 130, snap ? snapVal(cy) : cy], b: [snap ? snapVal(cx + 130) : cx + 130, snap ? snapVal(cy + 40) : cy + 40], drag: 0.26 };
-    }
-    case 'pool': {
-      return { t: 'pool', a: [snap ? snapVal(cx - 150) : cx - 150, snap ? snapVal(cy) : cy], b: [snap ? snapVal(cx + 150) : cx + 150, snap ? snapVal(cy) : cy], depth: 96, skip: 6.5 };
     }
     case 'geyser': {
       return { t: 'geyser', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, h: 300, period: 3800, phase: 0 };

@@ -261,9 +261,7 @@ add('MB-10D launchers: the whole field rides every toy', 'Race safety', async ()
       { t: 'ramp', a: [340, 2270], b: [890, 2340] },
       { t: 'ramp', a: [0, 2260], b: [260, 2330] }, { t: 'ramp', a: [260, 2330], b: [450, 2410] },
       { t: 'ramp', a: [450, 2410], b: [640, 2480] },
-      { t: 'scoop', x: 545, y: 2453, deg: 279, hold: 700 },
       { t: 'ramp', a: [640, 2480], b: [890, 2720] },
-      { t: 'scoop', x: 300, y: 2680, deg: 276, hold: 800, exit: [420, 2740, 1400] },
       { t: 'ramp', a: [240, 2760], b: [890, 2800] },
       { t: 'ramp', a: [0, 2860], b: [400, 3030] }, { t: 'ramp', a: [400, 3030], b: [890, 3180] },
     ],
@@ -286,7 +284,7 @@ add('MB-10D launchers: the whole field rides every toy', 'Race safety', async ()
       ensure(game.allFinished(), `Seed ${seed} left the field waiting past 240s.`);
     } finally { game.destroy(); }
   }
-  for (const need of ['hold:cannon', 'hold:catapult', 'hold:scoop', 'flipper', 'sling']) {
+  for (const need of ['hold:cannon', 'hold:catapult', 'flipper', 'sling']) {
     ensure((totals[need] ?? 0) > 0, `Launcher ${need} never fired across the three seeds.`);
   }
   return `3 seeds on the proving ground; rides ${JSON.stringify(totals)}`;
@@ -318,9 +316,7 @@ add('MB-10E fields: every field fires and nobody drowns', 'Race safety', async (
       { t: 'mud', a: [430, 1446], b: [700, 1564], drag: 0.3 },
       { t: 'ramp', a: [560, 1500], b: [890, 1670] },
       { t: 'ramp', a: [0, 1830], b: [240, 1950] },
-      { t: 'pool', a: [290, 1970], b: [620, 1970], depth: 96, skip: 6.5 },
-      { t: 'ramp', a: [634, 1986], b: [880, 2140] },
-      { t: 'ramp', a: [240, 1990], b: [330, 2030] },
+      { t: 'ramp', a: [240, 1950], b: [880, 2140] },
       { t: 'ramp', a: [0, 2230], b: [300, 2380] },
       { t: 'ramp', a: [300, 2380], b: [400, 2410] },
       { t: 'geyser', x: 430, y: 2408, h: 260, period: 3500, phase: 0 },
@@ -350,10 +346,12 @@ add('MB-10E fields: every field fires and nobody drowns', 'Race safety', async (
     } finally { game.destroy(); }
   }
   // every cue-bearing field must have fired at least once across the seeds
-  for (const need of ['steam', 'gurgle', 'zap', 'splash']) {
+  // (#99: 'splash' belonged to the retired skipping pond; the remaining cues: geyser steam,
+  // mud gurgle, magnet zap.)
+  for (const need of ['steam', 'gurgle', 'zap']) {
     ensure((cues[need] ?? 0) > 0, `Field cue '${need}' never fired across the three seeds.`);
   }
-  return `3 seeds on the fields ground; cues ${JSON.stringify({ steam: cues.steam ?? 0, gurgle: cues.gurgle ?? 0, zap: cues.zap ?? 0, splash: cues.splash ?? 0 })}`;
+  return `3 seeds on the fields ground; cues ${JSON.stringify({ steam: cues.steam ?? 0, gurgle: cues.gurgle ?? 0, zap: cues.zap ?? 0 })}`;
 });
 
 add('MB-10F set pieces: every big toy fires and nobody is penned', 'Race safety', async () => {

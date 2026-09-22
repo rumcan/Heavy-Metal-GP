@@ -217,18 +217,6 @@ export function updateElement(body: Matter.Body, time: number, dt: number): void
       if (body.collisionFilter.mask !== mask) body.collisionFilter.mask = mask;
       return;
     }
-    case 'switch': {
-      const pivot = md.pivot;
-      const len = md.plateLen ?? 120;
-      if (!pivot) return;
-      const target = (md.side === 1 ? 1 : -1) * (md.swingAngle ?? 0.6);
-      // ease the plate over ~180ms so the swing reads (and never teleports a resting marble)
-      const cur = body.angle + (target - body.angle) * Math.min(1, dt * 0.0055);
-      (Body.setAngle as unknown as (b: Matter.Body, a: number, u: boolean) => void)(body, cur, true);
-      (Body.setPosition as unknown as (b: Matter.Body, p: Matter.Vector, u: boolean) => void)(
-        body, { x: pivot.x + Math.sin(cur) * len / 2, y: pivot.y - Math.cos(cur) * len / 2 }, true);
-      return;
-    }
     // ---- MB-10C: the water wheel hub spins on the race clock like every other machine ----
     case 'wheel': {
       const motion = md.motion;
@@ -337,7 +325,6 @@ export function maceTip(motion: Extract<Motion, { mode: 'sweep' }>, a: number): 
 /** Drive every framework element of this track for one frame. */
 export function updateElements(track: Track, time: number, dt: number): void {
   for (const body of elementBodies(track, 'trapdoor')) updateElement(body, time, dt);
-  for (const body of elementBodies(track, 'switch')) updateElement(body, time, dt);
   for (const body of elementBodies(track, 'blade')) updateElement(body, time, dt);
   for (const body of elementBodies(track, 'saw')) updateElement(body, time, dt);
   for (const body of elementBodies(track, 'crusher')) updateElement(body, time, dt);
