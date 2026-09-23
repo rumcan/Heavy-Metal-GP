@@ -1,14 +1,13 @@
 /** What's new: a small pop-up shown once per version when the game starts. */
-import { ArrowRight, Flag, Hammer, Sparkles } from 'lucide-react';
+import { Flag, Hammer, Sparkles } from 'lucide-react';
 import Dialog from './Dialog';
 import { APP_VERSION } from '../game/version';
 
 interface Props {
   onClose: () => void;
-  onWorkshop: () => void;
 }
 
-export default function WhatsNew({ onClose, onWorkshop }: Props) {
+export default function WhatsNew({ onClose }: Props) {
   return <Dialog titleId="whats-new-title" onClose={onClose} className="whats-new">
     <span className="eyebrow"><Sparkles size={14} /> WHAT'S NEW <span className="whats-new-version">v{APP_VERSION}</span></span>
     <h2 id="whats-new-title">Official Circuits Update</h2>
@@ -31,9 +30,6 @@ export default function WhatsNew({ onClose, onWorkshop }: Props) {
           <p>
             Want a different layout? Generate one in the Workshop's New track dialog, fix it until it races the way you want, save it, and swap it in for any round before its first heat. Custom tracks still pay 30% of the usual winnings.
           </p>
-          <button className="button-primary" onClick={onWorkshop} style={{ marginTop: 10 }}>
-            <Hammer size={15} />Open Workshop<ArrowRight size={16} />
-          </button>
         </div>
       </li>
     </ul>

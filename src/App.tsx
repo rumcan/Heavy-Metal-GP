@@ -610,7 +610,7 @@ export default function App() {
         onClose={() => setLadderOpen(false)}
       />}
       {shopOpen && <PitShop account={account} onBuy={buy} onClose={() => setShopOpen(false)} />}
-      {whatsNew && phase === 'menu' && <WhatsNew onClose={closeWhatsNew} onWorkshop={() => { closeWhatsNew(); setPhase('editor'); }} />}
+      {whatsNew && phase === 'menu' && <WhatsNew onClose={closeWhatsNew} />}
     </>
   );
   const launchQuickRace = () => {
@@ -860,7 +860,8 @@ export default function App() {
         seed={online.seed}
         roster={onlineRoster}
         profile={gp.profile}
-        trackDef={onlineCustomDef}
+        // Calendar circuits race their official archives online too — never a generated layout.
+        trackDef={isCustomOnline ? onlineCustomDef : officialTrack(circuitIndexOf(online.settings)) ?? onlineCustomDef}
         gridOrder={onlineGrid}
         title={gp.name}
         isCustom={isCustomOnline}
