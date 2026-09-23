@@ -80,9 +80,10 @@ for (const tile of TILES) {
     // Aim the pointer right of the centre (piece aims at 90deg); if the piece already points there, aim below
     // it instead (180deg) so the test always asks for a real turn.
     const aimRight = Math.abs(Math.PI / 2 - pieceAngle(piece)) > 0.05;
-    const pointer = aimRight ? { x: c.x + 150, y: c.y } : { x: c.x, y: c.y + 150 };
+    // an odd angle (about 37deg off), not a quarter turn, so quarter-turn-only rotation is caught too
+    const pointer = aimRight ? { x: c.x + 150, y: c.y + 113 } : { x: c.x - 113, y: c.y + 150 };
     const rotated = applyHandle(piece, 'box-rot', pointer, false);
-    const expected = (aimRight ? Math.PI / 2 : Math.PI) - pieceAngle(piece);
+    const expected = Math.atan2(pointer.y - c.y, pointer.x - c.x) + Math.PI / 2 - pieceAngle(piece);
     const p0 = outline(before.bodies);
     const p1 = outline(build(rotated).bodies);
     // Round bodies: a turned circle has the same outline, so follow a rim marker (as drawn) on its own.
