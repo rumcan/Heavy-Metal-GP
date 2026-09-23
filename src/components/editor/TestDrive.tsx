@@ -33,18 +33,21 @@ interface Props {
   driver: MarbleInfo;
   seed: number;
   ghost: boolean;
+  /** Watch AI: every marble, the garage one included, is AI-driven; the camera follows a chosen position. */
+  watch: boolean;
   spawnAt: Point | null;
   onExit: () => void;
 }
 
-function makeGhostRoster(seed: number, driver: MarbleInfo): MarbleInfo[] {
+function makeGhostRoster(seed: number, driver: MarbleInfo, watch = false): MarbleInfo[] {
   const rng = mulberry32(seed ^ 0x9e3779b9 ^ 0x12345);
   const pool = RIVALS.map((_, i) => i);
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
     [pool[i], pool[j]] = [pool[j], pool[i]];
   }
-  const roster: MarbleInfo[] = [{ ...driver, id: 0, isPlayer: true }];
+  // Watching: the garage marble races as one more AI (no isPlayer => the engine drives it).
+  const roster: MarbleInfo[] = [{ ...driver, id: 0, isPlayer: !watch }];
   for (let i = 0; i < 9; i++) {
     roster.push({
       id: i + 1,
@@ -64,13 +67,17 @@ interface Hud {
   speed: number;
   trail: number;
   finished: boolean;
+  /** Watch AI: who the camera is on. */
+  following: string;
 }
 
-export default function TestDrive({ def, driver, seed, ghost, spawnAt, onExit }: Props) {
+export default function TestDrive({ def, driver, seed, ghost, watch, spawnAt, onExit }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef<Game | null>(null);
   const controls = useRef({ left: false, right: false });
-  const [hud, setHud] = useState<Hud>({ time: 0, rank: 1, speed: 0, trail: 0, finished: false });
+  const [hud, setHud] = useState<Hud>({ time: 0, rank: 1, speed: 0, trail: 0, finished: false, following: '' });
+  // Watch AI: the race position the camera follows (1 = leader). Tab / [ ] cycle it.
+  const followRef = useRef(1);
   const [paused, setPaused] = useState(false);
   const pausedRef = useRef(false);
   pausedRef.current = paused;
@@ -85,8 +92,18 @@ export default function TestDrive({ def, driver, seed, ghost, spawnAt, onExit }:
     if (!canvas || !ctx) return;
 
     const track = buildTrackFromDef(def);
-    const roster = ghost ? makeGhostRoster(seed, driver) : [{ ...driver, id: 0, isPlayer: true }];
-    const game = new Game(track.seed ?? seed, roster, { track, effects: true, aiItems: ghost, recovery: true });
+    const roster = watch ? makeGhostRoster(seed, driver, true) : ghost ? makeGhostRoster(seed, driver) : [{ ...driver, id: 0, isPlayer: true }];
+    const game = new Game(track.seed ?? seed, roster, { track, effects: true, aiItems: ghost || watch, recovery: true });
+    // The marble the camera, trail and HUD are on: the test marble, or (watching) the chosen race position.
+    // Prefer marbles still racing so the camera keeps moving once the leaders are home.
+    const focus = () => {
+      if (!watch || !game.gateOpen) return game.player;
+      const order = game.ranking();
+      const racing = order.filter((r) => r.marble.finishedAt === null);
+      const pool = racing.length ? racing : order;
+      return pool[Math.min(followRef.current, pool.length) - 1].marble;
+    };
+    let lastFocus = game.player;
     gameRef.current = game;
 
     // Spawn override: drop at clicked point if provided, else grid.
@@ -158,14 +175,16 @@ export default function TestDrive({ def, driver, seed, ghost, spawnAt, onExit }:
       }
       acc += dt;
       // Apply nudge from controls
-      game.nudge = Number(controls.current.right) - Number(controls.current.left);
+      if (!watch) game.nudge = Number(controls.current.right) - Number(controls.current.left);
       while (acc >= PHYSICS_STEP) {
         game.step(PHYSICS_STEP);
         acc -= PHYSICS_STEP;
       }
 
-      // Record live trail of the test marble (player) — cap for performance.
-      const pos = game.player.body.position;
+      // Record live trail of the focused marble — cap for performance. Switching marble starts a new trail.
+      const target = focus();
+      if (target !== lastFocus) { trail.length = 0; lastFocus = target; }
+      const pos = target.body.position;
       // Only record when gate open and marble moving or finished not yet
       if (game.gateOpen) {
         const lastPt = trail[trail.length - 1];
@@ -177,7 +196,7 @@ export default function TestDrive({ def, driver, seed, ghost, spawnAt, onExit }:
 
       // Follow camera — smooth lerp to player, like RaceScreen but simpler
       if (width > 0 && height > 0) {
-        const p = game.player.body.position;
+        const p = target.body.position;
         const targetScale = Math.min(1.2, Math.max(0.55, height / 900));
         camera.scale += (targetScale - camera.scale) * (1 - Math.exp(-dt / 200));
         const halfH = height / 2 / camera.scale;
@@ -223,11 +242,11 @@ export default function TestDrive({ def, driver, seed, ghost, spawnAt, onExit }:
       hudTimer += dt;
       if (hudTimer > 90) {
         hudTimer = 0;
-        const v = game.player.body.velocity;
+        const v = target.body.velocity;
         const speed = Math.hypot(v.x, v.y) * 6;
-        const rank = game.gateOpen ? game.playerRank() : 1;
-        const finished = game.player.finishedAt !== null;
-        setHud({ time: game.raceTime(), rank, speed, trail: trail.length, finished });
+        const rank = game.gateOpen ? (game.ranking().find((r) => r.marble === target)?.rank ?? 1) : 1;
+        const finished = watch ? game.marbles.every((m) => m.finishedAt !== null) : game.player.finishedAt !== null;
+        setHud({ time: game.raceTime(), rank, speed, trail: trail.length, finished, following: target.info.name });
       }
     };
     raf = requestAnimationFrame(loop);
@@ -236,6 +255,13 @@ export default function TestDrive({ def, driver, seed, ghost, spawnAt, onExit }:
       if ((e.code === 'Escape' || e.code === 'Space') && down && !e.repeat) {
         e.preventDefault();
         exit();
+        return;
+      }
+      if (watch && down && !e.repeat && (e.code === 'Tab' || e.code === 'BracketRight' || e.code === 'BracketLeft')) {
+        e.preventDefault();
+        const n = game.marbles.length;
+        const back = e.code === 'BracketLeft' || (e.code === 'Tab' && e.shiftKey);
+        followRef.current = ((followRef.current - 1 + (back ? n - 1 : 1)) % n) + 1;
         return;
       }
       if (e.code === 'KeyP' && down && !e.repeat) {
@@ -277,7 +303,7 @@ export default function TestDrive({ def, driver, seed, ghost, spawnAt, onExit }:
       game.destroy();
       gameRef.current = null;
     };
-  }, [def, driver, seed, ghost, spawnAt, exit]);
+  }, [def, driver, seed, ghost, watch, spawnAt, exit]);
 
   return (
     <div className="testdrive-wrap">
@@ -285,7 +311,8 @@ export default function TestDrive({ def, driver, seed, ghost, spawnAt, onExit }:
       <div className="testdrive-hud">
         <div className="testdrive-hud-left">
           <span className="testdrive-chip">TEST DRIVE</span>
-          <span className="testdrive-chip">{hud.finished ? 'FINISHED' : ghost ? 'GHOST FIELD · 10 MARBLES' : 'SOLO'}</span>
+          <span className="testdrive-chip">{hud.finished ? 'FINISHED' : watch ? 'WATCHING AI · 10 MARBLES' : ghost ? 'GHOST FIELD · 10 MARBLES' : 'SOLO'}</span>
+          {watch && <span className="testdrive-chip">FOLLOWING {hud.following.toUpperCase()}</span>}
           <span className="testdrive-chip">TIME {formatTime(hud.time)}</span>
           <span className="testdrive-chip">RANK P{hud.rank}</span>
           <span className="testdrive-chip">{Math.round(hud.speed)} cm/s</span>
@@ -300,7 +327,7 @@ export default function TestDrive({ def, driver, seed, ghost, spawnAt, onExit }:
           </button>
         </div>
       </div>
-      <p className="testdrive-help">A/D or \u2190/\u2192 to nudge | P to pause | Space/Esc to return | Camera follows test marble | Ghost toggle in editor</p>
+      <p className="testdrive-help">{watch ? 'Watching the AI race | Tab or ] next marble, Shift+Tab or [ previous | P to pause | Space/Esc to return' : <>A/D or \u2190/\u2192 to nudge | P to pause | Space/Esc to return | Camera follows test marble | Ghost toggle in editor</>}</p>
 
       {/* Infinite skills drawer */}
       <div style={{ position: 'absolute', bottom: 10, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 6, background: 'rgba(0,0,0,0.85)', padding: '6px 12px', borderRadius: 12, border: '1px solid #444', alignItems: 'center' }}>

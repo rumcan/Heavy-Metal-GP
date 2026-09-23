@@ -82,6 +82,9 @@
 .editor-length input { width: 74px; height: 28px; padding: 0 6px; font: 12px var(--mono); text-align: right; color: var(--kit-parchment, #ede3c7); background: #0b1016; border: 1px solid var(--line); border-radius: 4px; }
 .editor-length .icon-button { width: 26px; height: 26px; font: 700 15px/1 var(--mono); }
 .editor-toggle { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; background: #131a23; border: 1px solid #2b3644; border-radius: 3px; color: #93a3b3; font: 9px var(--mono); letter-spacing: .3px; }
+.editor-check { cursor: pointer; user-select: none; }
+.editor-check input { margin: 0; accent-color: var(--accent); cursor: pointer; }
+.editor-check:has(input:checked) { color: #e8eef4; border-color: var(--accent); }
 .editor-toggle:hover { color: #e6edf3; }
 .editor-toggle.on { background: #d63e2e1f; border-color: var(--accent); color: #fff; }
 .editor-zoom-level { min-width: 40px; text-align: center; font: 9px var(--mono); color: #b9c7d4; }
