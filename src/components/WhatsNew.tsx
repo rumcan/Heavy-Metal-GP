@@ -1,5 +1,5 @@
 /** What's new: a small pop-up shown once per version when the game starts. */
-import { Flag, Hammer, Sparkles } from 'lucide-react';
+import { Globe, Hammer, Sparkles } from 'lucide-react';
 import Dialog from './Dialog';
 import { APP_VERSION } from '../game/version';
 
@@ -10,26 +10,22 @@ interface Props {
 export default function WhatsNew({ onClose }: Props) {
   return <Dialog titleId="whats-new-title" onClose={onClose} className="whats-new">
     <span className="eyebrow"><Sparkles size={14} /> WHAT'S NEW <span className="whats-new-version">v{APP_VERSION}</span></span>
-    <h2 id="whats-new-title">Official Circuits Update</h2>
+    <h2 id="whats-new-title">Workshop &amp; Online</h2>
 
     <ul className="whats-new-list">
       <li className="whats-new-feature">
-        <Flag size={20} />
+        <Hammer size={20} />
         <div>
-          <strong>Hand-fixed official circuits</strong>
-          <p>
-            The six Grands Prix now race <strong>fixed official layouts</strong> — generated once in the Workshop, hand-fixed and archived with the game, instead of a fresh procedural circuit every season. The live demo in the menu shows <strong>exactly the circuit the heats race</strong>: what you see is what you play.
-          </p>
+          <strong>Workshop</strong>
+          <p>Every item now rotates and resizes. Locked items stay locked until you click the padlock. Tick <strong>Watch AI</strong> to see 10 AI marbles race your map.</p>
         </div>
       </li>
 
       <li className="whats-new-feature">
-        <Hammer size={20} />
+        <Globe size={20} />
         <div>
-          <strong>Generation lives in the Workshop</strong>
-          <p>
-            Want a different layout? Generate one in the Workshop's New track dialog, fix it until it races the way you want, save it, and swap it in for any round before its first heat. Custom tracks still pay 30% of the usual winnings.
-          </p>
+          <strong>Online matchmaking</strong>
+          <p>Online races now run on the same hand-built circuits as the championship. No more random layouts.</p>
         </div>
       </li>
     </ul>
