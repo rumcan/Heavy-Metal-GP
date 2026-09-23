@@ -306,6 +306,23 @@ export default function EditorCanvas(props: Props) {
       return (rig as unknown as { defPieces?: import('../../game/trackdef').Piece[] }).defPieces ?? null;
     };
 
+    /** #101: the locked piece whose lock icon is under `world` — the ONLY way to unlock a piece. */
+    const hitLockIcon = (world: Point): number | null => {
+      const locked = lockedRef.current;
+      if (!locked?.size) return null;
+      const radiusWorld = HANDLE_SCREEN / camera().scale;
+      let best: number | null = null;
+      let bestDist = radiusWorld;
+      for (const i of locked) {
+        const bounds = pbRef.current[i];
+        if (!bounds) continue;
+        const lk = lockHandlePoint(bounds);
+        const d = Math.hypot(lk.x - world.x, lk.y - world.y);
+        if (d <= bestDist) { best = i; bestDist = d; }
+      }
+      return best;
+    };
+
     const hitHandleReal = (world: Point): HandleDrag | null => {
       const pieces = getDefPieces();
       if (!pieces) return null;
@@ -361,6 +378,12 @@ export default function EditorCanvas(props: Props) {
         // However if user clicks on a handle while armed, they probably want to place,
         // not handle. So we only check handles when not armed.
         if (!armedRef.current) {
+          // #101: a click on a locked piece's lock icon unlocks it (and does nothing else).
+          const lockHit = hitLockIcon(worldRaw);
+          if (lockHit !== null) {
+            pendingLockClick = lockHit;
+            return;
+          }
           const h = hitHandleReal(worldRaw);
           if (h) {
             if (h.handleId === 'settings') {
@@ -384,12 +407,8 @@ export default function EditorCanvas(props: Props) {
         let hit: number | null = null;
         // While placing, a click always drops a piece, even on top of another one: select mode (E) edits pieces.
         if (curTrack && b2p.length && !armedRef.current) {
-          hit = hitPieceAt(worldRaw, curTrack, b2p, pbRef.current);
-          // #99: a locked item is unselectable — the click lands on its lock: it unlocks.
-          if (hit !== null && lockedRef.current?.has(hit)) {
-            pendingLockClick = hit;
-            return;
-          }
+          // #101: locked pieces are invisible to clicks — the click passes through to what is under them.
+          hit = hitPieceAt(worldRaw, curTrack, b2p, pbRef.current, lockedRef.current);
         }
 
         if (hit !== null) {
@@ -473,14 +492,17 @@ export default function EditorCanvas(props: Props) {
         hoveredHandle = hitHandleReal(worldRaw);
         // #99: hovering a locked item shows its lock icon (no other interaction).
         hoveredLocked = null;
+        let onLockIcon = false;
         if (!hoveredHandle && lockedRef.current?.size) {
+          const iconHit = hitLockIcon(worldRaw);
+          if (iconHit !== null) { hoveredLocked = iconHit; onLockIcon = true; }
           const curTrack = trackRef.current;
-          if (curTrack && b2pRef.current.length) {
+          if (hoveredLocked === null && curTrack && b2pRef.current.length) {
             const hp = hitPieceAt(worldRaw, curTrack, b2pRef.current, pbRef.current);
             if (hp !== null && lockedRef.current.has(hp)) hoveredLocked = hp;
           }
         }
-        canvas.style.cursor = hoveredHandle ? (hoveredHandle.cursor ?? 'pointer') : hoveredLocked !== null ? 'pointer' : 'crosshair';
+        canvas.style.cursor = hoveredHandle ? (hoveredHandle.cursor ?? 'pointer') : onLockIcon ? 'pointer' : 'crosshair';
       } else {
         hoveredHandle = null;
         hoveredLocked = null;

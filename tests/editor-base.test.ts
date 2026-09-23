@@ -133,6 +133,15 @@ test('#99 base: locked pieces are unselectable by click and box-select', () => {
   assert.deepEqual([...set].sort(), [1]);
 });
 
+test('#101: a click on a locked piece passes through to the piece under it', () => {
+  // A big block with a locked tunnel-sized block on top of it (drawn later = on top).
+  const under: Piece = { t: 'block', x: 400, y: 600, w: 400, h: 400 };
+  const over: Piece = { t: 'block', x: 400, y: 600, w: 150, h: 150 };
+  const { track, bodyToPiece, pieceBounds } = buildEditorTrack(defFor([under, over]));
+  assert.equal(hitPieceAt({ x: 400, y: 600 }, track!, bodyToPiece, pieceBounds), 1);
+  assert.equal(hitPieceAt({ x: 400, y: 600 }, track!, bodyToPiece, pieceBounds, new Set([1])), 0);
+});
+
 test('#99 base: a flipped piece keeps its flipped shape after a mirrored corner drag', () => {
   // Flipped pieces store mirrored coordinates; applyHandle un-mirrors pointer AND anchor and swaps
   // the corner side, so world-east dragging world-se grows the stored piece towards world-east.
