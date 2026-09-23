@@ -78,6 +78,9 @@ export default function TestDrive({ def, driver, seed, ghost, watch, spawnAt, on
   const [hud, setHud] = useState<Hud>({ time: 0, rank: 1, speed: 0, trail: 0, finished: false, following: '' });
   // Watch AI: the race position the camera follows (1 = leader). Tab / [ ] cycle it.
   const followRef = useRef(1);
+  // Watch AI: dragging or scrolling frees the camera; Tab / [ ] / F go back to following a marble.
+  const freeCamRef = useRef(false);
+  const [freeCam, setFreeCam] = useState(false);
   const [paused, setPaused] = useState(false);
   const pausedRef = useRef(false);
   pausedRef.current = paused;
@@ -195,7 +198,7 @@ export default function TestDrive({ def, driver, seed, ghost, watch, spawnAt, on
       }
 
       // Follow camera — smooth lerp to player, like RaceScreen but simpler
-      if (width > 0 && height > 0) {
+      if (width > 0 && height > 0 && !freeCamRef.current) {
         const p = target.body.position;
         const targetScale = Math.min(1.2, Math.max(0.55, height / 900));
         camera.scale += (targetScale - camera.scale) * (1 - Math.exp(-dt / 200));
@@ -262,6 +265,11 @@ export default function TestDrive({ def, driver, seed, ghost, watch, spawnAt, on
         const n = game.marbles.length;
         const back = e.code === 'BracketLeft' || (e.code === 'Tab' && e.shiftKey);
         followRef.current = ((followRef.current - 1 + (back ? n - 1 : 1)) % n) + 1;
+        freeCamRef.current = false; setFreeCam(false);
+        return;
+      }
+      if (watch && down && !e.repeat && e.code === 'KeyF') {
+        freeCamRef.current = false; setFreeCam(false);
         return;
       }
       if (e.code === 'KeyP' && down && !e.repeat) {
@@ -288,6 +296,37 @@ export default function TestDrive({ def, driver, seed, ghost, watch, spawnAt, on
     const keyUp = (e: KeyboardEvent) => onKey(e, false);
     const onBlur = () => { controls.current.left = false; controls.current.right = false; };
 
+    // Watch AI free camera: drag to pan, scroll to zoom (about the pointer).
+    let drag: { x: number; y: number } | null = null;
+    const freeUp = () => { freeCamRef.current = true; setFreeCam(true); };
+    const onDown = (e: PointerEvent) => { if (!watch) return; drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); };
+    const onMove = (e: PointerEvent) => {
+      if (!drag) return;
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (!freeCamRef.current && Math.hypot(dx, dy) < 4) return;
+      freeUp();
+      camera.x -= dx / camera.scale;
+      camera.y -= dy / camera.scale;
+      drag = { x: e.clientX, y: e.clientY };
+    };
+    const onUp = () => { drag = null; };
+    const onWheel = (e: WheelEvent) => {
+      if (!watch) return;
+      e.preventDefault();
+      freeUp();
+      const rect = canvas.getBoundingClientRect();
+      const sx = e.clientX - rect.left - width / 2, sy = e.clientY - rect.top - height / 2;
+      const before = { x: camera.x + sx / camera.scale, y: camera.y + sy / camera.scale };
+      camera.scale = Math.max(0.2, Math.min(2.5, camera.scale * Math.exp(-e.deltaY * 0.0015)));
+      camera.x = before.x - sx / camera.scale;
+      camera.y = before.y - sy / camera.scale;
+    };
+    canvas.addEventListener('pointerdown', onDown);
+    canvas.addEventListener('pointermove', onMove);
+    canvas.addEventListener('pointerup', onUp);
+    canvas.addEventListener('pointercancel', onUp);
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+
     window.addEventListener('keydown', keyDown);
     window.addEventListener('keyup', keyUp);
     window.addEventListener('blur', onBlur);
@@ -296,6 +335,11 @@ export default function TestDrive({ def, driver, seed, ghost, watch, spawnAt, on
       cancelAnimationFrame(raf);
       clearTimeout(gateTimer);
       ro.disconnect();
+      canvas.removeEventListener('pointerdown', onDown);
+      canvas.removeEventListener('pointermove', onMove);
+      canvas.removeEventListener('pointerup', onUp);
+      canvas.removeEventListener('pointercancel', onUp);
+      canvas.removeEventListener('wheel', onWheel);
       window.removeEventListener('keydown', keyDown);
       window.removeEventListener('keyup', keyUp);
       window.removeEventListener('blur', onBlur);
@@ -311,8 +355,8 @@ export default function TestDrive({ def, driver, seed, ghost, watch, spawnAt, on
       <div className="testdrive-hud">
         <div className="testdrive-hud-left">
           <span className="testdrive-chip">TEST DRIVE</span>
-          <span className="testdrive-chip">{hud.finished ? 'FINISHED' : watch ? 'WATCHING AI · 10 MARBLES' : ghost ? 'GHOST FIELD · 10 MARBLES' : 'SOLO'}</span>
-          {watch && <span className="testdrive-chip">FOLLOWING {hud.following.toUpperCase()}</span>}
+          <span className="testdrive-chip">{hud.finished ? 'FINISHED' : watch ? 'WATCHING AI · 10 MARBLES' : ghost ? 'YOU + 9 AI RIVALS' : 'SOLO'}</span>
+          {watch && <span className="testdrive-chip">{freeCam ? 'FREE CAMERA · F to follow' : `FOLLOWING ${hud.following.toUpperCase()}`}</span>}
           <span className="testdrive-chip">TIME {formatTime(hud.time)}</span>
           <span className="testdrive-chip">RANK P{hud.rank}</span>
           <span className="testdrive-chip">{Math.round(hud.speed)} cm/s</span>
@@ -327,7 +371,7 @@ export default function TestDrive({ def, driver, seed, ghost, watch, spawnAt, on
           </button>
         </div>
       </div>
-      <p className="testdrive-help">{watch ? 'Watching the AI race | Tab or ] next marble, Shift+Tab or [ previous | P to pause | Space/Esc to return' : <>A/D or \u2190/\u2192 to nudge | P to pause | Space/Esc to return | Camera follows test marble | Ghost toggle in editor</>}</p>
+      <p className="testdrive-help">{watch ? 'Watching the AI race | Drag to move the camera, scroll to zoom | F or Tab to follow a marble ([ ] cycle) | P to pause | Esc to return' : <>A/D or \u2190/\u2192 to nudge | P to pause | Space/Esc to return | Camera follows test marble | AI rivals toggle in editor</>}</p>
 
       {/* Infinite skills drawer */}
       <div style={{ position: 'absolute', bottom: 10, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 6, background: 'rgba(0,0,0,0.85)', padding: '6px 12px', borderRadius: 12, border: '1px solid #444', alignItems: 'center' }}>

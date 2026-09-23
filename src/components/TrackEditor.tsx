@@ -1177,9 +1177,9 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
               className={`editor-toggle ${ghost ? 'on' : ''}`}
               aria-pressed={ghost}
               onClick={() => setGhost((v) => !v)}
-              title="Ghost field: 10 marbles with AI (toggle before or after starting test, trail shows player)"
+              title="AI rivals: race your marble against 9 AI marbles (you still drive yours)"
             >
-              <Users size={13} /> Ghost field
+              <Users size={13} /> AI rivals
             </button>
             <label className="editor-toggle editor-check" title="Watch AI: 10 AI marbles race the map on their own (your garage marble too). Tab cycles who the camera follows.">
               <input type="checkbox" checked={watchAi} onChange={(e) => setWatchAi(e.target.checked)} /> Watch AI
@@ -1200,7 +1200,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
               </button>
             )}
             <span className={`editor-chip ${testing ? 'is-testing' : 'is-muted'}`} style={{ marginLeft: 'auto' }}>
-              {testing ? 'TESTING · Esc to return · Def & camera preserved' : pickSpawn ? 'PICK A POINT ON THE CIRCUIT' : watchAi ? 'AI DRIVES ALL 10 MARBLES' : ghost ? '10 MARBLES ON TEST' : 'SOLO TEST · A/D nudge · Trail live'}
+              {testing ? 'TESTING · Esc to return · Def & camera preserved' : pickSpawn ? 'PICK A POINT ON THE CIRCUIT' : watchAi ? 'AI DRIVES ALL 10 MARBLES' : ghost ? 'YOU + 9 AI RIVALS' : 'SOLO TEST · A/D nudge · Trail live'}
             </span>
           </div>
 
