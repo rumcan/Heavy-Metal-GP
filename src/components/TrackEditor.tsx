@@ -44,6 +44,8 @@ import {
   MoveVertical,
   Eraser,
   MousePointer2,
+  Group,
+  Ungroup,
 } from 'lucide-react';
 import Brand from './Brand';
 import Dialog from './Dialog';
@@ -65,6 +67,8 @@ import { History } from './editor/history';
 import { buildEditorTrack } from './editor/build';
 import { applyHandle, movePieces, mirrorPiece } from './editor/handles';
 import { ROTATE_STEP_DEG, rotateSelection } from './editor/rotate';
+import { applyGroupHandle } from './editor/group';
+import type { GroupBox } from './editor/group';
 import { FINISH_H, START_H } from '../game/track';
 import type { Piece, TrackDef } from '../game/trackdef';
 import { MAX_NAME } from '../game/trackdef';
@@ -230,6 +234,17 @@ function ensureHeight(def: TrackDef): TrackDef {
   const cap = Math.max(MAX_TRACK_LENGTH, def.height);
   const grown = Math.min(cap, lowest + 400);
   return grown > def.height ? { ...def, height: grown } : def;
+}
+
+/** Copies get their own group ids, so a duplicated group is a new group rather than joining the original. */
+function regroup(added: Piece[], existing: Piece[]): Piece[] {
+  let next = Math.max(0, ...existing.map((p) => p.grp ?? 0), ...added.map((p) => p.grp ?? 0)) + 1;
+  const map = new Map<number, number>();
+  return added.map((p) => {
+    if (p.grp === undefined) return p;
+    if (!map.has(p.grp)) map.set(p.grp, next++);
+    return { ...p, grp: map.get(p.grp)! };
+  });
 }
 
 export default function TrackEditor({ seed, profile, name, initialDef, driver, onExit, onCommunity }: Props) {
@@ -477,8 +492,14 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
     [armed, grid, commit, circuit.def.pieces.length],
   );
 
+  // Groups select as one: picking any member picks every piece that shares its group id.
+  const piecesRef = useRef(circuit.def.pieces);
+  piecesRef.current = circuit.def.pieces;
   const handleSelect = useCallback(
-    (indices: number[], additive: boolean) => {
+    (picked: number[], additive: boolean) => {
+      const all = piecesRef.current;
+      const grps = new Set(picked.map((i) => all[i]?.grp).filter((g): g is number => g !== undefined));
+      const indices = grps.size ? [...new Set([...picked, ...all.flatMap((p, i) => (p.grp !== undefined && grps.has(p.grp) ? [i] : []))])].sort((a, b) => a - b) : picked;
       if (additive) {
         setSelected((prev) => {
           const set = new Set(prev);
@@ -521,6 +542,44 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
     [transact, grid],
   );
 
+  const applyGroupHandleChange = useCallback(
+    (handleId: string, to: { x: number; y: number }, start: { indices: number[]; pieces: Piece[] }, box: GroupBox) => {
+      transact((def) => {
+        const out = applyGroupHandle(start.pieces, handleId, to, box, grid);
+        start.indices.forEach((i, k) => { if (def.pieces[i]) def.pieces[i] = out[k]; });
+        return def;
+      });
+    },
+    [transact, grid],
+  );
+
+  const selectionGrouped = selected.length > 1 && selected.every((i) => circuit.def.pieces[i]?.grp !== undefined && circuit.def.pieces[i]?.grp === circuit.def.pieces[selected[0]]?.grp);
+  const selectionHasGroup = selected.some((i) => circuit.def.pieces[i]?.grp !== undefined);
+
+  /** Group the selection (2+ pieces): they then select, move, rotate and scale as one. */
+  const handleGroup = useCallback(() => {
+    if (selected.length < 2) return;
+    commit((def) => {
+      const id = Math.max(0, ...def.pieces.map((p) => p.grp ?? 0)) + 1;
+      for (const i of selected) if (def.pieces[i]) def.pieces[i] = { ...def.pieces[i], grp: id };
+      return def;
+    });
+  }, [selected, commit]);
+
+  const handleUngroup = useCallback(() => {
+    if (selected.length === 0) return;
+    commit((def) => {
+      for (const i of selected) {
+        const p = def.pieces[i];
+        if (p?.grp === undefined) continue;
+        const { grp: _g, ...rest } = p;
+        void _g;
+        def.pieces[i] = rest as Piece;
+      }
+      return def;
+    });
+  }, [selected, commit]);
+
   const handleDelete = useCallback(() => {
     if (selected.length === 0) return;
     pushHistory();
@@ -557,7 +616,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
         clones.push(JSON.parse(JSON.stringify(p)) as Piece);
       }
       // The copies move as one block: each keeps its shape and their spacing (#71).
-      const toAdd = movePieces(clones, offset, offset);
+      const toAdd = regroup(movePieces(clones, offset, offset), cur.def.pieces);
       const newIndices = toAdd.map((_, i) => startLen + i);
       const nextDef = cloneDef(cur.def);
       nextDef.pieces.push(...toAdd);
@@ -871,6 +930,11 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
         handleRedo();
         return;
       }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'g') {
+        e.preventDefault();
+        if (e.shiftKey) handleUngroup(); else handleGroup();
+        return;
+      }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'd') {
         e.preventDefault();
         handleDuplicate();
@@ -889,7 +953,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
         const offset = grid ? 25 : 12;
         pushHistory();
         setCircuit((cur) => {
-          const toAdd: Piece[] = movePieces(clipboardRef.current.map(p => JSON.parse(JSON.stringify(p)) as Piece), offset, offset);
+          const toAdd: Piece[] = regroup(movePieces(clipboardRef.current.map(p => JSON.parse(JSON.stringify(p)) as Piece), offset, offset), cur.def.pieces);
           const startLen = cur.def.pieces.length;
           const newIndices = toAdd.map((_, i) => startLen + i);
           const nextDef = cloneDef(cur.def);
@@ -949,7 +1013,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [editorModalOpen, testing, selected, circuit.def.pieces, grid, pushHistory, handleDelete, handleDuplicate, handleMirror, handleRotate, handleNudge, handleUndo, handleRedo]);
+  }, [editorModalOpen, testing, selected, circuit.def.pieces, grid, pushHistory, handleDelete, handleDuplicate, handleGroup, handleUngroup, handleMirror, handleRotate, handleNudge, handleUndo, handleRedo]);
 
   const editName = useCallback(
     (value: string) => {
@@ -1129,6 +1193,15 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
             <button className="text-button" onClick={handleDuplicate} disabled={selected.length === 0} title="Duplicate (Ctrl+D)">
               <Copy size={13} />Duplicate
             </button>
+            {selectionHasGroup && (selected.length < 2 || selectionGrouped) ? (
+              <button className="text-button" onClick={handleUngroup} title="Ungroup (Ctrl+Shift+G)">
+                <Ungroup size={13} />Ungroup
+              </button>
+            ) : (
+              <button className="text-button" onClick={handleGroup} disabled={selected.length < 2} title="Group the selected items so they move, rotate and scale together (Ctrl+G)">
+                <Group size={13} />Group
+              </button>
+            )}
             <button className="text-button" onClick={handleSaveTemplate} disabled={selected.length < 2} title="Save selected items as a new template">
               <Save size={13} />Template
             </button>
@@ -1235,6 +1308,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
                   setSettingsOpen(true);
                 }}
                 locked={locked}
+                onGroupHandle={applyGroupHandleChange}
                 onReorder={(pieceIndex, dir) => {
                   const n = circuit.def.pieces.length;
                   const to = dir === 'front' ? n - 1 : 0;

@@ -20,6 +20,9 @@ import { drawCursorMark, drawGrid, drawRuler, viewWindow } from './overlay';
 import type { OverlayView } from './overlay';
 import { hitPieceAt, piecesInBox } from './build';
 import { handlesFor, baseBoxHandles, lockHandlePoint, orderHandlePoints } from './handles';
+import { groupHandles, unionBox } from './group';
+import type { Piece } from '../../game/trackdef';
+import type { GroupBox } from './group';
 import { ghostPreview } from './ghost';
 import type { GhostPreview } from './ghost';
 import { getTemplates } from './templates';
@@ -182,6 +185,8 @@ interface Props {
   onToggleLock?: (pieceIndex: number) => void;
   /** Layer order: 'front' draws the piece over everything, 'back' under everything. */
   onReorder?: (pieceIndex: number, dir: 'front' | 'back') => void;
+  /** Group transform drag (2+ selected): `start` = the selected pieces and their box when the drag began. */
+  onGroupHandle?: (handleId: string, to: Point, start: { indices: number[]; pieces: Piece[] }, box: GroupBox) => void;
   startTransaction: () => void;
   transact: (mutate: (def: import('../../game/trackdef').TrackDef) => import('../../game/trackdef').TrackDef) => void;
   endTransaction: () => void;
@@ -220,6 +225,7 @@ export default function EditorCanvas(props: Props) {
   const lockedRef = useRef(props.locked);
   const onLockRef = useRef(props.onToggleLock);
   const onOrderRef = useRef(props.onReorder);
+  const onGroupRef = useRef(props.onGroupHandle);
   const startTxRef = useRef(startTransaction);
   const endTxRef = useRef(endTransaction);
   const spawnAtRef = useRef(spawnAt);
@@ -244,6 +250,7 @@ export default function EditorCanvas(props: Props) {
   lockedRef.current = props.locked;
   onLockRef.current = props.onToggleLock;
   onOrderRef.current = props.onReorder;
+  onGroupRef.current = props.onGroupHandle;
   startTxRef.current = startTransaction;
   endTxRef.current = endTransaction;
   spawnAtRef.current = spawnAt;
@@ -353,6 +360,22 @@ export default function EditorCanvas(props: Props) {
       const pieces = getDefPieces();
       if (!pieces) return null;
       const sel = selectedRef.current;
+      if (sel.length > 1) {
+        // Group transform: one shared box for the whole selection (pieceIndex -1).
+        const box = unionBox(sel.map((i) => pbRef.current[i]));
+        if (!box) return null;
+        const radius = (HANDLE_SCREEN / camera().scale) * 1.6;
+        let bestG: HandleDrag | null = null;
+        let bestD = Infinity;
+        for (const h of groupHandles(box)) {
+          const d = Math.hypot(h.x - world.x, h.y - world.y);
+          if (d <= radius && d < bestD) {
+            bestD = d;
+            bestG = { pieceIndex: -1, handleId: h.id, initialPiece: { indices: sel.slice(), pieces: sel.map((i) => pieces[i]) }, resizeAnchor: box, cursor: h.cursor };
+          }
+        }
+        return bestG;
+      }
       if (sel.length !== 1) return null;
       const idx = sel[0];
       const piece = pieces[idx];
@@ -541,6 +564,10 @@ export default function EditorCanvas(props: Props) {
         if (!pan) canvas.style.cursor = 'crosshair';
       }
 
+      if (handleDrag && handleDrag.pieceIndex === -1) {
+        onGroupRef.current?.(handleDrag.handleId, world, handleDrag.initialPiece, handleDrag.resizeAnchor!);
+        return;
+      }
       if (handleDrag) {
         // Drag handle to new world (snapped)
         onHandleRef.current(handleDrag.pieceIndex, handleDrag.handleId, world, handleDrag.initialPiece, handleDrag.resizeAnchor);
@@ -831,6 +858,36 @@ export default function EditorCanvas(props: Props) {
         ctx.fillStyle = 'rgba(214,62,46,0.08)';
         ctx.fillRect(sMin.x, sMin.y, rw, rh);
         ctx.restore();
+      }
+
+      // 2+ selected: one shared box with a rotate stalk and four scale corners for the whole group.
+      if (sel.length > 1) {
+        const box = unionBox(sel.map((i) => pb[i]));
+        if (box) {
+          const sMin = toScreen(box.min);
+          const sMax = toScreen(box.max);
+          ctx.save();
+          ctx.strokeStyle = '#ffd18a';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([8, 4]);
+          ctx.strokeRect(sMin.x - 3, sMin.y - 3, sMax.x - sMin.x + 6, sMax.y - sMin.y + 6);
+          ctx.setLineDash([]);
+          const handles = groupHandles(box);
+          const top = toScreen({ x: (box.min.x + box.max.x) / 2, y: box.min.y });
+          const pad = toScreen(handles[0]);
+          ctx.strokeStyle = 'rgba(255,209,138,0.85)';
+          ctx.setLineDash([4, 3]);
+          ctx.beginPath();
+          ctx.moveTo(top.x, top.y);
+          ctx.lineTo(pad.x, pad.y);
+          ctx.stroke();
+          ctx.restore();
+          for (const h of handles) {
+            const sh = toScreen(h);
+            const isHover = hoveredHandle?.pieceIndex === -1 && hoveredHandle?.handleId === h.id;
+            drawHandleIcon(ctx, sh.x, sh.y, h.id.replace('grp-', 'box-'), isHover);
+          }
+        }
       }
 
       // Handles only for single selection

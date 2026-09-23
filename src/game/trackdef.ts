@@ -44,6 +44,8 @@ export interface PieceBase {
   rot?: number;
   /** Workshop size multiplier, for items with no size of their own. */
   sc?: number;
+  /** Workshop group id: pieces sharing it select, move, rotate and scale together. */
+  grp?: number;
 }
 
 export interface RampPiece extends PieceBase { t: 'ramp'; a: Vec; b: Vec }
@@ -826,7 +828,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
     return null;
   }
   const mirror = flip(raw.flip, `${at}.flip`, problems);
-  const body: { flip?: true; rot?: number; sc?: number } = mirror ? { flip: true } : {};
+  const body: { flip?: true; rot?: number; sc?: number; grp?: number } = mirror ? { flip: true } : {};
   if (raw.rot !== undefined) {
     const r = number(raw.rot, `${at}.rot`, -3600, 3600, problems);
     const norm = ((Math.round(r) % 360) + 360) % 360;
@@ -835,6 +837,10 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
   if (raw.sc !== undefined) {
     const k = number(raw.sc, `${at}.sc`, 0.2, 5, problems);
     if (Math.abs(k - 1) > 0.001) body.sc = Math.round(k * 1000) / 1000;
+  }
+  if (raw.grp !== undefined) {
+    const g = number(raw.grp, `${at}.grp`, 1, 1e9, problems);
+    if (Number.isInteger(g)) body.grp = g;
   }
   switch (raw.t) {
     case 'ramp':
