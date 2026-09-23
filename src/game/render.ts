@@ -177,6 +177,14 @@ function drawBackdrop(ctx: CanvasRenderingContext2D, cam: Camera, cw: number, ch
   ctx.drawImage(vignetteFor(cw, ch), 0, 0, cw, ch);
 }
 
+/** Apply a Workshop piece transform (rotation + size about the piece pivot) to the context. */
+function applyXf(ctx: CanvasRenderingContext2D, xf: { cx: number; cy: number; rot: number; sc: number }) {
+  ctx.translate(xf.cx, xf.cy);
+  ctx.rotate(xf.rot);
+  ctx.scale(xf.sc, xf.sc);
+  ctx.translate(-xf.cx, -xf.cy);
+}
+
 export interface Camera {
   x: number;
   y: number;
@@ -453,6 +461,8 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
   // static bodies
   const bodies = game.track.bodies;
   for (const b of bodies) {
+    ctx.save();
+    try {
     if (b.label === 'marble') continue;
     const md = meta(b);
     // Workshop bodies stay at rest while their artwork previews the swing.
@@ -469,6 +479,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
     }
     if (culled) continue;
     if (md?.destroyed || STATIC_KINDS.has(md?.kind)) continue;
+    if (md?.xf) applyXf(ctx, md.xf);
     switch (md?.kind) {
       case 'ramp':
         if (!drawRail(ctx, b, 'rail-wood', md.caps) && !drawStrip(ctx, b, 'strip-wood')) drawPipe(ctx, b, theme.pipe, theme.pipeEdge);
@@ -979,6 +990,9 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
         break;
       default:
         break;
+    }
+      } finally {
+      ctx.restore();
     }
   }
 
@@ -2074,9 +2088,12 @@ function paintStatic(ctx: CanvasRenderingContext2D, game: Game, top: number, bot
 
   const cliffs = !!sprite('cliff-left');
   for (const b of game.track.bodies) {
+    ctx.save();
+    try {
     const md = meta(b);
     if (!STATIC_KINDS.has(md?.kind)) continue;
     if (b.bounds.max.y < top - 60 || b.bounds.min.y > bottom + 60) continue;
+    if (md?.xf) applyXf(ctx, md.xf);
     switch (md.kind) {
       case 'ramp':
         if (!drawRail(ctx, b, 'rail-wood', md.caps) && !drawStrip(ctx, b, 'strip-wood')) drawPipe(ctx, b, theme.pipe, theme.pipeEdge);
@@ -2103,6 +2120,9 @@ function paintStatic(ctx: CanvasRenderingContext2D, game: Game, top: number, bot
         ctx.stroke();
         break;
       }
+    }
+      } finally {
+      ctx.restore();
     }
   }
 }

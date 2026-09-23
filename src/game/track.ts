@@ -194,6 +194,8 @@ export type PegColor = 'blue' | 'orange' | 'green';
 
 export interface Meta {
   kind: Kind;
+  /** Workshop transform: draw this body turned `rot` radians and scaled `sc` about the piece pivot (cx, cy). */
+  xf?: { cx: number; cy: number; rot: number; sc: number };
   dir?: { x: number; y: number };
   hp?: number;
   maxHp?: number;
@@ -470,13 +472,19 @@ export class Builder {
   }
 
   /** Ramp defined by its top-surface endpoints. */
-  ramp(x1: number, y1: number, x2: number, y2: number, thickness = T, kind: Kind = 'ramp') {
+  /**
+   * `offsetNormal` overrides which way the slab hangs off its line. A straight rail uses its own normal, but a
+   * curve's chords swing through vertical, and a per-chord normal swings with them — so the slab jumps sideways
+   * by its own thickness mid-bend (the visible break). `curve()` passes a smoothly turning normal instead.
+   */
+  ramp(x1: number, y1: number, x2: number, y2: number, thickness = T, kind: Kind = 'ramp', offsetNormal?: Matter.Vector) {
     const ax = this.X(x1);
     const bx = this.X(x2);
     const surface = rampSurface({ x: ax, y: y1 }, { x: bx, y: y2 });
     const angle = Math.atan2(surface.tangent.y, surface.tangent.x);
-    const cx = (ax + bx) / 2 - surface.normal.x * thickness / 2;
-    const cy = (y1 + y2) / 2 - surface.normal.y * thickness / 2;
+    const off = offsetNormal ?? surface.normal;
+    const cx = (ax + bx) / 2 - off.x * thickness / 2;
+    const cy = (y1 + y2) / 2 - off.y * thickness / 2;
     const b = Bodies.rectangle(cx, cy, surface.length + 4, thickness, { ...STATIC_OPTS, angle, label: kind, chamfer: { radius: 3 } });
     // Matter makes static bodies friction=1 during creation, so restore the polished surface.
     b.friction = 0.002;
@@ -563,7 +571,29 @@ export class Builder {
       pts.push({ x: u * u * x0 + 2 * u * t * cx + t * t * x1, y: u * u * y0 + 2 * u * t * cy + t * t * y1 });
     }
     const caps = [{ x: this.X(pts[0].x), y: pts[0].y }, { x: this.X(pts[pieces].x), y: pts[pieces].y }];
-    for (let i = 0; i < pieces; i++) meta(this.ramp(pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y)).caps = caps;
+    // Offset normals that turn smoothly along the curve, so neighbouring slabs stay on the same side of the
+    // path even where it passes through vertical. Each chord's normal is flipped to agree with the last one.
+    const normals: Matter.Vector[] = [];
+    let last: Matter.Vector | null = null;
+    for (let i = 0; i < pieces; i++) {
+      const dx = this.X(pts[i + 1].x) - this.X(pts[i].x);
+      const dy = pts[i + 1].y - pts[i].y;
+      const len = Math.hypot(dx, dy) || 1;
+      let n = { x: dy / len, y: -dx / len };
+      if (last && n.x * last.x + n.y * last.y < 0) n = { x: -n.x, y: -n.y };
+      else if (!last && n.y > 0) n = { x: -n.x, y: -n.y }; // start with the slab under the rail
+      normals.push(n);
+      last = n;
+    }
+    // Average neighbouring normals so the offset turns with the bend instead of stepping at each joint.
+    for (let i = 0; i < pieces; i++) {
+      const prev = normals[Math.max(0, i - 1)];
+      const next = normals[Math.min(pieces - 1, i + 1)];
+      const mx = (prev.x + normals[i].x * 2 + next.x) / 4;
+      const my = (prev.y + normals[i].y * 2 + next.y) / 4;
+      const m = Math.hypot(mx, my) || 1;
+      meta(this.ramp(pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y, T, 'ramp', { x: mx / m, y: my / m })).caps = caps;
+    }
     this.decor.push({ type: 'curve', points: pts.map((q) => ({ x: this.X(q.x), y: q.y })) });
     return pts;
   }

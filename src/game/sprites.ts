@@ -148,8 +148,11 @@ export function drawRail(ctx: CanvasRenderingContext2D, body: Matter.Body, name:
   ctx.translate(body.position.x, body.position.y);
   ctx.rotate(angle);
   const mid = railMiddle(img, name, RAIL_CAP);
-  const x0 = minU + (capL ? capW * 0.6 : 0);
-  const x1 = maxU - (capR ? capW * 0.6 : 0);
+  // An uncapped end continues into the next segment of a curve: overrun it by half the plank's thickness so the
+  // two planks overlap through the bend instead of leaving a wedge of the filler band showing on the outside.
+  const overrun = thick * 0.5;
+  const x0 = capL ? minU + capW * 0.6 : minU - overrun;
+  const x1 = capR ? maxU - capW * 0.6 : maxU + overrun;
   const tileW = mid.width * scale;
   for (let x = x0; x < x1; x += tileW) {
     const w = Math.min(tileW, x1 - x);

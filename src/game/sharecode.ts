@@ -144,7 +144,11 @@ function encodeBinary(def: TrackDef): Uint8Array {
     const typeId = PIECE_TO_ID[p.t as PieceTypeName];
     if (typeId === undefined) throw new ShareCodeError(`Unknown piece type ${(p as Piece).t}`);
     writeUVarint(out, typeId);
-    writeUVarint(out, p.flip ? 1 : 0);
+    // Flag bits: 1 = flip, 2 = Workshop rotation follows, 4 = Workshop size follows. Old codes only ever hold 0/1.
+    const rotOn = !!p.rot, scOn = p.sc !== undefined && p.sc !== 1;
+    writeUVarint(out, (p.flip ? 1 : 0) | (rotOn ? 2 : 0) | (scOn ? 4 : 0));
+    if (rotOn) writeUVarint(out, Math.round(((p.rot! % 360) + 360) % 360 * 100));
+    if (scOn) writeUVarint(out, Math.round(p.sc! * 1000));
     switch (p.t) {
       case 'ramp':
       case 'ice': {
@@ -439,7 +443,9 @@ function decodeBinary(bytes: Uint8Array, version = 1): TrackDef {
   for (let i = 0; i < pieceCount; i++) {
     const typeId = readUVarint(bytes, pos);
     const flipFlag = readUVarint(bytes, pos);
-    const flip = flipFlag ? true : undefined;
+    const flip = flipFlag & 1 ? true : undefined;
+    const xrot = flipFlag & 2 ? readUVarint(bytes, pos) / 100 : undefined;
+    const xsc = flipFlag & 4 ? readUVarint(bytes, pos) / 1000 : undefined;
     const t = PIECE_TYPES[typeId];
     if (!t) throw new ShareCodeError(`Unknown piece type id ${typeId}`);
     // #99: retired types are read (their bytes keep the stream aligned) but dropped.
@@ -746,6 +752,8 @@ function decodeBinary(bytes: Uint8Array, version = 1): TrackDef {
       }
       default: throw new ShareCodeError(`Unknown piece type ${t}`);
     }
+    if (p && xrot) p.rot = xrot;
+    if (p && xsc) p.sc = xsc;
     if (p) pieces.push(p);
   }
   // ensure no trailing bytes (tamper detection)

@@ -61,7 +61,7 @@ export function buildEditorTrack(def: TrackDef): { track: Track | null; bodyToPi
       const before = b.bodies.length;
       if (!isRetiredPieceType(piece.t)) replayPiece(b, piece);
       for (let i = before; i < b.bodies.length; i++) bodyToPiece[i] = index;
-      pieceBounds[index] = visualBoundsForPiece(piece, b.bodies.slice(before, b.bodies.length));
+      pieceBounds[index] = transformedBounds(visualBoundsForPiece(piece, b.bodies.slice(before, b.bodies.length)), b.bodies[before]);
     });
 
     // Finish stub — not part of the def.
@@ -158,4 +158,19 @@ export function piecesInBox(box: { minX: number; minY: number; maxX: number; max
     if (max.x >= box.minX && min.x <= box.maxX && max.y >= box.minY && min.y <= box.maxY) out.add(i);
   }
   return out;
+}
+
+/** The selection box of a piece carrying a Workshop rotation/size: the AABB of its box turned and scaled. */
+function transformedBounds(box: Bounds, body: import('matter-js').Body | undefined): Bounds {
+  const xf = body ? meta(body).xf : undefined;
+  if (!xf) return box;
+  const cos = Math.cos(xf.rot), sin = Math.sin(xf.rot);
+  const pts = [[box.min.x, box.min.y], [box.max.x, box.min.y], [box.min.x, box.max.y], [box.max.x, box.max.y]].map(([x, y]) => {
+    const dx = (x - xf.cx) * xf.sc, dy = (y - xf.cy) * xf.sc;
+    return { x: xf.cx + dx * cos - dy * sin, y: xf.cy + dx * sin + dy * cos };
+  });
+  return {
+    min: { x: Math.min(...pts.map((p) => p.x)), y: Math.min(...pts.map((p) => p.y)) },
+    max: { x: Math.max(...pts.map((p) => p.x)), y: Math.max(...pts.map((p) => p.y)) },
+  };
 }

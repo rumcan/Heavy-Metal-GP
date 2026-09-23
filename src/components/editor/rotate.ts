@@ -14,7 +14,7 @@
  */
 import type { Piece, Vec } from '../../game/trackdef';
 import { W } from '../../game/track';
-import { moveHandle } from './handles';
+import { moveHandle, movePiece } from './handles';
 
 export interface Point { x: number; y: number }
 
@@ -37,7 +37,21 @@ export function hasFreeRotation(piece: Piece): boolean {
 }
 
 /** Current on-screen angle (radians) of a freely rotating piece. */
+/**
+ * Items that turn as a whole through the generic Workshop rotation (`rot`): they either store no angle of their
+ * own, or their built parts don't turn as one when their points are rotated.
+ */
+const ROT_TYPES = new Set<Piece['t']>([
+  'loop', 'pad', 'bucket', 'tunnel', 'trapdoor', 'blade', 'crusher', 'seesaw', 'catapult', 'geyser', 'trampoline',
+  'turnstile', 'targets', 'platform', 'hoop', 'wrecker', 'peg', 'ppeg', 'itembox', 'mace', 'wheel', 'cannon',
+  'magnet', 'vortex', 'curve', 'conveyor', 'mud', 'bridge', 'crumble',
+]);
+export function usesGenericRotation(piece: Piece): boolean {
+  return ROT_TYPES.has(piece.t);
+}
+
 export function pieceAngle(piece: Piece): number {
+  if (ROT_TYPES.has(piece.t)) return ((piece.rot ?? 0) * Math.PI) / 180;
   switch (piece.t) {
     case 'ramp':
     case 'ice':
@@ -72,6 +86,15 @@ export function rotatePiece(piece: Piece, rad: number, c: Point): Piece {
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
   const at = (x: number, y: number) => turn([x, y], c, cos, sin);
+  if (ROT_TYPES.has(piece.t)) {
+    // Keep the item where it is (or swing it round a group's pivot) and turn it as a whole.
+    const moved = movePieceBy(piece, c, cos, sin);
+    const deg = (((piece.rot ?? 0) + (rad * 180) / Math.PI) % 360 + 360) % 360;
+    const rot = Math.round(deg * 100) / 100;
+    const out = { ...moved } as Piece;
+    if (rot && Math.abs(rot - 360) > 0.01) out.rot = rot; else delete out.rot;
+    return out;
+  }
   const quarterTurns = Math.round(rad / (Math.PI / 2));
   const isQuarter = Math.abs(rad - quarterTurns * (Math.PI / 2)) < 1e-6;
   switch (piece.t) {
@@ -264,4 +287,13 @@ export function applyRotateHandle(piece: Piece, to: Point, snap: boolean): Piece
   }
   const delta = target - pieceAngle(piece);
   return rotatePiece(piece, delta, c);
+}
+
+/** Translate a piece so its centre follows a rotation about `c` (the piece itself is not reshaped). */
+function movePieceBy(piece: Piece, c: Point, cos: number, sin: number): Piece {
+  const p = pieceCentre(piece);
+  const dx = p.x - c.x, dy = p.y - c.y;
+  const nx = c.x + dx * cos - dy * sin, ny = c.y + dx * sin + dy * cos;
+  if (Math.abs(nx - p.x) < 0.01 && Math.abs(ny - p.y) < 0.01) return piece;
+  return movePiece(piece, tidy(nx - p.x), tidy(ny - p.y));
 }

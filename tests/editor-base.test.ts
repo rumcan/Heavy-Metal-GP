@@ -103,11 +103,15 @@ test('#99 base: corner clamps keep the piece inside its schema range', () => {
   assert.ok(next.len <= 400 + 1e-9, `clamped at ${next.len}`);
 });
 
-test('#99 base: fixed-size set-pieces carry the dots but resize is a no-op', () => {
+test('#99 base: fixed-size set-pieces resize as a whole through their size multiplier', () => {
   const box = { min: { x: 90, y: 90 }, max: { x: 110, y: 110 } };
   const itembox: Piece = { t: 'itembox', x: 100, y: 100 };
-  const next = applyHandle(itembox, 'box-se', { x: 500, y: 500 }, false, box);
-  assert.deepEqual(next, itembox);
+  // Double the box from the pinned NW corner: the item stays put and draws twice as large.
+  const doubled = applyHandle(itembox, 'box-se', { x: 130, y: 130 }, false, box);
+  assert.deepEqual(doubled, { ...itembox, sc: 2 });
+  // A huge drag clamps to the 5x ceiling instead of exploding.
+  const huge = applyHandle(itembox, 'box-se', { x: 500, y: 500 }, false, box);
+  assert.equal((huge as { sc?: number }).sc, 5);
 });
 
 test('#99 base: locked pieces are unselectable by click and box-select', () => {

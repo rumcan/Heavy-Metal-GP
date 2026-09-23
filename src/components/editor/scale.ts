@@ -47,7 +47,7 @@ export type CornerHandleId = 'box-nw' | 'box-ne' | 'box-sw' | 'box-se';
 /** All five set-pieces have a fixed physical footprint: corridors one marble wide, gates of a
  * fixed gauge. They still carry the four dots (every item's base is the same) but a corner drag
  * on them is a no-op on purpose. */
-const FIXED_SIZE: readonly Piece['t'][] = ['itembox', 'hoop', 'targets', 'bucket', 'cannon'];
+const FIXED_SIZE: readonly Piece['t'][] = ['itembox', 'hoop', 'targets', 'bucket', 'cannon', 'wrecker'];
 
 interface RangeSpec { min: number; max?: number }
 
@@ -134,7 +134,6 @@ const clampRange = (v: number, spec: RangeSpec): number =>
  */
 export function applyCornerResize(piece: Piece, handleId: CornerHandleId, to: { x: number; y: number }, anchor: AnchorBox): Piece {
   const spec = RESIZE_SPECS[piece.t];
-  if (!spec || FIXED_SIZE.includes(piece.t)) return piece;
   const a = anchorFor(handleId, anchor);
   const boxW = Math.max(anchor.max.x - anchor.min.x, 1);
   const boxH = Math.max(anchor.max.y - anchor.min.y, 1);
@@ -143,6 +142,11 @@ export function applyCornerResize(piece: Piece, handleId: CornerHandleId, to: { 
   const sx = Math.min(20, Math.max(0.05, Math.abs(to.x - a.x) / boxW));
   const sy = Math.min(20, Math.max(0.05, Math.abs(to.y - a.y) / boxH));
   const su = (sx + sy) / 2;
+  // Items with no size field of their own (fixed-size art, point items) scale as a whole via `sc`.
+  if (!spec || FIXED_SIZE.includes(piece.t)) {
+    const sc = Math.min(5, Math.max(0.2, (piece.sc ?? 1) * su));
+    return { ...piece, sc: Math.round(sc * 1000) / 1000 };
+  }
 
   const next = { ...piece } as Record<string, unknown>;
   const applyFields = (entries: Record<string, RangeSpec> | undefined, factor: number) => {

@@ -23,6 +23,7 @@ import { ITEM_TYPES, THEME_IDS, themeFor, themeIdFor } from './types';
 import type { ItemType, ThemeId, TrackProfile } from './types';
 import { Builder, DEFAULT_PROFILE, FINISH_H, GATE_TOP, START_H, T, W, assembleTrack, assembleExperimentalTrack, meta, segFinish, segStart } from './track';
 import type { Kind, PegColor, SegmentInfo, Track } from './track';
+import { visualBoundsForPiece } from '../components/editor/bounds';
 
 /** Only version 1 exists. A def from a newer build is refused rather than guessed at. */
 export const TRACKDEF_VERSION = 1;
@@ -39,6 +40,10 @@ export type Vec = [number, number];
 /** `flip` mirrors a piece about the track's centre line, exactly like `Builder.flip`. Unset = world coordinates. */
 export interface PieceBase {
   flip?: boolean;
+  /** Workshop rotation in degrees (clockwise on screen), for items with no angle of their own. */
+  rot?: number;
+  /** Workshop size multiplier, for items with no size of their own. */
+  sc?: number;
 }
 
 export interface RampPiece extends PieceBase { t: 'ramp'; a: Vec; b: Vec }
@@ -502,6 +507,7 @@ export function generateTrackDef(seed: number, profile: TrackProfile = DEFAULT_P
 
 export function replayPiece(b: Builder, piece: Piece) {
   b.flip = piece.flip === true;
+  const first = b.bodies.length;
   try {
     switch (piece.t) {
       case 'ramp': b.ramp(piece.a[0], piece.a[1], piece.b[0], piece.b[1]); break;
@@ -553,9 +559,28 @@ export function replayPiece(b: Builder, piece: Piece) {
       case 'vortex': b.vortex(piece.x, piece.y, piece.r, piece.spin, piece.hole); break;
       case 'platform': b.platform(piece.ax, piece.ay, piece.bx, piece.by, piece.w, piece.travel, piece.pause, piece.phase); break;
     }
+    tagTransform(b.bodies.slice(first), piece);
   } finally {
     b.flip = false;
   }
+}
+
+/**
+ * Tag every body a piece built with its Workshop rotation/size (`rot`, `sc`), pivoting on the centre of the
+ * piece's drawn bounds. Drawing, hit-testing and the selection box read the tag; physics keeps the built shape.
+ */
+function tagTransform(bodies: import('matter-js').Body[], piece: Piece) {
+  const rot = piece.rot ?? 0;
+  const sc = piece.sc ?? 1;
+  if (!bodies.length || (rot === 0 && sc === 1)) return;
+  // Pivot on the centre of the item as it is DRAWN (art can reach past the bodies), which is also the centre of
+  // the Workshop selection box, so the item turns in place under its rotate handle.
+  const box = visualBoundsForPiece(piece, bodies);
+  const minX = box.min.x, minY = box.min.y, maxX = box.max.x, maxY = box.max.y;
+  // A flipped piece is drawn mirrored, so its turn reads the other way on screen.
+  const rad = ((piece.flip ? -rot : rot) * Math.PI) / 180;
+  const xf = { cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, rot: rad, sc };
+  for (const body of bodies) meta(body).xf = xf;
 }
 
 /**
@@ -801,7 +826,16 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
     return null;
   }
   const mirror = flip(raw.flip, `${at}.flip`, problems);
-  const body = mirror ? { flip: true } : {};
+  const body: { flip?: true; rot?: number; sc?: number } = mirror ? { flip: true } : {};
+  if (raw.rot !== undefined) {
+    const r = number(raw.rot, `${at}.rot`, -3600, 3600, problems);
+    const norm = ((Math.round(r) % 360) + 360) % 360;
+    if (norm) body.rot = norm;
+  }
+  if (raw.sc !== undefined) {
+    const k = number(raw.sc, `${at}.sc`, 0.2, 5, problems);
+    if (Math.abs(k - 1) > 0.001) body.sc = Math.round(k * 1000) / 1000;
+  }
   switch (raw.t) {
     case 'ramp':
       return { t: 'ramp', a: vec(raw.a, `${at}.a`, problems), b: vec(raw.b, `${at}.b`, problems), ...body };
