@@ -128,6 +128,12 @@ export function baseBoxHandles(piece: Piece, bounds: SelectionBox): Handle[] {
   return handles;
 }
 
+/** Layer icons beside the selected box's right edge: bring to front (drawn over everything), send to back. */
+export function orderHandlePoints(bounds: SelectionBox): { front: { x: number; y: number }; back: { x: number; y: number } } {
+  const x = bounds.max.x + BASE_STALK;
+  return { front: { x, y: bounds.min.y + 6 }, back: { x, y: bounds.min.y + 36 } };
+}
+
 /** Where a locked (or unlocked) piece carries its lock icon: above the box's top-left corner. */
 export function lockHandlePoint(bounds: SelectionBox): { x: number; y: number } {
   return { x: bounds.min.x, y: bounds.min.y - BASE_STALK };

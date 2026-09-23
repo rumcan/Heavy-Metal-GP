@@ -1235,6 +1235,18 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
                   setSettingsOpen(true);
                 }}
                 locked={locked}
+                onReorder={(pieceIndex, dir) => {
+                  const n = circuit.def.pieces.length;
+                  const to = dir === 'front' ? n - 1 : 0;
+                  if (pieceIndex === to || pieceIndex < 0 || pieceIndex >= n) return;
+                  // Pieces draw in list order: the last one covers the rest. Move this one to the end (front) or start (back).
+                  const order = circuit.def.pieces.map((_, i) => i).filter((i) => i !== pieceIndex);
+                  if (dir === 'front') order.push(pieceIndex); else order.unshift(pieceIndex);
+                  const newIndex = new Map(order.map((old, i) => [old, i]));
+                  commit((def) => ({ ...def, pieces: order.map((i) => def.pieces[i]) }), { select: [to] });
+                  // Locks are by index: carry them to the pieces' new places.
+                  setLocked((prev) => new Set([...prev].map((i) => newIndex.get(i) ?? i)));
+                }}
                 onToggleLock={(pieceIndex) => {
                   setLocked((prev) => {
                     const next = new Set(prev);

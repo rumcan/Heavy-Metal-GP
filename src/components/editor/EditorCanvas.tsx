@@ -19,7 +19,7 @@ import type { CameraRig, EditorCamera, Point } from './camera';
 import { drawCursorMark, drawGrid, drawRuler, viewWindow } from './overlay';
 import type { OverlayView } from './overlay';
 import { hitPieceAt, piecesInBox } from './build';
-import { handlesFor, baseBoxHandles, lockHandlePoint } from './handles';
+import { handlesFor, baseBoxHandles, lockHandlePoint, orderHandlePoints } from './handles';
 import { ghostPreview } from './ghost';
 import type { GhostPreview } from './ghost';
 import { getTemplates } from './templates';
@@ -53,6 +53,27 @@ function drawHandleIcon(ctx: CanvasRenderingContext2D, x: number, y: number, id:
       ctx.moveTo(x + Math.cos(a) * 4.5, y + Math.sin(a) * 4.5);
       ctx.lineTo(x + Math.cos(a) * 8, y + Math.sin(a) * 8);
       ctx.stroke();
+    }
+  } else if (id === 'front' || id === 'back') {
+    // Layer order: two stacked squares, the one on top filled for "front", the one underneath for "back".
+    const ink = hover ? '#ffffff' : '#94a3b8';
+    ctx.fillStyle = 'rgba(15,23,42,0.85)';
+    ctx.beginPath();
+    ctx.arc(x, y, 11, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = ink;
+    ctx.fillStyle = ink;
+    const under = { x: x - 6, y: y - 6 }, over = { x: x - 2, y: y - 2 };
+    if (id === 'front') {
+      ctx.strokeRect(under.x, under.y, 8, 8);
+      ctx.fillRect(over.x, over.y, 8, 8);
+    } else {
+      ctx.fillRect(under.x, under.y, 8, 8);
+      ctx.fillStyle = 'rgba(15,23,42,1)';
+      ctx.fillRect(over.x, over.y, 8, 8);
+      ctx.strokeRect(over.x, over.y, 8, 8);
     }
   } else if (id === 'lock') {
     // #99 padlock: shackle arc over a body, steel-blue like the settings cog.
@@ -159,6 +180,8 @@ interface Props {
   /** #99: locked pieces (by index) — unselectable; hovering shows a lock and clicking it unlocks. */
   locked?: ReadonlySet<number>;
   onToggleLock?: (pieceIndex: number) => void;
+  /** Layer order: 'front' draws the piece over everything, 'back' under everything. */
+  onReorder?: (pieceIndex: number, dir: 'front' | 'back') => void;
   startTransaction: () => void;
   transact: (mutate: (def: import('../../game/trackdef').TrackDef) => import('../../game/trackdef').TrackDef) => void;
   endTransaction: () => void;
@@ -196,6 +219,7 @@ export default function EditorCanvas(props: Props) {
   const onSettingsRef = useRef(props.onOpenSettings);
   const lockedRef = useRef(props.locked);
   const onLockRef = useRef(props.onToggleLock);
+  const onOrderRef = useRef(props.onReorder);
   const startTxRef = useRef(startTransaction);
   const endTxRef = useRef(endTransaction);
   const spawnAtRef = useRef(spawnAt);
@@ -219,6 +243,7 @@ export default function EditorCanvas(props: Props) {
   onSettingsRef.current = props.onOpenSettings;
   lockedRef.current = props.locked;
   onLockRef.current = props.onToggleLock;
+  onOrderRef.current = props.onReorder;
   startTxRef.current = startTransaction;
   endTxRef.current = endTransaction;
   spawnAtRef.current = spawnAt;
@@ -281,6 +306,7 @@ export default function EditorCanvas(props: Props) {
     type BoxDrag = { startWorld: Point; curWorld: Point };
     let handleDrag: HandleDrag | null = null;
     let pendingSettingsClick: HandleDrag | null = null;
+    let pendingOrderClick: { index: number; dir: 'front' | 'back' } | null = null;
     let pendingLockClick: number | null = null;
     let pieceDrag: PieceDrag | null = null;
     let boxDrag: BoxDrag | null = null;
@@ -338,6 +364,8 @@ export default function EditorCanvas(props: Props) {
         handles.push(...baseBoxHandles(piece, bounds));
         const lk = lockHandlePoint(bounds);
         handles.push({ id: 'lock', x: lk.x, y: lk.y, cursor: 'pointer', label: 'Lock' });
+        const od = orderHandlePoints(bounds);
+        handles.push({ id: 'front', ...od.front, cursor: 'pointer', label: 'Bring to front' }, { id: 'back', ...od.back, cursor: 'pointer', label: 'Send to back' });
       }
 
       const camScale = camera().scale;
@@ -392,6 +420,10 @@ export default function EditorCanvas(props: Props) {
             }
             if (h.handleId === 'lock') {
               pendingLockClick = h.pieceIndex;
+              return;
+            }
+            if (h.handleId === 'front' || h.handleId === 'back') {
+              pendingOrderClick = { index: h.pieceIndex, dir: h.handleId };
               return;
             }
             handleDrag = h;
@@ -570,6 +602,8 @@ export default function EditorCanvas(props: Props) {
       const wasPendingLockClick = pendingLockClick;
       pendingSettingsClick = null;
       pendingLockClick = null;
+      const wasPendingOrderClick = pendingOrderClick;
+      pendingOrderClick = null;
 
       const down = downPoint;
       const isClick = down && Math.hypot(event.clientX - down.x, event.clientY - down.y) <= DRAG_SLOP;
@@ -623,6 +657,8 @@ export default function EditorCanvas(props: Props) {
         onSettingsRef.current(wasPendingSettingsClick.pieceIndex);
       } else if (wasPendingLockClick !== null && isClick) {
         onLockRef.current?.(wasPendingLockClick);
+      } else if (wasPendingOrderClick && isClick) {
+        onOrderRef.current?.(wasPendingOrderClick.index, wasPendingOrderClick.dir);
       } else if (!wasHandle && !wasPiece && !wasBox && !wasPan && isClick) {
         // Empty click (no handle/piece/box/pan/place)
         // If hit nothing and not armed, clear selection
@@ -809,6 +845,8 @@ export default function EditorCanvas(props: Props) {
           handles.push(...baseBoxHandles(piece, bounds));
           const lk = lockHandlePoint(bounds);
           handles.push({ id: 'lock', x: lk.x, y: lk.y, cursor: 'pointer', label: 'Lock' });
+          const od = orderHandlePoints(bounds);
+          handles.push({ id: 'front', ...od.front, cursor: 'pointer', label: 'Bring to front' }, { id: 'back', ...od.back, cursor: 'pointer', label: 'Send to back' });
         }
         // Rotate handle: a stalk from the box edge to the rotate pad, drawn under the knobs.
         const rot = handles.find((h) => h.id === 'box-rot') ?? handles.find((h) => h.id === 'rot');
