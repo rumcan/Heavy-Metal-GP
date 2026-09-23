@@ -7,8 +7,9 @@
 .loadout-preview-title { margin-right: auto; }
 .loadout-preview-title .eyebrow { font-size: 8px; letter-spacing: 1.2px; }
 .loadout-preview-title p { color: #8398ab; font-size: 9px; margin: 5px 0 0; }
-.loadout-preview-items { display: flex; align-items: center; gap: 7px; }
-.loadout-preview-items button { position: relative; height: 36px; width: 42px; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 6px; color: #526474; border: 1px solid #2a3c4d; background: #111c27; border-radius: 3px; transition: border-color .2s, color .2s; }
+/* Eight equal slots that shrink to the card: the row never runs past its panel. */
+.loadout-preview-items { display: grid; grid-template-columns: repeat(8, minmax(0, 42px)); align-items: center; gap: 7px; min-width: 0; max-width: 100%; }
+.loadout-preview-items button { position: relative; height: 36px; width: 100%; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 6px; color: #526474; border: 1px solid #2a3c4d; background: #111c27; border-radius: 3px; transition: border-color .2s, color .2s; }
 .loadout-preview-items button.has-stock { border-color: color-mix(in srgb, var(--item-color) 35%, transparent); color: var(--item-color); background: color-mix(in srgb, var(--item-color) 6%, #111b26); }
 .loadout-preview-items button:hover { color: var(--item-color); border-color: var(--item-color); }
 .loadout-preview-items b { position: absolute; bottom: 3px; right: 4px; font: 7px var(--mono); color: #b5c2ce; background: #0d1823; padding: 0 1px; }
@@ -139,7 +140,7 @@
   .inventory-quantity { right: 5px; top: 5px; font-size: 7px; }
   .inventory-slot > kbd { left: 5px; top: 5px; font-size: 6px; }
   .loadout-preview-items { gap: 4px; }
-  .loadout-preview-items button { width: 33px; }
+  .loadout-preview-items { grid-template-columns: repeat(8, minmax(0, 33px)); }
   .paddock-loadout { gap: 13px; }
   .loadout-preview-title p { max-width: 200px; font-size: 8px; }
   .race-minimap { right: 12px; top: 15px; width: 94px; padding-inline: 7px; }
