@@ -156,11 +156,12 @@ export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, on
           {CALENDAR.map((gp) => {
             const archived = officialTrack(gp.id);
             return (
-              <div key={gp.id} style={{ display: 'flex', gap: 5, marginBottom: 5, alignItems: 'center' }}>
-                <span style={{ flex: '0 0 84px', fontSize: 10, color: 'var(--text-muted)' }} title={gp.name}>{gp.short}</span>
+              // Name on its own line, then the three buttons in an even grid, so Archive never runs off the panel.
+              <div key={gp.id} style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 5, marginBottom: 8 }}>
+                <span style={{ gridColumn: '1 / -1', fontSize: 10, color: 'var(--text-muted)' }} title={gp.name}>{gp.short}</span>
                 <button
                   className="button-secondary"
-                  style={{ flex: 1, padding: '4px 8px', fontSize: 10 }}
+                  style={{ minWidth: 0, padding: '4px 6px', fontSize: 10 }}
                   title={`Generate a fresh seeded ${gp.name} circuit into the editor`}
                   onClick={() => {
                     onDevLoadOfficial(generateTrackDef(gpSeed(0, gp.id), gp.profile, gp.name));
@@ -170,7 +171,7 @@ export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, on
                 </button>
                 <button
                   className="button-secondary"
-                  style={{ flex: 1, padding: '4px 8px', fontSize: 10 }}
+                  style={{ minWidth: 0, padding: '4px 6px', fontSize: 10 }}
                   disabled={!archived}
                   title={archived ? `Load the archived circuit round ${gp.id + 1} currently races (${archived.pieces.length} pieces)` : 'No valid archive for this round'}
                   onClick={() => {
@@ -181,7 +182,7 @@ export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, on
                 </button>
                 <button
                   className="button-primary"
-                  style={{ flex: 1, padding: '4px 8px', fontSize: 10 }}
+                  style={{ minWidth: 0, padding: '4px 6px', fontSize: 10 }}
                   title={`Write the current editor circuit to src/game/official-tracks/champ-${gp.id}.json`}
                   onClick={() => {
                     fetch(`/__dev/save-official-track?round=${gp.id}`, {
