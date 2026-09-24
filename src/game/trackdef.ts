@@ -507,7 +507,29 @@ export function generateTrackDef(seed: number, profile: TrackProfile = DEFAULT_P
 
 // ---------------------------------------------------------------- replay
 
+/**
+ * Rails and belts (curve, conveyor, tar band, rope bridge) rotate by moving their real points, so the physics
+ * turns with the picture. Older saves may still carry a drawing-only `rot` on them: turn it into geometry.
+ */
+const LINE_TYPES = new Set<Piece['t']>(['curve', 'conveyor', 'mud', 'bridge']);
+export function bakeLineRotation<P extends Piece>(piece: P): P {
+  if (!piece.rot || !LINE_TYPES.has(piece.t)) return piece;
+  const p = piece as unknown as { a: Vec; b: Vec; c?: Vec };
+  const pts = [p.a, p.b, ...(p.c ? [p.c] : [])];
+  const cx = pts.reduce((s, v) => s + v[0], 0) / pts.length;
+  const cy = pts.reduce((s, v) => s + v[1], 0) / pts.length;
+  const r = (piece.rot * Math.PI) / 180, cos = Math.cos(r), sin = Math.sin(r);
+  const turn = (v: Vec): Vec => {
+    const dx = v[0] - cx, dy = v[1] - cy;
+    return [Math.round((cx + dx * cos - dy * sin) * 10) / 10, Math.round((cy + dx * sin + dy * cos) * 10) / 10];
+  };
+  const out = { ...piece, a: turn(p.a), b: turn(p.b), ...(p.c ? { c: turn(p.c) } : {}) } as P;
+  delete out.rot;
+  return out;
+}
+
 export function replayPiece(b: Builder, piece: Piece) {
+  piece = bakeLineRotation(piece);
   b.flip = piece.flip === true;
   const first = b.bodies.length;
   try {
@@ -713,7 +735,8 @@ export function validateTrackDef(value: unknown): TrackDefCheck {
     problems.add(`pieces has ${value.pieces.length} entries; the limit is ${MAX_PIECES}.`);
   } else {
     value.pieces.forEach((raw, index) => {
-      const piece = parsePiece(raw, `pieces[${index}]`, problems);
+      const parsedPiece = parsePiece(raw, `pieces[${index}]`, problems);
+      const piece = parsedPiece && bakeLineRotation(parsedPiece);
       if (piece) pieces.push(piece);
     });
   }

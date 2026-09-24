@@ -12,6 +12,7 @@
  * - walls, crates and blocks are always upright boxes, so only quarter turns change them (width and height swap);
  * - round and single-point pieces (loops, pegs, bumpers, item boxes, wrecking balls) only move around the centre.
  */
+import { bakeLineRotation } from '../../game/trackdef';
 import type { Piece, Vec } from '../../game/trackdef';
 import { W } from '../../game/track';
 import { moveHandle, movePiece } from './handles';
@@ -44,7 +45,7 @@ export function hasFreeRotation(piece: Piece): boolean {
 const ROT_TYPES = new Set<Piece['t']>([
   'loop', 'pad', 'bucket', 'tunnel', 'trapdoor', 'blade', 'crusher', 'seesaw', 'catapult', 'geyser', 'trampoline',
   'turnstile', 'targets', 'platform', 'hoop', 'wrecker', 'peg', 'ppeg', 'itembox', 'mace', 'wheel', 'cannon',
-  'magnet', 'vortex', 'curve', 'conveyor', 'mud', 'bridge', 'crumble', 'breakable', 'wall', 'block', 'barricade', 'wind',
+  'magnet', 'vortex', 'crumble', 'breakable', 'wall', 'block', 'barricade', 'wind',
 ]);
 export function usesGenericRotation(piece: Piece): boolean {
   return ROT_TYPES.has(piece.t);
@@ -83,6 +84,7 @@ function turnDir(d: Vec, cos: number, sin: number): Vec {
 
 /** Rotate `piece` by `rad` (stored coordinates, positive = clockwise on screen since y grows downward) about `c`. */
 export function rotatePiece(piece: Piece, rad: number, c: Point): Piece {
+  piece = bakeLineRotation(piece);
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
   const at = (x: number, y: number) => turn([x, y], c, cos, sin);
