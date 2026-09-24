@@ -464,7 +464,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
         const startLen = circuit.def.pieces.length;
         const select = toAdd.map((_, i) => startLen + i);
         commit((def) => {
-          def.pieces.push(...toAdd);
+          def.pieces.push(...regroup(toAdd, def.pieces));
           return def;
         }, { select });
         setArmed(null);

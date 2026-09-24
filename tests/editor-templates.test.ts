@@ -90,7 +90,15 @@ test('Template edge placement clamps a single group delta, preserving paths and 
     const check = validateTrackDef(defFor(placed));
     assert.ok(check.ok, check.ok ? '' : check.errors.join('; '));
   }
-  const tooWide = template([{ t: 'ramp', a: [-100, 1500], b: [1000, 1600] }]);
+  // Rails built into the side walls reach past the edges; a group like that still places (maps allow
+  // points up to 200 past each edge) and stays valid.
+  const wallToWall = template([{ t: 'ramp', a: [-100, 1500], b: [1000, 1600] }]);
+  const placedWide = placeTemplate(wallToWall, { x: 450, y: 1500 }, false);
+  assert.ok(placedWide, 'a wall-to-wall rail places');
+  const wideCheck = validateTrackDef(defFor(placedWide!));
+  assert.ok(wideCheck.ok, wideCheck.ok ? '' : wideCheck.errors.join('; '));
+  // Only a group wider than the whole legal range could never be saved: that one is refused.
+  const tooWide = template([{ t: 'ramp', a: [-300, 1500], b: [1200, 1600] }]);
   assert.equal(placeTemplate(tooWide, { x: 450, y: 1500 }, false), null);
 });
 
