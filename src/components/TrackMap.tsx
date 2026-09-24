@@ -31,6 +31,12 @@ function drawPiece(ctx: CanvasRenderingContext2D, p: Piece, k: number) {
   switch (p.t) {
     case 'ramp': line(p.a[0], p.a[1], p.b[0], p.b[1], COLORS.wood, Math.max(2, 14 * k)); break;
     case 'ice': line(p.a[0], p.a[1], p.b[0], p.b[1], COLORS.ice, Math.max(2, 14 * k)); break;
+    case 'ring': {
+      // X() maps world x (and so a flip) to the map; the ring is round either way.
+      ctx.strokeStyle = COLORS.curve; ctx.lineWidth = Math.max(2, p.thick * 0.55 * k);
+      ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), Math.abs(X(p.x + p.r) - X(p.x)), 0, Math.PI * 2); ctx.stroke();
+      break;
+    }
     case 'curve': {
       ctx.strokeStyle = COLORS.curve; ctx.lineWidth = Math.max(2, 14 * k); ctx.lineCap = 'round';
       ctx.beginPath(); ctx.moveTo(X(p.a[0]), Y(p.a[1])); ctx.quadraticCurveTo(X(p.c[0]), Y(p.c[1]), X(p.b[0]), Y(p.b[1])); ctx.stroke();

@@ -577,6 +577,14 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
         </>
       )}
 
+      {piece.t === 'ring' && (
+        <>
+          <NumField label="Radius" desc="To the middle of the plank." value={piece.r} min={30} max={1200} step={5} onValue={(v) => update({ r: Math.round(clampNum(v, 30, 1200)) } as unknown as Piece)} />
+          <NumField label="Thickness" value={piece.thick} min={8} max={80} step={1} onValue={(v) => update({ thick: Math.round(clampNum(v, 8, 80)) } as unknown as Piece)} />
+          <p className="hint">Drag the side dot to resize the ring and the top dot to change the plank thickness.</p>
+        </>
+      )}
+
       {piece.t === 'vortex' && (
         <>
           <NumField label="Position X" value={piece.x} min={0} max={W} onValue={(v) => update({ x: clampNum(v, 0, W) } as unknown as Piece)} />

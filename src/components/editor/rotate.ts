@@ -213,6 +213,7 @@ export function rotatePiece(piece: Piece, rad: number, c: Point): Piece {
     }
     case 'peg':
     case 'ppeg':
+    case 'ring':
     case 'itembox': {
       const [x, y] = at(piece.x, piece.y);
       return { ...piece, x, y };

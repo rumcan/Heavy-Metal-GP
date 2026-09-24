@@ -255,6 +255,8 @@ export function ghostParts(piece: Piece): GhostPart[] {
       return [box(pt(piece.x, piece.y), piece.w, piece.h)];
     case 'peg':
       return [ring(pt(piece.x, piece.y), piece.r)];
+    case 'ring':
+      return [ring(pt(piece.x, piece.y), piece.r + piece.thick / 2), ring(pt(piece.x, piece.y), Math.max(4, piece.r - piece.thick / 2))];
     case 'ppeg':
       return [ring(pt(piece.x, piece.y), piece.r), ring(pt(piece.x, piece.y), Math.max(3, piece.r * 0.35), true)];
     case 'itembox':

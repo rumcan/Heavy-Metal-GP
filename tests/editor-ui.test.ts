@@ -194,17 +194,17 @@ test('Editor grid: every snap is a whole 25 units, and the lattice keeps up with
 
 test('Palette: the ticket\'s groups, every piece a def can store, and the race art', () => {
   assert.deepEqual(PALETTE.map((g) => g.label), ['Rails', 'Features', 'Pegs', 'Walls', 'Secrets', 'Danger', 'Movers', 'Launchers', 'Fields & surfaces', 'Big set pieces']);
-  // Rails 4 · Features 7 · Pegs 5 · Walls 2 · Secrets 6 · Danger 5 · Movers 6 · Launchers 5 ·
+  // Rails 5 (with the ring rail) · Features 7 · Pegs 5 · Walls 2 · Secrets 6 · Danger 5 · Movers 6 · Launchers 5 ·
   // Fields 4 · Set pieces 5. Counts are tiles, not types: Pegs/Secrets/Movers/Launchers carry a
   // second variant each (orange and item pegs, the tough barricade and the weight trapdoor, the
   // reversed belt, the right-hand flipper). Danger has no variant — five kinds, five tiles.
   // #99 retired three tiles: the track switch lever (Secrets), the scoop (Launchers) and the
   // skipping pond (Fields). The line below is the one that matters: every type the def format
   // can store is in the palette.
-  assert.deepEqual(PALETTE.map((g) => g.tiles.length), [4, 7, 5, 2, 6, 5, 6, 5, 4, 5]);
+  assert.deepEqual(PALETTE.map((g) => g.tiles.length), [5, 7, 5, 2, 6, 5, 6, 5, 4, 5]);
   const types = [...new Set(TILES.map((tile) => tile.t))].sort();
   // #99: pool, scoop and switch are retired — the palette covers exactly the def format's remaining placeable pieces.
-  assert.deepEqual(types, ['barricade', 'blade', 'block', 'boost', 'boulder', 'breakable', 'bridge', 'bucket', 'cannon', 'catapult', 'conveyor', 'crumble', 'crusher', 'curve', 'flipper', 'geyser', 'hoop', 'ice', 'itembox', 'loop', 'mace', 'magnet', 'mud', 'pad', 'peg', 'platform', 'ppeg', 'ramp', 'saw', 'screw', 'seesaw', 'sling', 'spinner', 'targets', 'trampoline', 'trapdoor', 'tunnel', 'turnstile', 'vortex', 'wall', 'wheel', 'wind', 'wrecker'], 'the palette should cover exactly the def format\'s placeable pieces');
+  assert.deepEqual(types, ['barricade', 'blade', 'block', 'boost', 'boulder', 'breakable', 'bridge', 'bucket', 'cannon', 'catapult', 'conveyor', 'crumble', 'crusher', 'curve', 'flipper', 'geyser', 'hoop', 'ice', 'itembox', 'loop', 'mace', 'magnet', 'mud', 'pad', 'peg', 'platform', 'ppeg', 'ramp', 'ring', 'saw', 'screw', 'seesaw', 'sling', 'spinner', 'targets', 'trampoline', 'trapdoor', 'tunnel', 'turnstile', 'vortex', 'wall', 'wheel', 'wind', 'wrecker'], 'the palette should cover exactly the def format\'s placeable pieces');
   const ids = TILES.map((tile) => tile.id);
   assert.equal(new Set(ids).size, ids.length, 'two tiles share an id');
   // A piece type may have variants (the Peggle peg colours): the plain tile's id is the bare type and it has no

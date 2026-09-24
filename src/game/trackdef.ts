@@ -59,6 +59,8 @@ export interface BoostPiece extends PieceBase { t: 'boost'; x: number; y: number
 export interface SpinnerPiece extends PieceBase { t: 'spinner'; x: number; y: number; len: number; speed: number; angle?: number }
 export interface BreakablePiece extends PieceBase { t: 'breakable'; x: number; y: number; w: number; h: number; req: number }
 export interface PegPiece extends PieceBase { t: 'peg'; x: number; y: number; r: number }
+/** Ring rail: a perfect plank circle centred at (x, y), radius `r` to the middle of the plank, `thick` across. */
+export interface RingPiece extends PieceBase { t: 'ring'; x: number; y: number; r: number; thick: number }
 export interface PPegPiece extends PieceBase { t: 'ppeg'; x: number; y: number; color: PegColor; r: number; item?: ItemType }
 export interface ItemBoxPiece extends PieceBase { t: 'itembox'; x: number; y: number }
 export interface BucketPiece extends PieceBase { t: 'bucket'; y: number; phase?: number }
@@ -138,7 +140,7 @@ export type Piece =
   | WheelPiece | ScrewPiece | ConveyorPiece | SeesawPiece | BridgePiece
   | CannonPiece | CatapultPiece | FlipperPiece | SlingPiece
   | WindPiece | MagnetPiece | MudPiece | GeyserPiece
-  | TrampolinePiece | TurnstilePiece | TargetsPiece | VortexPiece | PlatformPiece;
+  | TrampolinePiece | TurnstilePiece | TargetsPiece | VortexPiece | PlatformPiece | RingPiece;
 
 /**
  * #99: pieces retired from the game and the Workshop (the track switch lever, the scoop and the
@@ -545,6 +547,7 @@ export function replayPiece(b: Builder, piece: Piece) {
       case 'spinner': b.spinner(piece.x, piece.y, piece.len, piece.speed, piece.angle); break;
       case 'breakable': b.breakable(piece.x, piece.y, piece.w, piece.h, piece.req); break;
       case 'peg': b.peg(piece.x, piece.y, piece.r); break;
+      case 'ring': b.ringRail(piece.x, piece.y, piece.r, piece.thick); break;
       case 'ppeg': b.ppeg(piece.x, piece.y, piece.color, piece.r, piece.item); break;
       case 'itembox': b.itemBox(piece.x, piece.y); break;
       case 'bucket': b.bucket(piece.y, piece.phase ?? 0); break;
@@ -981,6 +984,8 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
         req: number(raw.req, `${at}.req`, 1, 10, problems),
         ...body,
       };
+    case 'ring':
+      return { t: 'ring', x: number(raw.x, `${at}.x`, -200, W + 200, problems), y: real(raw.y, `${at}.y`, problems), r: number(raw.r, `${at}.r`, 30, 1200, problems), thick: number(raw.thick, `${at}.thick`, 8, 80, problems), ...body };
     case 'peg':
       return { t: 'peg', x: number(raw.x, `${at}.x`, -200, W + 200, problems), y: real(raw.y, `${at}.y`, problems), r: number(raw.r, `${at}.r`, 2, 100, problems), ...body };
     case 'ppeg': {
@@ -1323,6 +1328,8 @@ function pieceYs(piece: Piece): number[] {
       return [piece.a[1], piece.b[1]];
     case 'geyser':
       return [piece.y - piece.h, piece.y + 10];
+    case 'ring':
+      return [piece.y - piece.r - piece.thick / 2, piece.y + piece.r + piece.thick / 2];
     case 'hoop':
     case 'spinner':
     case 'breakable':

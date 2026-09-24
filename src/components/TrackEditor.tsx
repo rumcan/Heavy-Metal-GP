@@ -39,8 +39,6 @@ import {
   ZoomIn,
   ZoomOut,
   FlipHorizontal,
-  RotateCcw,
-  RotateCw,
   MoveVertical,
   Eraser,
   MousePointer2,
@@ -1207,12 +1205,6 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
             </button>
             <button className="text-button" onClick={handleMirror} disabled={selected.length === 0} title="Mirror horizontally (M)">
               <FlipHorizontal size={13} />Mirror
-            </button>
-            <button className="text-button" onClick={() => handleRotate(-ROTATE_STEP_DEG)} disabled={selected.length === 0} title={`Rotate ${ROTATE_STEP_DEG}° anticlockwise (Shift+R). Or drag the round handle above a ramp.`} aria-label={`Rotate ${ROTATE_STEP_DEG} degrees anticlockwise`}>
-              <RotateCcw size={13} />
-            </button>
-            <button className="text-button" onClick={() => handleRotate(ROTATE_STEP_DEG)} disabled={selected.length === 0} title={`Rotate ${ROTATE_STEP_DEG}° clockwise (R). Or drag the round handle above a ramp.`} aria-label={`Rotate ${ROTATE_STEP_DEG} degrees clockwise`}>
-              <RotateCw size={13} />Rotate
             </button>
             <button className="text-button" onClick={handleDelete} disabled={selected.length === 0} title="Delete">
               <Trash2 size={13} />Delete

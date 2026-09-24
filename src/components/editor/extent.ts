@@ -21,6 +21,8 @@ import { W } from '../../game/track';
  */
 export function pieceXs(piece: Piece): number[] {
   switch (piece.t) {
+    case 'ring':
+      return [piece.x - piece.r - piece.thick / 2, piece.x + piece.r + piece.thick / 2];
     case 'ramp':
     case 'ice':
       return [piece.a[0], piece.b[0]];

@@ -34,7 +34,7 @@ const EDGE = 200;
 /** Fit authored coordinates (not sprite overhang) with ONE delta for the whole group.
  * Returns null only when the group is wider than the track plus both edge margins; never squashes geometry.
  */
-export function fitGroupTranslation(pieces: readonly Piece[], dx: number): number | null {
+export function fitGroupTranslation(pieces: readonly Piece[], dx: number, intoWalls = false): number | null {
   let minX = Infinity, maxX = -Infinity;
   // Bend handles only need to stay saveable (within EDGE of the walls), not on the track.
   let handleMin = Infinity, handleMax = -Infinity;
@@ -63,7 +63,7 @@ export function fitGroupTranslation(pieces: readonly Piece[], dx: number): numbe
     });
   }
   let lo: number, hi: number;
-  if (maxX - minX <= W) {
+  if (maxX - minX <= W && !intoWalls) {
     lo = -minX; hi = W - maxX;
   } else {
     // Wider than the track: rails built into the side walls reach past the edges (maps allow points up to

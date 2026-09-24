@@ -245,6 +245,8 @@ function buildDefault(type: PieceType, at: Point, snap = false): Piece {
       return { t: 'turnstile', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, arms: 4, r: 78, mode: 0, period: 0, phase: 0 };
     case 'targets':
       return { t: 'targets', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, count: 4, reset: 5600 };
+    case 'ring':
+      return { t: 'ring', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, r: 120, thick: 26 };
     case 'vortex':
       return { t: 'vortex', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy, r: 175, spin: 1.4, hole: 34 };
     case 'platform':

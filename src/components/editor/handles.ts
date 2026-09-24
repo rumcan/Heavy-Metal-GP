@@ -393,6 +393,14 @@ function baseHandles(piece: Piece): Handle[] {
         { id: 'len', x: piece.x + (piece.side === 0 ? 1 : -1) * piece.len, y: piece.y, cursor: 'ew-resize', label: 'Bat length' },
       ];
     }
+    case 'ring': {
+      // Radius on the right of the plank's middle line; thickness on the plank's outer edge at the top.
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
+        { id: 'r', x: piece.x + piece.r, y: piece.y, cursor: 'ew-resize', label: 'Radius' },
+        { id: 'thick', x: piece.x, y: piece.y - piece.r - piece.thick / 2, cursor: 'ns-resize', label: 'Thickness' },
+      ];
+    }
     case 'peg':
     case 'ppeg': {
       return [
@@ -860,6 +868,13 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       }
       return piece;
     }
+    case 'ring': {
+      if (handleId === 'move') return { ...piece, x: withSnap(to.x, sx), y: withSnap(to.y, sx) };
+      const d = Math.hypot(to.x - piece.x, to.y - piece.y);
+      if (handleId === 'r') return { ...piece, r: clampNum(withSnap(d, sx), 30, 1200) };
+      if (handleId === 'thick') return { ...piece, thick: clampNum(Math.round(Math.abs(d - piece.r) * 2), 8, 80) };
+      return piece;
+    }
     case 'peg': {
       if (handleId === 'move') return { ...piece, x: withSnap(to.x, sx), y: withSnap(to.y, sx) };
       if (handleId === 'r') {
@@ -972,7 +987,9 @@ export function movePiece(piece: Piece, dx: number, dy: number): Piece {
 export function movePieces(pieces: readonly Piece[], dx: number, dy: number): Piece[] {
   // Contradictory limits mean something is already out of range: keep the shapes and let validation
   // report it rather than quietly reshaping the group.
-  const applied = fitGroupTranslation(pieces, dx) ?? dx;
+  // A selection of several items (a built section) may run into the side walls, as rails built into the
+  // cliff do: it gets the maps' full margin past each edge. A single item still stops at the wall.
+  const applied = fitGroupTranslation(pieces, dx, pieces.length > 1) ?? dx;
   return pieces.map((piece) => translatePiece(piece, applied, dy));
 }
 
@@ -1025,6 +1042,7 @@ export function mirrorPiece(piece: Piece): Piece {
       return { ...piece, pts: piece.pts.map(([x, y]) => [mx(x), y] as [number, number]) };
     case 'peg':
     case 'ppeg':
+    case 'ring':
       return { ...piece, x: mx(piece.x) };
     case 'itembox':
       return { ...piece, x: mx(piece.x) };

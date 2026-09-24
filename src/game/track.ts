@@ -598,6 +598,23 @@ export class Builder {
     return pts;
   }
 
+  /**
+   * Ring rail: a perfect circle of plank (radius `r` to the middle of the plank, `thick` across), built from short
+   * chords with no end caps so it reads as one continuous hoop. Enough chords to stay round at any size.
+   */
+  ringRail(x: number, y: number, r: number, thick = T) {
+    const n = Math.max(24, Math.min(96, Math.round((Math.PI * 2 * r) / 26)));
+    // Lay each chord on the inside edge and hang the slab outwards, so the plank is centred on radius r.
+    const inner = r - thick / 2;
+    for (let i = 0; i < n; i++) {
+      const a0 = (i / n) * Math.PI * 2, a1 = ((i + 1) / n) * Math.PI * 2, am = (a0 + a1) / 2;
+      const inward = { x: -Math.cos(am), y: -Math.sin(am) };
+      if (this.flip) inward.x = -inward.x;
+      const b = this.ramp(x + inner * Math.cos(a0), y + inner * Math.sin(a0), x + inner * Math.cos(a1), y + inner * Math.sin(a1), thick, 'ramp', inward);
+      meta(b).caps = []; // no iron end caps anywhere on the hoop
+    }
+  }
+
   /** Arc from angle a0 to a1 (radians, screen space: 0 = right, PI/2 = bottom) with its inner surface at radius r. */
   private arc(cx: number, cy: number, r: number, a0: number, a1: number, category: number) {
     const steps = Math.max(2, Math.ceil(Math.abs(a1 - a0) / (Math.PI / 14)));
