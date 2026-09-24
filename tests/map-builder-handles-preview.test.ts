@@ -21,6 +21,7 @@ import { buildEditorTrack } from '../src/components/editor/build';
 import { validateTrackDef, type Piece, type TrackDef } from '../src/game/trackdef';
 import { W } from '../src/game/track';
 import { placeTemplate, type SavedTemplate } from '../src/components/editor/templates';
+import { pegArtById, chosenPegArt } from '../src/game/peg-art';
 
 const CURSOR = { x: 450, y: 1500 };
 
@@ -187,7 +188,9 @@ test('Every palette tile previews real geometry, not a fallback dot', () => {
     const preview = ghostPreview(tile.id, CURSOR, snap);
     assert.ok(preview, `${tile.id} had no ghost at all`);
     assert.equal(preview!.label, tile.label);
-    assert.equal(preview!.pieces.length, 1, `${tile.id} previewed the wrong number of pieces`);
+    // Peg art stamps a whole picture (one peg per dot); every other tile places one piece.
+    const expected = tile.id === 'pegart' ? pegArtById(chosenPegArt()).dots.length : 1;
+    assert.equal(preview!.pieces.length, expected, `${tile.id} previewed the wrong number of pieces`);
     assert.deepEqual(preview!.pieces.map(g => g.piece), placementPieces(tile.id, CURSOR, snap));
     const ghost = preview!.pieces[0];
     assert.ok(ghost.parts.length > 0, `${tile.id} previewed nothing`);

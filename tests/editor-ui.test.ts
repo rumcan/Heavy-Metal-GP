@@ -201,7 +201,7 @@ test('Palette: the ticket\'s groups, every piece a def can store, and the race a
   // #99 retired three tiles: the track switch lever (Secrets), the scoop (Launchers) and the
   // skipping pond (Fields). The line below is the one that matters: every type the def format
   // can store is in the palette.
-  assert.deepEqual(PALETTE.map((g) => g.tiles.length), [6, 7, 5, 2, 6, 5, 6, 5, 4, 5]);
+  assert.deepEqual(PALETTE.map((g) => g.tiles.length), [6, 7, 6, 2, 6, 5, 6, 5, 4, 5]);
   const types = [...new Set(TILES.map((tile) => tile.t))].sort();
   // #99: pool, scoop and switch are retired — the palette covers exactly the def format's remaining placeable pieces.
   assert.deepEqual(types, ['barricade', 'blade', 'block', 'boost', 'boulder', 'breakable', 'bridge', 'bucket', 'cannon', 'catapult', 'conveyor', 'crumble', 'crusher', 'curve', 'flipper', 'geyser', 'hoop', 'ice', 'itembox', 'loop', 'mace', 'magnet', 'mud', 'pad', 'peg', 'platform', 'ppeg', 'ramp', 'ring', 'saw', 'screw', 'seesaw', 'sign', 'sling', 'spinner', 'targets', 'trampoline', 'trapdoor', 'tunnel', 'turnstile', 'vortex', 'wall', 'wheel', 'wind', 'wrecker'], 'the palette should cover exactly the def format\'s placeable pieces');
@@ -211,7 +211,8 @@ test('Palette: the ticket\'s groups, every piece a def can store, and the race a
   // preset; every variant has its own id and a preset.
   for (const type of types) assert.equal(TILES.filter((tile) => tile.id === type).length, 1, `${type} has no plain tile`);
   for (const tile of TILES) assert.equal(tile.id === tile.t, tile.preset === undefined, `${tile.id}: variants need a preset, plain tiles must not have one`);
-  assert.deepEqual(TILES.filter((tile) => tile.t === 'ppeg').map((tile) => tile.preset?.color ?? 'blue'), ['blue', 'orange', 'green']);
+  // The fourth is Peg art: premade pictures stamped as a group of Peggle pegs.
+  assert.deepEqual(TILES.filter((tile) => tile.t === 'ppeg').map((tile) => tile.preset?.color ?? 'blue'), ['blue', 'orange', 'green', 'blue']);
   for (const tile of TILES) {
     assert.ok(tile.label && tile.hint, `${tile.t} needs a label and a hint`);
     assert.ok(tile.sprite === null || /^[a-z0-9-]+$/.test(tile.sprite), `${tile.t} names art that cannot exist: ${tile.sprite}`);

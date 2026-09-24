@@ -25,6 +25,9 @@ import { defaultPiece } from './defaults';
 import { tileFor } from './palette';
 import { getTemplates, placeTemplate, type SavedTemplate } from './templates';
 import type { Point } from './camera';
+import { SNAP } from './camera';
+import { fitGroupTranslation, translatePiece } from './translation';
+import { chosenPegArt, pegArtById, PEG_ART_R } from '../../game/peg-art';
 
 /** One primitive of the ghost outline, in world units. */
 export type GhostPart =
@@ -71,6 +74,14 @@ export function placementPieces(armed: string, at: Point, snap: boolean, templat
   }
   const tile = tileFor(armed);
   if (!tile) return [];
+  if (tile.id === 'pegart') {
+    // A premade peg picture: one Peggle peg per dot, stamped as a group centred on the pointer.
+    const art = pegArtById(chosenPegArt());
+    const cx = snap ? Math.round(at.x / SNAP) * SNAP : at.x, cy = snap ? Math.round(at.y / SNAP) * SNAP : at.y;
+    const local: Piece[] = art.dots.map((d) => ({ t: 'ppeg', x: d.x, y: d.y, color: d.color, r: PEG_ART_R, grp: 1 }));
+    const dx = fitGroupTranslation(local, cx);
+    return dx === null ? null : local.map((p) => translatePiece(p, dx, cy));
+  }
 
   return [{ ...defaultPiece(tile.t, at, snap), ...tile.preset } as Piece];
 }

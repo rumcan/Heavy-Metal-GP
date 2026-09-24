@@ -78,6 +78,7 @@ export const PALETTE: PaletteGroup[] = [
       { id: 'ppeg', t: 'ppeg', label: 'Blue peg', sprite: 'gem-blue', hint: 'A Peggle peg: bounces the marble and disappears when hit.', effects: { bounce: 40 } },
       { id: 'ppeg-orange', t: 'ppeg', label: 'Orange peg', sprite: 'gem-orange', preset: { color: 'orange' }, hint: 'A Peggle peg worth credits: every orange peg hit pays out at the finish.', effects: { bounce: 40 } },
       { id: 'ppeg-item', t: 'ppeg', label: 'Item peg', sprite: 'gem-purple', preset: { color: 'green', r: 13 }, hint: 'A glowing Peggle peg that gives the marble a free item.', effects: { bounce: 40 } },
+      { id: 'pegart', t: 'ppeg', label: 'Peg art', sprite: 'gem-orange', preset: { color: 'blue' }, hint: 'A premade picture made of Peggle pegs. Pick one from the list, then click the canvas to stamp it as one group.', effects: { bounce: 40 } },
       { id: 'itembox', t: 'itembox', label: 'Item box', sprite: 'crate', hint: 'Gives the marble that hits it an item.', effects: { speed: 40 } },
     ],
   },

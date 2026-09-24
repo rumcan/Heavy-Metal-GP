@@ -2,6 +2,7 @@ import { useState, useEffect, Fragment } from 'react';
 import { Weight, Zap, CircleDot } from 'lucide-react';
 import { PALETTE } from './palette';
 import { getTemplates, deleteTemplate } from './templates';
+import { pegArts, pegArtById, chosenPegArt, choosePegArt } from '../../game/peg-art';
 
 const art = import.meta.glob<string>('../../assets/game/*.{webp,png}', { eager: true, import: 'default' });
 const artFor = (name: string | null) => (name ? art[`../../assets/game/${name}.webp`] ?? art[`../../assets/game/${name}.png`] ?? null : null);
@@ -11,6 +12,34 @@ interface Props {
   active: string | null;
   onPick: (id: string) => void;
   onShowToast?: (msg: string) => void;
+}
+
+const PEG_COLORS = { blue: '#3b82f6', orange: '#f97316', green: '#22c55e' } as const;
+
+/** The Peg art picture list, with a live preview of the one the next click stamps. */
+function PegArtPicker() {
+  const [id, setId] = useState(chosenPegArt());
+  const art = pegArtById(id);
+  const xs = art.dots.map((d) => d.x), ys = art.dots.map((d) => d.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  const pad = 14, size = 150;
+  const k = (size - pad * 2) / Math.max(maxX - minX, maxY - minY, 1);
+  return (
+    <div className="peg-art-picker">
+      <label className="prop-field" style={{ gridTemplateColumns: '1fr' }}>
+        <span>Picture</span>
+        <select value={id} onChange={(e) => { choosePegArt(e.target.value); setId(e.target.value); }} onKeyDown={(e) => e.stopPropagation()}>
+          {pegArts().map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+        </select>
+      </label>
+      <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} role="img" aria-label={`${art.name}: ${art.dots.length} pegs`} style={{ alignSelf: 'center', background: '#070b10', borderRadius: 4 }}>
+        {art.dots.map((d, i) => (
+          <circle key={i} cx={pad + (d.x - minX) * k + (size - pad * 2 - (maxX - minX) * k) / 2} cy={pad + (d.y - minY) * k + (size - pad * 2 - (maxY - minY) * k) / 2} r={Math.max(1.6, 8 * k)} fill={PEG_COLORS[d.color]} />
+        ))}
+      </svg>
+      <small style={{ color: '#8ea2b5', fontSize: 10 }}>{art.dots.length} pegs · placed as one group</small>
+    </div>
+  );
 }
 
 const StatEffects = ({ effects }: { effects?: { weight?: number, speed?: number, bounce?: number } }) => {
@@ -107,6 +136,7 @@ export default function PiecePalette({ active, onPick }: Props) {
               }}>
                 <strong style={{ color: '#e6edf3', fontSize: '12px', letterSpacing: '0.5px' }}>{tile.label}</strong>
                 <p style={{ margin: 0, fontSize: '10px', lineHeight: 1.5, color: '#8ea2b5' }}>{tile.hint}</p>
+                {tile.id === 'pegart' && <PegArtPicker />}
                 <StatEffects effects={tile.effects} />
               </div>
             )}
