@@ -23,6 +23,10 @@ import type { MarbleInfo } from '../../game/types';
 import type { Point } from './camera';
 import { buildEditorTrack } from './build';
 
+/** Rails that may be built into the side walls, and how far: the TrackDef x range (-200 .. W + 200). */
+const RAIL_TYPES = new Set(['ramp', 'ice', 'curve', 'ring']);
+const RAIL_WALL_MARGIN = 200;
+
 export type IssueSeverity = 'error' | 'warning';
 export interface ValidationIssue {
   severity: IssueSeverity;
@@ -135,11 +139,13 @@ function staticChecks(def: TrackDef, track: Track | null): ValidationIssue[] {
     issues.push({ severity: 'warning', message: `Large circuit: ${def.pieces.length} pieces may hurt performance`, pos: { x: W / 2, y: 100 } });
   }
 
-  // outside 0..W
+  // outside 0..W. Rails may run into the side walls (built into the cliff, and a curve's bend handle sits beyond its
+  // rail): they only have to stay within the margin a map can store, so they are never flagged for it.
   def.pieces.forEach((p, i) => {
+    const edge = RAIL_TYPES.has(p.t) ? RAIL_WALL_MARGIN : 0;
     for (const x of pieceXs(p)) {
-      if (x < 0 || x > W) {
-        issues.push({ severity: 'error', message: `${p.t} #${i} at x=${Math.round(x)} outside 0..${W}`, pos: { x: Math.max(0, Math.min(W, x)), y: pieceYs(p)[0] ?? 0 }, pieceIndex: i });
+      if (x < -edge || x > W + edge) {
+        issues.push({ severity: 'error', message: `${p.t} #${i} at x=${Math.round(x)} outside ${-edge}..${W + edge}`, pos: { x: Math.max(0, Math.min(W, x)), y: pieceYs(p)[0] ?? 0 }, pieceIndex: i });
         break;
       }
     }

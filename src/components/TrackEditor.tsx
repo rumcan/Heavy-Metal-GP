@@ -248,6 +248,14 @@ function regroup(added: Piece[], existing: Piece[]): Piece[] {
 /** How long after the last edit the open draft is saved. */
 const DRAFT_SAVE_DELAY_MS = 800;
 
+/** Resolve after the browser has painted, so a loading pop-up shows before blocking work starts. */
+const nextPaint = () => new Promise<void>((resolve) => {
+  let done = false;
+  const finish = () => { if (!done) { done = true; resolve(); } };
+  requestAnimationFrame(() => setTimeout(finish, 0));
+  setTimeout(finish, 60); // a hidden tab paints no frames: never let a save wait on one
+});
+
 export default function TrackEditor({ seed, profile, name, initialDef, driver, onExit, onCommunity }: Props) {
   const [publishOpen, setPublishOpen] = useState(false);
   const [templateSnapshot, setTemplateSnapshot] = useState<ReturnType<typeof snapshotTemplate> | null>(null);
@@ -280,6 +288,8 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
   // MB-05: validation + share/draft gating
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [validating, setValidating] = useState(false);
+  // Loading pop-up for saves (validation shows it through `validating`).
+  const [busy, setBusy] = useState<string | null>(null);
   const [draftMsg, setDraftMsg] = useState<string | null>(null);
   const [shareMsg, setShareMsg] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -754,13 +764,17 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
     }
   }, [rig]);
 
-  const handleSaveDraft = useCallback(() => {
+  const handleSaveDraft = useCallback(async () => {
+    setBusy('Saving draft…');
+    await nextPaint();
     try {
       saveDraft(circuit.def);
       setDraftMsg(`Draft “${circuit.def.name}” saved. Drafts always save — validation not required.`);
       setTimeout(() => setDraftMsg(null), 3500);
     } catch {
       setDraftMsg('Draft saved (storage unavailable).');
+    } finally {
+      setBusy(null);
     }
   }, [circuit.def]);
 
@@ -787,7 +801,15 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
   }, [circuit.def, validation, validating]);
 
   // MB-06: My tracks — save current, load, rename, duplicate, delete + exit autosave
-  const handleSaveCurrent = useCallback(() => {
+  const handleSaveCurrent = useCallback(async () => {
+    setBusy('Saving to My tracks…');
+    await nextPaint();
+    try {
+      saveCurrent();
+    } finally {
+      setBusy(null);
+    }
+    function saveCurrent() {
     if (activeTrackId) {
       const res = updateTrack(activeTrackId, circuit.def);
       if ('error' in res) {
@@ -809,6 +831,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
       setActiveTrackId((res as SavedTrack).id);
       setDraftMsg(`Saved “${circuit.def.name}” to My tracks.`);
       setTimeout(() => setDraftMsg(null), 3000);
+    }
     }
   }, [circuit.def, activeTrackId]);
 
@@ -1373,6 +1396,15 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
         </Dialog>
       )}
       {publishOpen && <PublishDialog def={circuit.def} onClose={() => setPublishOpen(false)} onViewCommunity={onCommunity ? () => { setPublishOpen(false); handleCommunity(); } : undefined} />}
+      {(busy || validating) && (
+        <div className="editor-busy" role="status" aria-live="polite">
+          <div className="editor-busy-box">
+            <span className="editor-busy-spinner" aria-hidden="true" />
+            <strong>{busy ?? 'Validating your track…'}</strong>
+            {!busy && <span>Racing 10 AI marbles through it. Big tracks take a few seconds.</span>}
+          </div>
+        </div>
+      )}
       {templateSnapshot && <TemplateSaveDialog onClose={() => setTemplateSnapshot(null)} onSave={submitTemplateSave} defaultSprite={(PALETTE.flatMap(g => g.tiles).find(t => t.t === templateSnapshot.pieces[0]?.t)?.sprite) || 'rail-wood'} />}
       <CoachMarks def={circuit.def} testing={testing} validating={validating} canShare={!!validation?.canShare} armed={armed} onClose={() => setCoachForced(false)} forceOpen={coachForced} />
     </div>

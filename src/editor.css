@@ -337,3 +337,12 @@
 .editor-tool-select.active { border-color: var(--accent); background: #d63e2e22; color: #fff; box-shadow: 0 0 10px #d63e2e44; }
 .editor-tool-select kbd { padding: 0 5px; border: 1px solid currentColor; border-radius: 3px; font: 10px var(--mono); opacity: .8; }
 .palette-tile[data-tile="curve"] .palette-art img { transform: rotate(-18deg); } /* the wooden rail, tilted: reads as a bend, not a copy of Ramp */
+
+/* Loading pop-up for saves and validation. The spinner is a compositor animation, so it keeps turning even while
+   validation's simulation holds the main thread. */
+.editor-busy { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; background: rgba(5, 9, 14, 0.55); }
+.editor-busy-box { display: grid; justify-items: center; gap: 10px; min-width: 240px; max-width: 320px; padding: 22px 26px; background: #121b25; border: 1px solid #2b3644; border-radius: 6px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5); text-align: center; }
+.editor-busy-box strong { font: 600 16px var(--display); letter-spacing: .6px; color: #eef1f3; text-transform: uppercase; }
+.editor-busy-box span:not(.editor-busy-spinner) { font-size: 11px; color: #93a3b3; }
+.editor-busy-spinner { width: 34px; height: 34px; border-radius: 50%; border: 3px solid #2b3644; border-top-color: var(--accent); animation: editor-busy-spin .8s linear infinite; will-change: transform; }
+@keyframes editor-busy-spin { to { transform: rotate(360deg); } }
