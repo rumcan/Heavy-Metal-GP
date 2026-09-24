@@ -2536,6 +2536,10 @@ export class Game {
       if (m.info.isPlayer || this.time < m.rocketUntil) {
         m.trail.push({ x: b.position.x, y: b.position.y });
         if (m.trail.length > 14) m.trail.shift();
+      } else if (m.trail.length) {
+        // A rival's rocket ran out: drop its trail. Left behind, the renderer joined that stale trail to the
+        // marble wherever it went next — a long "bungee cord" across the track.
+        m.trail = [];
       }
 
       // AI item usage
