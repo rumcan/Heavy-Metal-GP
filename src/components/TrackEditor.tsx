@@ -87,6 +87,7 @@ import bannerUrl from '../assets/editor/workshop-banner.webp';
 import NewTrackDialog from './editor/NewTrackDialog';
 import CoachMarks from './editor/CoachMarks';
 import '../editor.css';
+import { getItem, setItem, removeItem } from '../game/storage';
 
 interface Props {
   seed: number;
@@ -256,6 +257,37 @@ const nextPaint = () => new Promise<void>((resolve) => {
   setTimeout(finish, 60); // a hidden tab paints no frames: never let a save wait on one
 });
 
+/**
+ * The track name box keeps its own text while the player types and hands it to the map after a short pause or on
+ * blur: every change to the map re-renders the whole Workshop, which on a big map made each keystroke lag.
+ */
+function TrackNameInput({ value, onCommit }: { value: string; onCommit: (name: string) => void }) {
+  const [text, setText] = useState(value);
+  const timer = useRef<number | undefined>(undefined);
+  // A new track (or undo) replaces the name from outside.
+  useEffect(() => { setText(value); }, [value]);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  const commitNow = (next: string) => { window.clearTimeout(timer.current); if (next !== value) onCommit(next); };
+  return (
+    <input
+      value={text}
+      maxLength={MAX_NAME}
+      aria-label="Track name"
+      onChange={(e) => {
+        const next = e.target.value.slice(0, MAX_NAME);
+        setText(next);
+        window.clearTimeout(timer.current);
+        timer.current = window.setTimeout(() => onCommit(next), 300);
+      }}
+      onBlur={() => commitNow(text)}
+      onKeyDown={(e) => { if (e.key === 'Enter') commitNow(text); }}
+    />
+  );
+}
+
+/** Storage key for the id of the saved track the Workshop has open. */
+const ACTIVE_TRACK_KEY = 'heavy-metal-gp:workshop-active-track';
+
 export default function TrackEditor({ seed, profile, name, initialDef, driver, onExit, onCommunity }: Props) {
   const [publishOpen, setPublishOpen] = useState(false);
   const [templateSnapshot, setTemplateSnapshot] = useState<ReturnType<typeof snapshotTemplate> | null>(null);
@@ -267,7 +299,15 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
   });
   // MB-06: My tracks + open draft persistence
   const [savedTracks, setSavedTracks] = useState<SavedTrack[]>(() => loadTracksSync());
-  const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
+  // The saved track the editor has open. Remembered across reloads, so Save updates it instead of adding a copy.
+  const [activeTrackId, setActiveTrackIdState] = useState<string | null>(() => {
+    const id = getItem(ACTIVE_TRACK_KEY);
+    return id && loadTracksSync().some((t) => t.id === id) ? id : null;
+  });
+  const setActiveTrackId = useCallback((id: string | null) => {
+    setActiveTrackIdState(id);
+    try { if (id) setItem(ACTIVE_TRACK_KEY, id); else removeItem(ACTIVE_TRACK_KEY); } catch { /* ignore */ }
+  }, []);
   const [stage, setStage] = useState<Game | null>(null);
   const [grid, setGrid] = useState(true);
   const [ruler, setRuler] = useState(true);
@@ -311,7 +351,10 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
   const [, forceTick] = useState(0);
   const bumpHistory = useCallback(() => forceTick((n) => n + 1), []);
 
-  const built = useMemo(() => buildEditorTrack(circuit.def), [circuit.def, circuit.build]);
+  // Rebuild only when something that shapes the track changes: renaming it must not rebuild a big map per keystroke.
+  const { pieces: defPieces, height: defHeight, seed: defSeed, theme: defTheme, segments: defSegments } = circuit.def;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const built = useMemo(() => buildEditorTrack(circuit.def), [defPieces, defHeight, defSeed, defTheme, defSegments, circuit.build]);
   const track = built.track;
   const bodyToPiece = built.bodyToPiece;
   const buildError = built.error;
@@ -801,7 +844,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
   }, [circuit.def, validation, validating]);
 
   // MB-06: My tracks — save current, load, rename, duplicate, delete + exit autosave
-  const handleSaveCurrent = useCallback(async () => {
+  const handleSaveCurrent = useCallback(async (asNew = false) => {
     setBusy('Saving to My tracks…');
     await nextPaint();
     try {
@@ -810,7 +853,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
       setBusy(null);
     }
     function saveCurrent() {
-    if (activeTrackId) {
+    if (activeTrackId && !asNew) {
       const res = updateTrack(activeTrackId, circuit.def);
       if ('error' in res) {
         setDraftMsg(res.error);
@@ -833,7 +876,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
       setTimeout(() => setDraftMsg(null), 3000);
     }
     }
-  }, [circuit.def, activeTrackId]);
+  }, [circuit.def, activeTrackId, setActiveTrackId]);
 
   const handleLoadTrack = useCallback((id: string) => {
     const tracks = loadTracksSync();
@@ -1108,7 +1151,8 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
             onRename={handleRenameTrack}
             onDuplicate={handleDuplicateTrack}
             onDelete={handleDeleteTrack}
-            onSaveCurrent={handleSaveCurrent}
+            onSaveCurrent={() => handleSaveCurrent(false)}
+            onSaveNew={() => handleSaveCurrent(true)}
             onDevLoadOfficial={(def) => {
               history.push(circuit.def);
               setCircuit({ def: cloneDef(def), build: 0 });
@@ -1152,7 +1196,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
           <div className="editor-toolbar">
             <label className="editor-field editor-name">
               <span className="eyebrow">Track name</span>
-              <input value={circuit.def.name} maxLength={MAX_NAME} aria-label="Track name" onChange={(e) => editName(e.target.value)} />
+              <TrackNameInput value={circuit.def.name} onCommit={editName} />
             </label>
             <div className="editor-field editor-theme"><ThemePicker value={circuit.def.theme} onChange={editTheme} /></div>
             <div className="editor-toggles">
@@ -1337,15 +1381,23 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
                   setLocked((prev) => new Set([...prev].map((i) => newIndex.get(i) ?? i)));
                 }}
                 onToggleLock={(pieceIndex) => {
+                  // A grouped piece locks and unlocks with its whole group.
+                  const g = circuit.def.pieces[pieceIndex]?.grp;
+                  const members = g === undefined ? [pieceIndex] : circuit.def.pieces.flatMap((p, i) => (p.grp === g ? [i] : []));
+                  const unlocking = locked.has(pieceIndex);
                   setLocked((prev) => {
                     const next = new Set(prev);
-                    if (next.has(pieceIndex)) next.delete(pieceIndex);
-                    else next.add(pieceIndex);
+                    for (const i of members) { if (unlocking) next.delete(i); else next.add(i); }
                     return next;
                   });
-                  // A newly-locked item leaves the selection so it stops responding to edits.
-                  setSelected((prev) => prev.filter((i) => i !== pieceIndex));
+                  // Newly locked items leave the selection so they stop responding to edits.
+                  if (!unlocking) setSelected((prev) => prev.filter((i) => !members.includes(i)));
                 }}
+                onLockMany={(indices) => {
+                  setLocked((prev) => new Set([...prev, ...indices]));
+                  setSelected((prev) => prev.filter((i) => !indices.includes(i)));
+                }}
+                onUngroup={handleUngroup}
                 startTransaction={startTransaction}
                 transact={transact}
                 endTransaction={endTransaction}

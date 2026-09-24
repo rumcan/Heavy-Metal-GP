@@ -57,6 +57,20 @@ function drawHandleIcon(ctx: CanvasRenderingContext2D, x: number, y: number, id:
       ctx.lineTo(x + Math.cos(a) * 8, y + Math.sin(a) * 8);
       ctx.stroke();
     }
+  } else if (id === 'ungroup') {
+    // Ungroup: two squares pulled apart, on a dark disc like the layer icons.
+    const ink = hover ? '#ffffff' : '#ffd18a';
+    ctx.fillStyle = 'rgba(15,23,42,0.85)';
+    ctx.beginPath();
+    ctx.arc(x, y, 11, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = ink;
+    ctx.setLineDash([2, 1.5]);
+    ctx.strokeRect(x - 7, y - 7, 7, 7);
+    ctx.strokeRect(x + 0.5, y + 0.5, 6.5, 6.5);
+    ctx.setLineDash([]);
   } else if (id === 'front' || id === 'back') {
     // Layer order: two stacked squares, the one on top filled for "front", the one underneath for "back".
     const ink = hover ? '#ffffff' : '#94a3b8';
@@ -187,6 +201,10 @@ interface Props {
   onReorder?: (pieceIndex: number, dir: 'front' | 'back') => void;
   /** Group transform drag (2+ selected): `start` = the selected pieces and their box when the drag began. */
   onGroupHandle?: (handleId: string, to: Point, start: { indices: number[]; pieces: Piece[] }, box: GroupBox) => void;
+  /** Lock every piece in `indices` (the group padlock). */
+  onLockMany?: (indices: number[]) => void;
+  /** Split the selected group (the group box's ungroup button). */
+  onUngroup?: () => void;
   startTransaction: () => void;
   transact: (mutate: (def: import('../../game/trackdef').TrackDef) => import('../../game/trackdef').TrackDef) => void;
   endTransaction: () => void;
@@ -226,6 +244,8 @@ export default function EditorCanvas(props: Props) {
   const onLockRef = useRef(props.onToggleLock);
   const onOrderRef = useRef(props.onReorder);
   const onGroupRef = useRef(props.onGroupHandle);
+  const onLockManyRef = useRef(props.onLockMany);
+  const onUngroupRef = useRef(props.onUngroup);
   const startTxRef = useRef(startTransaction);
   const endTxRef = useRef(endTransaction);
   const spawnAtRef = useRef(spawnAt);
@@ -251,6 +271,8 @@ export default function EditorCanvas(props: Props) {
   onLockRef.current = props.onToggleLock;
   onOrderRef.current = props.onReorder;
   onGroupRef.current = props.onGroupHandle;
+  onLockManyRef.current = props.onLockMany;
+  onUngroupRef.current = props.onUngroup;
   startTxRef.current = startTransaction;
   endTxRef.current = endTransaction;
   spawnAtRef.current = spawnAt;
@@ -328,6 +350,7 @@ export default function EditorCanvas(props: Props) {
     let pendingSettingsClick: HandleDrag | null = null;
     let pendingOrderClick: { index: number; dir: 'front' | 'back' } | null = null;
     let pendingLockClick: number | null = null;
+    let pendingGroupAction: { action: string; indices: number[] } | null = null;
     let pieceDrag: PieceDrag | null = null;
     let boxDrag: BoxDrag | null = null;
     let pendingPlace: Point | null = null;
@@ -353,6 +376,17 @@ export default function EditorCanvas(props: Props) {
     };
 
     /** #101: the locked piece whose lock icon is under `world` — the ONLY way to unlock a piece. */
+    /** True when the selection is exactly one group (every piece shares one group id). */
+    const selectionIsGroup = (sel: number[], pieces: Piece[]) =>
+      sel.length > 1 && pieces[sel[0]]?.grp !== undefined && sel.every((i) => pieces[i]?.grp === pieces[sel[0]].grp);
+    /** Where a locked piece shows its padlock: its own box, or the box around its whole locked group. */
+    const lockBoxOf = (i: number) => {
+      const pieces = getDefPieces();
+      const g = pieces?.[i]?.grp;
+      if (g === undefined || !pieces) return pbRef.current[i];
+      const members = [...(lockedRef.current ?? [])].filter((j) => pieces[j]?.grp === g);
+      return unionBox(members.map((j) => pbRef.current[j])) ?? pbRef.current[i];
+    };
     const hitLockIcon = (world: Point): number | null => {
       const locked = lockedRef.current;
       if (!locked?.size) return null;
@@ -360,7 +394,7 @@ export default function EditorCanvas(props: Props) {
       let best: number | null = null;
       let bestDist = radiusWorld;
       for (const i of locked) {
-        const bounds = pbRef.current[i];
+        const bounds = lockBoxOf(i);
         if (!bounds) continue;
         const lk = lockHandlePoint(bounds);
         const d = Math.hypot(lk.x - world.x, lk.y - world.y);
@@ -380,7 +414,7 @@ export default function EditorCanvas(props: Props) {
         const radius = (HANDLE_SCREEN / camera().scale) * 1.6;
         let bestG: HandleDrag | null = null;
         let bestD = Infinity;
-        for (const h of groupHandles(box)) {
+        for (const h of groupHandles(box, selectionIsGroup(sel, pieces))) {
           const d = Math.hypot(h.x - world.x, h.y - world.y);
           if (d <= radius && d < bestD) {
             bestD = d;
@@ -456,6 +490,10 @@ export default function EditorCanvas(props: Props) {
             }
             if (h.handleId === 'lock') {
               pendingLockClick = h.pieceIndex;
+              return;
+            }
+            if (h.handleId === 'grp-lock' || h.handleId === 'grp-ungroup') {
+              pendingGroupAction = { action: h.handleId, indices: (h.initialPiece as { indices: number[] }).indices };
               return;
             }
             if (h.handleId === 'front' || h.handleId === 'back') {
@@ -649,6 +687,8 @@ export default function EditorCanvas(props: Props) {
       const wasPendingPlace = pendingPlace;
       const wasPendingSettingsClick = pendingSettingsClick;
       const wasPendingLockClick = pendingLockClick;
+      const wasGroupAction = pendingGroupAction;
+      pendingGroupAction = null;
       pendingSettingsClick = null;
       pendingLockClick = null;
       const wasPendingOrderClick = pendingOrderClick;
@@ -708,6 +748,9 @@ export default function EditorCanvas(props: Props) {
         onSettingsRef.current(wasPendingSettingsClick.pieceIndex);
       } else if (wasPendingLockClick !== null && isClick) {
         onLockRef.current?.(wasPendingLockClick);
+      } else if (wasGroupAction && isClick) {
+        if (wasGroupAction.action === 'grp-lock') onLockManyRef.current?.(wasGroupAction.indices);
+        else onUngroupRef.current?.();
       } else if (wasPendingOrderClick && isClick) {
         onOrderRef.current?.(wasPendingOrderClick.index, wasPendingOrderClick.dir);
       } else if (!wasHandle && !wasPiece && !wasBox && !wasPan && isClick) {
@@ -822,7 +865,7 @@ export default function EditorCanvas(props: Props) {
     // #99: hovering a locked item shows only its lock icon — click it to unlock.
     const drawHoverLock = (ctx: CanvasRenderingContext2D, overlay: OverlayView) => {
       if (hoveredLocked === null) return;
-      const bounds = pbRef.current[hoveredLocked];
+      const bounds = lockBoxOf(hoveredLocked);
       if (!bounds) return;
       const cam = overlay.camera;
       const toScreen = (w: Point): Point => ({ x: (w.x - cam.x) * cam.scale + overlay.width / 2, y: (w.y - cam.y) * cam.scale + overlay.height / 2 });
@@ -896,9 +939,9 @@ export default function EditorCanvas(props: Props) {
           ctx.setLineDash([8, 4]);
           ctx.strokeRect(sMin.x - 3, sMin.y - 3, sMax.x - sMin.x + 6, sMax.y - sMin.y + 6);
           ctx.setLineDash([]);
-          const handles = groupHandles(box);
+          const handles = groupHandles(box, selectionIsGroup(sel, pieces));
           const top = toScreen({ x: (box.min.x + box.max.x) / 2, y: box.min.y });
-          const pad = toScreen(handles[0]);
+          const pad = toScreen(handles.find((h) => h.id === 'grp-rot')!);
           ctx.strokeStyle = 'rgba(255,209,138,0.85)';
           ctx.setLineDash([4, 3]);
           ctx.beginPath();
@@ -909,7 +952,8 @@ export default function EditorCanvas(props: Props) {
           for (const h of handles) {
             const sh = toScreen(h);
             const isHover = hoveredHandle?.pieceIndex === -1 && hoveredHandle?.handleId === h.id;
-            drawHandleIcon(ctx, sh.x, sh.y, h.id.replace('grp-', 'box-'), isHover);
+            const icon = h.id === 'grp-lock' ? 'lock' : h.id === 'grp-ungroup' ? 'ungroup' : h.id.replace('grp-', 'box-');
+            drawHandleIcon(ctx, sh.x, sh.y, icon, isHover);
           }
         }
       }

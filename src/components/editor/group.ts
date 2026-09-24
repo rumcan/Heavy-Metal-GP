@@ -16,10 +16,18 @@ export type GroupBox = { min: Point; max: Point };
 
 export const GROUP_HANDLE_IDS = ['grp-rot', 'grp-nw', 'grp-ne', 'grp-sw', 'grp-se'] as const;
 
-/** The shared box's handles: rotate pad above the top edge, a dot on each corner. */
-export function groupHandles(box: GroupBox): { id: string; x: number; y: number; cursor: string; label: string }[] {
+/**
+ * The shared box's handles: rotate pad above the top edge, a dot on each corner, the padlock above the top-left
+ * corner (locks the whole selection) and, for a real group, an ungroup button above the top-right corner.
+ */
+export function groupHandles(box: GroupBox, grouped = false): { id: string; x: number; y: number; cursor: string; label: string }[] {
   const midX = (box.min.x + box.max.x) / 2;
+  const actions = [
+    { id: 'grp-lock', x: box.min.x, y: box.min.y - BASE_STALK, cursor: 'pointer', label: 'Lock group' },
+    ...(grouped ? [{ id: 'grp-ungroup', x: box.max.x + BASE_STALK, y: box.min.y - BASE_STALK, cursor: 'pointer', label: 'Ungroup' }] : []),
+  ];
   return [
+    ...actions,
     { id: 'grp-rot', x: midX, y: box.min.y - BASE_STALK, cursor: 'grab', label: 'Rotate group' },
     { id: 'grp-nw', x: box.min.x, y: box.min.y, cursor: 'nwse-resize', label: 'Scale group' },
     { id: 'grp-ne', x: box.max.x, y: box.min.y, cursor: 'nesw-resize', label: 'Scale group' },

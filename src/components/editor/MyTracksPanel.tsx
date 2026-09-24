@@ -7,7 +7,7 @@
  * list stays responsive — while pending we show static validity only.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Copy, Trash2, Edit3, Check, X, ShieldCheck, ShieldAlert, Clock3, Ruler, Save } from 'lucide-react';
+import { Copy, Trash2, Edit3, Check, X, ShieldCheck, ShieldAlert, Clock3, Ruler, Save, CopyPlus } from 'lucide-react';
 import TrackThumbnail from './TrackThumbnail';
 import { formatUnits } from './camera';
 import type { SavedTrack } from '../../game/tracks';
@@ -27,6 +27,8 @@ interface Props {
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
   onSaveCurrent: () => void;
+  /** Always save a new copy, even when a saved track is open. */
+  onSaveNew: () => void;
   onNewBlank?: () => void;
   onDevLoadOfficial?: (def: TrackDef) => void;
 }
@@ -65,7 +67,7 @@ function ValidationBadge({ def }: { def: TrackDef }) {
     : <span className="my-track-badge is-fail"><ShieldAlert size={10} /> FAIL</span>;
 }
 
-export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, onRename, onDuplicate, onDelete, onSaveCurrent, onDevLoadOfficial }: Props) {
+export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, onRename, onDuplicate, onDelete, onSaveCurrent, onSaveNew, onDevLoadOfficial }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [filter, setFilter] = useState('');
@@ -92,9 +94,14 @@ export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, on
       </header>
 
       <div className="my-tracks-actions">
-        <button className="button-primary my-tracks-save" onClick={onSaveCurrent} title="Save the current track to My tracks">
-          <Save size={13} /> Save current
+        <button className="button-primary my-tracks-save" onClick={onSaveCurrent} title={activeId ? 'Save your changes to this track' : 'Save the current track to My tracks'}>
+          <Save size={13} /> {activeId ? 'Save' : 'Save current'}
         </button>
+        {activeId && (
+          <button className="button-secondary my-tracks-save" onClick={onSaveNew} title="Save a separate copy; the open track stays as it was saved">
+            <CopyPlus size={13} /> Save as new
+          </button>
+        )}
         <input className="my-tracks-filter" placeholder="Filter by name…" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Filter tracks" />
       </div>
 
