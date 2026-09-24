@@ -245,6 +245,9 @@ function regroup(added: Piece[], existing: Piece[]): Piece[] {
   });
 }
 
+/** How long after the last edit the open draft is saved. */
+const DRAFT_SAVE_DELAY_MS = 800;
+
 export default function TrackEditor({ seed, profile, name, initialDef, driver, onExit, onCommunity }: Props) {
   const [publishOpen, setPublishOpen] = useState(false);
   const [templateSnapshot, setTemplateSnapshot] = useState<ReturnType<typeof snapshotTemplate> | null>(null);
@@ -336,28 +339,28 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
     return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // MB-06: autosave open draft every 10 s and on page hide / before unload + on exit
+  // MB-06: the open draft saves itself shortly after the last change, and at once when the page hides or unloads.
+  // Saving compresses the whole map and (on RUN.world) writes it to the player's cloud storage, so it must not run on
+  // every edit: a drag is an edit per pointer move, and on a big map that flooded the host and froze the game.
+  const draftRef = useRef(circuit.def);
+  draftRef.current = circuit.def;
   useEffect(() => {
-    const id = window.setInterval(() => {
-      try { saveDraft(circuit.def); } catch { /* ignore */ }
-    }, 10_000);
-    const onHide = () => { try { saveDraft(circuit.def); } catch { /* ignore */ } };
-    window.addEventListener('pagehide', onHide);
-    window.addEventListener('beforeunload', onHide);
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') onHide(); });
+    const id = window.setTimeout(() => { try { saveDraft(draftRef.current); } catch { /* ignore */ } }, DRAFT_SAVE_DELAY_MS);
+    return () => window.clearTimeout(id);
+  }, [circuit.def]);
+  useEffect(() => {
+    const save = () => { try { saveDraft(draftRef.current); } catch { /* ignore */ } };
+    const onVisibility = () => { if (document.visibilityState === 'hidden') save(); };
+    window.addEventListener('pagehide', save);
+    window.addEventListener('beforeunload', save);
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
-      window.clearInterval(id);
-      window.removeEventListener('pagehide', onHide);
-      window.removeEventListener('beforeunload', onHide);
-      document.removeEventListener('visibilitychange', onHide as EventListener);
+      save(); // leaving the Workshop
+      window.removeEventListener('pagehide', save);
+      window.removeEventListener('beforeunload', save);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [circuit.def]);
-
-  // Also persist draft immediately on every circuit change (debounced via autosave interval would be enough,
-  // but immediate write keeps "reload restores open draft" instant for tests)
-  useEffect(() => {
-    try { saveDraft(circuit.def); } catch { /* ignore */ }
-  }, [circuit.def]);
+  }, []);
 
   // MB-07: handle ?share=CODE link — decode and offer import
   useEffect(() => {

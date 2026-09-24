@@ -312,6 +312,19 @@ export default function EditorCanvas(props: Props) {
     type PieceDrag = { startWorld: Point; lastWorld: Point };
     type BoxDrag = { startWorld: Point; curWorld: Point };
     let handleDrag: HandleDrag | null = null;
+    let queuedEdit: (() => void) | null = null;
+    let editFrame = 0;
+    const pendingMove = { dx: 0, dy: 0 };
+    const flushEdit = () => {
+      if (editFrame) { cancelAnimationFrame(editFrame); editFrame = 0; }
+      const run = queuedEdit;
+      queuedEdit = null;
+      run?.();
+    };
+    const queueEdit = (edit: () => void) => {
+      queuedEdit = edit;
+      if (!editFrame) editFrame = requestAnimationFrame(() => { editFrame = 0; flushEdit(); });
+    };
     let pendingSettingsClick: HandleDrag | null = null;
     let pendingOrderClick: { index: number; dir: 'front' | 'back' } | null = null;
     let pendingLockClick: number | null = null;
@@ -564,13 +577,16 @@ export default function EditorCanvas(props: Props) {
         if (!pan) canvas.style.cursor = 'crosshair';
       }
 
+      // Drags edit the circuit, and every edit rebuilds it: pointer moves arrive faster than frames, so they are
+      // coalesced to one edit per animation frame (handle drags keep only the latest point, moves add up).
       if (handleDrag && handleDrag.pieceIndex === -1) {
-        onGroupRef.current?.(handleDrag.handleId, world, handleDrag.initialPiece, handleDrag.resizeAnchor!);
+        const hd = handleDrag;
+        queueEdit(() => onGroupRef.current?.(hd.handleId, world, hd.initialPiece, hd.resizeAnchor!));
         return;
       }
       if (handleDrag) {
-        // Drag handle to new world (snapped)
-        onHandleRef.current(handleDrag.pieceIndex, handleDrag.handleId, world, handleDrag.initialPiece, handleDrag.resizeAnchor);
+        const hd = handleDrag;
+        queueEdit(() => onHandleRef.current(hd.pieceIndex, hd.handleId, world, hd.initialPiece, hd.resizeAnchor));
         return;
       }
 
@@ -579,8 +595,14 @@ export default function EditorCanvas(props: Props) {
         const dx = world.x - last.x;
         const dy = world.y - last.y;
         if (dx !== 0 || dy !== 0) {
-          onMoveRef.current(dx, dy);
+          pendingMove.dx += dx;
+          pendingMove.dy += dy;
           pieceDrag.lastWorld = world;
+          queueEdit(() => {
+            const { dx: mx, dy: my } = pendingMove;
+            pendingMove.dx = 0; pendingMove.dy = 0;
+            if (mx !== 0 || my !== 0) onMoveRef.current(mx, my);
+          });
         }
         return;
       }
@@ -638,6 +660,8 @@ export default function EditorCanvas(props: Props) {
       pointers.delete(event.pointerId);
       if (pointers.size < 2) pinch = null;
 
+      // Land the last coalesced step before the drag's transaction closes.
+      if (wasHandle || wasPiece) flushEdit();
       if (wasHandle) {
         handleDrag = null;
         endTxRef.current();
@@ -1272,6 +1296,7 @@ export default function EditorCanvas(props: Props) {
     raf = requestAnimationFrame(loop);
 
     return () => {
+      if (editFrame) cancelAnimationFrame(editFrame);
       cancelAnimationFrame(raf);
       observer.disconnect();
       canvas.removeEventListener('wheel', wheel);

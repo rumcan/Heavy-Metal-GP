@@ -2134,8 +2134,44 @@ function paintStatic(ctx: CanvasRenderingContext2D, game: Game, top: number, bot
 }
 
 interface StaticChunk { canvas: HTMLCanvasElement; used: number }
-const chunkCaches = new WeakMap<Game, Map<string, StaticChunk>>();
-const MAX_CHUNKS = 5;
+/**
+ * Baked chunks, keyed by a fingerprint of everything painted into them (the static bodies and decor in the chunk's
+ * band, theme, seed, length, section signs, skin and resolution) rather than by the Game. The Workshop builds a new
+ * Game on every edit, but it reuses the bodies of every piece that did not change, so every chunk away from the
+ * edit keeps its fingerprint and is not repainted.
+ */
+const chunkCache = new Map<string, StaticChunk>();
+const MAX_CHUNKS = 8;
+/** Per game (its static layer never changes): chunk index -> fingerprint. */
+const chunkKeys = new WeakMap<Game, Map<number, string>>();
+const objectIds = new WeakMap<object, number>();
+let nextObjectId = 1;
+const idOf = (o: object) => { let id = objectIds.get(o); if (id === undefined) { id = nextObjectId++; objectIds.set(o, id); } return id; };
+
+function chunkFingerprint(game: Game, index: number, res: number): string {
+  let keys = chunkKeys.get(game);
+  if (!keys) { keys = new Map(); chunkKeys.set(game, keys); }
+  let base = keys.get(index);
+  if (base === undefined) {
+    const top = index * CHUNK_H - STATIC_PAD, bottom = top + CHUNK_H + STATIC_PAD * 2;
+    const ids: number[] = [];
+    for (const b of game.track.bodies) {
+      if (!STATIC_KINDS.has(meta(b)?.kind)) continue;
+      if (b.bounds.max.y < top - 60 || b.bounds.min.y > bottom + 60) continue;
+      ids.push(idOf(b));
+    }
+    for (const d of game.track.decor) {
+      const lo = d.type === 'curve' ? Math.min(...d.points.map((p) => p.y)) : d.y - d.r;
+      const hi = d.type === 'curve' ? Math.max(...d.points.map((p) => p.y)) : d.y + d.r;
+      if (hi < top - 60 || lo > bottom + 60) continue;
+      ids.push(idOf(d));
+    }
+    const tr = game.track;
+    base = `${tr.theme.track}${tr.theme.pipe}${tr.theme.pipeEdge}|${tr.seed}|${tr.height}|${tr.segments.map((sg) => `${sg.name}@${sg.y}`).join(',')}|${ids.join(',')}`;
+    keys.set(index, base);
+  }
+  return `${currentSkin() ?? 'base'}:${index}@${res}|${base}`;
+}
 
 /**
  * MB-02. Forgets a game's baked static chunks, so the next frame repaints them from the circuit it now holds.
@@ -2145,9 +2181,9 @@ const MAX_CHUNKS = 5;
  * are re-baked on their own whenever the camera's resolution changes.
  */
 export function clearStaticChunks(game: Game): void {
-  const cache = chunkCaches.get(game);
-  if (cache) for (const chunk of cache.values()) recycleCanvas(chunk.canvas);
-  chunkCaches.delete(game);
+  // Chunks are keyed by what they contain, not by the game, so a rebuilt circuit simply misses the stale ones and
+  // they age out of the cache. Only the game's fingerprints go.
+  chunkKeys.delete(game);
 }
 
 /**
@@ -2191,21 +2227,17 @@ function drawStaticLayer(ctx: CanvasRenderingContext2D, game: Game, viewTop: num
   }
   const dpr = Math.abs(ctx.getTransform().a) || 1; // includes camera scale at this point
   const res = Math.max(0.5, Math.min(1.5, Math.round(dpr * 4) / 4));
-  let cache = chunkCaches.get(game);
-  if (!cache) {
-    cache = new Map();
-    chunkCaches.set(game, cache);
-  }
+  const cache = chunkCache;
   const now = performance.now();
   const get = (index: number) => {
-    const key = `${currentSkin() ?? 'base'}:${index}@${res}`;
-    let chunk = cache!.get(key);
+    const key = chunkFingerprint(game, index, res);
+    let chunk = cache.get(key);
     if (!chunk) {
       chunk = { canvas: bakeChunk(game, index, res), used: now };
-      cache!.set(key, chunk);
-      if (cache!.size > MAX_CHUNKS) {
-        const oldest = [...cache!.entries()].sort((a, b) => a[1].used - b[1].used)[0];
-        cache!.delete(oldest[0]);
+      cache.set(key, chunk);
+      if (cache.size > MAX_CHUNKS) {
+        const oldest = [...cache.entries()].sort((a, b) => a[1].used - b[1].used)[0];
+        cache.delete(oldest[0]);
         recycleCanvas(oldest[1].canvas);
       }
     }
@@ -2222,7 +2254,7 @@ function drawStaticLayer(ctx: CanvasRenderingContext2D, game: Game, viewTop: num
   }
   // pre-bake the next chunk below the camera (the field only ever travels down)
   const ahead = last + 1;
-  if (ahead * CHUNK_H < game.track.height + 400 && !cache.has(`${currentSkin() ?? 'base'}:${ahead}@${res}`)) get(ahead);
+  if (ahead * CHUNK_H < game.track.height + 400 && !cache.has(chunkFingerprint(game, ahead, res))) get(ahead);
   // beyond the baked strip, keep the rock colour so wide zoomed-out views stay filled
   ctx.fillStyle = '#1a140f';
   ctx.fillRect(STATIC_X0 - 2000, viewTop, 2000, viewBottom - viewTop);

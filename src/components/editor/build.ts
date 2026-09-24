@@ -19,7 +19,8 @@
 import { Builder, FINISH_H, W, meta, segFinish, segStart } from '../../game/track';
 import type { Track } from '../../game/track';
 import { themeFor } from '../../game/types';
-import { isRetiredPieceType, replayPiece, type TrackDef } from '../../game/trackdef';
+import { isRetiredPieceType, replayPiece, type Piece, type TrackDef } from '../../game/trackdef';
+import type Matter from 'matter-js';
 import { visualBoundsForPiece, type Bounds } from './bounds';
 
 export interface EditorBuild {
@@ -38,6 +39,33 @@ export interface EditorBuild {
  * Build a track and its hit-test map. Never throws: a malformed def
  * produces `{ track: null, error }` like the canvas does for MB-02.
  */
+interface BuiltPiece {
+  bodies: Matter.Body[]; spinners: Matter.Body[]; turnstiles: Matter.Body[]; itemBoxes: Matter.Body[];
+  buckets: Matter.Body[]; decor: Builder['decor']; wreckers: Matter.Body[]; targetBanks: Builder['targetBanks'];
+  pegs: { orange: number; total: number }; bounds: Bounds;
+}
+const EMPTY_PIECE: BuiltPiece = { bodies: [], spinners: [], turnstiles: [], itemBoxes: [], buckets: [], decor: [], wreckers: [], targetBanks: [], pegs: { orange: 0, total: 0 }, bounds: { min: { x: 0, y: 0 }, max: { x: 0, y: 0 } } };
+
+/** Pieces built for the previous editor build, keyed by their JSON. Only what the latest build used is kept. */
+let pieceCache = new Map<string, BuiltPiece>();
+
+function builtPiece(piece: Piece, seed: number, nextCache: Map<string, BuiltPiece>): BuiltPiece {
+  const key = JSON.stringify(piece);
+  // A piece listed twice with identical data would otherwise share bodies: the second copy builds its own.
+  const hit = pieceCache.get(key);
+  if (hit && !nextCache.has(key)) { nextCache.set(key, hit); return hit; }
+  const mini = new Builder(seed);
+  replayPiece(mini, piece);
+  const built: BuiltPiece = {
+    bodies: mini.bodies, spinners: mini.spinners, turnstiles: mini.turnstiles, itemBoxes: mini.itemBoxes,
+    buckets: mini.buckets, decor: mini.decor, wreckers: mini.wreckers, targetBanks: mini.targetBanks,
+    pegs: { ...mini.pegCount },
+    bounds: transformedBounds(visualBoundsForPiece(piece, mini.bodies), mini.bodies[0]),
+  };
+  if (!nextCache.has(key)) nextCache.set(key, built);
+  return built;
+}
+
 export function buildEditorTrack(def: TrackDef): { track: Track | null; bodyToPiece: number[]; pieceBounds: Bounds[]; error: string | null } {
   // Lightweight validation — reuse the loader's own check so the editor
   // never builds a def the race would refuse.
@@ -57,12 +85,26 @@ export function buildEditorTrack(def: TrackDef): { track: Track | null; bodyToPi
 
     // Every def piece, with mapping. #99: retired types are skipped (same silent drop the
     // loader performs) so legacy workshop drafts and shared tracks still open.
+    // Each piece is built once and reused while it is unchanged: an edit (every pointer move of a drag) only
+    // rebuilds the pieces it touched, instead of all of them — a big map was rebuilding ~1,400 bodies per move.
+    const nextCache = new Map<string, BuiltPiece>();
     def.pieces.forEach((piece, index) => {
       const before = b.bodies.length;
-      if (!isRetiredPieceType(piece.t)) replayPiece(b, piece);
+      const built = isRetiredPieceType(piece.t) ? EMPTY_PIECE : builtPiece(piece, def.seed ?? 0, nextCache);
+      b.bodies.push(...built.bodies);
+      b.spinners.push(...built.spinners);
+      b.turnstiles.push(...built.turnstiles);
+      b.itemBoxes.push(...built.itemBoxes);
+      b.buckets.push(...built.buckets);
+      b.decor.push(...built.decor);
+      b.wreckers.push(...built.wreckers);
+      b.targetBanks.push(...built.targetBanks);
+      b.pegCount.orange += built.pegs.orange;
+      b.pegCount.total += built.pegs.total;
       for (let i = before; i < b.bodies.length; i++) bodyToPiece[i] = index;
-      pieceBounds[index] = transformedBounds(visualBoundsForPiece(piece, b.bodies.slice(before, b.bodies.length)), b.bodies[before]);
+      pieceBounds[index] = built.bounds;
     });
+    pieceCache = nextCache;
 
     // Finish stub — not part of the def.
     const finishTop = def.height - FINISH_H;
