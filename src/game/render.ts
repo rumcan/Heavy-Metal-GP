@@ -493,7 +493,10 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
         if (img) {
           // hole centre sits at (200, 269) in the 400x593 art; hole diameter 251
           const k = 84 / 251;
-          ctx.drawImage(img, b.position.x - 200 * k, b.position.y - 269 * k, img.naturalWidth * k, img.naturalHeight * k);
+          // Just the flaming ring: the base art's wooden stand starts below its bottom bracket (row 418 of 593),
+          // so crop it off. Themed rings (other sizes) are their own art and draw whole.
+          const srcH = img.naturalHeight === 593 ? 418 : img.naturalHeight;
+          ctx.drawImage(img, 0, 0, img.naturalWidth, srcH, b.position.x - 200 * k, b.position.y - 269 * k, img.naturalWidth * k, srcH * k);
         } else {
           ctx.beginPath();
           ctx.arc(b.position.x, b.position.y, 38, 0, Math.PI * 2);
