@@ -33,8 +33,8 @@
 .prop-head span { color: #8ea2b5; }
 .prop-field { display: grid; grid-template-columns: 86px minmax(0, 1fr) 50px; align-items: center; gap: 8px; }
 .prop-field span { font: 9px var(--mono); letter-spacing: .3px; color: #93a3b3; }
-.prop-field input[type="number"], .prop-field select { width: 100%; padding: 4px 6px; background: #0b1016; border: 1px solid #2b3644; border-radius: 3px; color: #eef1f3; font: 11px var(--mono); }
-.prop-field input[type="number"]:focus, .prop-field select:focus { border-color: var(--accent); outline: none; }
+.prop-field input[type="number"], .prop-field input[type="text"], .prop-field select { width: 100%; padding: 4px 6px; background: #0b1016; border: 1px solid #2b3644; border-radius: 3px; color: #eef1f3; font: 11px var(--mono); }
+.prop-field input[type="number"]:focus, .prop-field input[type="text"]:focus, .prop-field select:focus { border-color: var(--accent); outline: none; }
 .prop-field input.no-slider, .prop-field select.no-slider { grid-column: 2 / 4; }
 .prop-hint { margin: 2px 0 6px 94px; font: 9px var(--mono); color: #5f6d7c; line-height: 1.3; }
 

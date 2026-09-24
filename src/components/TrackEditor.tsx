@@ -472,7 +472,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
       const piece = toAdd[0];
 
       // Automatically select the new piece and open settings if it needs configuration
-      const needsConfig = ['trapdoor', 'crusher', 'boulder', 'magnet', 'geyser', 'wind'].includes(piece.t);
+      const needsConfig = ['trapdoor', 'crusher', 'boulder', 'magnet', 'geyser', 'wind', 'sign'].includes(piece.t);
 
       commit(
         (def) => {

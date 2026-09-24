@@ -54,3 +54,18 @@ test('group move: a selection may run into the side walls; a single item stops a
   assert.equal(single.a[0], 0, 'a lone ramp stops at the wall');
   void W;
 });
+
+test('sign: decoration with text — collides with nothing, keeps its words through save and share', async () => {
+  const sign: Piece = { t: 'sign', x: 300, y: 700, w: 180, text: 'SHORTCUT → 💀' };
+  const built = buildEditorTrack(defOf([sign]));
+  assert.equal(built.error, null);
+  const body = built.track!.bodies.find((_, i) => built.bodyToPiece[i] === 0)!;
+  assert.equal(body.collisionFilter.mask, 0, 'marbles pass through');
+  assert.equal(meta(body)?.sign?.text, 'SHORTCUT → 💀');
+  const def = defOf([sign, { ...sign, x: 600, text: 'x'.repeat(60), flip: true }]);
+  const checked = validateTrackDef(JSON.parse(JSON.stringify(def)));
+  assert.ok(checked.ok);
+  assert.equal((checked.ok && (checked.def.pieces[1] as { text: string }).text.length), 40, 'text capped at 40');
+  const back = await decodeShareCode(await encodeShareCode(checked.ok ? checked.def : def));
+  assert.equal((back.pieces[0] as { text: string }).text, 'SHORTCUT → 💀');
+});

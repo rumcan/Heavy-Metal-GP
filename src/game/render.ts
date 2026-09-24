@@ -988,6 +988,9 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
       case 'vortex':
         if (b.isSensor) drawVortex(ctx, b, md, game, t);
         break;
+      case 'sign':
+        drawSign(ctx, b, md);
+        break;
       case 'platform':
         drawPlatform(ctx, b, md, game, t);
         break;
@@ -2719,6 +2722,68 @@ function drawTargets(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnTy
     const age = Math.min(1, (t - tg.dropAt) / 200);
     ctx.fillStyle = 'rgba(185,28,28,0.35)';
     ctx.fillRect(-9, -4 + age * 2, 18, 5);
+  }
+  ctx.restore();
+}
+
+/** A Workshop sign: a nailed plank board on two posts, the builder's words painted across it. */
+function drawSign(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>) {
+  const sg = md.sign;
+  if (!sg) return;
+  const { w, h } = sg;
+  const x = b.position.x, y = b.position.y;
+  ctx.save();
+  ctx.translate(x, y);
+  // posts
+  const postW = Math.max(6, w * 0.055), postH = h * 1.05;
+  ctx.fillStyle = '#4a2e17';
+  ctx.strokeStyle = '#1c1008';
+  ctx.lineWidth = 2;
+  for (const px of [-w * 0.3, w * 0.3]) {
+    ctx.fillRect(px - postW / 2, h / 2 - 4, postW, postH);
+    ctx.strokeRect(px - postW / 2, h / 2 - 4, postW, postH);
+  }
+  // board: three planks with a dark frame
+  const r = Math.min(8, h * 0.18);
+  ctx.beginPath();
+  ctx.roundRect(-w / 2, -h / 2, w, h, r);
+  ctx.fillStyle = '#9a6233';
+  ctx.fill();
+  ctx.save();
+  ctx.clip();
+  const plank = h / 3;
+  for (let i = 0; i < 3; i++) {
+    ctx.fillStyle = i % 2 ? '#8a5629' : '#a86c39';
+    ctx.fillRect(-w / 2, -h / 2 + i * plank, w, plank);
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    ctx.fillRect(-w / 2, -h / 2 + (i + 1) * plank - 1.5, w, 1.5);
+  }
+  ctx.restore();
+  ctx.lineWidth = Math.max(2.5, h * 0.06);
+  ctx.strokeStyle = '#3b2412';
+  ctx.stroke();
+  // nails
+  ctx.fillStyle = '#2b2b2b';
+  for (const nx of [-w / 2 + h * 0.16, w / 2 - h * 0.16]) for (const ny of [-h / 2 + h * 0.16, h / 2 - h * 0.16]) {
+    ctx.beginPath(); ctx.arc(nx, ny, Math.max(1.5, h * 0.045), 0, Math.PI * 2); ctx.fill();
+  }
+  // text: as large as fits the board, painted cream with a dark edge
+  const text = sg.text.trim();
+  if (text) {
+    const maxW = w - h * 0.5, maxH = h * 0.62;
+    let size = maxH;
+    ctx.font = `700 ${size}px Oswald, 'Barlow Condensed', Impact, sans-serif`;
+    const measured = ctx.measureText(text).width;
+    if (measured > maxW) size = Math.max(6, size * (maxW / measured));
+    ctx.font = `700 ${size}px Oswald, 'Barlow Condensed', Impact, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = Math.max(2, size * 0.14);
+    ctx.strokeStyle = '#2a170a';
+    ctx.strokeText(text, 0, h * 0.02);
+    ctx.fillStyle = '#fff3dc';
+    ctx.fillText(text, 0, h * 0.02);
   }
   ctx.restore();
 }

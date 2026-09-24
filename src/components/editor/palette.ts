@@ -52,6 +52,7 @@ export const PALETTE: PaletteGroup[] = [
       { id: 'ring', t: 'ring', label: 'Ring rail', sprite: 'rail-wood', hint: 'A perfect plank circle. Drag the side dot for its size, the top dot for its thickness.', effects: { speed: 30 } },
       { id: 'ice', t: 'ice', label: 'Ice rail', sprite: 'strip-ice', hint: 'Almost frictionless — carry speed, lose control.', effects: { speed: 80 } },
       { id: 'wall', t: 'wall', label: 'Wall', sprite: 'strip-metal', hint: 'A plain barrier. Rails, ledges and catch walls.' },
+      { id: 'sign', t: 'sign', label: 'Sign', sprite: null, hint: 'A wooden sign with your own words. Pure decoration: marbles pass through it. Write it in the settings cog.' },
     ],
   },
   {

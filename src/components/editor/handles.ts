@@ -393,6 +393,12 @@ function baseHandles(piece: Piece): Handle[] {
         { id: 'len', x: piece.x + (piece.side === 0 ? 1 : -1) * piece.len, y: piece.y, cursor: 'ew-resize', label: 'Bat length' },
       ];
     }
+    case 'sign': {
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
+        { id: 'w', x: piece.x + piece.w / 2, y: piece.y, cursor: 'ew-resize', label: 'Width' },
+      ];
+    }
     case 'ring': {
       // Radius on the right of the plank's middle line; thickness on the plank's outer edge at the top.
       return [
@@ -868,6 +874,11 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       }
       return piece;
     }
+    case 'sign': {
+      if (handleId === 'move') return { ...piece, x: withSnap(to.x, sx), y: withSnap(to.y, sx) };
+      if (handleId === 'w') return { ...piece, w: clampNum(Math.round(Math.abs(withSnap(to.x, sx) - piece.x) * 2), 60, 600) };
+      return piece;
+    }
     case 'ring': {
       if (handleId === 'move') return { ...piece, x: withSnap(to.x, sx), y: withSnap(to.y, sx) };
       const d = Math.hypot(to.x - piece.x, to.y - piece.y);
@@ -1043,6 +1054,7 @@ export function mirrorPiece(piece: Piece): Piece {
     case 'peg':
     case 'ppeg':
     case 'ring':
+    case 'sign':
       return { ...piece, x: mx(piece.x) };
     case 'itembox':
       return { ...piece, x: mx(piece.x) };

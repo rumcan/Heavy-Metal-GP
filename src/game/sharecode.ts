@@ -33,7 +33,9 @@ const PIECE_TYPES = ['ramp','ice','curve','loop','hoop','wrecker','pad','boost',
   'wind','magnet','mud','pool','geyser',
   'trampoline','turnstile','targets','vortex','platform',
   // Workshop: ring rail
-  'ring'] as const;
+  'ring',
+  // Workshop: sign
+  'sign'] as const;
 type PieceTypeName = typeof PIECE_TYPES[number];
 const PIECE_TO_ID = Object.fromEntries(PIECE_TYPES.map((t,i)=>[t,i])) as Record<PieceTypeName, number>;
 
@@ -211,6 +213,11 @@ function encodeBinary(def: TrackDef): Uint8Array {
       }
       case 'peg': {
         writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y)); writeUVarint(out, Math.round(p.r));
+        break;
+      }
+      case 'sign': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y)); writeUVarint(out, Math.round(p.w));
+        writeString(out, p.text);
         break;
       }
       case 'ring': {
@@ -519,6 +526,12 @@ function decodeBinary(bytes: Uint8Array, version = 1): TrackDef {
       case 'peg': {
         const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), r = readUVarint(bytes, pos);
         p = { t:'peg', x, y, r, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'sign': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), w = readUVarint(bytes, pos);
+        const text = readString(bytes, pos);
+        p = { t:'sign', x, y, w, text, ...(flip?{flip}:{}) };
         break;
       }
       case 'ring': {

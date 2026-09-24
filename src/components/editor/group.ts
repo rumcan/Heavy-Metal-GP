@@ -70,6 +70,10 @@ export function scalePiece(piece: Piece, s: number, anchor: Point): Piece {
       const [x, y] = sp(piece.x, piece.y);
       return { ...piece, x, y, len: tidy(Math.max(10, piece.len * s)), thick: tidy(Math.max(4, piece.thick * s)) };
     }
+    case 'sign': {
+      const [x, y] = sp(piece.x, piece.y);
+      return { ...piece, x, y, w: tidy(clamp(piece.w * s, 60, 600)) };
+    }
     case 'ring': {
       const [x, y] = sp(piece.x, piece.y);
       return { ...piece, x, y, r: tidy(clamp(piece.r * s, 30, 1200)) };

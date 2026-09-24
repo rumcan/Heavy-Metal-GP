@@ -71,6 +71,7 @@ const RESIZE_SPECS: Partial<Record<Piece['t'], ResizeSpec>> = {
   curve: { pts: ['a', 'b', 'c'] },
   // The corner dots grow the circle; its plank keeps its thickness (that has its own handle).
   ring: { uniform: { r: R(30, 1200) } },
+  sign: { uniform: { w: R(60, 600) } },
   ice: { pts: ['a', 'b'] },
   loop: { uniform: { r: R(20, 800) } },
   wrecker: { y: { chain: R(8, 2000) }, uniform: { amp: R(0.05, Math.PI / 2 - 0.01) } },

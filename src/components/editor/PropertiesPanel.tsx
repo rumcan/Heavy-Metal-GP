@@ -9,6 +9,7 @@
  * can push one undo entry for the whole transaction.
  */
 import type { Piece } from '../../game/trackdef';
+import { SIGN_MAX_CHARS } from '../../game/trackdef';
 import { W } from '../../game/track';
 import { clampToRange, SETTING_RANGES } from './pieceSettings';
 import { HANDLE_RANGES } from './handles';
@@ -574,6 +575,28 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
           <NumField label="Position Y" value={piece.y} min={0} max={10000} step={5} onValue={(v) => update({ y: v } as unknown as Piece)} />
           <NumField label="Pins" value={piece.count} min={3} max={5} step={1} onValue={(v) => update({ count: Math.round(clampNum(v, 3, 5)) } as unknown as Piece)} />
           <NumField label="Re-arm (ms)" value={piece.reset} min={1000} max={30000} step={200} onValue={(v) => update({ reset: Math.round(clampNum(v, 1000, 30000)) } as unknown as Piece)} />
+        </>
+      )}
+
+      {piece.t === 'sign' && (
+        <>
+          <div className="prop-field-wrap">
+            <label className="prop-field">
+              <span>Text</span>
+              <input
+                type="text"
+                className="no-slider"
+                value={piece.text}
+                maxLength={SIGN_MAX_CHARS}
+                placeholder="Write your sign"
+                autoFocus
+                onChange={(e) => update({ text: e.target.value.slice(0, SIGN_MAX_CHARS) } as unknown as Piece)}
+                onKeyDown={(e) => e.stopPropagation()}
+              />
+            </label>
+          </div>
+          <NumField label="Width" value={piece.w} min={60} max={600} step={5} onValue={(v) => update({ w: Math.round(clampNum(v, 60, 600)) } as unknown as Piece)} />
+          <p className="hint">Up to {SIGN_MAX_CHARS} characters; the letters shrink to fit the board. Marbles pass straight through signs.</p>
         </>
       )}
 

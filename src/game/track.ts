@@ -80,7 +80,8 @@ export type Kind =
   | 'turnstile'
   | 'target'
   | 'vortex'
-  | 'platform';
+  | 'platform'
+  | 'sign';
 
 /**
  * MB-10 element framework. A kinematic driver for the moving pieces: a body's pose is a pure
@@ -311,6 +312,8 @@ export interface Meta {
   targetBank?: { bank: number; count: number; resetMs: number; downAt: number[]; openedAt: number; gate: Matter.Body };
   /** MB-10F vortex funnel: orbital field torus; drop below `holeR` to exit. */
   vortex?: { cx: number; cy: number; r: number; spin: number; holeR: number };
+  /** Workshop sign: the board's text and size (decoration only — marbles never touch it). */
+  sign?: { text: string; w: number; h: number };
 
   sagAt?: number;
 }
@@ -596,6 +599,15 @@ export class Builder {
     }
     this.decor.push({ type: 'curve', points: pts.map((q) => ({ x: this.X(q.x), y: q.y })) });
     return pts;
+  }
+
+  /** A wooden sign with the builder's text: pure decoration, so its body collides with nothing. */
+  sign(x: number, y: number, text: string, w = 160) {
+    const h = Math.round(w * 0.42);
+    const b = Bodies.rectangle(this.X(x), y, w, h, { isStatic: true, isSensor: true, label: 'sign', collisionFilter: { category: CAT_SENSOR, mask: 0, group: 0 } });
+    b.plugin = { kind: 'sign', sign: { text, w, h } } as Meta;
+    this.bodies.push(b);
+    return b;
   }
 
   /**
