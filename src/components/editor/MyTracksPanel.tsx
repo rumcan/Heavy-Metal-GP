@@ -9,6 +9,7 @@
 import { useMemo, useState } from 'react';
 import { Copy, Trash2, Edit3, Check, X, ShieldCheck, ShieldAlert, Clock3, Ruler, Save, CopyPlus } from 'lucide-react';
 import TrackThumbnail from './TrackThumbnail';
+import ConfirmDialog from '../ConfirmDialog';
 import { formatUnits } from './camera';
 import type { SavedTrack } from '../../game/tracks';
 import type { TrackDef } from '../../game/trackdef';
@@ -64,12 +65,16 @@ export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, on
     return tracks.filter((t) => t.def.name.toLowerCase().includes(q));
   }, [tracks, filter]);
 
-  const startRename = (t: SavedTrack) => { setEditingId(t.id); setEditName(t.def.name); };
+  // In-game confirmations only: RUN.world's frame blocks the browser's confirm()/alert() (confirm() answered "no",
+  // so Delete never deleted there).
+  const [confirmDelete, setConfirmDelete] = useState<SavedTrack | null>(null);
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const startRename = (t: SavedTrack) => { setEditingId(t.id); setEditName(t.def.name); setRenameError(null); };
   const commitRename = () => {
     if (!editingId) return;
     const err = onRename(editingId, editName);
-    if (!err) setEditingId(null);
-    else alert(err);
+    if (!err) { setEditingId(null); setRenameError(null); }
+    else setRenameError(err);
   };
 
   return (
@@ -120,7 +125,7 @@ export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, on
               <div className="my-track-ops">
                 <button className="icon-button" onClick={() => startRename(t)} title="Rename" aria-label={`Rename ${t.def.name}`}><Edit3 size={12} /></button>
                 <button className="icon-button" onClick={() => onDuplicate(t.id)} title="Duplicate" aria-label={`Duplicate ${t.def.name}`}><Copy size={12} /></button>
-                <button className="icon-button" onClick={() => { if (confirm(`Delete “${t.def.name}”?`)) onDelete(t.id); }} title="Delete" aria-label={`Delete ${t.def.name}`}><Trash2 size={12} /></button>
+                <button className="icon-button" onClick={() => setConfirmDelete(t)} title="Delete" aria-label={`Delete ${t.def.name}`}><Trash2 size={12} /></button>
               </div>
             </div>
           ))}
@@ -193,6 +198,16 @@ export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, on
             );
           })}
         </div>
+      )}
+      {renameError && <p className="prop-empty" role="alert" style={{ color: '#fca5a5' }}>{renameError}</p>}
+      {confirmDelete && (
+        <ConfirmDialog
+          title="Delete this track?"
+          message={`“${confirmDelete.def.name}” will be removed from My tracks. This can't be undone.`}
+          confirmLabel="Delete"
+          onConfirm={() => { onDelete(confirmDelete.id); setConfirmDelete(null); }}
+          onCancel={() => setConfirmDelete(null)}
+        />
       )}
     </div>
   );

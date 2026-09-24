@@ -71,7 +71,10 @@ function readUVarint(bytes: Uint8Array, pos: { o: number }): number {
     shift += 7;
     if (shift > 35) throw new ShareCodeError('Varint too large.');
   }
-  return result >>> 0;
+  const u = result >>> 0;
+  // `writeUVarint` stores a negative number (a rail built into the left wall, x < 0) as its 32-bit wrap.
+  // Nothing in a track is anywhere near 2^31, so read those back as the negative value they were.
+  return u > 0x7fffffff ? u - 0x100000000 : u;
 }
 function readSVarint(bytes: Uint8Array, pos: { o: number }): number {
   const u = readUVarint(bytes, pos);

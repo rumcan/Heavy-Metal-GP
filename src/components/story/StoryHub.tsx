@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ArrowRight, RotateCcw, Sparkles, Trophy } from 'lucide-react';
 import Brand from '../Brand';
+import ConfirmDialog from '../ConfirmDialog';
 import WalletButton from '../WalletButton';
 import { CHAPTERS, chapterDef } from '../../game/story/outline';
 import { chapterTitle, chaptersForAct } from '../../game/story/engine';
@@ -68,6 +69,8 @@ export interface StoryHubProps {
  */
 export default function StoryHub({ state, account, notice, onPlay, onRestart, onShop, onExit }: StoryHubProps) {
   const [pane, setPane] = useState<'chapters' | 'dossier'>('chapters');
+  // In-game confirmation: RUN.world's frame blocks window.confirm(), which answered "no" there.
+  const [confirmRestart, setConfirmRestart] = useState(false);
   const position = storyPosition(state);
   const cleared = chaptersCleared(state);
   const flags = activeFlags(state);
@@ -196,7 +199,7 @@ export default function StoryHub({ state, account, notice, onPlay, onRestart, on
     <footer className="fit-actions">
       <div className="mode-switch">
         <button onClick={onExit}>Garage</button>
-        <button onClick={() => { if (window.confirm('Start the story again? Chapters, flags and unlocks are wiped. Your championship save is untouched.')) onRestart(); }}>
+        <button onClick={() => setConfirmRestart(true)}>
           <RotateCcw size={14} />Restart story
         </button>
       </div>
@@ -204,6 +207,7 @@ export default function StoryHub({ state, account, notice, onPlay, onRestart, on
         {finished ? 'Replay a chapter' : cleared ? `Continue · ${chapterTitle(nextChapter)}` : 'Start the story'}<ArrowRight size={18} />
       </button>
     </footer>
+    {confirmRestart && <ConfirmDialog title="Start the story again?" message="Chapters, flags and unlocks are wiped. Your championship save is untouched." confirmLabel="Restart story" onConfirm={() => { setConfirmRestart(false); onRestart(); }} onCancel={() => setConfirmRestart(false)} />}
 
     <nav className="pane-tabs" aria-label="Story panes">
       <button className={pane === 'chapters' ? 'selected' : ''} onClick={() => setPane('chapters')}>Chapters</button>

@@ -69,3 +69,9 @@ test('sign: decoration with text — collides with nothing, keeps its words thro
   const back = await decodeShareCode(await encodeShareCode(checked.ok ? checked.def : def));
   assert.equal((back.pieces[0] as { text: string }).text, 'SHORTCUT → 💀');
 });
+
+test('share codes keep rails built into the left wall (negative x)', async () => {
+  const def = defOf([{ t: 'ice', a: [-25, 900], b: [300, 960] }, { t: 'ramp', a: [-180, 1200], b: [200, 1260] }]);
+  const back = await decodeShareCode(await encodeShareCode(def));
+  assert.deepEqual(back.pieces, def.pieces);
+});

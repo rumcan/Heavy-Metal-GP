@@ -1,6 +1,7 @@
 import * as storage from './game/storage';
 import { APP_VERSION, SEEN_VERSION_KEY } from './game/version';
 import WhatsNew from './components/WhatsNew';
+import ConfirmDialog from './components/ConfirmDialog';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import SetupScreen from './components/SetupScreen';
@@ -611,6 +612,7 @@ export default function App() {
       />}
       {shopOpen && <PitShop account={account} onBuy={buy} onClose={() => setShopOpen(false)} />}
       {whatsNew && phase === 'menu' && <WhatsNew onClose={closeWhatsNew} />}
+      {confirmNewSeason && <ConfirmDialog title="Start a new championship?" message="This replaces your saved season." confirmLabel="Start new" onConfirm={() => startSeason(true)} onCancel={() => setConfirmNewSeason(false)} />}
     </>
   );
   const launchQuickRace = () => {
@@ -637,13 +639,18 @@ export default function App() {
   }, [phase]);
   const quickRoster = useMemo<MarbleInfo[]>(() => [{ id: 0, name: 'You', color, stats, isPlayer: true, character: portrait }, ...rivals], [rivals, color, stats, portrait]);
   const quickGrid = useMemo(() => quickRoster.map((m) => m.id), [quickRoster]);
-  const customTrack = customTrackId ? loadTracksSync().find((t) => t.id === customTrackId) ?? null : null;
+  // Looked up when the pick or the screen changes, not on every render: parsing saved tracks checks every one.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const customTrack = useMemo(() => (customTrackId ? loadTracksSync().find((t) => t.id === customTrackId) ?? null : null), [customTrackId, phase]);
   const customTrackDef: TrackDef | null = customTrack?.def ?? null;
   const newSeed = useCallback(() => setSeed(Math.floor(Math.random() * 0xffffffff)), []);
 
   // ---- season helpers ----
-  const startSeason = () => {
-    if (season && !season.complete && season.results.some((gp) => gp.length) && !window.confirm('Start a new championship? This replaces your saved season.')) return;
+  // In-game confirmation: RUN.world's frame blocks window.confirm(), which answered "no" there.
+  const [confirmNewSeason, setConfirmNewSeason] = useState(false);
+  const startSeason = (confirmed = false) => {
+    if (!confirmed && season && !season.complete && season.results.some((gp) => gp.length)) { setConfirmNewSeason(true); return; }
+    setConfirmNewSeason(false);
     const s = newSeason(quickRoster);
     setSeason(s);
     setPhase('hub');
@@ -706,7 +713,7 @@ export default function App() {
         seed={seed}
         onNewSeed={newSeed}
         onStart={launchQuickRace}
-        onStartSeason={startSeason}
+        onStartSeason={() => startSeason()}
         onContinueSeason={season && phase === 'menu' ? () => enterSeason(season) : undefined}
         seasonMode={phase === 'retune'}
         onBackToSeason={lockSetup}
@@ -805,7 +812,7 @@ export default function App() {
         }}
         onRetune={() => { setCircuitIndex(season.round); setPhase('retune'); }}
         onAbandon={() => setPhase('menu')}
-        onNewSeason={startSeason}
+        onNewSeason={() => startSeason()}
         onChangeTrack={(round, def) => setSeason(setRoundTrack(season, round, def))}
         account={account}
         onShop={openShop}
