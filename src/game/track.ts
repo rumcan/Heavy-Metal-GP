@@ -81,7 +81,8 @@ export type Kind =
   | 'target'
   | 'vortex'
   | 'platform'
-  | 'sign';
+  | 'sign'
+  | 'loopRide';
 
 /**
  * MB-10 element framework. A kinematic driver for the moving pieces: a body's pose is a pure
@@ -314,6 +315,8 @@ export interface Meta {
   vortex?: { cx: number; cy: number; r: number; spin: number; holeR: number };
   /** Workshop sign: the board's text and size (decoration only — marbles never touch it). */
   sign?: { text: string; w: number; h: number };
+  /** Loop ride: the ring's centre and radius (see `Builder.loop`). */
+  loopRide?: { cx: number; cy: number; r: number };
 
   sagAt?: number;
 }
@@ -627,48 +630,23 @@ export class Builder {
     }
   }
 
-  /** Arc from angle a0 to a1 (radians, screen space: 0 = right, PI/2 = bottom) with its inner surface at radius r. */
-  private arc(cx: number, cy: number, r: number, a0: number, a1: number, category: number) {
-    const steps = Math.max(2, Math.ceil(Math.abs(a1 - a0) / (Math.PI / 14)));
-    const ccx = this.X(cx);
-    for (let i = 0; i < steps; i++) {
-      const pa = a0 + (a1 - a0) * i / steps, pb = a0 + (a1 - a0) * (i + 1) / steps;
-      const ax = this.X(cx + r * Math.cos(pa)), ay = cy + r * Math.sin(pa);
-      const bx = this.X(cx + r * Math.cos(pb)), by = cy + r * Math.sin(pb);
-      const mx = (ax + bx) / 2, my = (ay + by) / 2;
-      const ol = Math.hypot(mx - ccx, my - cy) || 1;
-      const ox = (mx - ccx) / ol, oy = (my - cy) / ol;
-      const len = Math.hypot(bx - ax, by - ay) + 4;
-      const b = Bodies.rectangle(mx + ox * T / 2, my + oy * T / 2, len, T, {
-        ...STATIC_OPTS, angle: Math.atan2(by - ay, bx - ax), label: 'loop',
-        collisionFilter: { category, mask: 0xffff, group: 0 },
-      });
-      b.friction = 0.002;
-      b.frictionStatic = 0;
-      b.plugin = { kind: 'loop' } as Meta;
-      this.bodies.push(b);
-    }
-  }
+
 
   /**
    * Loop-the-loop with its bottom at (cx, bottomY); marbles enter travelling right (mirrored when flipped).
    * A 2D loop crosses its own entry, so the two lower quarters are collision-filtered per marble:
    * the rising quarter is solid until the marble passes the top sensor, then the closing quarter is.
    */
+  /**
+   * Loop: a ride, not a set of rails. Touch the ring from any side at any speed and it takes the marble one and a
+   * half turns round (spinning the way it was already moving) and throws it out of the opposite side. The engine
+   * runs the ride (`loopRide`); the ring art is the loop decor.
+   */
   loop(cx: number, bottomY: number, r: number) {
     const cy = bottomY - r;
-    this.arc(cx, cy, r, 0, Math.PI / 2, CAT_LOOP_UP);
-    this.arc(cx, cy, r, Math.PI / 2, Math.PI, CAT_LOOP_CLOSE);
-    this.arc(cx, cy, r, Math.PI, Math.PI * 1.5, CAT_LOOP_CLOSE);
-    this.arc(cx, cy, r, Math.PI * 1.5, Math.PI * 2, CAT_LOOP_UP);
-    const sensor = (x: number, yy: number, w: number, h: number, kind: Kind) => {
-      const b = Bodies.rectangle(this.X(x), yy, w, h, { ...SENSOR_OPTS, label: kind });
-      b.plugin = { kind } as Meta;
-      this.bodies.push(b);
-    };
-    sensor(cx, cy - r + 22, 40, 44, 'loopTop');
-    sensor(cx, bottomY - 20, 120, 40, 'loopBail');
-    sensor(cx + r + 70, cy, 30, r * 2 + 160, 'loopExit');
+    const b = Bodies.circle(this.X(cx), cy, r + 14, { ...SENSOR_OPTS, label: 'loopRide' });
+    b.plugin = { kind: 'loopRide', loopRide: { cx: this.X(cx), cy, r } } as Meta;
+    this.bodies.push(b);
     this.decor.push({ type: 'loop', x: this.X(cx), y: cy, r, flip: this.flip });
   }
 

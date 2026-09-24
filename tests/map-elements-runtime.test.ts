@@ -10,37 +10,37 @@ import { placementPieces } from '../src/components/editor/ghost';
 import { W } from '../src/game/track';
 import { validateStatic } from '../src/components/editor/validate';
 
-test('Workshop loop route carries light and heavy marbles over the top and out in both directions', () => {
+test('Workshop loop ride carries light and heavy marbles round and out the far side, mirrored or not', () => {
   for (const flip of [false, true]) for (const weight of [2, 5, 9]) {
     const pieces = placementPieces('loop', { x: 470, y: 1500 }, false)!.map(p => ({ ...p, flip }));
-    const def: TrackDef = { v: 1, seed: 19, name: 'Loop route', theme: 'classic', height: 4000, pieces };
-    assert.ok(!validateStatic(def).some(issue => issue.message.includes('no entry ramp found')));
-    assert.ok(validateStatic({ ...def, pieces: [pieces[0]] }).some(issue => issue.message.includes('no entry ramp found')));
+    const def: TrackDef = { v: 1, seed: 19, name: 'Loop ride', theme: 'classic', height: 4000, pieces };
+    // A loop is a ride: it needs no entry ramp, so validation has nothing to say about one on its own.
+    assert.ok(!validateStatic(def).some(issue => /loop/i.test(issue.message)));
     const game = new Game(19, [{ id: 0, name: 'Probe', color: '#fff', isPlayer: true, stats: { weight, speed: 5, bounce: 5 } }], {
       def, recovery: false, effects: false, aiItems: false, wireEvents: true,
     });
     try {
       assert.equal(game.trackDefError, null);
       game.openGate();
+      const loop = pieces[0] as Extract<Piece, { t: 'loop' }>;
+      const cx = flip ? W - loop.x : loop.x, cy = loop.bottom - loop.r;
       const marble = game.player;
-      // Drop from rest onto the high end, with no external launch or recovery.
-      Matter.Body.setPosition(marble.body, { x: flip ? W - 30 : 30, y: 1140 });
-      Matter.Body.setVelocity(marble.body, { x: 0, y: 0 });
-      let crossedTop = false, exited = false;
-      for (let step = 0; step < 1200; step++) {
+      // Roll in from the left side at a modest speed, with no launch or recovery.
+      Matter.Body.setPosition(marble.body, { x: cx - loop.r - 40, y: cy });
+      Matter.Body.setVelocity(marble.body, { x: 5, y: 0 });
+      let rode = false, out = false;
+      for (let step = 0; step < 600; step++) {
         game.step(PHYSICS_STEP);
-        crossedTop ||= marble.loopStage === 1 && marble.body.position.y < 1350;
-        if (crossedTop && marble.loopStage === 0 && (flip ? marble.body.position.x < 250 : marble.body.position.x > 650)) {
-          exited = true;
-          break;
-        }
+        rode ||= marble.hold?.kind === 'loop';
+        if (rode && !marble.hold && marble.body.position.x > cx + loop.r) { out = true; break; }
       }
-      assert.ok(crossedTop, `weight ${weight}, flip ${flip}: never reached the top`);
-      assert.ok(exited, `weight ${weight}, flip ${flip}: never cleared the exit`);
-      assert.equal(marble.recoveries, 0);
+      assert.ok(rode, `weight ${weight}, flip ${flip}: the loop never took the marble`);
+      assert.ok(out, `weight ${weight}, flip ${flip}: never thrown out the far side`);
+      assert.ok(marble.body.velocity.x > 3, `weight ${weight}, flip ${flip}: left too slowly (${marble.body.velocity.x})`);
     } finally { game.destroy(); }
   }
 });
+
 
 // Every new palette variant receives a live physics safety probe. Behavioural
 // assertions for launchers/fields/set pieces also live in their proving grounds.

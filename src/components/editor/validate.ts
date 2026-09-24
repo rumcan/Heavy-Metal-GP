@@ -58,7 +58,6 @@ export interface ValidationResult {
 }
 
 const VALIDATION_SEED = 42;
-const G = 1; // Matter gravity y
 
 function roster(seed = VALIDATION_SEED): MarbleInfo[] {
   const rng = mulberry32(seed);
@@ -220,48 +219,7 @@ function staticChecks(def: TrackDef, track: Track | null): ValidationIssue[] {
       }
     }
 
-    // loops entry ramp check — warn if no ramp provides 2.5r drop
-    const loops = def.pieces.map((p, idx) => ({ p, idx })).filter(({ p }) => p.t === 'loop') as { p: Extract<Piece, { t: 'loop' }>; idx: number }[];
-    for (const { p: loop, idx } of loops) {
-      const need = 2.5 * loop.r;
-      const wantY = loop.bottom - need;
-      let ok = false;
-      for (const cand of def.pieces) {
-        if (cand.t === 'curve') {
-          const loopX = loop.flip ? W - loop.x : loop.x;
-          const nearBottom = [cand.a, cand.b].some(([x, y]) =>
-            Math.abs((cand.flip ? W - x : x) - loopX) < loop.r / 2 && Math.abs(y - loop.bottom) < 40);
-          if (nearBottom && Math.min(cand.a[1], cand.b[1]) < wantY) {
-            ok = true;
-            break;
-          }
-        }
-        if (cand.t !== 'ramp' && cand.t !== 'ice') continue;
-        const ys = [cand.a[1], cand.b[1]];
-        const xs = [cand.a[0], cand.b[0]];
-        const highY = Math.min(...ys);
-        const lowY = Math.max(...ys);
-        // Ramp must be above loop and within x near loop
-        const xNear = xs.some((x) => Math.abs(x - loop.x) < 260);
-        if (highY < wantY && lowY < loop.bottom - 40 && xNear) {
-          // Check drop enough
-          const drop = loop.bottom - highY;
-          if (drop >= need * 0.85) {
-            ok = true;
-            break;
-          }
-        }
-      }
-      if (!ok) {
-        const needSpeed = Math.sqrt(5 * G * loop.r);
-        issues.push({
-          severity: 'warning',
-          message: `Loop #${idx} r=${Math.round(loop.r)} needs ~${needSpeed.toFixed(1)} speed (drop ~${Math.round(need)}u) — no entry ramp found`,
-          pos: { x: loop.x, y: loop.bottom },
-          pieceIndex: idx,
-        });
-      }
-    }
+    // Loops are rides now (any touch, any speed, see `Builder.loop`): they need no entry ramp or drop.
 
     // MB-10A static checks: tunnels and trapdoors have rules of their own.
     def.pieces.forEach((p, idx) => {

@@ -171,7 +171,7 @@ export interface OilSlick {
  * fields are host-side only.
  */
 export interface Hold {
-  kind: 'tunnel' | 'wheel' | 'screw' | 'cannon' | 'catapult';
+  kind: 'tunnel' | 'wheel' | 'screw' | 'cannon' | 'catapult' | 'loop';
   until: number;
   /** Clocked at `until - transit`; the glide runs from then on. Host-only on the wire. */
   transit?: number;
@@ -805,6 +805,34 @@ export class Game {
         this.emit({ kind: 'sound', cue: 'rumble', seat: m.info.id });
         this.emit({ kind: 'hold', seat: m.info.id, until, of: 'tunnel' });
         this.effects.push({ type: 'snow', x: other.position.x, y: other.position.y, ttl: 30, maxTtl: 30, color: '#b8a88f', particles: this.makeParticles(other.position.x, other.position.y, 10, 2) });
+        break;
+      }
+      case 'loopRide': {
+        // Any touch, from any side and at any speed, starts the ride: one and a half turns inside the ring, the way the
+        // marble was already going, then out of the opposite side, straight away from where it came in.
+        if (m.hold || this.time < m.tunnelSafeUntil || !md.loopRide) break;
+        const { cx, cy, r } = md.loopRide;
+        const p = m.body.position, v = m.body.velocity;
+        const dx = p.x - cx, dy = p.y - cy;
+        const a0 = Math.atan2(dy, dx);
+        const spin = (dx * v.y - dy * v.x) >= 0 ? 1 : -1; // + = clockwise on screen
+        const rideMs = Math.max(900, Math.min(1600, r * 7));
+        const omega = (spin * Math.PI * 3) / rideMs;
+        const out = a0 + Math.PI; // the opposite side
+        const speed = Math.max(Math.hypot(v.x, v.y), 9);
+        const until = this.time + rideMs;
+        m.hold = {
+          kind: 'loop', until, at: this.time,
+          arc: { x: cx, y: cy, r: Math.max(8, r - 16), fromA: a0, omega, release: out },
+          exit: { x: cx + Math.cos(out) * (r + 22), y: cy + Math.sin(out) * (r + 22), dir: { x: Math.cos(out), y: Math.sin(out) }, speed },
+        };
+        m.body.isSensor = true;
+        Body.setVelocity(m.body, { x: 0, y: 0 });
+        Body.setAngularVelocity(m.body, 0);
+        this.sfx('loop', m, cx, cy);
+        this.storyCounter('loops', m); // STORY HOOK (ST-07)
+        // Guests only need to know the marble is carried: 'wheel' is a hold every build's guests understand.
+        this.emit({ kind: 'hold', seat: m.info.id, until, of: 'wheel' });
         break;
       }
       // ---- MB-10C: movers ----
@@ -1922,6 +1950,7 @@ export class Game {
       if (!hold.exit) return;
       exit = hold.exit;
       if (hold.kind === 'screw') safe = 800;
+      if (hold.kind === 'loop') safe = 700;
     }
     m.body.isSensor = false;
     Body.setPosition(m.body, { x: exit.x, y: exit.y });
@@ -2430,8 +2459,8 @@ export class Game {
         }
         if (this.time >= m.hold.until) {
           this.releaseHold(m);
-        } else if (m.hold.kind === 'wheel' && m.hold.arc) {
-          // MB-10C bucket ride: the marble follows the bucket anchor around the wheel
+        } else if ((m.hold.kind === 'wheel' || m.hold.kind === 'loop') && m.hold.arc) {
+          // MB-10C bucket ride (and the loop ride): the marble follows the arc around
           const arc = m.hold.arc;
           const a = arc.omega * (this.time - (m.hold.at ?? this.time)) + arc.fromA;
           Body.setPosition(m.body, { x: arc.x + Math.cos(a) * arc.r, y: arc.y + Math.sin(a) * arc.r });

@@ -25,7 +25,6 @@ import { defaultPiece } from './defaults';
 import { tileFor } from './palette';
 import { getTemplates, placeTemplate, type SavedTemplate } from './templates';
 import type { Point } from './camera';
-import { fitGroupTranslation, translatePiece } from './translation';
 
 /** One primitive of the ghost outline, in world units. */
 export type GhostPart =
@@ -72,20 +71,7 @@ export function placementPieces(armed: string, at: Point, snap: boolean, templat
   }
   const tile = tileFor(armed);
   if (!tile) return [];
-  if (tile.id === 'loop') {
-    const loop = defaultPiece('loop', at, snap) as Extract<Piece, { t: 'loop' }>;
-    // Match the Championship approach: enough drop, a tangential entry with a
-    // boost, and an exit that clears the ring. Keep ordinary editable pieces so
-    // saved tracks and Championship loops retain their existing physics/format.
-    const route: Piece[] = [
-      { ...loop, x: 0, bottom: 0 },
-      { t: 'curve', a: [-470, -330], c: [-260, 0], b: [0, 0], n: 14 },
-      { t: 'boost', x: -150, y: -26, len: 110, thick: 40, dir: [1, 0] },
-      { t: 'curve', a: [0, 0], c: [200, 0], b: [350, 80], n: 10 },
-    ];
-    const dx = fitGroupTranslation(route, loop.x);
-    return dx === null ? null : route.map(piece => translatePiece(piece, dx, loop.bottom));
-  }
+
   return [{ ...defaultPiece(tile.t, at, snap), ...tile.preset } as Piece];
 }
 
