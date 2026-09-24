@@ -77,6 +77,7 @@ import type { MarbleInfo, ThemeId, TrackProfile } from '../game/types';
 import TestDrive from './editor/TestDrive';
 import ValidationPanel from './editor/ValidationPanel';
 import { validateTrackAsync } from './editor/validate';
+import { rememberValidation } from './editor/validationCache';
 import type { ValidationResult } from './editor/validate';
 import MyTracksPanel from './editor/MyTracksPanel';
 import SharePanel from './editor/SharePanel';
@@ -249,6 +250,9 @@ function regroup(added: Piece[], existing: Piece[]): Piece[] {
 /** How long after the last edit the open draft is saved. */
 const DRAFT_SAVE_DELAY_MS = 800;
 
+/** The empty build shown for the moment before the first real build (the loading pop-up covers it). */
+const NOT_BUILT: ReturnType<typeof buildEditorTrack> = { track: null, bodyToPiece: [], pieceBounds: [], error: null };
+
 /** Resolve after the browser has painted, so a loading pop-up shows before blocking work starts. */
 const nextPaint = () => new Promise<void>((resolve) => {
   let done = false;
@@ -330,6 +334,14 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
   const [validating, setValidating] = useState(false);
   // Loading pop-up for saves (validation shows it through `validating`).
   const [busy, setBusy] = useState<string | null>(null);
+  /** Open another map: show the loading pop-up, let it paint, swap the map in (the build runs), then hide it. */
+  const openCircuit = useCallback(async (def: TrackDef) => {
+    setBusy(`Loading “${def.name}”…`);
+    await nextPaint();
+    setCircuit({ def, build: 0 });
+    await nextPaint();
+    setBusy(null);
+  }, []);
   const [draftMsg, setDraftMsg] = useState<string | null>(null);
   const [shareMsg, setShareMsg] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -351,10 +363,17 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
   const [, forceTick] = useState(0);
   const bumpHistory = useCallback(() => forceTick((n) => n + 1), []);
 
+  // A big map takes a moment to build: paint the Workshop with its loading pop-up first, then build.
+  const [opened, setOpened] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void nextPaint().then(() => { if (!cancelled) setOpened(true); });
+    return () => { cancelled = true; };
+  }, []);
   // Rebuild only when something that shapes the track changes: renaming it must not rebuild a big map per keystroke.
   const { pieces: defPieces, height: defHeight, seed: defSeed, theme: defTheme, segments: defSegments } = circuit.def;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const built = useMemo(() => buildEditorTrack(circuit.def), [defPieces, defHeight, defSeed, defTheme, defSegments, circuit.build]);
+  const built = useMemo(() => (opened ? buildEditorTrack(circuit.def) : NOT_BUILT), [opened, defPieces, defHeight, defSeed, defTheme, defSegments, circuit.build]);
   const track = built.track;
   const bodyToPiece = built.bodyToPiece;
   const buildError = built.error;
@@ -430,7 +449,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
           if (!('error' in res)) {
             setSavedTracks(loadTracksSync());
             history.push(circuit.def);
-            setCircuit({ def: cloneDef((res as SavedTrack).def), build: 0 });
+            void openCircuit(cloneDef((res as SavedTrack).def));
             setActiveTrackId((res as SavedTrack).id);
             setDraftMsg(`Imported shared track “${def.name}”`);
             setTimeout(() => setDraftMsg(null), 4000);
@@ -793,6 +812,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
     try {
       const result = await validateTrackAsync(circuit.def);
       setValidation(result);
+      rememberValidation(circuit.def, result.canShare);
     } finally {
       setValidating(false);
     }
@@ -827,6 +847,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
       setValidating(true);
       result = await validateTrackAsync(circuit.def);
       setValidation(result);
+      rememberValidation(circuit.def, result.canShare);
       setValidating(false);
     }
     if (!result.canShare) {
@@ -885,7 +906,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
     // autosave current draft before switching
     try { saveDraft(circuit.def); } catch { /* ignore */ }
     history.push(circuit.def);
-    setCircuit({ def: cloneDef(found.def), build: 0 });
+    void openCircuit(cloneDef(found.def));
     setActiveTrackId(id);
     setSelected([]);
     setValidation(null);
@@ -934,7 +955,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
     setSavedTracks(loadTracksSync());
     // auto-load the imported track
     history.push(circuit.def);
-    setCircuit({ def: cloneDef((res as SavedTrack).def), build: 0 });
+    void openCircuit(cloneDef((res as SavedTrack).def));
     setActiveTrackId((res as SavedTrack).id);
     setSelected([]);
     setValidation(null);
@@ -945,7 +966,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
 
   const handleNewTrack = useCallback((def: TrackDef) => {
     history.push(circuit.def);
-    setCircuit({ def: cloneDef(def), build: 0 });
+    void openCircuit(cloneDef(def));
     setActiveTrackId(null);
     setSelected([]);
     setValidation(null);
@@ -1155,7 +1176,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
             onSaveNew={() => handleSaveCurrent(true)}
             onDevLoadOfficial={(def) => {
               history.push(circuit.def);
-              setCircuit({ def: cloneDef(def), build: 0 });
+              void openCircuit(cloneDef(def));
               setActiveTrackId(null);
               setSelected([]);
               setValidation(null);
@@ -1445,12 +1466,13 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
         </Dialog>
       )}
       {publishOpen && <PublishDialog def={circuit.def} onClose={() => setPublishOpen(false)} onViewCommunity={onCommunity ? () => { setPublishOpen(false); handleCommunity(); } : undefined} />}
-      {(busy || validating) && (
+      {(busy || validating || !opened || (track && !stage)) && (
         <div className="editor-busy" role="status" aria-live="polite">
           <div className="editor-busy-box">
             <span className="editor-busy-spinner" aria-hidden="true" />
-            <strong>{busy ?? 'Validating your track…'}</strong>
-            {!busy && <span>Racing 10 AI marbles through it. Big tracks take a few seconds.</span>}
+            <strong>{busy ?? (validating ? 'Validating your track…' : `Loading “${circuit.def.name}”…`)}</strong>
+            {!busy && validating && <span>Racing 10 AI marbles through it. Big tracks take a few seconds.</span>}
+            {!busy && !validating && <span>{circuit.def.pieces.length} pieces</span>}
           </div>
         </div>
       )}

@@ -15,7 +15,7 @@
 // what the grid looks like. Nothing here simulates anything — that starts when
 // the lights go out and `RaceSession` takes over.
 // ══════════════════════════════════════════════════════════════════════════
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, ArrowUpRight, Check, Copy, Lock, LockOpen } from 'lucide-react';
 import type { RaceRoom } from '../net/transport';
 import { appendChat, canSay, chatLine, chatMessage, offCooldown } from '../net/chat';
@@ -130,7 +130,8 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
   /** Host only: house rules for power-ups (null = everyone brings their own kit). */
   const [items, setItems] = useState<Partial<Record<ItemType, number>> | null>(null);
   // MB-08: custom track picking for the host — share-code in settings.customCode
-  const myTracks = loadTracksSync();
+  // Parsing saved tracks checks every one of them: once per visit, not on every render.
+  const myTracks = useMemo(() => loadTracksSync(), []);
   const [circuitTab, setCircuitTab] = useState<'calendar' | 'custom'>('calendar');
   const [customCode, setCustomCode] = useState<string | null>(null);
   const [customName, setCustomName] = useState<string | null>(null);

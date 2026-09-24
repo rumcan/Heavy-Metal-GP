@@ -100,7 +100,8 @@ export default function ChampionshipScreen({ season, onStartHeat, onRetune, onAb
 /** Pick a round's circuit: the official Grand Prix circuit or one of the player's saved tracks. */
 function TrackPicker({ round, current, onPick, onClose }: { round: number; current: TrackDef | null; onPick: (def: TrackDef | null) => void; onClose: () => void }) {
   const gp = CALENDAR[round];
-  const tracks = loadTracksSync();
+  // Parsing saved tracks checks every one of them: once per visit, not on every render.
+  const tracks = useMemo(() => loadTracksSync(), []);
   return <Dialog titleId="track-picker-title" onClose={onClose} className="track-picker">
     <span className="eyebrow"><Replace size={14} /> ROUND {String(round + 1).padStart(2, '0')}</span>
     <h2 id="track-picker-title">Choose the track</h2>

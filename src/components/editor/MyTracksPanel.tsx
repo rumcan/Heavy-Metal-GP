@@ -6,14 +6,13 @@
  * Validation badges are computed lazily via validateTrack (full headless) so the
  * list stays responsive — while pending we show static validity only.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Copy, Trash2, Edit3, Check, X, ShieldCheck, ShieldAlert, Clock3, Ruler, Save, CopyPlus } from 'lucide-react';
 import TrackThumbnail from './TrackThumbnail';
 import { formatUnits } from './camera';
 import type { SavedTrack } from '../../game/tracks';
 import type { TrackDef } from '../../game/trackdef';
-import { validateTrack } from './validate';
-import type { ValidationResult } from './validate';
+import { cachedValidation } from './validationCache';
 import { CALENDAR, gpSeed } from '../../game/season';
 import { officialTrack } from '../../game/official-tracks';
 import { generateTrackDef } from '../../game/trackdef';
@@ -45,24 +44,11 @@ function timeAgo(ms: number): string {
   return new Date(ms).toLocaleDateString();
 }
 
+/** PASS / FAIL from the last Validate of this exact track; nothing is simulated here (see validationCache). */
 function ValidationBadge({ def }: { def: TrackDef }) {
-  const [result, setResult] = useState<ValidationResult | null>(null);
-  const [pending, setPending] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    setPending(true);
-    // Yield to paint, then run heavy headless off the main tick
-    const t = setTimeout(async () => {
-      const r = await new Promise<ValidationResult>((resolve) => setTimeout(() => resolve(validateTrack(def)), 10));
-      if (!cancelled) { setResult(r); setPending(false); }
-    }, 20);
-    return () => { cancelled = true; clearTimeout(t); };
-  }, [def]);
-
-  if (pending) return <span className="my-track-badge is-pending"><Clock3 size={10} /> checking</span>;
-  if (!result) return null;
-  return result.canShare
+  const result = useMemo(() => cachedValidation(def), [def]);
+  if (result === undefined) return <span className="my-track-badge is-pending" title="Open it and press Validate to check it"><Clock3 size={10} /> not checked</span>;
+  return result
     ? <span className="my-track-badge is-pass"><ShieldCheck size={10} /> PASS</span>
     : <span className="my-track-badge is-fail"><ShieldAlert size={10} /> FAIL</span>;
 }

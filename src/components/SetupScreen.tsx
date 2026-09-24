@@ -98,7 +98,8 @@ export default function SetupScreen(props: Props) {
   // preview (and its Regenerate button) come back.
   const official = officialTrack(circuitIndex);
   // MB-08: quick race can run a player-built circuit. Tabs are calendar vs My tracks.
-  const myTracks = loadTracksSync();
+  // Parsing saved tracks checks every one of them: once per visit, not on every render.
+  const myTracks = useMemo(() => loadTracksSync(), []);
   const selectedCustom = myTracks.find((t) => t.id === props.customTrackId) ?? null;
   // Championships always run the calendar, so the retune screen only shows it. Everywhere else, picking one of
   // your own tracks switches the launch bar to Quick race, the only mode that can race it.
