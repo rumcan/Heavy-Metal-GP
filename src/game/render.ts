@@ -2142,11 +2142,26 @@ const MAX_CHUNKS = 5;
  * are re-baked on their own whenever the camera's resolution changes.
  */
 export function clearStaticChunks(game: Game): void {
+  const cache = chunkCaches.get(game);
+  if (cache) for (const chunk of cache.values()) recycleCanvas(chunk.canvas);
   chunkCaches.delete(game);
 }
 
+/**
+ * Chunk canvases are large (megabytes each) and the editor re-bakes them on every rebuild, i.e. every frame of a drag.
+ * Allocating fresh ones each time left hundreds of MB a second for the GC, which the browser reclaims lazily: a long
+ * Workshop session ran out of memory. Retired canvases go back to this pool and are reused (resizing clears them).
+ */
+const canvasPool: HTMLCanvasElement[] = [];
+const POOL_MAX = 12;
+function recycleCanvas(c: HTMLCanvasElement): void {
+  if (canvasPool.length < POOL_MAX && !canvasPool.includes(c)) canvasPool.push(c);
+  else { c.width = 0; c.height = 0; } // release the backing store now rather than at some later GC
+}
+
 function bakeChunk(game: Game, index: number, res: number): HTMLCanvasElement {
-  const c = document.createElement('canvas');
+  const c = canvasPool.pop() ?? document.createElement('canvas');
+  // Always assign both sizes: setting a canvas's size wipes it and resets its transform, even to the same value.
   c.width = Math.ceil(STATIC_W * res);
   c.height = Math.ceil((CHUNK_H + STATIC_PAD * 2) * res);
   const g = c.getContext('2d')!;
@@ -2188,6 +2203,7 @@ function drawStaticLayer(ctx: CanvasRenderingContext2D, game: Game, viewTop: num
       if (cache!.size > MAX_CHUNKS) {
         const oldest = [...cache!.entries()].sort((a, b) => a[1].used - b[1].used)[0];
         cache!.delete(oldest[0]);
+        recycleCanvas(oldest[1].canvas);
       }
     }
     chunk.used = now;
@@ -2203,7 +2219,7 @@ function drawStaticLayer(ctx: CanvasRenderingContext2D, game: Game, viewTop: num
   }
   // pre-bake the next chunk below the camera (the field only ever travels down)
   const ahead = last + 1;
-  if (ahead * CHUNK_H < game.track.height + 400 && !cache.has(`${ahead}@${res}`)) get(ahead);
+  if (ahead * CHUNK_H < game.track.height + 400 && !cache.has(`${currentSkin() ?? 'base'}:${ahead}@${res}`)) get(ahead);
   // beyond the baked strip, keep the rock colour so wide zoomed-out views stay filled
   ctx.fillStyle = '#1a140f';
   ctx.fillRect(STATIC_X0 - 2000, viewTop, 2000, viewBottom - viewTop);
