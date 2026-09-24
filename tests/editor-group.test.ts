@@ -60,3 +60,21 @@ test('group: the group id survives a save and load', () => {
   assert.ok(parsed.ok, parsed.ok ? '' : parsed.error);
   assert.ok(parsed.ok && parsed.def.pieces.every((p) => p.grp === 3));
 });
+
+test('a curve slides up to the wall: its bend handle may go past the edge, the rail may not', async () => {
+  const { movePiece } = await import('../src/components/editor/handles');
+  const { validateTrackDef: check } = await import('../src/game/trackdef');
+  const { W } = await import('../src/game/track');
+  // A bend towards the right wall: the rail's rightmost point is halfway between the chord and the handle.
+  const curve: Piece = { t: 'curve', a: [500, 400], c: [700, 500], b: [500, 600] };
+  const moved = movePiece(curve, 1000, 0) as Extract<Piece, { t: 'curve' }>;
+  const railRight = 0.25 * moved.a[0] + 0.5 * moved.c[0] + 0.25 * moved.b[0];
+  assert.ok(Math.abs(railRight - W) < 1, `rail reaches the wall (right edge ${railRight})`);
+  assert.ok(moved.c[0] > W, 'the handle may sit past the wall');
+  const def: TrackDef = { ...blankTemplate(), height: 3000, pieces: [moved] };
+  assert.ok(check(def).ok, 'still a saveable map');
+  // Much further bent: the handle would pass the saveable range, so the curve stops short of the wall.
+  const deep: Piece = { t: 'curve', a: [300, 400], c: [700, 500], b: [300, 600] };
+  const deepMoved = movePiece(deep, 1000, 0) as Extract<Piece, { t: 'curve' }>;
+  assert.ok(deepMoved.c[0] <= W + 200, `handle kept saveable (${deepMoved.c[0]})`);
+});

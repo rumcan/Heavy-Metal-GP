@@ -36,18 +36,45 @@ const EDGE = 200;
  */
 export function fitGroupTranslation(pieces: readonly Piece[], dx: number): number | null {
   let minX = Infinity, maxX = -Infinity;
+  // Bend handles only need to stay saveable (within EDGE of the walls), not on the track.
+  let handleMin = Infinity, handleMax = -Infinity;
   for (const piece of pieces) {
     if (piece.t === 'bucket') continue;
-    mapCoordinates(piece, (x, y) => {
+    const add = (x: number) => {
       const worldX = piece.flip ? W - x : x;
       minX = Math.min(minX, worldX);
       maxX = Math.max(maxX, worldX);
+    };
+    if (piece.t === 'curve') {
+      // The bend handle (c) sits outside the rail, which only reaches halfway to it: fit the rail itself,
+      // so a curve can slide right up to the wall even while its handle would be past it.
+      for (let i = 0; i <= 16; i++) {
+        const t = i / 16, u = 1 - t;
+        add(u * u * piece.a[0] + 2 * u * t * piece.c[0] + t * t * piece.b[0]);
+      }
+      const hx = piece.flip ? W - piece.c[0] : piece.c[0];
+      handleMin = Math.min(handleMin, hx);
+      handleMax = Math.max(handleMax, hx);
+      continue;
+    }
+    mapCoordinates(piece, (x, y) => {
+      add(x);
       return [x, y];
     });
   }
-  if (maxX - minX <= W) return Math.max(-minX, Math.min(W - maxX, dx));
-  // Wider than the track: rails built into the side walls reach past the edges (maps allow points up to
-  // EDGE outside). Such a group may use that margin too; only refuse what could never be saved.
-  if (maxX - minX > W + EDGE * 2) return null;
-  return Math.max(-EDGE - minX, Math.min(W + EDGE - maxX, dx));
+  let lo: number, hi: number;
+  if (maxX - minX <= W) {
+    lo = -minX; hi = W - maxX;
+  } else {
+    // Wider than the track: rails built into the side walls reach past the edges (maps allow points up to
+    // EDGE outside). Such a group may use that margin too; only refuse what could never be saved.
+    if (maxX - minX > W + EDGE * 2) return null;
+    lo = -EDGE - minX; hi = W + EDGE - maxX;
+  }
+  if (handleMin <= handleMax) {
+    lo = Math.max(lo, -EDGE - handleMin);
+    hi = Math.min(hi, W + EDGE - handleMax);
+    if (lo > hi) return null;
+  }
+  return Math.max(lo, Math.min(hi, dx));
 }
