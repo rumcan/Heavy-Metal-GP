@@ -482,7 +482,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
     if (md?.xf) applyXf(ctx, md.xf);
     switch (md?.kind) {
       case 'ramp':
-        if (!drawRail(ctx, b, 'rail-wood', md.caps) && !drawStrip(ctx, b, 'strip-wood')) drawPipe(ctx, b, theme.pipe, theme.pipeEdge);
+        if (!drawRail(ctx, b, 'rail-wood', md.caps, 1.3, true) && !drawStrip(ctx, b, 'strip-wood')) drawPipe(ctx, b, theme.pipe, theme.pipeEdge);
         break;
       case 'hoop': {
         const img = sprite('fire-hoop');
@@ -2096,7 +2096,7 @@ function paintStatic(ctx: CanvasRenderingContext2D, game: Game, top: number, bot
     if (md?.xf) applyXf(ctx, md.xf);
     switch (md.kind) {
       case 'ramp':
-        if (!drawRail(ctx, b, 'rail-wood', md.caps) && !drawStrip(ctx, b, 'strip-wood')) drawPipe(ctx, b, theme.pipe, theme.pipeEdge);
+        if (!drawRail(ctx, b, 'rail-wood', md.caps, 1.3, true) && !drawStrip(ctx, b, 'strip-wood')) drawPipe(ctx, b, theme.pipe, theme.pipeEdge);
         break;
       case 'ice':
         if (!drawStrip(ctx, b, 'strip-ice')) drawPipe(ctx, b, '#7dd3fc', '#38bdf8');

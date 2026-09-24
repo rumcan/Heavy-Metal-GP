@@ -127,12 +127,14 @@ const RAIL_CAP = 0.125;
  * Nine-slice style rail: iron end caps stay undistorted, the plank between them tiles along the body.
  * `caps` lists world points that should get a cap; ends near them are capped (default: both ends).
  */
-export function drawRail(ctx: CanvasRenderingContext2D, body: Matter.Body, name: string, caps?: Matter.Vector[], thicknessScale = 1.3): boolean {
+export function drawRail(ctx: CanvasRenderingContext2D, body: Matter.Body, name: string, caps?: Matter.Vector[], thicknessScale = 1.3, alongBody = false): boolean {
   const img = sprite(name);
   if (!img) return false;
   const frame = bodyFrame(body);
   // lay the rail along the body's long axis (upright walls are unrotated tall boxes)
-  const upright = frame.maxV - frame.minV > frame.maxU - frame.minU;
+  // `alongBody`: a ramp or curve segment always runs along its own angle. A very short curve chord can be
+  // shorter than the plank is thick, and must not be mistaken for an upright wall (planks laid crosswise).
+  const upright = !alongBody && frame.maxV - frame.minV > frame.maxU - frame.minU;
   const angle = body.angle + (upright ? Math.PI / 2 : 0);
   const { minU, maxU, minV, maxV } = upright
     ? { minU: frame.minV, maxU: frame.maxV, minV: -frame.maxU, maxV: -frame.minU }
