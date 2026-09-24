@@ -105,7 +105,8 @@ const RESIZE_SPECS: Partial<Record<Piece['t'], ResizeSpec>> = {
   geyser: { y: { h: R(50, 4000) } },
   trampoline: { x: { w: R(10, 2000) } },
   turnstile: { uniform: { r: R(10, 1000) } },
-  vortex: { uniform: { r: R(40, 1200) } },
+  // The drain hole grows with the bowl, so a resized vortex keeps its proportions.
+  vortex: { uniform: { r: R(40, 1200), hole: R(16, 80) } },
   platform: {
     ptPairs: [['ax', 'ay'], ['bx', 'by']],
     x: { w: R(HANDLE_RANGES.platformW.min, HANDLE_RANGES.platformW.max) },
