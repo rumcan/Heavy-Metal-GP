@@ -37,7 +37,7 @@ export default function ValidationPanel({ result, validating, onJump, onValidate
     <div className="validation-panel">
       <header className="validation-head">
         <span className="eyebrow"><b>03</b> VALIDATION</span>
-        <button className="button-primary validation-run" onClick={onValidate} disabled={validating} title="Run static + headless (10 marbles at 4×) checks">
+        <button className="button-primary validation-run" onClick={onValidate} disabled={validating} title="Race 10 AI marbles through your track to check it">
           {validating ? <Timer size={13} className="spinning" /> : <ShieldCheck size={13} />}
           {validating ? 'Validating…' : 'Validate'}
         </button>
@@ -45,9 +45,7 @@ export default function ValidationPanel({ result, validating, onJump, onValidate
 
       {!result && !validating && (
         <p className="prop-empty">
-          Check if this circuit is finishable, has no traps and gives a fair start. Runs 10 marbles at 4× off-screen — finish rate, median time, stuck spots (marshal recoveries) and time limit hits.
-          <br />
-          <span style={{ color: '#8ea2b5' }}>Pass = ≥9/10 finishers, no hard errors. Drafts always save; sharing/online needs a pass.</span>
+          Races 10 AI marbles through your track. At least 9 must finish, with nobody getting stuck, before you can share it.
         </p>
       )}
 

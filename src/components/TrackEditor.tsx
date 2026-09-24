@@ -1099,9 +1099,6 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
             <header className="eyebrow"><b>02</b> PROPERTIES</header>
             <PropertiesPanel selected={selected} pieces={circuit.def.pieces} onChange={handlePropChange} onChangeMany={handleBulkChange} />
           </div>
-          <p className="palette-note" style={{ marginTop: 8 }}>
-            MB-03: click a palette piece then the canvas to place. Drag pieces or their handles to edit. Shift+click / drag a box to multi-select.
-          </p>
           <div data-coach="validate"><ValidationPanel result={validation} validating={validating} onJump={handleValidationJump} onValidate={handleValidate} /></div>
           <MyTracksPanel
             tracks={savedTracks}
@@ -1180,7 +1177,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
               <button className="icon-button" onClick={() => rigZoom(rig, 1.25)} aria-label="Zoom in">
                 <ZoomIn size={15} />
               </button>
-              <button className="text-button" onClick={() => rigFit(rig)} title="Fit the whole pipe">
+              <button className="text-button" onClick={() => rigFit(rig)} title="Fit the whole track">
                 <ScanSearch size={13} />Fit
               </button>
             </div>

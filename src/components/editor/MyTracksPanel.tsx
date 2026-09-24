@@ -87,19 +87,19 @@ export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, on
   return (
     <div className="my-tracks-panel">
       <header className="my-tracks-head">
-        <span className="eyebrow"><b>03</b> MY TRACKS</span>
+        <span className="eyebrow"><b>04</b> MY TRACKS</span>
         <span className="my-tracks-count">{tracks.length} saved</span>
       </header>
 
       <div className="my-tracks-actions">
-        <button className="button-primary my-tracks-save" onClick={onSaveCurrent} title="Save current circuit to My tracks (compressed, size-checked)">
+        <button className="button-primary my-tracks-save" onClick={onSaveCurrent} title="Save the current track to My tracks">
           <Save size={13} /> Save current
         </button>
         <input className="my-tracks-filter" placeholder="Filter by name…" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Filter tracks" />
       </div>
 
       {tracks.length === 0 ? (
-        <p className="prop-empty">No saved tracks yet. Save the current circuit to keep it between reloads. Drafts autosave every 10 s and when you leave the Workshop.</p>
+        <p className="prop-empty">No saved tracks yet. Save the current track to keep it here.</p>
       ) : filtered.length === 0 ? (
         <p className="prop-empty">No tracks match “{filter}”.</p>
       ) : (
@@ -135,7 +135,7 @@ export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, on
       )}
 
       <div className="my-tracks-foot">
-        <span className="my-tracks-hint">Your open track saves itself every 10 seconds and when you leave the Workshop. Tracks here stay after a reload.</span>
+        <span className="my-tracks-hint">Your open track saves itself as you build. Tracks saved here stay after a reload.</span>
       </div>
 
       {/* Current draft preview — helps verify autosave is working */}

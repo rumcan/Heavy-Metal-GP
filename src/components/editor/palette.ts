@@ -45,10 +45,10 @@ export const PALETTE: PaletteGroup[] = [
   {
     id: 'rails',
     label: 'Rails',
-    note: 'The pipe itself',
+    note: 'Tracks for marbles to roll on',
     tiles: [
       { id: 'ramp', t: 'ramp', label: 'Ramp', sprite: 'rail-wood', hint: 'A straight rail. Drag its ends to set the angle.', effects: { speed: 30 } },
-      { id: 'curve', t: 'curve', label: 'Curve', sprite: 'rail-wood', hint: 'A quadratic bend between two rails.', effects: { speed: 30 } },
+      { id: 'curve', t: 'curve', label: 'Curve', sprite: 'rail-wood', hint: 'A bent rail. Drag the middle dot to set the bend.', effects: { speed: 30 } },
       { id: 'ring', t: 'ring', label: 'Ring rail', sprite: 'rail-wood', hint: 'A perfect plank circle. Drag the side dot for its size, the top dot for its thickness.', effects: { speed: 30 } },
       { id: 'ice', t: 'ice', label: 'Ice rail', sprite: 'strip-ice', hint: 'Almost frictionless — carry speed, lose control.', effects: { speed: 80 } },
       { id: 'wall', t: 'wall', label: 'Wall', sprite: 'strip-metal', hint: 'A plain barrier. Rails, ledges and catch walls.' },
@@ -143,11 +143,11 @@ export const PALETTE: PaletteGroup[] = [
   {
     id: 'fields',
     label: 'Fields & surfaces',
-    note: 'Wind, magnets, tar, water and steam',
+    note: 'Wind, magnets, tar and steam',
     tiles: [
       { id: 'wind', t: 'wind', label: 'Updraft vent', sprite: 'wind', hint: 'A large vent whose dust vortex fills the rectangle. Light marbles sail on it, Heavy metal ignores it, Slipstream catches twice. Pulse it to breathe.', effects: { weight: -75 } },
-      { id: 'magnet', t: 'magnet', label: 'Horseshoe magnet', sprite: 'magnet', hint: 'Drags runners off line, heavier iron harder. Anvil heavy metal sticks for a beat, then lets go — thrum it on a period for a softening window.', effects: { weight: 80 } },
-      { id: 'mud', t: 'mud', label: 'Tar band', sprite: 'mud', hint: 'A strip of sticky tar. Rollers trudge, bounce builds hop it, the speed stat digs in, Slipstream sails over.', effects: { speed: 60 } },
+      { id: 'magnet', t: 'magnet', label: 'Horseshoe magnet', sprite: 'magnet', hint: 'Pulls marbles off their line; heavier marbles are pulled harder. Heavy metal sticks for a moment, then lets go. Set a period to switch it on and off.', effects: { weight: 80 } },
+      { id: 'mud', t: 'mud', label: 'Tar band', sprite: 'mud', hint: 'A strip of sticky tar that slows marbles down. Bouncy marbles hop across it, fast ones push through, and Slipstream sails over.', effects: { speed: 60 } },
       { id: 'geyser', t: 'geyser', label: 'Geyser vent', sprite: 'geyser', hint: 'Bubbles for a beat, then blasts upward on a timer. Park on it and get chucked. All on the race clock.', effects: { weight: -50 } },
     ],
   },

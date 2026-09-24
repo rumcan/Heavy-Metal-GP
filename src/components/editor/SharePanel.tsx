@@ -104,14 +104,13 @@ export default function SharePanel({ def, validation, validating, onImport }: Pr
   return (
     <div className="share-panel">
       <header className="share-head">
-        <span className="eyebrow"><b>04</b> SHARE CODES</span>
-        <span className="share-hint">v1 · deflate · base64url</span>
+        <span className="eyebrow"><b>05</b> SHARE CODES</span>
       </header>
 
       {/* Export */}
       <div className="share-section">
         <div className="share-section-head">
-          <Upload size={12} /> Export current — only validated tracks
+          <Upload size={12} /> Export
           {validation && (
             <span className={`share-badge ${canExport ? 'is-pass' : 'is-fail'}`}>
               {canExport ? <ShieldCheck size={10} /> : <ShieldAlert size={10} />}
@@ -120,9 +119,7 @@ export default function SharePanel({ def, validation, validating, onImport }: Pr
           )}
         </div>
         {!canExport ? (
-          <p className="prop-empty">
-            {validating ? 'Validating…' : 'Run Validate and fix hard errors (≥9/10 finishers) before exporting. Drafts always save; sharing needs a pass.'}
-          </p>
+          validating ? <p className="prop-empty">Validating…</p> : null
         ) : (
           <>
             <button className="button-primary share-export-btn" onClick={handleExport} disabled={exporting}>

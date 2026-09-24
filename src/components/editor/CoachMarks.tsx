@@ -57,7 +57,7 @@ const STEPS: Step[] = [
   { id: 'ramp', title: 'Step 1 — Place a ramp', body: 'Pick Ramp in the palette (Rails) then click the canvas to drop it. Drag its ends to set the angle.', target: 'palette-ramp', cta: 'Place a ramp' },
   { id: 'loop', title: 'Step 2 — Add a loop', body: 'Pick Loop, click to place it where the marble will have speed. Loops need a run-up — the ramp you just placed.', target: 'palette-loop', cta: 'Add a loop' },
   { id: 'test', title: 'Step 3 — Test drive', body: 'Hit Test drive to roll a marble through your track. Esc returns — your edits and camera are kept.', target: 'testdrive', cta: 'Test drive' },
-  { id: 'validate', title: 'Step 4 — Validate', body: 'Run Validate — we headless-roll 10 marbles. Need 9/10 finishers and no errors to share.', target: 'validate', cta: 'Validate' },
+  { id: 'validate', title: 'Step 4 — Validate', body: 'Press Validate to race 10 AI marbles through your track. At least 9 must finish, with nobody getting stuck, before you can share it.', target: 'validate', cta: 'Validate' },
   { id: 'share', title: 'Step 5 — Share', body: 'When VALID, Share copies a compressed code. Paste it online to host a custom race, or send it to a friend.', target: 'share', cta: 'Share' },
 ];
 
