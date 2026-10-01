@@ -1,0 +1,286 @@
+You are two engineers building two small, pure TypeScript modules for Heavy Metal GP, an open-source 2D goblin marble-racing game. Read everything below. Do NOT write any code yet.
+
+THE REPO (public, read it for context): https://github.com/rumcan/Heavy-Metal-GP
+Branch with these exact tests: p2-battle-health-cosmetics. The tests are tests/health-rules.test.ts and tests/cosmetics.test.ts (also pasted below).
+You may read the repo to understand the game, but you only WRITE the one module your job names. Do not invent other APIs: the function names and rules below are the contract.
+
+Option A is ALPHA. Option B is BRAVO. Each of you does ONLY your own job below; do not do the other's. The two modules are independent (no imports between them, no imports from other project files).
+
+======================================================================
+ALPHA'S JOB: src/game/health.ts (health, DNF, KO credit, the Shaman's fee)
+======================================================================
+Every driver has health. Hazards and attacks damage it. At 0 HP the driver is OUT of the race ("Did Not Finish", DNF). The last rival who hurt you (or bumped you into a hazard) gets the KO. In the career modes dying costs money: the team pays the Shaman to revive the ball.
+
+Exports (exact names):
+  export const MAX_HP = 100;
+  export const REGEN_PER_SEC = 3;          // HP regained per second once regen has started
+  export const REGEN_DELAY_MS = 5000;      // regen starts this long after the last hit
+  export const KO_WINDOW_MS = 4000;        // an attacker gets the KO if they hit you this recently
+  export const BUMP_WINDOW_MS = 2000;      // a rival who bumped you this recently gets a hazard KO
+  export const CHARM_INVULN_MS = 1500;     // invulnerability after Shaman's Charm saves you
+  export type DamageKind = 'blade' | 'saw' | 'mace' | 'wrecker' | 'boulder' | 'crusher' | 'bolt' | 'bomb' | 'lightning' | 'spikes' | 'shock' | 'ram';
+  export const DAMAGE: Record<DamageKind, number> = { blade: 20, saw: 25, mace: 20, wrecker: 25, boulder: 30, crusher: 60, bolt: 25, bomb: 35, lightning: 30, spikes: 8, shock: 10, ram: 10 };
+  export const KO_BOUNTY = 75;  export const KO_XP = 50;  export const KO_POINTS = 2;
+
+  export interface Health { hp: number; lastHitAt: number; lastHitBy: number | null; lastBumpAt: number; lastBumpedBy: number | null; invulnUntil: number; dnf: boolean }
+  export function newHealth(): Health    // hp 100, the three times -Infinity, the two people null, dnf false
+
+  export function applyDamage(h: Health, amount: number, now: number, by: number | null, opts?: { charm?: boolean }): { health: Health; died: boolean; saved: boolean }
+    Never mutate h. If h.dnf or now < h.invulnUntil: return h unchanged (died false, saved false).
+    Otherwise hp -= amount and lastHitAt = now; set lastHitBy = by ONLY when by !== null (a hazard hit keeps the previous attacker).
+    If hp <= 0: with opts.charm -> hp = 1, invulnUntil = now + CHARM_INVULN_MS, saved = true (not dead);
+    without -> hp = 0, dnf = true, died = true.
+
+  export function recordBump(h: Health, by: number, now: number): Health          // new object: lastBumpedBy = by, lastBumpAt = now
+  export function regen(h: Health, now: number, dtMs: number): Health
+    If dnf, or now - lastHitAt < REGEN_DELAY_MS: unchanged. Else hp = min(MAX_HP, hp + REGEN_PER_SEC * dtMs / 1000).
+  export function koCredit(h: Health, now: number): number | null
+    If lastHitBy !== null and now - lastHitAt <= KO_WINDOW_MS -> lastHitBy.
+    Else if lastBumpedBy !== null and now - lastBumpAt <= BUMP_WINDOW_MS -> lastBumpedBy. Else null.
+
+  export type FeeMode = 'championship' | 'story' | 'quick' | 'online';
+  export function shamanFee(mode: FeeMode, credits: number): { due: number; fee: number; short: boolean; takeCharges: number }
+    championship / story: due = max(250, round(credits * 0.30)). quick: due = max(50, round(credits * 0.10)). online: due = 0.
+    fee = min(due, credits). short = due > credits. takeCharges = (short and mode is championship or story) ? 2 : 0.
+
+======================================================================
+BRAVO'S JOB: src/game/cosmetics.ts (ball customisation catalogue)
+======================================================================
+Players customise how their ball looks. Purely cosmetic. Some choices are free; others unlock by level, by buying with credits (CR), or by an achievement.
+
+Exports (exact names and order):
+  export const MATERIALS = ['steel','chrome','brass','rust','oak','granite','glass','lava','ice','gold'] as const;
+  export const PATTERNS = ['plain','stripes','band','checker','flames','skull','goblin','number','team','stars','cracks','rivets'] as const;
+  export const TRAILS = ['none','smoke','sparks','fire','ice','rainbow','coins','wisps'] as const;
+  export const KO_BURSTS = ['classic','confetti','scrap','ghost'] as const;
+  export const FINISH_FX = ['flag','fireworks','crown','spin'] as const;
+  export const PALETTE: readonly string[]   // exactly 24 distinct lower-case '#rrggbb' colours, a bright readable racing palette; PALETTE[0] = '#d63e2e' (race red), PALETTE[1] = '#1f2937' (charcoal)
+  export type Category = 'material' | 'pattern' | 'trail' | 'koBurst' | 'finishFx';
+  export type AchievementId = 'first-win' | 'ten-kos' | 'campaign' | 'pegs-50';
+  export type Unlock = { kind: 'free' } | { kind: 'level'; level: number } | { kind: 'credits'; price: number } | { kind: 'achievement'; id: AchievementId };
+  export interface BallLook { material: string; primary: string; secondary: string; pattern: string; number: number; trail: string; koBurst: string; finishFx: string }
+  export const DEFAULT_LOOK: BallLook = { material: 'steel', primary: PALETTE[0], secondary: PALETTE[1], pattern: 'plain', number: 7, trail: 'none', koBurst: 'classic', finishFx: 'flag' };
+  export interface Progress { level: number; owned: string[]; achievements: AchievementId[] }   // owned entries look like 'material:oak'
+
+  Unlock table (unlockOf):
+    material: steel free, chrome level 3, brass level 5, rust free, oak credits 300, granite credits 400, glass level 10, lava achievement campaign, ice credits 500, gold achievement first-win
+    pattern:  plain free, stripes free, band level 2, checker credits 200, flames level 6, skull achievement ten-kos, goblin credits 250, number free, team level 4, stars credits 150, cracks level 8, rivets free
+    trail:    none free, smoke free, sparks level 3, fire level 7, ice credits 350, rainbow achievement pegs-50, coins achievement ten-kos, wisps level 12
+    koBurst:  classic free, confetti level 5, scrap credits 200, ghost level 9
+    finishFx: flag free, fireworks level 4, crown achievement first-win, spin credits 150
+
+  export function unlockOf(category: Category, id: string): Unlock | null          // null for an unknown id
+  export function isUnlocked(category: Category, id: string, p: Progress): boolean  // unknown id -> false; level: p.level >= n; credits: p.owned includes `${category}:${id}`; achievement: p.achievements includes it
+  export function unlockHint(category: Category, id: string): string
+    free -> 'Free'; level -> 'Reach level N'; credits -> 'Buy for N CR';
+    first-win -> 'Win your first race'; ten-kos -> 'Knock out 10 rivals'; campaign -> 'Finish the campaign'; pegs-50 -> 'Hit 50 orange pegs in one race'; unknown -> ''.
+  export function sanitizeLook(raw: unknown): BallLook
+    Any field that is missing or invalid falls back to DEFAULT_LOOK's value: ids must be in their list, colours must be in PALETTE, number must be an integer 0..99. A non-object gives DEFAULT_LOOK.
+  export function lockedReset(look: BallLook, p: Progress): BallLook
+    Each of material / pattern / trail / koBurst / finishFx that is NOT unlocked for p becomes DEFAULT_LOOK's value. Colours and number are kept.
+
+======================================================================
+THE TESTS (they must all pass, unchanged)
+======================================================================
+----- tests/health-rules.test.ts (ALPHA) -----
+// P2-07 (#113) battle tests, job ALPHA: the pure health rules in src/game/health.ts.
+// Standalone: imports only the module under test.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  MAX_HP, REGEN_PER_SEC, REGEN_DELAY_MS, KO_WINDOW_MS, BUMP_WINDOW_MS, CHARM_INVULN_MS,
+  DAMAGE, KO_BOUNTY, KO_XP, KO_POINTS,
+  newHealth, applyDamage, recordBump, regen, koCredit, shamanFee,
+} from '../src/game/health';
+
+test('constants match the design', () => {
+  assert.equal(MAX_HP, 100);
+  assert.equal(REGEN_PER_SEC, 3);
+  assert.equal(REGEN_DELAY_MS, 5000);
+  assert.equal(KO_WINDOW_MS, 4000);
+  assert.equal(BUMP_WINDOW_MS, 2000);
+  assert.equal(CHARM_INVULN_MS, 1500);
+  assert.deepEqual(DAMAGE, { blade: 20, saw: 25, mace: 20, wrecker: 25, boulder: 30, crusher: 60, bolt: 25, bomb: 35, lightning: 30, spikes: 8, shock: 10, ram: 10 });
+  assert.equal(KO_BOUNTY, 75);
+  assert.equal(KO_XP, 50);
+  assert.equal(KO_POINTS, 2);
+});
+
+test('newHealth: full HP, alive, nobody to blame', () => {
+  assert.deepEqual(newHealth(), { hp: 100, lastHitAt: -Infinity, lastHitBy: null, lastBumpAt: -Infinity, lastBumpedBy: null, invulnUntil: -Infinity, dnf: false });
+});
+
+test('applyDamage: takes HP, remembers when and who, never mutates the input', () => {
+  const h = newHealth();
+  const r = applyDamage(h, 25, 1000, 3);
+  assert.equal(r.health.hp, 75);
+  assert.equal(r.health.lastHitAt, 1000);
+  assert.equal(r.health.lastHitBy, 3);
+  assert.equal(r.died, false);
+  assert.equal(r.saved, false);
+  assert.equal(h.hp, 100, 'input untouched');
+});
+
+test('applyDamage: a hazard hit (no attacker) keeps the last attacker on record', () => {
+  let h = applyDamage(newHealth(), 10, 1000, 4).health;
+  h = applyDamage(h, 10, 1500, null).health;
+  assert.equal(h.lastHitBy, 4);
+  assert.equal(h.lastHitAt, 1500);
+});
+
+test('applyDamage: reaching 0 HP is a DNF (died), HP never goes below 0', () => {
+  const r = applyDamage(applyDamage(newHealth(), 90, 0, null).health, 30, 100, 2);
+  assert.equal(r.health.hp, 0);
+  assert.equal(r.health.dnf, true);
+  assert.equal(r.died, true);
+});
+
+test("applyDamage: Shaman's Charm saves you once: 1 HP and a short invulnerability", () => {
+  const r = applyDamage(applyDamage(newHealth(), 90, 0, null).health, 30, 100, 2, { charm: true });
+  assert.equal(r.died, false);
+  assert.equal(r.saved, true);
+  assert.equal(r.health.hp, 1);
+  assert.equal(r.health.dnf, false);
+  assert.equal(r.health.invulnUntil, 100 + CHARM_INVULN_MS);
+});
+
+test('applyDamage: no damage while invulnerable, or once DNF', () => {
+  const saved = applyDamage({ ...newHealth(), hp: 5 }, 30, 0, 1, { charm: true }).health;
+  const during = applyDamage(saved, 50, 500, 1);
+  assert.equal(during.health.hp, 1, 'invulnerable');
+  assert.equal(during.died, false);
+  const dead = applyDamage(newHealth(), 200, 0, null).health;
+  const again = applyDamage(dead, 10, 10, null);
+  assert.equal(again.died, false, 'already out: no second death');
+  assert.equal(again.health.hp, 0);
+});
+
+test('regen: nothing for 5 s after a hit, then +3 HP per second, capped at 100', () => {
+  const hit = applyDamage(newHealth(), 50, 0, null).health; // hp 50 at t=0
+  assert.equal(regen(hit, 4999, 1000).hp, 50, 'too soon');
+  assert.equal(regen(hit, 5000, 1000).hp, 53);
+  assert.equal(regen({ ...hit, hp: 99.5 }, 9000, 1000).hp, 100);
+  const dead = applyDamage(newHealth(), 200, 0, null).health;
+  assert.equal(regen(dead, 99999, 1000).hp, 0, 'no regen once DNF');
+});
+
+test('koCredit: the last attacker within 4 s', () => {
+  const h = applyDamage(newHealth(), 10, 1000, 6).health;
+  assert.equal(koCredit(h, 1000 + KO_WINDOW_MS), 6);
+  assert.equal(koCredit(h, 1000 + KO_WINDOW_MS + 1), null);
+});
+
+test('koCredit: knocked into a hazard: the rival who bumped you within 2 s', () => {
+  let h = recordBump(newHealth(), 8, 2000);
+  h = applyDamage(h, 60, 2500, null).health; // crusher, no attacker
+  assert.equal(koCredit(h, 2500), 8);
+  assert.equal(koCredit(recordBump(newHealth(), 8, 2000), 2000 + BUMP_WINDOW_MS + 1), null);
+});
+
+test('koCredit: a recent attacker beats an older bump; nobody to credit = null', () => {
+  let h = recordBump(newHealth(), 8, 1000);
+  h = applyDamage(h, 10, 1500, 3).health;
+  assert.equal(koCredit(h, 1600), 3);
+  assert.equal(koCredit(newHealth(), 0), null);
+});
+
+test("shamanFee: championship and story charge 30 % (min 250); can't pay = he takes 2 charges", () => {
+  assert.deepEqual(shamanFee('championship', 2000), { due: 600, fee: 600, short: false, takeCharges: 0 });
+  assert.deepEqual(shamanFee('story', 500), { due: 250, fee: 250, short: false, takeCharges: 0 });
+  assert.deepEqual(shamanFee('championship', 100), { due: 250, fee: 100, short: true, takeCharges: 2 });
+});
+
+test('shamanFee: quick race 10 % (min 50), never takes charges; online is free', () => {
+  assert.deepEqual(shamanFee('quick', 1000), { due: 100, fee: 100, short: false, takeCharges: 0 });
+  assert.deepEqual(shamanFee('quick', 20), { due: 50, fee: 20, short: true, takeCharges: 0 });
+  assert.deepEqual(shamanFee('online', 5000), { due: 0, fee: 0, short: false, takeCharges: 0 });
+});
+
+----- tests/cosmetics.test.ts (BRAVO) -----
+// P2-18 (#126) battle tests, job BRAVO: the ball-customisation catalogue in src/game/cosmetics.ts.
+// Standalone: imports only the module under test.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  MATERIALS, PATTERNS, TRAILS, KO_BURSTS, FINISH_FX, PALETTE, DEFAULT_LOOK,
+  unlockOf, isUnlocked, unlockHint, sanitizeLook, lockedReset,
+} from '../src/game/cosmetics';
+import type { Progress } from '../src/game/cosmetics';
+
+const fresh: Progress = { level: 1, owned: [], achievements: [] };
+
+test('catalogue sizes and order', () => {
+  assert.deepEqual([...MATERIALS], ['steel', 'chrome', 'brass', 'rust', 'oak', 'granite', 'glass', 'lava', 'ice', 'gold']);
+  assert.deepEqual([...PATTERNS], ['plain', 'stripes', 'band', 'checker', 'flames', 'skull', 'goblin', 'number', 'team', 'stars', 'cracks', 'rivets']);
+  assert.deepEqual([...TRAILS], ['none', 'smoke', 'sparks', 'fire', 'ice', 'rainbow', 'coins', 'wisps']);
+  assert.deepEqual([...KO_BURSTS], ['classic', 'confetti', 'scrap', 'ghost']);
+  assert.deepEqual([...FINISH_FX], ['flag', 'fireworks', 'crown', 'spin']);
+  assert.equal(PALETTE.length, 24);
+  assert.ok(PALETTE.every((c) => /^#[0-9a-f]{6}$/.test(c)), 'lower-case #rrggbb');
+  assert.equal(new Set(PALETTE).size, 24, 'no duplicates');
+});
+
+test('the default look is all free choices', () => {
+  assert.deepEqual(DEFAULT_LOOK, { material: 'steel', primary: PALETTE[0], secondary: PALETTE[1], pattern: 'plain', number: 7, trail: 'none', koBurst: 'classic', finishFx: 'flag' });
+  for (const [category, id] of [['material', 'steel'], ['pattern', 'plain'], ['trail', 'none'], ['koBurst', 'classic'], ['finishFx', 'flag']] as const) {
+    assert.ok(isUnlocked(category, id, fresh), `${category}:${id}`);
+  }
+});
+
+test('unlockOf: the table', () => {
+  assert.deepEqual(unlockOf('material', 'steel'), { kind: 'free' });
+  assert.deepEqual(unlockOf('material', 'chrome'), { kind: 'level', level: 3 });
+  assert.deepEqual(unlockOf('material', 'oak'), { kind: 'credits', price: 300 });
+  assert.deepEqual(unlockOf('material', 'lava'), { kind: 'achievement', id: 'campaign' });
+  assert.deepEqual(unlockOf('material', 'gold'), { kind: 'achievement', id: 'first-win' });
+  assert.deepEqual(unlockOf('pattern', 'skull'), { kind: 'achievement', id: 'ten-kos' });
+  assert.deepEqual(unlockOf('pattern', 'checker'), { kind: 'credits', price: 200 });
+  assert.deepEqual(unlockOf('trail', 'rainbow'), { kind: 'achievement', id: 'pegs-50' });
+  assert.deepEqual(unlockOf('trail', 'wisps'), { kind: 'level', level: 12 });
+  assert.deepEqual(unlockOf('koBurst', 'scrap'), { kind: 'credits', price: 200 });
+  assert.deepEqual(unlockOf('finishFx', 'crown'), { kind: 'achievement', id: 'first-win' });
+});
+
+test('isUnlocked: level, purchase and achievement rules', () => {
+  assert.equal(isUnlocked('material', 'chrome', fresh), false);
+  assert.equal(isUnlocked('material', 'chrome', { ...fresh, level: 3 }), true);
+  assert.equal(isUnlocked('material', 'oak', fresh), false);
+  assert.equal(isUnlocked('material', 'oak', { ...fresh, owned: ['material:oak'] }), true);
+  assert.equal(isUnlocked('material', 'lava', { ...fresh, achievements: ['campaign'] }), true);
+  assert.equal(isUnlocked('material', 'nope', { ...fresh, level: 99 }), false, 'unknown ids are never unlocked');
+});
+
+test('unlockHint: one plain sentence per lock', () => {
+  assert.equal(unlockHint('material', 'steel'), 'Free');
+  assert.equal(unlockHint('material', 'chrome'), 'Reach level 3');
+  assert.equal(unlockHint('material', 'oak'), 'Buy for 300 CR');
+  assert.equal(unlockHint('material', 'gold'), 'Win your first race');
+  assert.equal(unlockHint('pattern', 'skull'), 'Knock out 10 rivals');
+  assert.equal(unlockHint('material', 'lava'), 'Finish the campaign');
+  assert.equal(unlockHint('trail', 'rainbow'), 'Hit 50 orange pegs in one race');
+});
+
+test('sanitizeLook: anything off the wire becomes a valid look', () => {
+  assert.deepEqual(sanitizeLook(null), DEFAULT_LOOK);
+  assert.deepEqual(sanitizeLook({ material: 'gold', primary: PALETTE[5], secondary: '#123456', pattern: 'lasers', number: 150, trail: 'fire', koBurst: 7, finishFx: 'crown' }),
+    { material: 'gold', primary: PALETTE[5], secondary: DEFAULT_LOOK.secondary, pattern: 'plain', number: 7, trail: 'fire', koBurst: 'classic', finishFx: 'crown' });
+  assert.equal(sanitizeLook({ number: 42 }).number, 42);
+  assert.equal(sanitizeLook({ number: 4.5 }).number, 7, 'whole numbers 0..99 only');
+});
+
+test('lockedReset: locked choices fall back to the default, unlocked ones stay', () => {
+  const look = { ...DEFAULT_LOOK, material: 'gold', trail: 'smoke', pattern: 'flames' } as const;
+  assert.deepEqual(lockedReset(look, fresh), { ...look, material: 'steel', pattern: 'plain' });
+  assert.deepEqual(lockedReset(look, { level: 6, owned: [], achievements: ['first-win'] }), look);
+});
+
+======================================================================
+PROJECT SETUP FOR YOUR SANDBOX (both)
+======================================================================
+Plain Node 22+ TypeScript: devDependencies "typescript" and "tsx"; tsconfig "strict": true, "noUnusedLocals": true, "noUnusedParameters": true, "module": "ESNext", "moduleResolution": "Bundler", "target": "ES2022", "noEmit": true.
+ALPHA runs: npx tsc --noEmit -p .  and  node --import tsx --test tests/health-rules.test.ts
+BRAVO runs: npx tsc --noEmit -p .  and  node --import tsx --test tests/cosmetics.test.ts
+
+Reply with ONLY: Context received.
