@@ -183,6 +183,16 @@ export function speakerName(speaker: string): string {
   return voiceCast[speaker]?.name ?? speaker ?? 'Voice';
 }
 
+/**
+ * The `eleven_v3` model understands inline performance tags — `[whispers]`, `[shouts]`,
+ * `[laughs]`, `[sighs]`, `[excited]` (plus anything else in brackets: `[dramatic pause]`).
+ * They are directions for the voice, not words, so the caption drops them.
+ */
+export function subtitleText(text: string): string {
+  const stripped = text.replace(/\[[^\]]{1,40}\]\s*/g, '').replace(/\s{2,}/g, ' ').trim();
+  return stripped || text.trim();     // a line that is nothing but a tag still gets a caption
+}
+
 // ────────────────────────────── settings ──────────────────────────────
 
 let settings: VoiceSettings | null = null;
@@ -228,7 +238,7 @@ export const setVoiceVolume = (volume: number) => setVoiceSettings({ volume });
 let state: VoiceState = EMPTY;
 const emit = () => { for (const listener of listeners) listener(); };
 function setState(line: VoiceLine | null): void {
-  state = line ? { line, name: speakerName(line.speaker), active: true } : EMPTY;
+  state = line ? { line: { ...line, text: subtitleText(line.text) }, name: speakerName(line.speaker), active: true } : EMPTY;
   emit();
 }
 
@@ -328,13 +338,17 @@ export function playVoice(set: string, id: string): Promise<void> {
 
     const fallback = () => { entry.timer = setTimeout(() => { if (active === entry) endActive(); }, plan.holdMs); };
     const settingsNow = getVoiceSettings();
-    if (!plan.source || !settingsNow.enabled || mutedNow() || typeof Audio === 'undefined') {
+    if (!plan.source || !settingsNow.enabled || mutedNow()) {
       fallback();                                // subtitles only, held for its reading time
       return;
     }
 
     loadSource(plan.source).then((url) => {
       if (active !== entry) return;              // a newer line took over while this one loaded
+      if (typeof Audio === 'undefined') {        // no DOM to play in: the caption runs the line
+        fallback();
+        return;
+      }
       let audio: HTMLAudioElement;
       try {
         audio = new Audio(url);
