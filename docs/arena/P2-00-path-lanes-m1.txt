@@ -1,0 +1,198 @@
+You are two engineers building two small, pure TypeScript modules for Heavy Metal GP, an open-source 2D goblin marble-racing game (Matter.js, y grows DOWNWARDS). The game is becoming a side-scrolling platformer with three depth lanes (a fake-3D "2.5D" look). Read everything below. Do NOT write any code yet.
+
+THE REPO (public, read it for context): https://github.com/rumcan/Heavy-Metal-GP
+Branch with these exact tests: p2-00-path-lanes. Tests: tests/course-path.test.ts and tests/lanes.test.ts (also pasted below).
+You may read the repo to understand the game, but you only WRITE the one module your job names. The function names and rules below are the contract: do not invent other APIs.
+
+Option A is ALPHA. Option B is BRAVO. Each of you does ONLY your own job; do not do the other's. The modules are independent (no imports between them, no imports from other project files).
+
+======================================================================
+ALPHA'S JOB: src/game/course-path.ts (progress along a course)
+======================================================================
+In a platformer "lower = ahead" is no longer true, so race order comes from distance travelled along a course path (a polyline).
+
+  export interface Pt { x: number; y: number }
+  export interface CoursePath { points: Pt[]; cum: number[]; length: number }
+  export function makePath(points: Pt[]): CoursePath
+    Drop points identical to the previous one. Throw an Error whose message contains 'two points' if fewer than 2 remain.
+    cum[i] = distance along the path to points[i] (cum[0] = 0); length = cum[last].
+  export function progressAlong(path: CoursePath, p: Pt, hint?: number): number
+    Project p onto every segment (clamped to the segment) and return the distance along the path of the CLOSEST projection.
+    If hint is given, only consider segments whose [cum[i], cum[i+1]] range overlaps [hint - 400, hint + 400]
+    (if none overlap, consider all). The result is always within 0..length.
+  export function pointAt(path: CoursePath, d: number): Pt      // the point at distance d (clamped to 0..length)
+  export function rankByProgress(entries: { id: number; progress: number; finishedAt: number | null }[]): number[]
+    Returns ids best-first: finished entries first by finishedAt ascending, then unfinished by progress descending; ties by id ascending.
+
+======================================================================
+BRAVO'S JOB: src/game/lanes.ts (the 2.5D depth-lane maths)
+======================================================================
+Three lanes: back (0), middle (1, where everyone starts), front (2, closest to the viewer). Each lane is a flat 2D layer; "depth" is faked: nearer lanes are drawn bigger and scroll faster (parallax), the back lane is smaller, slower, foggy and blurred when you are not in it.
+
+  export const LANE_BACK = 0; export const LANE_MIDDLE = 1; export const LANE_FRONT = 2;
+  export interface LaneLook { name: string; scale: number; parallax: number; fog: number; blur: number }
+  export const LANES: readonly LaneLook[] = [
+    { name: 'back',   scale: 0.75, parallax: 0.7,  fog: 0.35, blur: 3 },
+    { name: 'middle', scale: 1,    parallax: 1,    fog: 0,    blur: 0 },
+    { name: 'front',  scale: 1.25, parallax: 1.35, fog: 0,    blur: 0 },
+  ];
+  // Matter.js collision filtering: each lane gets its own category bit; bodies not in any lane use the low 12 bits.
+  export const NON_LANE_MASK = 0x0fff;
+  export function laneCategory(lane: number): number   // 0x1000 << lane; throw an Error mentioning 'lane' for anything but 0, 1, 2
+  export function laneMask(lane: number): number       // NON_LANE_MASK | laneCategory(lane)
+  export function laneBlend(from: number, to: number, t: number): { scale: number; parallax: number; fog: number; blur: number }
+    Clamp t to 0..1, ease it with smoothstep (e = t*t*(3 - 2*t)), and linearly interpolate each of the four values from LANES[from] to LANES[to] by e.
+  export function projectToScreen(world: Pt, lane: number, cam: { x: number; y: number; scale: number }, view: { w: number; h: number }): { x: number; y: number; scale: number }
+    (define `interface Pt { x: number; y: number }` locally)
+    x = view.w/2 + (world.x - cam.x) * cam.scale * LANES[lane].parallax
+    y = view.h/2 + (world.y - cam.y) * cam.scale * LANES[lane].parallax
+    scale = cam.scale * LANES[lane].scale
+  export function laneAlpha(lane: number, playerLane: number): number   // 1 if same lane; 0.85 if lane > playerLane (in front of you); 0.6 if behind
+  export function drawOrder(): number[]                                  // [0, 1, 2] (back to front)
+
+======================================================================
+THE TESTS (they must all pass, unchanged)
+======================================================================
+----- tests/course-path.test.ts (ALPHA) -----
+// P2-00 (#124) battle tests, job ALPHA: progress along a course path (src/game/course-path.ts).
+// In a platformer "lower = ahead" stops being true, so race order comes from distance along a path.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+import { makePath, progressAlong, pointAt, rankByProgress } from '../src/game/course-path';
+
+const near = (a: number, b: number, eps = 1e-6) => Math.abs(a - b) < eps;
+
+// An L-shaped course: right 1000, then down 500.
+const L = makePath([{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 1000, y: 500 }]);
+
+test('makePath: cumulative lengths and total', () => {
+  assert.deepEqual(L.cum, [0, 1000, 1500]);
+  assert.equal(L.length, 1500);
+  assert.throws(() => makePath([{ x: 0, y: 0 }]), /two points/);
+});
+
+test('makePath: zero-length segments are dropped', () => {
+  const p = makePath([{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 10, y: 0 }]);
+  assert.equal(p.points.length, 2);
+  assert.equal(p.length, 10);
+});
+
+test('progressAlong: projects onto the closest segment', () => {
+  assert.ok(near(progressAlong(L, { x: 400, y: 30 }), 400));
+  assert.ok(near(progressAlong(L, { x: 1020, y: 200 }), 1200));
+  assert.equal(progressAlong(L, { x: -50, y: 0 }), 0, 'clamped at the start');
+  assert.equal(progressAlong(L, { x: 1000, y: 900 }), 1500, 'clamped at the end');
+});
+
+test('progressAlong: a hint keeps a marble on its own stretch of a switchback', () => {
+  // Floors stacked 100 px apart: right on y=0, back left on y=100, right again on y=200.
+  const S = makePath([{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 1000, y: 100 }, { x: 0, y: 100 }, { x: 0, y: 200 }, { x: 1000, y: 200 }]);
+  const p = { x: 500, y: 52 }; // between floor 1 and floor 2, a little closer to floor 2
+  assert.ok(near(progressAlong(S, p), 1600), 'no hint: the closest segment wins');
+  assert.ok(near(progressAlong(S, p, 500), 500), 'with a hint near 500: stays on floor 1 (only segments within ±400 of the hint count)');
+});
+
+test('pointAt: the point at a distance along the path (clamped)', () => {
+  assert.deepEqual(pointAt(L, 250), { x: 250, y: 0 });
+  assert.deepEqual(pointAt(L, 1250), { x: 1000, y: 250 });
+  assert.deepEqual(pointAt(L, -5), { x: 0, y: 0 });
+  assert.deepEqual(pointAt(L, 99999), { x: 1000, y: 500 });
+});
+
+test('rankByProgress: finishers first by time, then furthest along, ties by id', () => {
+  const order = rankByProgress([
+    { id: 0, progress: 300, finishedAt: null },
+    { id: 1, progress: 1500, finishedAt: 52000 },
+    { id: 2, progress: 900, finishedAt: null },
+    { id: 3, progress: 1500, finishedAt: 51000 },
+    { id: 4, progress: 900, finishedAt: null },
+  ]);
+  assert.deepEqual(order, [3, 1, 2, 4, 0]);
+});
+
+----- tests/lanes.test.ts (BRAVO) -----
+// P2-00 (#124) battle tests, job BRAVO: the 2.5D depth-lane maths (src/game/lanes.ts).
+// Three lanes are three flat 2D layers; "depth" is faked with scale, parallax, fog and blur.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  LANE_BACK, LANE_MIDDLE, LANE_FRONT, LANES, laneCategory, laneMask, NON_LANE_MASK,
+  laneBlend, projectToScreen, laneAlpha, drawOrder,
+} from '../src/game/lanes';
+
+const near = (a: number, b: number, eps = 1e-9) => Math.abs(a - b) < eps;
+
+test('lane ids and look', () => {
+  assert.deepEqual([LANE_BACK, LANE_MIDDLE, LANE_FRONT], [0, 1, 2]);
+  assert.deepEqual(LANES, [
+    { name: 'back', scale: 0.75, parallax: 0.7, fog: 0.35, blur: 3 },
+    { name: 'middle', scale: 1, parallax: 1, fog: 0, blur: 0 },
+    { name: 'front', scale: 1.25, parallax: 1.35, fog: 0, blur: 0 },
+  ]);
+});
+
+test('collision layers: each lane has its own category bit; masks see only their own lane plus non-lane bodies', () => {
+  assert.equal(laneCategory(0), 0x1000);
+  assert.equal(laneCategory(1), 0x2000);
+  assert.equal(laneCategory(2), 0x4000);
+  assert.equal(NON_LANE_MASK, 0x0fff);
+  assert.equal(laneMask(1), 0x0fff | 0x2000);
+  assert.equal(laneMask(1) & laneCategory(0), 0, 'middle never touches back');
+  assert.equal(laneMask(1) & laneCategory(2), 0, 'middle never touches front');
+  assert.throws(() => laneCategory(3), /lane/);
+});
+
+test('laneBlend: eases between two lanes (smoothstep), clamped', () => {
+  assert.deepEqual(laneBlend(1, 2, 0), { scale: 1, parallax: 1, fog: 0, blur: 0 });
+  assert.deepEqual(laneBlend(1, 2, 1), { scale: 1.25, parallax: 1.35, fog: 0, blur: 0 });
+  const mid = laneBlend(1, 0, 0.5); // smoothstep(0.5) = 0.5
+  assert.ok(near(mid.scale, 0.875) && near(mid.parallax, 0.85) && near(mid.fog, 0.175) && near(mid.blur, 1.5), JSON.stringify(mid));
+  const q = laneBlend(1, 2, 0.25); // smoothstep(0.25) = 0.15625
+  assert.ok(near(q.scale, 1 + 0.25 * 0.15625), JSON.stringify(q));
+  assert.deepEqual(laneBlend(1, 2, 5), laneBlend(1, 2, 1));
+  assert.deepEqual(laneBlend(1, 2, -1), laneBlend(1, 2, 0));
+});
+
+test('projectToScreen: the camera point is the screen centre in every lane', () => {
+  const cam = { x: 500, y: 800, scale: 1.2 };
+  const view = { w: 1000, h: 600 };
+  for (const lane of [0, 1, 2]) {
+    const s = projectToScreen({ x: 500, y: 800 }, lane, cam, view);
+    assert.ok(near(s.x, 500) && near(s.y, 300), `lane ${lane}`);
+    assert.ok(near(s.scale, 1.2 * LANES[lane].scale));
+  }
+});
+
+test('projectToScreen: nearer lanes move further for the same world offset (parallax)', () => {
+  const cam = { x: 0, y: 0, scale: 1 };
+  const view = { w: 800, h: 400 };
+  const back = projectToScreen({ x: 100, y: 50 }, 0, cam, view);
+  const mid = projectToScreen({ x: 100, y: 50 }, 1, cam, view);
+  const front = projectToScreen({ x: 100, y: 50 }, 2, cam, view);
+  assert.ok(near(back.x, 400 + 70) && near(back.y, 200 + 35));
+  assert.ok(near(mid.x, 500) && near(mid.y, 250));
+  assert.ok(near(front.x, 400 + 135) && near(front.y, 200 + 67.5));
+});
+
+test('laneAlpha: your lane is solid; lanes in front of you fade more than lanes behind', () => {
+  assert.equal(laneAlpha(1, 1), 1);
+  assert.equal(laneAlpha(0, 1), 0.6, 'behind you');
+  assert.equal(laneAlpha(2, 1), 0.85, 'in front of you');
+  assert.equal(laneAlpha(2, 0), 0.85);
+  assert.equal(laneAlpha(0, 2), 0.6);
+});
+
+test('drawOrder: always back to front', () => {
+  assert.deepEqual(drawOrder(), [0, 1, 2]);
+});
+
+======================================================================
+PROJECT SETUP FOR YOUR SANDBOX (both)
+======================================================================
+Plain Node 22+ TypeScript: devDependencies "typescript" and "tsx"; tsconfig "strict": true, "noUnusedLocals": true, "noUnusedParameters": true, "module": "ESNext", "moduleResolution": "Bundler", "target": "ES2022", "noEmit": true.
+ALPHA runs: npx tsc --noEmit -p .  and  node --import tsx --test tests/course-path.test.ts
+BRAVO runs: npx tsc --noEmit -p .  and  node --import tsx --test tests/lanes.test.ts
+
+Reply with ONLY: Context received.
