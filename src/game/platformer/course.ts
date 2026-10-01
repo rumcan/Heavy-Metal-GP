@@ -6,8 +6,39 @@ import { LANE_BACK, LANE_FRONT, LANE_MIDDLE } from '../lanes';
 
 export type Lane = 0 | 1 | 2;
 
-/** Quick race's pick for the platformer preview (stands in for a My tracks id). */
-export const PLATFORMER_TRACK_ID = 'platformer-preview';
+/** Quick race picks a platformer course with an id like `platformer:greenhollow` (it stands in for a My tracks id). */
+export const PLATFORMER_PREFIX = 'platformer:';
+/** The default pick (the first official course). */
+export const PLATFORMER_TRACK_ID = 'platformer:greenhollow';
+export const isPlatformerPick = (id: string | null | undefined): id is string => !!id && id.startsWith(PLATFORMER_PREFIX);
+
+export interface PlatformerCourse {
+  id: string;
+  name: string;
+  blurb: string;
+  /** Planned from this seed with `length`; the tutorial is hand-built instead. */
+  seed: number;
+  length?: number;
+  tutorial?: boolean;
+}
+
+/** The official platformer courses (owner playtest first, then the other calendar slots convert). */
+export const PLATFORMER_COURSES: readonly PlatformerCourse[] = [
+  { id: 'greenhollow', name: 'Greenhollow Run', blurb: 'A long green descent with ten lane gates. The back lane is the shortcut if you can clear its gaps.', seed: 7 },
+  { id: 'misty-ridge', name: 'Misty Ridge', blurb: 'Longer and busier: thirteen gates, more doors, and crates in every lane.', seed: 23, length: 28000 },
+  { id: 'training', name: 'Training Grounds', blurb: 'The short tutorial course: one crate, one gap, one ramp, one door, a slope and a climb.', seed: 1, tutorial: true },
+];
+
+export function platformerCourse(id: string | null | undefined): PlatformerCourse {
+  const key = id && id.startsWith(PLATFORMER_PREFIX) ? id.slice(PLATFORMER_PREFIX.length) : id;
+  return PLATFORMER_COURSES.find((c) => c.id === key) ?? PLATFORMER_COURSES[0];
+}
+
+/** The plan for an official course. */
+export function planOfficial(course: PlatformerCourse): CoursePlan {
+  if (course.tutorial) return planTutorial();
+  return planCourse(course.seed, course.length ? { ...COURSE_TUNING, length: course.length } : COURSE_TUNING);
+}
 
 /** One stretch of floor: its top edge runs from (x0, y0) to (x1, y1). */
 export interface Floor { lane: Lane; x0: number; y0: number; x1: number; y1: number }
@@ -160,4 +191,32 @@ export function floorAt(plan: CoursePlan, lane: Lane, x: number): number | null 
     return f.y0 + ((x - f.x0) / (f.x1 - f.x0)) * (f.y1 - f.y0);
   }
   return null;
+}
+
+/**
+ * Training Grounds (P2-13's course): short and hand-built, one of each thing in the order you learn it.
+ * Every lane has the same floor, so the only lane choices are the ramp and the door.
+ */
+export function planTutorial(): CoursePlan {
+  const L: Lane[] = [0, 1, 2];
+  const floors: Floor[] = [];
+  const add = (x0: number, y0: number, x1: number, y1: number) => { for (const lane of L) floors.push({ lane, x0, y0, x1, y1 }); };
+  const y = 600;
+  add(-200, y, 1900, y);                // start, then a crate to jump at 1300
+  add(2040, y, 2400, y);                // a gap (1900..2040) to jump
+  add(2400, y + 90, 3500, y + 90);      // step down; the ramp to the back lane sits on this stretch
+  add(3500, y + 90, 4100, y + 90);      // the door back to the middle lane
+  add(4100, y + 90, 4900, y + 330);     // a long slope down
+  add(4900, y + 280, 5500, y + 280);    // a short climb (50 px) to jump up
+  add(5500, y + 280, 6800, y + 280);    // run-out to the finish
+  const bumps: Bump[] = L.map((lane) => ({ lane, x: 1300, w: 60, y: y - 56, h: 56 }));
+  const gates: LaneGate[] = [
+    { kind: 'ramp', lane: 1, to: 0, x: 2900, w: 170, y: y + 90 },
+    { kind: 'door', lane: 0, to: 1, x: 3700, w: 170, y: y + 90 },
+  ];
+  const path = [
+    { x: 0, y: y - 30 }, { x: 2400, y: y - 30 }, { x: 2400, y: y + 60 }, { x: 4100, y: y + 60 },
+    { x: 4900, y: y + 300 }, { x: 4900, y: y + 250 }, { x: 6600, y: y + 250 },
+  ];
+  return { seed: 0, width: 6600, height: y + 280 + 900, floors, bumps, gates, path, startX: 520, startY: y, finishX: 5900, finishY: y + 280 };
 }

@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { planCourse, floorAt, COURSE_TUNING } from '../src/game/platformer/course';
+import { planCourse, floorAt, COURSE_TUNING, PLATFORMER_COURSES, planOfficial, platformerCourse, isPlatformerPick, PLATFORMER_TRACK_ID } from '../src/game/platformer/course';
 import type { Lane } from '../src/game/platformer/course';
 import { buildPlatformerTrack, ALL_LANES } from '../src/game/platformer/build';
 import { laneCategory } from '../src/game/lanes';
@@ -99,4 +99,28 @@ test('a platformer race replays identically from the same seed', () => {
     return game.marbles.map((m) => `${m.body.position.x.toFixed(4)},${m.body.position.y.toFixed(4)},${m.lane}`).join('|');
   };
   assert.equal(run(), run());
+});
+
+test('official courses: picks resolve, unknown picks fall back to the first course', () => {
+  assert.ok(isPlatformerPick(PLATFORMER_TRACK_ID));
+  assert.ok(!isPlatformerPick('abc123'));
+  assert.ok(!isPlatformerPick(null));
+  assert.equal(platformerCourse('platformer:misty-ridge').name, 'Misty Ridge');
+  assert.equal(platformerCourse('platformer:nope').id, PLATFORMER_COURSES[0].id);
+});
+
+test('official courses: every gate stands on floor in both lanes, and the whole AI field finishes', () => {
+  for (const course of PLATFORMER_COURSES) {
+    const plan = planOfficial(course);
+    for (const g of plan.gates) for (const x of [g.x, g.x + g.w]) {
+      assert.notEqual(floorAt(plan, g.lane, x), null, `${course.name}: gate at ${g.x}`);
+      assert.notEqual(floorAt(plan, g.to, x), null, `${course.name}: gate at ${g.x}`);
+    }
+    const game = new Game(4, roster(), { track: buildPlatformerTrack(4, TRACK_THEMES.forest, course.id) });
+    game.start();
+    game.openGate();
+    let t = 0;
+    for (; t < 150000 && !game.allFinished(); t += PHYSICS_STEP) game.step(PHYSICS_STEP);
+    assert.ok(game.allFinished(), `${course.name}: ${game.finishOrder.length}/10 finished after ${Math.round(t / 1000)} s`);
+  }
 });

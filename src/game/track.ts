@@ -2112,7 +2112,7 @@ export const DEFAULT_PROFILE: TrackProfile = {
 
 export function generateTrack(seed: number, profile: TrackProfile = DEFAULT_PROFILE): Track {
   // P2-00: platformer courses have their own planner and builder.
-  if (profile.generator === 'platformer') return buildPlatformerTrack(seed, profile.theme);
+  if (profile.generator === 'platformer') return buildPlatformerTrack(seed, profile.theme, profile.course);
   return assembleTrack(new Builder(seed), seed, profile);
 }
 

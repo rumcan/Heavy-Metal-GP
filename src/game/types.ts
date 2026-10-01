@@ -190,6 +190,8 @@ export interface TrackTheme {
 export interface TrackProfile {
   /** Story uses legacy section indices; free races use connected courses by default. */
   generator?: 'legacy' | 'connected' | 'platformer';
+  /** P2-00: which official platformer course (`PLATFORMER_COURSES` id); unset plans one from the seed. */
+  course?: string;
   segments: number;
   weights: Record<string, number>;
   theme: TrackTheme;
