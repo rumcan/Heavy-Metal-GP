@@ -1,0 +1,292 @@
+You are two engineers helping build the controls of a TypeScript game: a 2D goblin marble racer (Vite + React + Matter.js; y grows DOWNWARDS, so "up" is negative y). Read everything below. Do NOT write any code yet.
+
+Option A is ALPHA. Option B is BRAVO. Each of you does ONLY your own job below; do not do the other's. Both jobs are pure TypeScript modules with no imports from other project files, so neither depends on the other.
+
+======================================================================
+ALPHA'S JOB: src/game/controls.ts (the control rules)
+======================================================================
+Replace the file with these exports (keep nudgeOf exactly as it is today):
+
+  // today's file, keep it:
+  export function nudgeOf(controls: { left: boolean; right: boolean; touch: number }): number {
+    return controls.touch || Number(controls.right) - Number(controls.left);
+  }
+
+  export const CONTROL_TUNING = {
+    steerGround: 0.22,       // x-velocity added per step (s = 1) while steering on the ground
+    steerAir: 0.12,          // same, in the air
+    counterSteerBoost: 1.6,  // multiplier when pushing against your current x-motion
+    maxSteerVx: 10,          // steering never pushes |vx| past this in the pushed direction
+    engineThrust: 0.18,      // Magic Engine push per step (s = 1)
+    engineHeatPerMs: 1 / 3000, // heat gained per ms while firing (full heat = 1 after 3 s)
+    engineCoolPerMs: 1 / 4000, // heat lost per ms while not firing
+    overheatLockMs: 1500,    // no engine for this long after reaching full heat
+    jumpSpeed: 9,            // upward speed of the core jump (engine applies vy = -jumpSpeed)
+    coyoteMs: 120,           // a jump still works this long after leaving the ground
+    jumpBufferMs: 120,       // a press this long before landing still jumps on landing
+    jumpCooldownMs: 500,     // minimum time between two jumps
+  };
+  export type ControlTuning = typeof CONTROL_TUNING;
+
+  /** New x-velocity after steering. nudge is -1..1 (0 = no input); s is the step scale. */
+  export function steerVelocity(vx: number, nudge: number, grounded: boolean, s: number, t: ControlTuning = CONTROL_TUNING): number
+    Rules: nudge 0 -> return vx unchanged. push = (grounded ? steerGround : steerAir) * nudge * s.
+    If sign(nudge) is opposite to sign(vx) (vx != 0), multiply push by counterSteerBoost.
+    Pushing in a direction: if vx is already at/over maxSteerVx in that direction, return vx unchanged;
+    otherwise return vx + push, clamped so it does not go past ±maxSteerVx in the pushed direction.
+    Pushing against the motion is never clamped.
+
+  export interface EngineState { heat: number; lockedUntil: number }
+  export function newEngine(): EngineState                       // { heat: 0, lockedUntil: 0 }
+  /** Advance the engine by dtMs at time now (ms). held = the player holds the engine key. */
+  export function engineStep(state: EngineState, held: boolean, now: number, dtMs: number, t?: ControlTuning): { state: EngineState; firing: boolean }
+    Rules: return NEW objects, never mutate. Locked (now < lockedUntil) -> not firing, heat cools.
+    Held and not locked -> firing, heat += dtMs * engineHeatPerMs (clamp to 1). If heat reaches 1 in this
+    step: heat = 1, firing = false, lockedUntil = now + overheatLockMs.
+    Not held -> not firing, heat -= dtMs * engineCoolPerMs (clamp to 0).
+
+  /** The engine's push to add to velocity this step. */
+  export function engineThrust(vx: number, vy: number, firing: boolean, s: number, t?: ControlTuning): { x: number; y: number }
+    Rules: not firing -> {x:0,y:0}. Speed = hypot(vx,vy). If speed < 0.5 push straight down: {x:0, y: engineThrust*s}.
+    Otherwise push along the direction of travel: (vx/speed, vy/speed) * engineThrust * s.
+
+  export interface JumpState { lastGroundedAt: number; pressedAt: number; lastJumpAt: number }
+  export function newJump(): JumpState      // all three = -Infinity
+  /** Advance the core jump at time now. pressed = a NEW press happened this step (not "held"). */
+  export function jumpStep(state: JumpState, now: number, grounded: boolean, pressed: boolean, t?: ControlTuning): { state: JumpState; jump: boolean }
+    Rules: return new objects. If grounded, lastGroundedAt = now. If pressed, pressedAt = now.
+    A jump happens when ALL of: (now - pressedAt) <= jumpBufferMs, (now - lastGroundedAt) <= coyoteMs,
+    (now - lastJumpAt) >= jumpCooldownMs. When it jumps: lastJumpAt = now and pressedAt = -Infinity
+    (one press = one jump).
+
+======================================================================
+BRAVO'S JOB: src/game/skill-keys.ts (the key map)
+======================================================================
+Keys are matched by KeyboardEvent.code (the PHYSICAL key position), so the layout works on AZERTY/QWERTZ too.
+
+  export const SKILL_KEYS = ['KeyQ', 'KeyW', 'KeyE', 'KeyR', 'KeyA', 'KeyS', 'KeyD', 'KeyF'] as const;   // slots 0..7
+
+  export type KeyAction =
+    | { kind: 'skill'; slot: number }   // fire the skill in slot 0..7
+    | { kind: 'steer'; dir: -1 | 1 }
+    | { kind: 'jump' }
+    | { kind: 'engine' };
+
+  export function actionForKey(code: string): KeyAction | null
+    Rules: SKILL_KEYS -> skill slot (index). Digit1..Digit8 and Numpad1..Numpad8 -> skill slot 0..7.
+    ArrowLeft -> steer -1, ArrowRight -> steer +1, ArrowUp and Space -> jump, ArrowDown -> engine.
+    Everything else -> null (the race screen already uses M, P, T, Escape, Equal/Minus/NumpadAdd/NumpadSubtract, 0 for other things).
+
+  export function slotKeyLabel(slot: number): string     // 'Q','W','E','R','A','S','D','F' for 0..7, '' otherwise
+  export function skillRows<T>(slots: readonly T[]): [T[], T[]]   // first 4 and next 4 (max 8), always two rows
+
+======================================================================
+THE TESTS (they must all pass, unchanged)
+======================================================================
+
+----- tests/control-rules.test.ts (ALPHA) -----
+// P2-01 (#107) battle tests, job ALPHA: the pure control rules in src/game/controls.ts.
+// Standalone: imports only the module under test, so an Arena sandbox can run it as-is.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  CONTROL_TUNING, nudgeOf, steerVelocity,
+  newEngine, engineStep, engineThrust,
+  newJump, jumpStep,
+} from '../src/game/controls';
+
+const T = CONTROL_TUNING;
+const near = (a: number, b: number, eps = 1e-9) => Math.abs(a - b) < eps;
+
+// ── nudgeOf (unchanged behaviour) ───────────────────────────────────────────
+test('nudgeOf: touch wins, else right minus left', () => {
+  assert.equal(nudgeOf({ left: true, right: false, touch: 0 }), -1);
+  assert.equal(nudgeOf({ left: false, right: true, touch: 0 }), 1);
+  assert.equal(nudgeOf({ left: true, right: true, touch: 0 }), 0);
+  assert.equal(nudgeOf({ left: false, right: false, touch: 0 }), 0);
+  assert.equal(nudgeOf({ left: true, right: false, touch: 1 }), 1);
+});
+
+// ── steering ────────────────────────────────────────────────────────────────
+test('steer: no input leaves vx alone', () => {
+  assert.equal(steerVelocity(3, 0, true, 1), 3);
+});
+
+test('steer: ground push is stronger than air push', () => {
+  const ground = steerVelocity(0, 1, true, 1) - 0;
+  const air = steerVelocity(0, 1, false, 1) - 0;
+  assert.ok(near(ground, T.steerGround), `ground ${ground}`);
+  assert.ok(near(air, T.steerAir), `air ${air}`);
+  assert.ok(ground > air);
+});
+
+test('steer: scales with the step size s', () => {
+  assert.ok(near(steerVelocity(0, -1, true, 2), -2 * T.steerGround));
+});
+
+test('steer: counter-steer (pushing against your motion) is boosted', () => {
+  const against = steerVelocity(5, -1, true, 1) - 5; // moving right, pushing left
+  assert.ok(near(against, -T.steerGround * T.counterSteerBoost), `against ${against}`);
+});
+
+test('steer: never pushes past maxSteerVx in the pushed direction', () => {
+  assert.equal(steerVelocity(T.maxSteerVx, 1, true, 1), T.maxSteerVx, 'already at the cap: no more push');
+  assert.equal(steerVelocity(T.maxSteerVx - 0.01, 1, true, 1), T.maxSteerVx, 'clamped to the cap');
+  assert.equal(steerVelocity(T.maxSteerVx + 4, 1, true, 1), T.maxSteerVx + 4, 'faster than the cap (from a slope): steering does not slow you');
+  assert.ok(steerVelocity(T.maxSteerVx + 4, -1, true, 1) < T.maxSteerVx + 4, 'but you can always steer against it');
+});
+
+// ── Magic Engine heat ───────────────────────────────────────────────────────
+test('engine: fires while held, heats up, cools when released', () => {
+  let e = newEngine();
+  assert.equal(e.heat, 0);
+  let r = engineStep(e, true, 0, 1000);
+  assert.equal(r.firing, true);
+  assert.ok(near(r.state.heat, 1000 * T.engineHeatPerMs), `heat ${r.state.heat}`);
+  e = r.state;
+  r = engineStep(e, false, 1000, 500);
+  assert.equal(r.firing, false);
+  assert.ok(near(r.state.heat, Math.max(0, e.heat - 500 * T.engineCoolPerMs)));
+});
+
+test('engine: about 3 s of holding overheats it, then it is locked for overheatLockMs', () => {
+  let e = newEngine();
+  let now = 0;
+  let firing = true;
+  for (let i = 0; i < 400 && firing; i++) { const r = engineStep(e, true, now, 10); e = r.state; firing = r.firing; now += 10; }
+  assert.equal(firing, false, 'it overheated');
+  assert.ok(now >= 2900 && now <= 3100, `overheated after ${now} ms`);
+  assert.ok(e.lockedUntil >= now - 10 + T.overheatLockMs - 10, 'locked out');
+  // Keep holding through the lockout: it never fires, and it cools down meanwhile.
+  const lockedUntil = e.lockedUntil;
+  while (now < lockedUntil) { const r = engineStep(e, true, now, 10); assert.equal(r.firing, false, 'locked while held'); e = r.state; now += 10; }
+  assert.ok(e.heat < 1, 'it cooled during the lockout');
+  const after = engineStep(e, true, now, 10);
+  assert.equal(after.firing, true, 'fires again after the lockout');
+});
+
+test('engine: heat never goes below 0 or above 1', () => {
+  let e = newEngine();
+  for (let i = 0; i < 100; i++) e = engineStep(e, false, i * 50, 50).state;
+  assert.equal(e.heat, 0);
+  e = engineStep(newEngine(), true, 0, 999999).state;
+  assert.ok(e.heat <= 1);
+});
+
+test('engineThrust: pushes along the direction of travel', () => {
+  const t = engineThrust(3, 4, true, 1); // moving (0.6, 0.8)
+  assert.ok(near(t.x, 0.6 * T.engineThrust) && near(t.y, 0.8 * T.engineThrust), JSON.stringify(t));
+});
+
+test('engineThrust: straight down when nearly stopped; nothing when not firing', () => {
+  const slow = engineThrust(0.1, 0, true, 1);
+  assert.ok(near(slow.x, 0) && near(slow.y, T.engineThrust), JSON.stringify(slow));
+  assert.deepEqual(engineThrust(3, 4, false, 1), { x: 0, y: 0 });
+  const twice = engineThrust(3, 4, true, 2);
+  assert.ok(near(twice.x, 1.2 * T.engineThrust));
+});
+
+// ── core jump: coyote time, input buffer, cooldown ──────────────────────────
+test('jump: pressing on the ground jumps', () => {
+  const r = jumpStep(newJump(), 1000, true, true);
+  assert.equal(r.jump, true);
+});
+
+test('jump: no jump in mid-air after coyote time', () => {
+  let s = jumpStep(newJump(), 1000, true, false).state;   // on the ground at t=1000
+  const late = jumpStep(s, 1000 + T.coyoteMs + 1, false, true);
+  assert.equal(late.jump, false);
+  s = jumpStep(newJump(), 1000, true, false).state;
+  const coyote = jumpStep(s, 1000 + T.coyoteMs - 1, false, true);
+  assert.equal(coyote.jump, true, 'just after leaving a ledge still counts');
+});
+
+test('jump: a press just before landing is buffered and fires on landing', () => {
+  let s = jumpStep(newJump(), 1000, false, true).state;   // pressed in the air, too late for coyote
+  const land = jumpStep(s, 1000 + T.jumpBufferMs - 1, true, false);
+  assert.equal(land.jump, true, 'buffered press fires on landing');
+  s = jumpStep(newJump(), 1000, false, true).state;
+  const tooLate = jumpStep(s, 1000 + T.jumpBufferMs + 1, true, false);
+  assert.equal(tooLate.jump, false, 'an old press is forgotten');
+});
+
+test('jump: cooldown between jumps, and one press gives one jump', () => {
+  let r = jumpStep(newJump(), 1000, true, true);
+  assert.equal(r.jump, true);
+  r = jumpStep(r.state, 1010, true, true);
+  assert.equal(r.jump, false, 'cooldown');
+  r = jumpStep(r.state, 1000 + T.jumpCooldownMs + 1, true, false);
+  assert.equal(r.jump, false, 'no press, no jump');
+  r = jumpStep(r.state, 1000 + T.jumpCooldownMs + 2, true, true);
+  assert.equal(r.jump, true, 'a new press after the cooldown jumps');
+});
+
+test('jump: jumpSpeed is upward (negative y velocity in a y-down world)', () => {
+  assert.ok(T.jumpSpeed > 0, 'stored as a positive speed; the engine applies -jumpSpeed to vy');
+});
+
+----- tests/skill-keys.test.ts (BRAVO) -----
+// P2-01 (#107) battle tests, job BRAVO: the key map in src/game/skill-keys.ts.
+// Keys are matched by KeyboardEvent.code (the PHYSICAL key), so Q W E R / A S D F sit in the same place
+// on an AZERTY or QWERTZ keyboard. Standalone: imports only the module under test.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+import { SKILL_KEYS, actionForKey, slotKeyLabel, skillRows } from '../src/game/skill-keys';
+
+test('SKILL_KEYS: top row Q W E R, bottom row A S D F', () => {
+  assert.deepEqual([...SKILL_KEYS], ['KeyQ', 'KeyW', 'KeyE', 'KeyR', 'KeyA', 'KeyS', 'KeyD', 'KeyF']);
+});
+
+test('actionForKey: skill slots from letters and from 1–8 (row and numpad)', () => {
+  assert.deepEqual(actionForKey('KeyQ'), { kind: 'skill', slot: 0 });
+  assert.deepEqual(actionForKey('KeyF'), { kind: 'skill', slot: 7 });
+  assert.deepEqual(actionForKey('Digit1'), { kind: 'skill', slot: 0 });
+  assert.deepEqual(actionForKey('Digit8'), { kind: 'skill', slot: 7 });
+  assert.deepEqual(actionForKey('Numpad3'), { kind: 'skill', slot: 2 });
+  assert.equal(actionForKey('Digit9'), null);
+  assert.equal(actionForKey('Digit0'), null, '0 is zoom reset, not a skill');
+});
+
+test('actionForKey: movement — arrows steer, ↑ and Space jump, ↓ is the engine', () => {
+  assert.deepEqual(actionForKey('ArrowLeft'), { kind: 'steer', dir: -1 });
+  assert.deepEqual(actionForKey('ArrowRight'), { kind: 'steer', dir: 1 });
+  assert.deepEqual(actionForKey('ArrowUp'), { kind: 'jump' });
+  assert.deepEqual(actionForKey('Space'), { kind: 'jump' });
+  assert.deepEqual(actionForKey('ArrowDown'), { kind: 'engine' });
+});
+
+test('actionForKey: A and D no longer steer (they are skill keys)', () => {
+  assert.deepEqual(actionForKey('KeyA'), { kind: 'skill', slot: 4 });
+  assert.deepEqual(actionForKey('KeyD'), { kind: 'skill', slot: 6 });
+});
+
+test('actionForKey: keys the race screen already uses are left alone (null)', () => {
+  for (const code of ['KeyM', 'KeyP', 'KeyT', 'Escape', 'Equal', 'Minus', 'NumpadAdd', 'NumpadSubtract', 'Tab', 'Enter']) {
+    assert.equal(actionForKey(code), null, code);
+  }
+});
+
+test('slotKeyLabel: the letter shown on each slot', () => {
+  assert.deepEqual([0, 1, 2, 3, 4, 5, 6, 7].map(slotKeyLabel), ['Q', 'W', 'E', 'R', 'A', 'S', 'D', 'F']);
+  assert.equal(slotKeyLabel(8), '');
+  assert.equal(slotKeyLabel(-1), '');
+});
+
+test('skillRows: 8 slots split into two rows of four, in order; short lists still make two rows', () => {
+  const s = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+  assert.deepEqual(skillRows(s), [['a', 'b', 'c', 'd'], ['e', 'f', 'g', 'h']]);
+  assert.deepEqual(skillRows(['a', 'b', 'c']), [['a', 'b', 'c'], []]);
+  assert.deepEqual(skillRows(['a', 'b', 'c', 'd', 'e']), [['a', 'b', 'c', 'd'], ['e']]);
+  assert.deepEqual(skillRows([...s, 'i']), [['a', 'b', 'c', 'd'], ['e', 'f', 'g', 'h']], 'never more than 8');
+});
+
+======================================================================
+PROJECT SETUP FOR YOUR SANDBOX (both)
+======================================================================
+Plain Node 22+ TypeScript: devDependencies "typescript" and "tsx"; tsconfig "strict": true, "noUnusedLocals": true, "noUnusedParameters": true, "module": "ESNext", "moduleResolution": "Bundler", "target": "ES2022", "noEmit": true.
+ALPHA runs: npx tsc --noEmit -p .  and  node --import tsx --test tests/control-rules.test.ts
+BRAVO runs: npx tsc --noEmit -p .  and  node --import tsx --test tests/skill-keys.test.ts
+
+Reply with ONLY: Context received.
