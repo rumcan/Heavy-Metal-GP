@@ -371,6 +371,18 @@ export class RaceSession {
     return this.guest?.resyncs ?? 0;
   }
 
+  /** Network stats for the guest side of this session. Null on the host. */
+  netStats(): NetStats | null {
+    if (!this.guest) return null;
+    return {
+      lagMs: this.guest.lagMs,
+      buffered: this.guest.bufferedFrames,
+      jitterMs: this.guest.jitterMs,
+      maxGapMs: this.guest.maxGapMs,
+      resyncs: this.guest.resyncs,
+    };
+  }
+
   /** The whole world, for a joiner mid-race (host only — MP-08's reconnect). */
   sendSnapshot(): void {
     this.host?.sendSnapshot();
@@ -384,6 +396,15 @@ export class RaceSession {
   dispose(): void {
     this.game.destroy();
   }
+}
+
+/** Network statistics for an online race guest. */
+export interface NetStats {
+  lagMs: number;
+  buffered: number;
+  jitterMs: number;
+  maxGapMs: number;
+  resyncs: number;
 }
 
 /** A `results` frame, as the rows the results screen reads. */
