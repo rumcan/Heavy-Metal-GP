@@ -529,7 +529,7 @@ export class Blackhole {
   private constructor(private readonly control: number) {}
 
   /** Start one, on the ports the suite uses (9101 → sidecar 9001, control 9102). */
-  static async start(targetPort = 9001): Promise<Blackhole> {
+  static async start(targetPort = Number(process.env.MP_SIDECAR_PORT ?? 9001)): Promise<Blackhole> {
     const child = spawn(process.execPath, ['tests/e2e-mp/sidecar-blackhole.mjs', '--listen', '9101', '--target', String(targetPort), '--control', '9102'], {
       stdio: ['ignore', 'pipe', 'inherit'],
     });

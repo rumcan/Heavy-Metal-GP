@@ -74,6 +74,12 @@ function devRoomsConfigPath(): string | undefined {
   return configPath || undefined;
 }
 
+/** DEV ONLY. `RUNDOT_DEV_ROOM_PORT` moves the room sidecar off 9001 (the two-browser suite uses it when another project holds 9001). */
+function devRoomPort(): number | undefined {
+  const port = Number(process.env.RUNDOT_DEV_ROOM_PORT);
+  return Number.isInteger(port) && port > 0 ? port : undefined;
+}
+
 /**
  * DEV ONLY. Receives a POST request with an official track JSON and writes it to disk.
  */
@@ -146,7 +152,7 @@ export default defineConfig({
             rundotGamePlaygroundPlugin({ target: 'playground', disabled: process.env.RUNDOT_PLAYGROUND !== '1' }),
             // rundot-import:vite-plugins:end
             // The local room sidecar (:9001) that serves `rundot/realtime.config.json`.
-            rundotMultiplayerPlugin(devRoomsConfigPath() ? { configPath: devRoomsConfigPath() } : {}),
+            rundotMultiplayerPlugin({ ...(devRoomsConfigPath() ? { configPath: devRoomsConfigPath() } : {}), ...(devRoomPort() ? { devPort: devRoomPort() } : {}) }),
             devRoomServerOrigin(),
             saveOfficialTrackPlugin(),
             react(), tailwindcss(), viteSingleFile(),
