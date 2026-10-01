@@ -392,6 +392,13 @@ export class RaceHost {
       if (!this.nudgeAllowed(seat, this.clock())) return;
       const input = this.game.humanInput.get(seat) ?? { nudge: 0 };
       input.nudge = intent.v;
+      input.engine = intent.engine === true;
+      this.game.humanInput.set(seat, input);
+      return;
+    }
+    if (intent.kind === 'jump') {
+      const input = this.game.humanInput.get(seat) ?? { nudge: 0 };
+      input.jump = true;
       this.game.humanInput.set(seat, input);
       return;
     }

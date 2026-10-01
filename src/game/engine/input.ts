@@ -1,14 +1,40 @@
-// Human input: how a held left/right steers the marble. P2-01 (controls) owns this file.
-// Split out of engine.ts (P2-00a).
+// Human input: steering, the core jump and the Magic Engine. P2-01 (controls) owns this file.
+// The rules (numbers, heat, coyote time) live in ../controls.ts; this applies them to a marble.
 import Matter from 'matter-js';
 import type { Game, Marble } from '../engine';
+import { CONTROL_TUNING, engineStep, engineThrust, jumpStep, newEngine, newJump, steerVelocity } from '../controls';
+import { TICK } from '../engine';
 
-/** Apply this marble's steering input to velocity `v` for a step of scale `s`; returns the new velocity. */
+/** Is this marble driven by a human (local or a guest)? Only humans get the engine and the core jump. */
+function handsOf(game: Game, m: Marble): { nudge: number; engine: boolean; jump: boolean } | null {
+  const guest = game.humanInput.get(m.info.id);
+  if (guest) {
+    const jump = guest.jump === true;
+    guest.jump = false; // one press, one jump
+    return { nudge: guest.nudge, engine: guest.engine === true, jump };
+  }
+  if (m !== game.player || !m.info.isPlayer) return null;
+  const jump = game.jumpPressed;
+  game.jumpPressed = false;
+  return { nudge: game.nudge, engine: game.engineHeld, jump };
+}
+
+/** Apply this marble's input to velocity `v` for a step of scale `s`; returns the new velocity. */
 export function steer(game: Game, m: Marble, v: Matter.Vector, s: number): Matter.Vector {
-  // MP-04: input is per-seat now. The local player drives `nudge` (it never
-  // crosses a wire); any other human seat is a guest whose intents the host
-  // has already applied to `humanInput`.
-  const nudge = game.humanInput.get(m.info.id)?.nudge ?? (m === game.player ? game.nudge : 0);
-  if (nudge !== 0 && (Math.abs(v.x) < 9 || Math.sign(v.x) !== Math.sign(nudge))) v = { x: v.x + nudge * 0.16 * s, y: v.y };
+  // MP-04: input is per-seat. The local player drives `nudge` (it never crosses a wire); any other
+  // human seat is a guest whose intents the host has already applied to `humanInput`.
+  const hands = handsOf(game, m);
+  if (!hands) return v;
+  const grounded = m.grounded < 5;
+  if (hands.nudge !== 0) v = { x: steerVelocity(v.x, hands.nudge, grounded, s), y: v.y };
+
+  const engine = engineStep(m.engine ?? newEngine(), hands.engine, game.time, s * TICK);
+  m.engine = engine.state;
+  const push = engineThrust(v.x, v.y, engine.firing, s);
+  v = { x: v.x + push.x, y: v.y + push.y };
+
+  const jump = jumpStep(m.jumpState ?? newJump(), game.time, grounded, hands.jump);
+  m.jumpState = jump.state;
+  if (jump.jump) v = { x: v.x, y: Math.min(v.y, -CONTROL_TUNING.jumpSpeed) };
   return v;
 }

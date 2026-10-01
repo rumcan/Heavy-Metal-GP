@@ -2,6 +2,7 @@ import * as storage from '../game/storage';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { nudgeOf } from '../game/controls';
+import { actionForKey } from '../game/skill-keys';
 import { ArrowLeft, ArrowRight, Pause, Play, Flag, ChevronRight, FastForward, Timer, Gauge, Coins, MessageCircle, Snowflake, ZoomIn, ZoomOut, Volume2, VolumeX } from 'lucide-react';
 import { CHAT_BUBBLE_MS, canSay, chatMessage, MAX_CHAT_LENGTH, offCooldown, speakerOf, trimChatText } from '../net/chat';
 import type { ChatMsg } from '../net/protocol';
@@ -95,6 +96,8 @@ function loadZoom(): number {
 interface LiveRow { id: number; rank: number; time: number | null; x: number; y: number }
 interface Hud {
   rank: number; time: number; inventory: Inventory; remaining: Record<ItemType, number>; coolingDown: boolean; speed: number; cap: number;
+  /** P2-01: Magic Engine heat 0..1, and whether it is locked out after overheating. */
+  heat: number; overheated: boolean;
   /** DEV probe (MP-10): the local marble's position, read by the browser suite. */
   mx: number; my: number;
   lights: number; finished: boolean; playerTime: number | null; pegs: number;
@@ -112,7 +115,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
   onlineRef.current = online;
   /** Which marble is mine — the seat, online; the player, offline. */
   const playerId = roster.find((m) => m.isPlayer)?.id ?? 0;
-  const controls = useRef({ left: false, right: false, touch: 0 });
+  const controls = useRef({ left: false, right: false, touch: 0, engine: false });
   const pausedRef = useRef(false);
   const fastRef = useRef(1);
   const zoomRef = useRef(loadZoom());
@@ -164,7 +167,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
   const selectedRef = useRef<ItemType>(ITEM_TYPES.find((item) => inventory[item] > 0) ?? 'rocket');
   const [selected, setSelected] = useState<ItemType>(selectedRef.current);
   const [hud, setHud] = useState<Hud>({
-    rank: Math.max(0, gridOrder.indexOf(playerId)) + 1, time: 0, inventory: { ...initialInventory.current }, remaining: emptyInventory(), coolingDown: false, speed: 0, cap: 100, lights: 0, mx: 0, my: 0,
+    rank: Math.max(0, gridOrder.indexOf(playerId)) + 1, time: 0, inventory: { ...initialInventory.current }, remaining: emptyInventory(), coolingDown: false, speed: 0, cap: 100, heat: 0, overheated: false, lights: 0, mx: 0, my: 0,
     finished: false, playerTime: null, pegs: 0, sector: 'Starting grid', sectorIndex: 0,
     progress: 0, state: 'ON THE GRID', frozen: false, finishedCount: 0, following: 'You',
     field: gridOrder.map((id, i) => ({ id, rank: i + 1, time: null, x: 60 + i * 86, y: 116 })),
@@ -180,6 +183,12 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
     const session = sessionRef.current;
     if (session) session.useItem(item);
     else gameRef.current?.usePlayerItem(item);
+  }, []);
+  /** P2-01: one press of the core jump. */
+  const pressJump = useCallback(() => {
+    const session = sessionRef.current;
+    if (session) session.jump();
+    else if (gameRef.current) gameRef.current.jumpPressed = true;
   }, []);
 
   /**
@@ -258,7 +267,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
   };
   const setPause = useCallback((value: boolean) => {
     pausedRef.current = value;
-    controls.current = { left: false, right: false, touch: 0 };
+    controls.current = { left: false, right: false, touch: 0, engine: false };
     const game = gameRef.current;
     if (value && game) {
       // Freeze the displayed timers at the same instant as the simulation, not the last HUD tick.
@@ -322,7 +331,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
     const advanceSession = (at: number) => {
       const session = sessionRef.current;
       if (!session) return;
-      session.setNudge(nudgeOf(controls.current));
+      session.setNudge(nudgeOf(controls.current), controls.current.engine);
       // Uncapped up to a quarter second: a host on a slow machine must not run the race in slow motion for everyone.
       session.update(Math.min(Math.max(0, at - simAt), 250));
       simAt = at;
@@ -400,21 +409,24 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       // front of the first line.
       if (event.code === 'KeyT' && down && !event.repeat && onlineRef.current) { event.preventDefault(); openCompose(); return; }
       if (pausedRef.current) return;
-      if (event.code === 'ArrowLeft' || event.code === 'KeyA') controls.current.left = down;
-      if (event.code === 'ArrowRight' || event.code === 'KeyD') controls.current.right = down;
-      const numberKey = /^(?:Digit|Numpad)([1-8])$/.exec(event.code);
-      if (numberKey && down && !event.repeat) {
-        event.preventDefault();
-        const item = ITEM_TYPES[Number(numberKey[1]) - 1];
+      // P2-01: arrows steer, ↑/Space jump, ↓ is the Magic Engine, Q W E R / A S D F (and 1–8) fire skill slots.
+      const action = actionForKey(event.code);
+      if (!action) return;
+      event.preventDefault();
+      if (action.kind === 'steer') { if (action.dir < 0) controls.current.left = down; else controls.current.right = down; return; }
+      if (action.kind === 'engine') { controls.current.engine = down; return; }
+      if (action.kind === 'jump') { if (down && !event.repeat) pressJump(); return; }
+      if (down && !event.repeat) {
+        const item = ITEM_TYPES[action.slot];
+        if (!item) return;
         selectedRef.current = item;
         setSelected(item);
         useItem(item);
       }
-      if (event.code === 'Space' && down && !event.repeat) useItem(selectedRef.current);
     };
     const keyDown = (e: KeyboardEvent) => onKey(e, true);
     const keyUp = (e: KeyboardEvent) => onKey(e, false);
-    const blur = () => { controls.current = { left: false, right: false, touch: 0 }; if (!doneRef.current && !onlineRef.current) setPause(true); };
+    const blur = () => { controls.current = { left: false, right: false, touch: 0, engine: false }; if (!doneRef.current && !onlineRef.current) setPause(true); };
     const hidden = () => { if (document.hidden) blur(); };
     const unlockAudio = () => raceAudio.unlock();
     unlockAudio();
@@ -466,6 +478,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
           if (formationElapsed >= lightsOutAt) { lights = -1; game.openGate(); }
         }
         game.nudge = nudgeOf(controls.current);
+        game.engineHeld = controls.current.engine;
         accumulator += dt * (game.player.finishedAt !== null ? fastRef.current : 1);
         while (accumulator >= PHYSICS_STEP) { game.step(PHYSICS_STEP); accumulator -= PHYSICS_STEP; }
         if (game.allFinished()) { finishHold += dt; if (finishHold > 750) finish(); }
@@ -534,6 +547,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
         setHud({
           rank: game.gateOpen ? game.playerRank() : m.gridSlot, time: m.finishedAt ?? game.raceTime(),
           inventory: { ...m.inventory }, remaining, coolingDown: game.time < m.itemCooldownUntil,
+          heat: m.engine?.heat ?? 0, overheated: (m.engine?.lockedUntil ?? 0) > game.time,
           speed: Math.hypot(velocity.x, velocity.y) * 6, cap: game.speedLimit(m) * 6,
           lights, finished: m.finishedAt !== null, playerTime: m.finishedAt, pegs: m.pegs,
           sector: game.track.segments[section]?.name ?? 'Finish', sectorIndex: Math.max(0, section),
@@ -666,10 +680,10 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
     </div>
     <footer className="race-dashboard race-cockpit"><div className="race-telemetry">
       <div className="position-readout"><span>POSITION</span><div><strong>P{hud.rank}</strong><span>/ 10</span></div></div>
-      <div className="speed-readout"><div className="readout-caption"><Gauge size={13} /><span>SPEED</span></div><div><strong>{Math.round(hud.speed)}</strong><span>cm/s</span></div><div className="speed-meter"><span style={{ width: `${Math.min(100, hud.speed / hud.cap * 100)}%` }} /></div></div>
+      <div className="speed-readout"><div className="readout-caption"><Gauge size={13} /><span>SPEED</span></div><div><strong>{Math.round(hud.speed)}</strong><span>cm/s</span></div><div className="speed-meter"><span style={{ width: `${Math.min(100, hud.speed / hud.cap * 100)}%` }} /></div></div><div className={`engine-heat ${hud.overheated ? 'overheated' : ''}`} title="Magic Engine heat: hold ↓ to fire, let go to cool"><span>{hud.overheated ? 'OVERHEAT' : 'ENGINE ↓'}</span><i style={{ width: `${Math.round(hud.heat * 100)}%` }} /></div>
       <div className={`marble-state ${hud.frozen ? 'is-frozen' : ''}`}><span className="readout-caption">MARBLE STATUS</span><strong>{hud.frozen && <Snowflake size={14} />}{hud.state}</strong><span className="peg-readout"><i className="orange-peg" />{hud.pegs} orange pegs</span></div>
       <div className="race-wallet"><Coins size={16} /><strong>{credits.toLocaleString()}</strong><span>CR</span></div>
-      <div className="race-controls"><div className="nudge-controls"><span>FIND YOUR LINE</span><div><button className="nudge-button" aria-label="Nudge left" {...nudgeButton(-1)} disabled={hud.finished || preStart || paused}><ArrowLeft size={18} /><kbd>←</kbd></button><button className="nudge-button" aria-label="Nudge right" {...nudgeButton(1)} disabled={hud.finished || preStart || paused}><ArrowRight size={18} /><kbd>→</kbd></button></div></div></div>
+      <div className="race-controls"><div className="nudge-controls"><span>FIND YOUR LINE</span><div><button className="nudge-button" aria-label="Nudge left" {...nudgeButton(-1)} disabled={hud.finished || preStart || paused}><ArrowLeft size={18} /><kbd>←</kbd></button><button className="nudge-button" aria-label="Nudge right" {...nudgeButton(1)} disabled={hud.finished || preStart || paused}><ArrowRight size={18} /><kbd>→</kbd></button></div></div><div className="thumb-controls"><button className="nudge-button jump-button" aria-label="Jump" onPointerDown={(e) => { e.preventDefault(); pressJump(); }} disabled={hud.finished || preStart || paused}>JUMP<kbd>↑</kbd></button><button className="nudge-button engine-button" aria-label="Magic Engine (hold)" onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); controls.current.engine = true; }} onPointerUp={() => { controls.current.engine = false; }} onPointerCancel={() => { controls.current.engine = false; }} onLostPointerCapture={() => { controls.current.engine = false; }} disabled={hud.finished || preStart || paused}>ENGINE<kbd>↓</kbd></button></div></div>
       </div><InventoryToolbar unlimited={online?.settings.items} inventory={hud.inventory} remaining={hud.remaining} selected={selected} blocked={paused || hud.finished || preStart || hud.frozen || !!results} coolingDown={hud.coolingDown} onUse={deploy} />
     </footer>
     {paused && !results && <Dialog titleId="pause-title" onClose={() => { setConfirmExit(false); setPause(false); }} className="pause-dialog"><span className="eyebrow"><Timer size={15} /> {confirmExit ? 'RACE CONTROL' : 'TIME OUT'}</span><h2 id="pause-title">{confirmExit ? 'Leaving the grid?' : 'A quick pit stop.'}</h2><p className="dialog-intro">{confirmExit ? 'This heat will not be scored or paid. Used items stay spent; unused items and pickups stay in your inventory. Previous results are safe.' : 'The clock, every marble, and all item timers are paused. Your next move can wait.'}</p><div className="pause-actions"><button className="button-primary" onClick={() => { setConfirmExit(false); setPause(false); }}><Play size={17} />Back to the race</button><button className="button-secondary" onClick={confirmExit ? onExit : () => setConfirmExit(true)}>{confirmExit ? 'Leave heat' : 'Return to paddock'}<ChevronRight size={16} /></button></div></Dialog>}

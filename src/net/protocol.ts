@@ -59,7 +59,7 @@ export type { RaceEntry, RankWire };
  * lobby/ready/start, 20 Hz packed `state`, `events`, chunked `snapshot`,
  * `intent`, `resync`, `results`, presence and the hard refusal on mismatch.
  */
-export const PROTOCOL_VERSION = 4; // 3: the rated wire (rating board, result claim, the room's result);
+export const PROTOCOL_VERSION = 5; // 5: P2-01 engine flag + jump intent; // 3: the rated wire (rating board, result claim, the room's result);
 // 4: MB-10 launchers (cannon/catapult/scoop holds, flipper firedAt, sling flash) and the movers' dynamic state
 
 /**
@@ -748,6 +748,14 @@ export interface NudgeIntentMsg extends RelayedFrame {
   type: 'intent';
   kind: 'nudge';
   v: number;
+  /** P2-01: the Magic Engine key is held. */
+  engine?: boolean;
+}
+
+/** guest → server → HOST ONLY. P2-01: one press of the core jump. */
+export interface JumpIntentMsg extends RelayedFrame {
+  type: 'intent';
+  kind: 'jump';
 }
 
 /** guest → server → HOST ONLY. Deploy one carried item. */
@@ -757,7 +765,7 @@ export interface ItemIntentMsg extends RelayedFrame {
   item: ItemType;
 }
 
-export type IntentMsg = NudgeIntentMsg | ItemIntentMsg;
+export type IntentMsg = NudgeIntentMsg | ItemIntentMsg | JumpIntentMsg;
 
 /** guest → server → host. Sent when a guest detects a `seq` gap. */
 export interface ResyncMsg extends RelayedFrame {
@@ -1709,6 +1717,10 @@ function validateIntent(msg: IntentMsg): ProtocolError | null {
     // Analog touch: -1..1. Anything stronger is a client asking for a push the
     // game cannot give, which is exactly what a forged intent looks like.
     if (msg.v < -1 || msg.v > 1) return forged(`Nudge ${msg.v} is outside -1..1.`);
+    if (msg.engine !== undefined && typeof msg.engine !== 'boolean') return bad('Engine flag is not a boolean.');
+    return null;
+  }
+  if (msg.kind === 'jump') {
     return null;
   }
   if (msg.kind === 'item') {
