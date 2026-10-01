@@ -377,10 +377,13 @@ export function stopVoice(): void {
   endActive();
 }
 
-/** Warm one line: resolve its audio now so the next `playVoice` starts instantly. */
+/**
+ * Warm one line: resolve its audio now so the next `playVoice` starts instantly. Free —
+ * it is one mp3, the same file `playVoice` would fetch anyway. Skipped when voice is off.
+ */
 export function preloadVoice(set: string, id: string): void {
   const plan = planVoice(set, id);
-  if (!plan?.source || typeof Audio === 'undefined') return;
+  if (!plan?.source || !getVoiceSettings().enabled || mutedNow() || typeof Audio === 'undefined') return;
   void loadSource(plan.source).then((url) => {
     try {
       const audio = new Audio(url);               // just holding it is enough to prefetch
@@ -390,8 +393,9 @@ export function preloadVoice(set: string, id: string): void {
       while (warm.size > 3) {
         const oldest = warm.keys().next().value as string | undefined;
         if (!oldest) break;
-        warm.get(oldest)?.removeAttribute('src');
+        const stale = warm.get(oldest);
         warm.delete(oldest);
+        try { stale?.pause(); stale?.removeAttribute('src'); stale?.load(); } catch { /* already gone */ }
       }
     } catch { /* nothing to warm: the caption will run instead */ }
   }).catch(() => { /* a line with no audio needs no warming */ });

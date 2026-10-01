@@ -30,6 +30,9 @@ export default function RulesDialog({ onClose }: { onClose: () => void }) {
   const [voice, setVoice] = useState(getVoiceSettings);
   const [spoken, setSpoken] = useState(currentVoice);
   useEffect(() => subscribeVoice(() => { setVoice(getVoiceSettings()); setSpoken(currentVoice()); }), []);
+  // The caption strip lives in this dialog, so closing it has to cut the line: audio talking
+  // with no caption on screen is the one thing the player must never do.
+  useEffect(() => stopVoice, []);
   const samples = voiceLines('samples');
   const playSamples = async () => {
     for (const line of samples) await playVoice('samples', line.id);

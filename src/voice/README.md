@@ -144,7 +144,9 @@ stopVoice();                               // skip / the player quit
 ```
 
 Mount `<VoiceSubtitles />` on the screen (it is a viewport portal and needs no props). One line plays at a
-time: a new `playVoice` stops the previous one and resolves its promise.
+time: a new `playVoice` stops the previous one and resolves its promise. **Mount it wherever a line can be
+heard, and call `stopVoice()` if that screen goes away** — the player keeps talking when the strip
+unmounts, and a voice with no caption on screen is the one thing this design forbids.
 
 Settings live in RUN storage under `heavy-metal-gp:voice` (`{ enabled, volume }`) and are edited in the
 How to play dialog: **Voice-over** on/off and a **volume** slider. `raceAudio`'s mute (**M**) always wins:
