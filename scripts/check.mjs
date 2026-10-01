@@ -41,7 +41,10 @@ const commands = [
     'tests/chat.test.ts',
     // Playtest: the race screen's input wiring (the online loop that forgot to hand
     // the held keys to the session) and the steering rule itself.
-    'tests/race-input.test.ts'],
+    'tests/race-input.test.ts',
+    // P2-03 voice: the cast and manifests, the generator's hash cache (spawned against a
+    // stubbed `rundot`, so no credits are spent) and the player's caption fallbacks.
+    'tests/voice.test.ts'],
 ];
 
 for (const args of commands) {

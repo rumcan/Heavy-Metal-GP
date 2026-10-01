@@ -1,0 +1,17 @@
+{
+  "narrator-welcome": {
+    "file": "samples/narrator-welcome.mp3",
+    "hash": "d934b50e191755028f871dcecc70d27bf2915978428d155b8b015e5f3127707f",
+    "durationSec": 9.51
+  },
+  "sprocket-hello": {
+    "file": "samples/sprocket-hello.mp3",
+    "hash": "ec64c7b2c35174258acf159e486d1e474f87d79331472fca046c4c102d0a9514",
+    "durationSec": 13.43
+  },
+  "vex-taunt": {
+    "file": "samples/vex-taunt.mp3",
+    "hash": "e0d8a06d278d86b414dbc77e8450f1798d3f288093be390ebcad56569955fb47",
+    "durationSec": 11.49
+  }
+}

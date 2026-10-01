@@ -1,6 +1,9 @@
-import { Flag, SlidersHorizontal, Trophy, CircleDot, ArrowRight, Coins } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Flag, SlidersHorizontal, Trophy, CircleDot, ArrowRight, Coins, Play, Square, Volume2 } from 'lucide-react';
 import Dialog from './Dialog';
 import ItemGlyph from './ItemGlyph';
+import VoiceSubtitles from './VoiceSubtitles';
+import { currentVoice, getVoiceSettings, playVoice, setVoiceEnabled, setVoiceVolume, stopVoice, subscribeVoice, voiceLines } from '../game/voice';
 import { ITEM_INFO } from '../game/types';
 import type { ItemType } from '../game/types';
 import loopRing from '../assets/game/loop-ring.webp';
@@ -22,6 +25,18 @@ const HAZARDS: [string, string, string][] = [
 ];
 
 export default function RulesDialog({ onClose }: { onClose: () => void }) {
+  // Voice settings (P2-03): read from storage, written straight back, and re-read if another
+  // screen changes them. `raceAudio`'s mute (M) is separate and always wins.
+  const [voice, setVoice] = useState(getVoiceSettings);
+  const [spoken, setSpoken] = useState(currentVoice);
+  useEffect(() => subscribeVoice(() => { setVoice(getVoiceSettings()); setSpoken(currentVoice()); }), []);
+  // The caption strip lives in this dialog, so closing it has to cut the line: audio talking
+  // with no caption on screen is the one thing the player must never do.
+  useEffect(() => stopVoice, []);
+  const samples = voiceLines('samples');
+  const playSamples = async () => {
+    for (const line of samples) await playVoice('samples', line.id);
+  };
   return <Dialog onClose={onClose} titleId="rules-title" className="rules-dialog">
     <span className="eyebrow"><Flag size={15} /> THE RACE BRIEFING</span>
     <h2 id="rules-title">Know your way down.</h2>
@@ -35,6 +50,26 @@ export default function RulesDialog({ onClose }: { onClose: () => void }) {
     <div className="rules-hazards">{HAZARDS.map(([src, name, desc]) => <div key={name}><img src={src} alt="" /><div><strong>{name}</strong><p>{desc}</p></div></div>)}</div>
     <h3 className="rules-subhead">Power-ups</h3>
     <div className="rules-items">{(Object.keys(ITEM_INFO) as ItemType[]).map((item) => <div key={item}><span style={{ color: ITEM_INFO[item].color }}><ItemGlyph item={item} /></span><div><strong>{ITEM_INFO[item].name}</strong><p>{ITEM_INFO[item].desc}</p></div></div>)}</div>
+    <h3 className="rules-subhead"><Volume2 size={14} /> Voice</h3>
+    <div className="voice-settings">
+      <div className="voice-settings-row">
+        <label className="voice-switch"><input type="checkbox" checked={voice.enabled} onChange={(e) => setVoiceEnabled(e.target.checked)} /><b>Voice-over</b></label>
+        <span className="voice-settings-note">Goblin speech in the tutorial, story and Workshop tour.</span>
+      </div>
+      <div className="voice-settings-row">
+        <span>Volume</span>
+        <input type="range" min="0" max="1" step="0.05" value={voice.volume} disabled={!voice.enabled} aria-label="Voice volume" onChange={(e) => setVoiceVolume(Number(e.target.value))} />
+        <output>{Math.round(voice.volume * 100)}%</output>
+      </div>
+      <p className="voice-settings-note">M mutes everything, voice included. Captions stay on, so you never miss a line.</p>
+      {import.meta.env.DEV && <div className="voice-settings-row">
+        <button className="text-button" disabled={!samples.length} onClick={() => (spoken.active ? stopVoice() : void playSamples())}>
+          {spoken.active ? <Square size={13} /> : <Play size={13} />}{spoken.active ? 'Stop' : `Play the ${samples.length} voice samples`}
+        </button>
+        <span className="voice-settings-note">Dev only. Audio needs <code>node scripts/voice/generate.mjs --set samples</code>; the captions play either way.</span>
+      </div>}
+    </div>
+    <VoiceSubtitles />
     <p className="rules-safety">A race marshal gently frees stationary marbles. A local reset is the last resort, applied equally to every racer. Freeze and oil penalties are never cancelled by recovery.</p>
     <button className="button-primary" onClick={onClose}>Let's race <ArrowRight size={17} /></button>
   </Dialog>;
