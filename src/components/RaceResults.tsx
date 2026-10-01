@@ -82,13 +82,13 @@ export default function RaceResults({ results, roster, title, subtitle, actions,
     return () => window.removeEventListener('keydown', skip, true);
   }, [isCounting]);
 
-  return <div className="results-backdrop">
-    <section className="results-panel arcade-results" role="dialog" aria-modal="true" aria-labelledby="results-title" data-skipped={skipped || reducedMotion} onClickCapture={(event) => {
+  return <div className="results-backdrop" onClickCapture={(event) => {
       if (!isCounting) return;
       event.preventDefault();
       event.stopPropagation();
       setSkipped(true);
     }}>
+    <section className="results-panel arcade-results" role="dialog" aria-modal="true" aria-labelledby="results-title" data-skipped={skipped || reducedMotion}>
       <div className="results-scroll" tabIndex={0} aria-label="Race results and rewards">
       <header className="results-header">
         <div className="results-headline">
