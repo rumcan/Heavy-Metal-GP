@@ -513,7 +513,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
           camera.scale += (platScale - camera.scale) * (1 - Math.exp(-dt / 180));
           const ahead = Math.max(-160, Math.min(260, following.body.velocity.x * 26));
           camera.x += (p.x + ahead - camera.x) * (1 - Math.exp(-dt / 220));
-          camera.y += (p.y - 40 - camera.y) * (1 - Math.exp(-dt / 200));
+          camera.y += (p.y + 10 - camera.y) * (1 - Math.exp(-dt / 200));
           camera.focus = marbleDepth(game, following);
           renderPlatformer(ctx, game, camera, width, height, pausedRef.current || doneRef.current ? game.time : now);
         } else {
