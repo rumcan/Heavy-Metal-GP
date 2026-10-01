@@ -18,6 +18,8 @@ const TrophyShelf = (await server.ssrLoadModule('/src/components/results/TrophyS
 const PayoutCounter = (await server.ssrLoadModule('/src/components/results/PayoutCounter.tsx')).default;
 const RaceResults = (await server.ssrLoadModule('/src/components/RaceResults.tsx')).default;
 const LoadoutPreview = (await server.ssrLoadModule('/src/components/LoadoutPreview.tsx')).default;
+const economy = (await server.ssrLoadModule('/src/game/economy.ts')) as typeof import('../src/game/economy');
+const storage = (await server.ssrLoadModule('/src/game/storage.ts')) as typeof import('../src/game/storage');
 
 const roster: MarbleInfo[] = Array.from({ length: 10 }, (_, id) => ({ id, name: id === 0 ? 'Sprocket' : `Rival ${id}`, color: '#d63e2e', stats: { weight: 5, speed: 5, bounce: 5 }, isPlayer: id === 0, character: id === 0 ? 0 : id - 1 }));
 const classification: HeatResult[] = [1, 2, 3, 4, 5, 6, 0, 7, 8, 9].map((id, i) => ({ id, rank: i + 1, time: 25_240 + i * 2640, pegs: 3 }));
@@ -140,4 +142,44 @@ test('Results: the payoff preserves classification, online rating, banter, custo
   const offline = paint(RaceResults, props);
   assert.doesNotMatch(offline, /results-ranking/);
   assert.doesNotMatch(offline, />RATING</);
+});
+
+
+test('LoadoutPreview: the garage reads saved trophies even when App still holds its old account', () => {
+  storage.removeItem(economy.ACCOUNT_KEY);
+  try {
+    const oldAccount = { ...economy.createAccount(), inventory: { ...emptyInventory(), rocket: 3 } };
+    economy.saveAccount(oldAccount);
+    economy.saveRaceTrophies('render-race', { ...emptyInventory(), rocket: 1 }, oldAccount.inventory);
+    const bought = economy.purchaseItem(oldAccount, 'jump').account;
+    economy.saveAccount(bought);
+    const html = paint(LoadoutPreview, { inventory: bought.inventory, onShop() {} });
+    assert.match(html, /2 brought home · lifetime/);
+    assert.match(html, /2 brought home/);
+    assert.match(html, /×3 <small>owned/);
+    assert.match(html, /×1 <small>owned/);
+  } finally { storage.removeItem(economy.ACCOUNT_KEY); }
+});
+
+test('Results: solo and two/three-driver grids keep their banter without inventing finishers', () => {
+  for (const size of [1, 2, 3]) {
+    const shortRoster = roster.slice(0, size);
+    const results = [...shortRoster].reverse().map((m, i) => ({ id: m.id, rank: i + 1, time: 10_000 + i * 1000, pegs: 0 }));
+    const html = paint(RaceResults, { results, roster: shortRoster, title: 'Small grid', subtitle: 'ONLINE', actions: [], championship: false });
+    assert.match(html, /results-banter/);
+    assert.equal((html.match(/No finisher/g) ?? []).length, 3 - size);
+    assert.equal((html.match(/<tr/g) ?? []).length, size + 1);
+  }
+});
+
+test('Results: signed rating deltas still belong only to the rated human rows', () => {
+  const self = { playerId: 'self', name: 'You', delta: -12, rating: 988, key: 'scrap', position: 2, finished: true, provisional: false, known: true };
+  const rival = { ...self, playerId: 'rival', name: 'Rival 1', delta: 12, rating: 1112, position: 1 };
+  const rating = { state: 'settled', reason: null, self, current: null, byId: { self, rival }, bySeat: { 0: self, 1: rival }, rows: [rival, self], promoted: false, demoted: true, forfeit: false, stored: true };
+  const html = paint(RaceResults, { results: classification, roster, title: 'Rated heat', subtitle: 'ONLINE', actions: [], championship: false, rating });
+  assert.equal((html.match(/class="rank-delta /g) ?? []).length, 2, 'eight AI drivers remain unrated');
+  assert.match(html, /data-delta="-12"/);
+  assert.match(html, /data-delta="12"/);
+  assert.match(html, /RELEGATED/);
+  assert.match(html, /of 2 rated drivers/);
 });

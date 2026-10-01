@@ -1,6 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createAccount, purchaseItem, settleRace, settleOnlineRace, onlineRaceId, ONLINE_PAYOUT_SCALE, parseAccount, prizeFor, RACE_PRIZES } from '../src/game/economy';
+import {
+  createAccount, purchaseItem, settleRace, settleOnlineRace, onlineRaceId, ONLINE_PAYOUT_SCALE,
+  parseAccount, prizeFor, RACE_PRIZES, keptSkills, addRaceTrophies,
+  ACCOUNT_KEY, loadAccount, saveAccount, saveRaceTrophies,
+} from '../src/game/economy';
+import * as storage from '../src/game/storage';
 import { emptyInventory, ITEM_INFO, ITEM_TYPES, MAX_ITEM_STACK, normalizeInventory } from '../src/game/types';
 
 test('Economy: a purchase subtracts its exact price and adds one persistent charge', () => {
@@ -110,8 +115,7 @@ test('MP-09 economy: a driver who did not finish an online race is paid nothing'
 });
 
 // ── P2-05: race loot and the additive v1 trophy ledger ─────────────────────
-test('Trophies: v1 saves migrate without losing credits, inventory or the payout ledger', async () => {
-  const { keptSkills } = await import('../src/game/economy');
+test('Trophies: v1 saves migrate without losing credits, inventory or the payout ledger', () => {
   const legacy = { version: 1, credits: 765, inventory: { ...emptyInventory(), rocket: 3 }, paidRaces: ['old-race'], totalWinnings: 365, finishes: 1 };
   const loaded = parseAccount(JSON.stringify(legacy));
   assert.equal(loaded.credits, legacy.credits);
@@ -124,8 +128,7 @@ test('Trophies: v1 saves migrate without losing credits, inventory or the payout
   assert.deepEqual(keptSkills(undefined, loaded.inventory), emptyInventory(), 'a missing snapshot must not invent loot');
 });
 
-test('Trophies: kept is the positive net change, not starting stock or spent skills', async () => {
-  const { keptSkills } = await import('../src/game/economy');
+test('Trophies: kept is the positive net change, not starting stock or spent skills', () => {
   const start = { ...emptyInventory(), rocket: 2, oil: 3, anvil: 9 };
   const end = { ...start, rocket: 5, oil: 1, jump: 2 };
   assert.deepEqual(keptSkills(start, end), { ...emptyInventory(), rocket: 3, jump: 2 });
@@ -133,8 +136,7 @@ test('Trophies: kept is the positive net change, not starting stock or spent ski
   assert.deepEqual(keptSkills(start, null), emptyInventory());
 });
 
-test('Trophies: races count once after reload and lifetime totals can exceed a full stack', async () => {
-  const { addRaceTrophies } = await import('../src/game/economy');
+test('Trophies: races count once after reload and lifetime totals can exceed a full stack', () => {
   const start = { ...emptyInventory(), rocket: 1, oil: 2 };
   const end = { ...start, rocket: 9, oil: 1 };
   const base = { ...createAccount(), inventory: end };
@@ -157,9 +159,7 @@ test('Trophies: invalid counts and race ids are safely migrated', () => {
   assert.deepEqual(loaded.trophyRaces, ['a']);
 });
 
-test('Trophies: stale wallet/shop saves cannot erase results trophies or double-count them', async () => {
-  const { ACCOUNT_KEY, loadAccount, saveAccount, saveRaceTrophies } = await import('../src/game/economy');
-  const storage = await import('../src/game/storage');
+test('Trophies: stale wallet/shop saves cannot erase results trophies or double-count them', () => {
   storage.removeItem(ACCOUNT_KEY);
   try {
     const beforeResults = { ...createAccount(), inventory: { ...emptyInventory(), freeze: 2 } };

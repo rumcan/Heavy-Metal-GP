@@ -7,6 +7,7 @@ import { formatTime } from '../game/physics';
 import type { RacePayout } from '../game/economy';
 import { keptSkills, saveRaceTrophies } from '../game/economy';
 import { postRaceBanter } from '../game/characters';
+import type { Line } from '../game/characters';
 import Portrait from './Portrait';
 import Banter from './Banter';
 import crowd from '../assets/game/goblin-crowd.webp';
@@ -50,7 +51,12 @@ export default function RaceResults({ results, roster, title, subtitle, actions,
   const finished = results.filter((r) => r.time !== null);
   const fastest = [...finished].sort((a, b) => a.time! - b.time!)[0];
   const winnerTime = fastest?.time ?? 0;
-  const banter = useMemo(() => postRaceBanter(roster, [...results].sort((a, b) => a.rank - b.rank).map((r) => r.id), me.time !== null, Math.random), [roster, results, me.time]);
+  const banter = useMemo<Line[]>(() => {
+    // A benched online grid can have only one to three drivers. The regular
+    // banter picks a driver behind the podium, which that field doesn't have.
+    if (results.length < 4) return [{ speaker: byId(me.id), mood: me.time === null ? 'angry' : 'happy', text: me.time === null ? 'Next heat, I’m going full send.' : 'Chequered flag. Bring on the next heat.' }];
+    return postRaceBanter(roster, [...results].sort((a, b) => a.rank - b.rank).map((r) => r.id), me.time !== null, Math.random);
+  }, [roster, results, me.id, me.time]);
   const points = championship && me.time !== null ? pointsFor(me.rank) : 0;
   const kept = useMemo(() => keptSkills(startKit, endKit), [startKit, endKit]);
   const reducedMotion = useReducedMotion();
