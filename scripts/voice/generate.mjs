@@ -293,8 +293,12 @@ function rundot(args, { cli, cwd }) {
   const env = { ...process.env, DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: '1' };
   const opts = { cwd, env, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 };
   // Spawn without a shell so line text (spaces, quotes, "!") reaches the CLI as ONE argument.
-  const direct = spawnSync(cli, args, opts);
-  if (!(direct.error && direct.error.code === 'ENOENT' && process.platform === 'win32')) return direct;
+  // Windows `.cmd`/`.bat` shims (and a bare `rundot` that resolves to one) only run through a shell.
+  const shim = process.platform === 'win32' && /\.(cmd|bat)$/i.test(cli);
+  if (!shim) {
+    const direct = spawnSync(cli, args, opts);
+    if (!(direct.error && process.platform === 'win32')) return direct;
+  }
   // Windows `.cmd` shims only run through a shell: quote every argument for cmd.exe.
   const quote = (a) => `"${String(a).replace(/"/g, '""')}"`;
   return spawnSync([cli, ...args].map(quote).join(' '), { ...opts, shell: true });
