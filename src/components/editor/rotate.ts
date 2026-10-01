@@ -45,7 +45,7 @@ export function hasFreeRotation(piece: Piece): boolean {
 const ROT_TYPES = new Set<Piece['t']>([
   'loop', 'pad', 'bucket', 'tunnel', 'trapdoor', 'blade', 'crusher', 'seesaw', 'catapult', 'geyser', 'trampoline',
   'turnstile', 'targets', 'platform', 'hoop', 'wrecker', 'peg', 'ppeg', 'itembox', 'mace', 'wheel', 'cannon',
-  'magnet', 'vortex', 'crumble', 'sign', 'breakable', 'wall', 'block', 'barricade', 'wind',
+  'magnet', 'vortex', 'crumble', 'sign', 'breakable', 'wall', 'block', 'barricade',
 ]);
 export function usesGenericRotation(piece: Piece): boolean {
   return ROT_TYPES.has(piece.t);
