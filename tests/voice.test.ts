@@ -119,15 +119,19 @@ test('voice: the same line and settings always hash the same, and anything audib
 });
 
 test('voice: the dry run prints the line count, the cost estimate and the cap, and writes nothing', () => {
-  const before = readFileSync(path.join(ROOT, 'src/voice/generated/samples.json'), 'utf8');
-  const run = spawnSync(process.execPath, [GENERATE, '--set', 'samples', '--dry-run'], { cwd: ROOT, encoding: 'utf8' });
+  // Run against a fresh copy: the real repo now has the samples generated (all cached).
+  const fresh = fixture();
+  const ROOT_ = fresh.root;
+  const before = readFileSync(path.join(ROOT_, 'src/voice/generated/samples.json'), 'utf8');
+  const run = spawnSync(process.execPath, [GENERATE, '--root', ROOT_, '--set', 'samples', '--dry-run'], { cwd: ROOT_, encoding: 'utf8' });
   assert.equal(run.status, 0, run.stderr);
   assert.match(run.stdout, /3 lines in samples, 3 to generate, 0 cached/);
   assert.match(run.stdout, /Estimated cost: ≈\d+ credits for 3 new lines \(cap 1000\)/);
   assert.match(run.stdout, /narrator-welcome\s+narrator/);
   assert.match(run.stdout, /nothing was synthesized and nothing was written/i);
-  assert.equal(readFileSync(path.join(ROOT, 'src/voice/generated/samples.json'), 'utf8'), before, 'the generated map is untouched');
-  assert.ok(!existsSync(path.join(ROOT, 'src/assets/voice/samples')), 'no audio directory was created');
+  assert.equal(readFileSync(path.join(ROOT_, 'src/voice/generated/samples.json'), 'utf8'), before, 'the generated map is untouched');
+  assert.ok(!existsSync(path.join(ROOT_, 'src/assets/voice/samples')), 'no audio directory was created');
+  rmSync(ROOT_, { recursive: true, force: true });
 });
 
 /** A `rundot` stand-in: writes a ~1 KB fake mp3 (its payload varies per call) and prints the CLI's JSON. */
@@ -154,6 +158,8 @@ function fixture() {
   const root = mkdtempSync(path.join(tmpdir(), 'hmgp-voice-'));
   cpSync(path.join(ROOT, 'src', 'voice'), path.join(root, 'src', 'voice'), { recursive: true });
   mkdirSync(path.join(root, 'src', 'assets', 'voice'), { recursive: true });
+  // Start from nothing generated, whatever the real repo has already made.
+  for (const f of readdirSync(path.join(root, 'src', 'voice', 'generated'))) writeFileSync(path.join(root, 'src', 'voice', 'generated', f), '{}\n');
   const bin = path.join(root, 'bin');
   mkdirSync(bin);
   const stub = path.join(bin, 'rundot-stub.mjs');
