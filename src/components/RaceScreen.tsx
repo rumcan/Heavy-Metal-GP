@@ -21,6 +21,7 @@ import type { RacePayout } from '../game/economy';
 import { pointsFor } from '../game/season';
 import Brand from './Brand';
 import Dialog from './Dialog';
+import NetStats from './NetStats';
 import InventoryToolbar from './InventoryToolbar';
 import RaceMinimap from './RaceMinimap';
 import RaceBubbles from './RaceBubbles';
@@ -613,6 +614,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
     : {};
 
   return <div className="race-shell" {...mpProbe}>
+    {online && <NetStats session={sessionRef.current} />}
     <header className="race-topbar"><Brand compact /><div className="race-event"><span>{subtitle}</span><h1>{title}</h1></div><div className="race-clock"><span>RACE TIME</span><strong>{formatTime(hud.time)}</strong></div><div className="race-top-actions">{import.meta.env.DEV && !results && !online && <div className="dev-skip-race" title="Dev only: finish this heat instantly with you in the chosen place"><span>SKIP</span>{([1, 3, 8, 'dnf'] as const).map((place) => <button key={place} className="text-button" onClick={() => devSkipRace(place)}>{place === 'dnf' ? 'DNF' : `P${place}`}</button>)}</div>}<button className="icon-button" onClick={toggleMute} aria-label={muted ? 'Unmute sound (M)' : 'Mute sound (M)'} aria-pressed={muted} title={muted ? 'Sound off (M)' : 'Sound on (M)'}>{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button><button className="icon-button" onClick={() => setPause(true)} aria-label="Pause race" disabled={!!results || !!online} title={online ? 'An online race cannot be paused' : 'Pause race'}><Pause size={18} /></button><button className="text-button" onClick={requestExit} disabled={!!results}>{online ? 'Leave race' : 'Exit'} <ArrowUpRightIcon /></button></div></header>
     <div className="race-stage">
       <canvas ref={canvasRef} className="race-canvas" aria-label="2D marble race. Arrow keys nudge. Keys 1 to 8 deploy power-ups; plus and minus zoom; Space repeats the last item. P pauses." />

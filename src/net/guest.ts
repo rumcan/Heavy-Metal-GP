@@ -142,6 +142,8 @@ export class RaceGuest {
   private offset: number | null = null;
   /** How late frames have recently been beyond the offset. The playout delay grows to cover it, then shrinks back. */
   private jitter = 0;
+  private gapLog: { at: number; gap: number }[] = [];
+  private lastArrival = 0;
   /** The guest's playout clock (see `update`). */
   private playout = 0;
   private classified: ResultsMsg | null = null;
@@ -191,6 +193,23 @@ export class RaceGuest {
   /** Resyncs this guest has had to ask for. A healthy race asks for none. */
   get resyncs(): number {
     return this.resyncCount;
+  }
+
+  /** Number of frames currently buffered for interpolation. */
+  get bufferedFrames(): number {
+    return this.frames.length;
+  }
+
+  /** Current jitter estimate in ms. */
+  get jitterMs(): number {
+    return Math.round(this.jitter);
+  }
+
+  /** Largest gap between consecutive frame arrivals in the last 5 seconds. */
+  get maxGapMs(): number {
+    let max = 0;
+    for (const entry of this.gapLog) if (entry.gap > max) max = entry.gap;
+    return max;
   }
 
   /** True once there is something to draw. */
@@ -257,6 +276,12 @@ export class RaceGuest {
    * than the world that is on its way.
    */
   acceptState(msg: StateMsg, at: number = this.clock()): void {
+    if (this.lastArrival > 0) {
+      this.gapLog.push({ at, gap: at - this.lastArrival });
+    }
+    this.lastArrival = at;
+    const cutoff = at - 5000;
+    while (this.gapLog.length > 0 && this.gapLog[0].at < cutoff) this.gapLog.shift();
     const marbles = unpackState(msg.marbles);
     if (!marbles) return; // not a frame this version can read
     if (msg.seq <= this.appliedSeq && !this.snapPending) return; // duplicate, or late
