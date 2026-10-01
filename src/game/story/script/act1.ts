@@ -109,7 +109,7 @@ export const ACT1_SCENES: readonly Scene[] = [
     id: 'c1-post-loss', chapter: 1, trigger: 'post-loss', outcome: 'loss', background: 'grandstand-race-day',
     lines: [
       L('sprocket', 'sad', 'I think I bounced off every single wall in Marblehurst.'),
-      L('red', 'surprised', 'Everybody has a terrible first race, rookie. My marble caught fire in mine.'),
+      L('red', 'surprised', 'I am Red Morrigan, rookie. Everybody has a bad first race. Mine caught fire.'),
       L('zapp', 'sad', 'You still finished all three races, and that was our deal. The seat is yours.'),
       L('ace', 'smug', 'Keep that seat warm, rookie, until Apex finds a real driver.'),
     ],
