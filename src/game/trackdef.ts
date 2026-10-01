@@ -21,6 +21,7 @@
  */
 import { ITEM_TYPES, THEME_IDS, themeFor, themeIdFor } from './types';
 import type { ItemType, ThemeId, TrackProfile } from './types';
+import { bakeWindRotation } from './wind-rotation';
 import { Builder, DEFAULT_PROFILE, FINISH_H, GATE_TOP, START_H, T, W, assembleTrack, assembleExperimentalTrack, meta, segFinish, segStart } from './track';
 import type { Kind, PegColor, SegmentInfo, Track } from './track';
 import { visualBoundsForPiece } from '../components/editor/bounds';
@@ -537,6 +538,7 @@ export function bakeLineRotation<P extends Piece>(piece: P): P {
 
 export function replayPiece(b: Builder, piece: Piece) {
   piece = bakeLineRotation(piece);
+  if (piece.t === 'wind') piece = bakeWindRotation(piece);
   b.flip = piece.flip === true;
   const first = b.bodies.length;
   try {
