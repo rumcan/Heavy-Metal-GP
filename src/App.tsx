@@ -41,7 +41,7 @@ import { PeerStrip } from './components/PeerNotices';
 import HostLeftOverlay from './components/PeerNotices';
 import { circuitIndexOf, gridOrderOf, rosterOf } from './net/lobby';
 import type { SeatGarage } from './net/lobby';
-import { MarbleInfo, MarbleStats, AI_COLORS, randomStats, mulberry32, PLAYER_COLORS, HeatResult, HEATS_PER_GP } from './game/types';
+import { MarbleInfo, AI_COLORS, randomStats, mulberry32, HeatResult, HEATS_PER_GP } from './game/types';
 import { SeasonState, newSeason, recordHeat, gridOrder, gpSeed, CALENDAR, saveSeason, loadSeason, roundTrack, roundName, setRoundTrack } from './game/season';
 import { officialTrack } from './game/official-tracks';
 import { loadAccount, saveAccount, purchaseItem, onlineRaceId, settleOnlineRace, settleRace, settleCustomRace } from './game/economy';
@@ -57,7 +57,8 @@ import LoadingScreen from './components/LoadingScreen';
 import StoryMode from './components/story/StoryMode';
 import TrackEditor from './components/TrackEditor';
 import CommunityScreen from './components/CommunityScreen';
-import { loadStory } from './game/story/state';
+import { loadGarages, saveGarages, setGarage, withSeasonSetup } from './game/garages';
+import type { Garage, GarageMode, Garages } from './game/garages';
 
 /**
  * How long a rejoin offer stays on the table, in ms.
@@ -68,10 +69,6 @@ import { loadStory } from './game/story/state';
  */
 const REJOIN_OFFER_MS = 10 * 60_000;
 
-const PORTRAIT_KEY = 'heavy-metal-gp:portrait';
-function loadPortrait(): number {
-  try { const n = Number(storage.getItem(PORTRAIT_KEY)); return Number.isInteger(n) && n >= 0 && n < PLAYER_PORTRAIT_COUNT ? n : 0; } catch { return 0; }
-}
 interface Loading { eyebrow: string; title: string; cta: string; banter?: Line[]; next: Phase }
 
 function makeRivals(seed: number): MarbleInfo[] {
@@ -96,16 +93,17 @@ export default function App() {
   const [whatsNew, setWhatsNew] = useState(() => storage.getItem(SEEN_VERSION_KEY) !== APP_VERSION);
   const closeWhatsNew = () => { storage.setItem(SEEN_VERSION_KEY, APP_VERSION); setWhatsNew(false); };
   const [loading, setLoading] = useState<Loading | null>({ eyebrow: 'SMALL GOBLINS. BIG BALLS. BIGGER DREAMS.', title: 'WELCOME TO THE GRID', cta: 'Enter the paddock', next: 'menu' });
-  const [portrait, setPortrait] = useState(loadPortrait);
-  useEffect(() => { try { storage.setItem(PORTRAIT_KEY, String(portrait)); } catch { /* storage unavailable */ } }, [portrait]);
-  const [stats, setStats] = useState<MarbleStats>({ weight: 5, speed: 5, bounce: 5 });
-  const [color, setColor] = useState(PLAYER_COLORS[0]);
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 0xffffffff));
   const [rivalSeed, setRivalSeed] = useState(() => Math.floor(Math.random() * 0xffffffff));
   const [raceKey, setRaceKey] = useState(0);
   const [circuitIndex, setCircuitIndex] = useState(0);
   const [customTrackId, setCustomTrackId] = useState<string | null>(null);
   const [season, setSeason] = useState<SeasonState | null>(() => loadSeason());
+  // P2-04: one garage per mode — { story, championship, quick, online } — each its own stats, livery and portrait.
+  // A season that is running owns the championship garage, so it is read back from the season.
+  const [garages, setGarages] = useState<Garages>(() => withSeasonSetup(loadGarages(PLAYER_PORTRAIT_COUNT), season));
+  useEffect(() => saveGarages(garages), [garages]);
+  const updateGarage = useCallback((mode: GarageMode, garage: Garage) => setGarages((all) => setGarage(all, mode, garage)), []);
   const [account, setAccount] = useState(loadAccount);
   const accountRef = useRef(account);
   const [shopOpen, setShopOpen] = useState(false);
@@ -367,8 +365,8 @@ export default function App() {
   const garage = useMemo<SeatGarage>(
     // MP-09: the kit goes with the garage — an online race spends what this
     // driver bought, not what the host happens to be carrying.
-    () => ({ name: room?.players.find((p) => p.id === room.playerId)?.username || 'You', color, stats, portrait, inventory: account.inventory }),
-    [room, color, stats, portrait, account.inventory],
+    () => ({ name: room?.players.find((p) => p.id === room.playerId)?.username || 'You', color: garages.online.color, stats: garages.online.stats, portrait: garages.online.portrait, inventory: account.inventory }),
+    [room, garages.online, account.inventory],
   );
 
   /** Why a room did not open, in words a player can act on. */
@@ -630,14 +628,9 @@ export default function App() {
   useEffect(() => saveSeason(season), [season]);
 
   const rivals = useMemo(() => makeRivals(rivalSeed), [rivalSeed]);
-  // A story counts as "to continue" once it has progress and the finale has not been played out yet.
-  // Re-read whenever the garage is shown, so leaving story mode updates the button.
-  const storyInProgress = useMemo(() => {
-    if (phase !== 'menu') return false;
-    const saved = loadStory();
-    return !!saved && saved.finishedAt === null && (saved.chapter > 1 || saved.heat > 0 || saved.seenScenes.length > 0);
-  }, [phase]);
-  const quickRoster = useMemo<MarbleInfo[]>(() => [{ id: 0, name: 'You', color, stats, isPlayer: true, character: portrait }, ...rivals], [rivals, color, stats, portrait]);
+  // Each mode races with its own garage: the grid a quick race and a new championship start from.
+  const quickRoster = useMemo<MarbleInfo[]>(() => [{ id: 0, name: 'You', color: garages.quick.color, stats: garages.quick.stats, isPlayer: true, character: garages.quick.portrait }, ...rivals], [rivals, garages.quick]);
+  const championshipRoster = useMemo<MarbleInfo[]>(() => [{ id: 0, name: 'You', color: garages.championship.color, stats: garages.championship.stats, isPlayer: true, character: garages.championship.portrait }, ...rivals], [rivals, garages.championship]);
   const quickGrid = useMemo(() => quickRoster.map((m) => m.id), [quickRoster]);
   // Looked up when the pick or the screen changes, not on every render: parsing saved tracks checks every one.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -651,28 +644,27 @@ export default function App() {
   const startSeason = (confirmed = false) => {
     if (!confirmed && season && !season.complete && season.results.some((gp) => gp.length)) { setConfirmNewSeason(true); return; }
     setConfirmNewSeason(false);
-    const s = newSeason(quickRoster);
+    const s = newSeason(championshipRoster);
     setSeason(s);
     setPhase('hub');
   };
 
   const seasonRoster = useMemo<MarbleInfo[]>(() => {
     if (!season) return [];
-    return season.roster.map((m) => (m.isPlayer ? { ...m, stats, color, character: portrait } : m));
-  }, [season, stats, color, portrait]);
+    const g = garages.championship;
+    return season.roster.map((m) => (m.isPlayer ? { ...m, stats: g.stats, color: g.color, character: g.portrait } : m));
+  }, [season, garages.championship]);
 
   // sync player tune into the saved season roster when returning from retune
   const lockSetup = () => {
-    if (season) setSeason({ ...season, roster: season.roster.map((m) => (m.isPlayer ? { ...m, stats, color } : m)) });
+    const g = garages.championship;
+    if (season) setSeason({ ...season, roster: season.roster.map((m) => (m.isPlayer ? { ...m, stats: g.stats, color: g.color, character: g.portrait } : m)) });
     setPhase('hub');
   };
 
   const enterSeason = (s: SeasonState) => {
-    const me = s.roster.find((m) => m.isPlayer);
-    if (me) {
-      setStats(me.stats);
-      setColor(me.color);
-    }
+    // A running season owns the championship garage: what the garage shows is what the season races with.
+    setGarages((all) => withSeasonSetup(all, s));
     setSeason(s);
     setPhase('hub');
   };
@@ -704,10 +696,9 @@ export default function App() {
       <SetupScreen
         rank={rank ? chipOf(rank) : null}
         onRank={openLadder}
-        stats={stats}
-        onStats={setStats}
-        color={color}
-        onColor={setColor}
+        garages={garages}
+        onGarage={updateGarage}
+        season={season}
         rivals={phase === 'retune' && season ? season.roster.filter((m) => !m.isPlayer) : rivals}
         onRerollRivals={() => setRivalSeed(Math.floor(Math.random() * 0xffffffff))}
         seed={seed}
@@ -715,6 +706,7 @@ export default function App() {
         onStart={launchQuickRace}
         onStartSeason={() => startSeason()}
         onContinueSeason={season && phase === 'menu' ? () => enterSeason(season) : undefined}
+        onRetune={season && phase === 'menu' ? () => { setCircuitIndex(season.round); setPhase('retune'); } : undefined}
         seasonMode={phase === 'retune'}
         onBackToSeason={lockSetup}
         circuitIndex={circuitIndex}
@@ -723,12 +715,8 @@ export default function App() {
         onSelectCustom={setCustomTrackId}
         account={account}
         onShop={openShop}
-        portrait={portrait}
-        onPortrait={setPortrait}
         onStartStory={() => setPhase('story')}
         onWorkshop={() => setPhase('editor')}
-        onCommunity={() => setPhase('community')}
-        storyInProgress={storyInProgress}
         mpBusy={mpBusy}
         mpError={mpError}
         onHostGame={() => void openRoom(createRoom)}
@@ -790,7 +778,7 @@ export default function App() {
   if (phase === 'story') {
     return withShop(
       <StoryMode
-        driver={{ name: 'Sprocket', color, portrait, stats }}
+        driver={{ name: 'Sprocket', ...garages.story }}
         account={account}
         onAccount={publishAccount}
         onShop={openShop}
