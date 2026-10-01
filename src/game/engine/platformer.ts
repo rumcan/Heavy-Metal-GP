@@ -147,7 +147,9 @@ export function aiDrive(game: Game, m: Marble, v: Matter.Vector, s: number): Mat
   const bump = plan.bumps.some((b) => b.lane === lane && b.x > p.x && b.x - p.x < 20 + Math.max(0, v.x) * 5);
   const gap = ahead === null;
   const climb = here !== null && ahead !== null && ahead < here - 12;
-  if (gap || bump || climb) {
+  // Pushing but not moving: a rival (or anything else) is in the way. Hop it.
+  const blocked = v.x < 1.2 && game.time - game.raceStartTime > 1500;
+  if (gap || bump || climb || blocked) {
     m.aiJumpAt = game.time + CONTROL_TUNING.jumpCooldownMs;
     return { x: v.x, y: Math.min(v.y, -CONTROL_TUNING.jumpSpeed) };
   }
