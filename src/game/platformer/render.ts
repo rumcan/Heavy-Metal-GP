@@ -7,6 +7,27 @@ import { meta } from '../track';
 import { laneFocus, laneView, visibleLanes, LANE_SWITCH_MS, LANE_MIDDLE } from '../lanes';
 import { drawMarble } from '../render';
 import type { LaneGate } from './course';
+import earthUrl from '../../assets/game/platformer/earth.webp';
+import grassUrl from '../../assets/game/platformer/grass.webp';
+import crateUrl from '../../assets/game/platformer/crate.webp';
+import doorUrl from '../../assets/game/platformer/door.webp';
+import farUrl from '../../assets/game/platformer/far.webp';
+import treesUrl from '../../assets/game/platformer/trees.webp';
+
+// Generated art (P2-00): a skin over the vector bodies. Every draw falls back to flat shapes until it loads.
+const load = (src: string) => (typeof Image !== 'undefined' ? Object.assign(new Image(), { src }) : null);
+const ART = { earth: load(earthUrl), grass: load(grassUrl), crate: load(crateUrl), door: load(doorUrl), far: load(farUrl), trees: load(treesUrl) };
+const ready = (img: HTMLImageElement | null): img is HTMLImageElement => !!img && img.complete && img.naturalWidth > 0;
+const patterns = new WeakMap<CanvasRenderingContext2D, CanvasPattern>();
+function earthPattern(ctx: CanvasRenderingContext2D): CanvasPattern | null {
+  if (!ready(ART.earth)) return null;
+  let p = patterns.get(ctx);
+  if (!p) { p = ctx.createPattern(ART.earth, 'repeat') ?? undefined; if (p) patterns.set(ctx, p); }
+  return p ?? null;
+}
+/** The grass strip is drawn this tall (world px), from GRASS_UP above the floor's top edge. */
+const GRASS_H = 46;
+const GRASS_UP = 18;
 
 export interface PlatformCamera {
   x: number;
@@ -50,7 +71,22 @@ function sky(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch:
   g.addColorStop(1, '#c9d6d2');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, cw, ch);
-  // Far hills and tree line: two silhouette bands that scroll slowly (they are scenery, not a lane).
+  // Far mountains and the tree line: scenery, not a lane. They scroll very slowly and never change with depth.
+  if (ready(ART.far) && ready(ART.trees)) {
+    const strip = (img: HTMLImageElement, parallax: number, h: number, bottom: number) => {
+      const w = (img.naturalWidth / img.naturalHeight) * h;
+      let x = -((cam.x * parallax) % w);
+      if (x > 0) x -= w;
+      for (; x < cw; x += w) ctx.drawImage(img, x, bottom - h, w + 1, h);
+    };
+    strip(ART.far, 0.04, ch * 0.95, ch * 0.98);
+    ctx.fillStyle = 'rgba(190,206,214,0.25)';
+    ctx.fillRect(0, 0, cw, ch);
+    strip(ART.trees, 0.12, ch * 0.55, ch * 1.02);
+    ctx.fillStyle = `rgba(${HAZE},0.35)`;
+    ctx.fillRect(0, 0, cw, ch);
+    return;
+  }
   const bands = [
     { p: 0.06, y: 0.52, h: 0.22, c: 'rgba(120,148,160,0.75)', step: 260, amp: 0.55 },
     { p: 0.12, y: 0.62, h: 0.2, c: 'rgba(98,128,128,0.8)', step: 120, amp: 0.4 },
@@ -75,6 +111,45 @@ function sky(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch:
 function drawFloor(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number, depth: number, lane: number, bottom: number) {
   const pal = PALETTE[lane];
   const yb = Math.min(Math.max(y0, y1) + depth, bottom);
+  const earth = earthPattern(ctx);
+  if (earth && ready(ART.grass)) {
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+    ctx.lineTo(x1, yb);
+    ctx.lineTo(x0, yb);
+    ctx.closePath();
+    ctx.fillStyle = earth;
+    ctx.fill();
+    // darker the deeper it goes, and a shadow just under the grass
+    const top = Math.min(y0, y1);
+    const g = ctx.createLinearGradient(0, top, 0, Math.min(yb, top + 320));
+    g.addColorStop(0, 'rgba(20,12,6,0.05)');
+    g.addColorStop(0.12, 'rgba(20,12,6,0.25)');
+    g.addColorStop(1, 'rgba(12,8,4,0.78)');
+    ctx.fillStyle = g;
+    ctx.fill();
+    // block edges: a dark outline down both ends
+    ctx.strokeStyle = 'rgba(25,15,8,0.8)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(x0 + 1.5, y0); ctx.lineTo(x0 + 1.5, yb);
+    ctx.moveTo(x1 - 1.5, y1); ctx.lineTo(x1 - 1.5, yb);
+    ctx.stroke();
+    // grass along the top edge, tiled along its slope
+    const len = Math.hypot(x1 - x0, y1 - y0);
+    const img = ART.grass;
+    const tw = (img.naturalWidth / img.naturalHeight) * GRASS_H;
+    ctx.save();
+    ctx.translate(x0, y0);
+    ctx.rotate(Math.atan2(y1 - y0, x1 - x0));
+    ctx.beginPath();
+    ctx.rect(-6, -GRASS_UP - 4, len + 12, GRASS_H + 8);
+    ctx.clip();
+    for (let u = -6 - ((x0 % tw) + tw) % tw; u < len + 6; u += tw) ctx.drawImage(img, u, -GRASS_UP, tw + 0.5, GRASS_H);
+    ctx.restore();
+    return;
+  }
   ctx.beginPath();
   ctx.moveTo(x0, y0);
   ctx.lineTo(x1, y1);
@@ -115,6 +190,12 @@ function drawFloor(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: nu
 }
 
 function drawBump(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
+  if (ready(ART.crate)) {
+    const n = Math.max(1, Math.round(w / h));
+    const cw = w / n;
+    for (let i = 0; i < n; i++) ctx.drawImage(ART.crate, x + i * cw, y, cw, h + 4);
+    return;
+  }
   ctx.fillStyle = '#8a6a3e';
   ctx.fillRect(x, y, w, h + 6);
   ctx.strokeStyle = '#4a3820';
@@ -131,7 +212,24 @@ function drawBump(ctx: CanvasRenderingContext2D, x: number, y: number, w: number
 function drawGate(ctx: CanvasRenderingContext2D, g: LaneGate, t: number, near: boolean) {
   const pulse = 0.55 + 0.45 * Math.sin(t / 220);
   const back = g.to < g.lane;
-  if (g.kind === 'door') {
+  if (g.kind === 'door' && ready(ART.door)) {
+    const cx = g.x + g.w / 2;
+    const h = 150;
+    const w = (ART.door.naturalWidth / ART.door.naturalHeight) * h;
+    ctx.drawImage(ART.door, cx - w / 2, g.y - h + 6, w, h);
+    // the glow that says "press ↑ here"
+    const glow = ctx.createRadialGradient(cx, g.y - h * 0.45, 4, cx, g.y - h * 0.45, h * 0.7);
+    glow.addColorStop(0, `rgba(255,190,90,${(near ? 0.35 : 0.15) * pulse})`);
+    glow.addColorStop(1, 'rgba(255,190,90,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(cx - h, g.y - h * 1.2, h * 2, h * 1.3);
+    if (near) {
+      ctx.fillStyle = `rgba(255,224,150,${0.6 + 0.4 * pulse})`;
+      ctx.font = 'bold 20px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(back ? '↑ IN' : '↑ OUT', cx, g.y - h - 8);
+    }
+  } else if (g.kind === 'door') {
     const cx = g.x + g.w / 2;
     const top = g.y - 120;
     ctx.fillStyle = back ? '#1c1410' : '#2a1d12';
