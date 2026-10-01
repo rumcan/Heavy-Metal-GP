@@ -13,10 +13,11 @@ import crateUrl from '../../assets/game/platformer/crate.webp';
 import doorUrl from '../../assets/game/platformer/door.webp';
 import farUrl from '../../assets/game/platformer/far.webp';
 import treesUrl from '../../assets/game/platformer/trees.webp';
+import signUrl from '../../assets/game/platformer/sign.webp';
 
 // Generated art (P2-00): a skin over the vector bodies. Every draw falls back to flat shapes until it loads.
 const load = (src: string) => (typeof Image !== 'undefined' ? Object.assign(new Image(), { src }) : null);
-const ART = { earth: load(earthUrl), grass: load(grassUrl), crate: load(crateUrl), door: load(doorUrl), far: load(farUrl), trees: load(treesUrl) };
+const ART = { earth: load(earthUrl), grass: load(grassUrl), crate: load(crateUrl), door: load(doorUrl), far: load(farUrl), trees: load(treesUrl), sign: load(signUrl) };
 const ready = (img: HTMLImageElement | null): img is HTMLImageElement => !!img && img.complete && img.naturalWidth > 0;
 const patterns = new WeakMap<CanvasRenderingContext2D, CanvasPattern>();
 function earthPattern(ctx: CanvasRenderingContext2D): CanvasPattern | null {
@@ -248,7 +249,20 @@ function drawGate(ctx: CanvasRenderingContext2D, g: LaneGate, t: number, near: b
     ctx.textAlign = 'center';
     ctx.fillText(back ? '↑ IN' : '↑ OUT', cx, top + 54);
   } else {
-    // A ramp: chevrons on the ground pointing into (or out of) the screen.
+    // A ramp: a signpost before it saying where it goes, and chevrons on the ground pointing into (or out of) the screen.
+    if (ready(ART.sign)) {
+      const h = 104;
+      const w = (ART.sign.naturalWidth / ART.sign.naturalHeight) * h;
+      const sx = g.x - w * 0.55;
+      const sy = g.y - h + 8;
+      ctx.drawImage(ART.sign, sx, sy, w, h);
+      ctx.fillStyle = back ? '#bfe6ff' : '#ffd2a1';
+      ctx.font = 'bold 15px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(back ? '↗ BACK' : '↘ FRONT', sx + w / 2, sy + h * 0.29);
+      ctx.textBaseline = 'alphabetic';
+    }
     for (let i = 0; i < 3; i++) {
       const x = g.x + 24 + i * ((g.w - 48) / 2);
       const a = ((t / 140 + i) % 3) / 3;
