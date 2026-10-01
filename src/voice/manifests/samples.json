@@ -1,0 +1,17 @@
+[
+  {
+    "id": "narrator-welcome",
+    "speaker": "narrator",
+    "text": "[excited] Ten goblins. One mine shaft. Nine thousand pegs. Welcome to the Grand Prix of Marblehurst — keep your ball rolling and your teeth gritted!"
+  },
+  {
+    "id": "sprocket-hello",
+    "speaker": "sprocket",
+    "text": "Oi, I'm Sprocket! Steering's easy: left, right, and pray. Hit the orange pegs, mind the crushers, and do not — I repeat, do not — stop for the sheep. [laughs] Let's roll!"
+  },
+  {
+    "id": "vex-taunt",
+    "speaker": "duchess-vex",
+    "text": "Do try to keep up, darling. I own this mountain, this track, and the goblin who polishes my trophy case. You? You are scenery."
+  }
+]
