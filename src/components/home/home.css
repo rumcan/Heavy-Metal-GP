@@ -1,0 +1,204 @@
+/* P2-04 — the home screen: game modes as tabs, one frame in every tab.
+ *
+ * Loaded by SetupScreen, so it comes after layout.css and kit.css and can refine the shared `fit-shell` frame.
+ * The frame is three columns — LEFT the event, MIDDLE your goblin, RIGHT the field — each a `.fit-pane` carrying
+ * `data-pane-id` event | garage | field (the Story tab's embedded hub brings `chapters` and `dossier`, its own
+ * names for the same two sides). Wide: all three. ≤1180px: the event or the field beside the garage, switched by
+ * the bottom pane switcher. ≤760px (phone portrait): one pane at a time, tabs in a strip under the logo.
+ */
+
+/* ---------- header: logo · tabs · tools ---------- */
+.fit-shell .app-header.home-header { gap: 20px; }
+/* The strip never shrinks (its buttons would run under the tools): the header compacts in stages instead — the
+   "How to play" and "Physics lab" labels go first, then the tab icons, then padding, logo and the wallet's label. */
+.home-tabs { display: flex; flex: 0 0 auto; align-self: stretch; align-items: stretch; gap: 2px; margin-left: 6px; position: relative; }
+.home-tabs button {
+  position: relative; display: inline-flex; align-items: center; gap: 7px; padding: 0 16px;
+  background: none; border: 0; color: #a9b3c0; white-space: nowrap;
+  font: 500 15px var(--display); letter-spacing: .8px; text-transform: uppercase;
+  transition: color .2s, background .2s;
+}
+.home-tabs button svg { flex: none; color: var(--kit-steel); transition: color .2s; }
+.home-tabs button:hover { color: var(--kit-parchment); background: #ffffff08; }
+.home-tabs button:hover svg { color: #c9c0a6; }
+.home-tabs button.active { color: var(--kit-parchment); background: linear-gradient(180deg, transparent, #d63e2e18); }
+.home-tabs button.active svg { color: var(--kit-acid); }
+.home-tabs button.active::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--kit-acid); box-shadow: 0 0 10px var(--kit-acid); }
+.home-tabs button:focus-visible { outline-offset: -4px; }
+.home-header .header-tools { gap: 14px; flex: none; }
+.home-header .help-link { gap: 6px; }
+.home-header .help-link span, .home-header .lab-link span { display: none; }
+.home-retune { display: flex; flex-direction: column; justify-content: center; gap: 2px; margin-left: 6px; }
+.home-retune .eyebrow { gap: 5px; }
+.home-retune strong { font: 600 20px/1 var(--display); letter-spacing: .6px; text-transform: uppercase; }
+
+@media (min-width: 1480px) { .home-header .help-link span, .home-header .lab-link span { display: inline; } }
+@media (max-width: 1479px) { .fit-shell .app-header.home-header { gap: 16px; } .home-tabs button { padding: 0 12px; font-size: 14px; } .home-header .header-tools { gap: 10px; } }
+@media (max-width: 1280px) and (min-width: 761px) { .home-tabs button svg { display: none; } }
+@media (max-width: 1100px) and (min-width: 761px) {
+  .fit-shell .app-header.home-header { gap: 10px; padding-inline: 16px; }
+  .home-tabs { margin-left: 0; }
+  .home-tabs button { padding: 0 9px; font-size: 13px; }
+  .home-header .brand-logo { height: 44px; }
+  .home-header .wallet-button > span, .home-header .wallet-button > i { display: none; }
+  .home-header .header-tools { gap: 6px; }
+}
+@media (max-width: 800px) and (min-width: 761px) { .home-tabs button { padding: 0 5px; letter-spacing: .3px; } }
+@media (max-width: 900px) and (min-width: 761px) {
+  /* landscape phone: every pixel of the header row counts */
+  .fit-shell .app-header.home-header { gap: 6px; padding-inline: 12px; }
+  .home-tabs button { padding: 0 7px; font-size: 12.5px; letter-spacing: .5px; }
+  .home-header .brand-logo { height: 38px; }
+  .home-header .wallet-button { padding: 6px 7px; }
+  .home-header .wallet-button small { display: none; }
+}
+
+/* ---------- the frame ---------- */
+/* One definite column. The shell's implicit `auto` track would grow to the header's min-content width (five tabs that
+   do not wrap) and widen the whole page on a phone; with `minmax(0, 1fr)` the tab strip scrolls inside its own box. */
+.home-page.fit-shell { grid-template-columns: minmax(0, 1fr); }
+.home-main { grid-template-columns: minmax(0, 1.25fr) minmax(300px, 380px) minmax(260px, 340px); }
+.home-main [data-pane-id='event'], .home-main [data-pane-id='chapters'] { grid-column: 1; grid-row: 1; }
+.home-main [data-pane-id='garage'] { grid-column: 2; grid-row: 1; }
+.home-main [data-pane-id='field'], .home-main [data-pane-id='dossier'] { grid-column: 3; grid-row: 1; }
+/* The story hub, embedded: its wrappers disappear so its two panes are grid items beside the garage. */
+.story-embedded, .story-embedded-main { display: contents; }
+
+.home-actions { gap: 16px; }
+.home-hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.home-actions .launch-button { flex: none; }
+
+/* ---------- the middle column: your goblin ---------- */
+/* One rank badge per screen (RK-05): the header has it at full width; the goblin pane's title line has it on a phone.
+   kit.css means to hide the phone copy here, but its `.rank-button { display: inline-flex }` comes right after
+   `.rank-button-inline { display: none }` at the same specificity and wins, so both showed. Wider than a phone, hide it. */
+@media (min-width: 761px) { .home-page .rank-button-inline { display: none; } }
+
+.garage-controls { display: flex; flex-direction: column; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.garage-controls:disabled .stat-control input[type=range], .garage-controls:disabled .paint-swatch { cursor: not-allowed; }
+.garage-controls:disabled .stat-control input[type=range] { opacity: .6; }
+.garage-controls:disabled .driver-identity .icon-button { visibility: hidden; }
+.garage-lock { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 8px 10px; border: 1px solid #5a3f2b; border-left: 3px solid var(--kit-rust); border-radius: 4px; background: #8b5a3c1c; color: #e3d3b5; font-size: 12px; line-height: 1.45; }
+.garage-lock svg { flex: none; margin-top: 2px; color: #d6a47e; }
+.garage-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.garage-actions .button-secondary { flex: 1 1 auto; min-height: 36px; padding: 6px 12px; font-size: 13px; }
+
+/* ---------- quick race: the track picker ---------- */
+.home-picker-panel { display: flex; flex-direction: column; gap: 10px; flex: 1 1 auto; min-height: 0; }
+.home-picker-panel .circuit-canvas-wrap { min-height: 170px; }
+.home-picker-panel .circuit-selector button strong { font-size: 11.5px; letter-spacing: .3px; }
+.home-picker-panel .custom-circuit-pane { overflow: visible; }
+.home-picker-panel .my-tracks-list { max-height: none; overflow: visible; padding-right: 0; }
+.picker-selected { display: flex; align-items: center; gap: 6px; margin: 0; padding: 6px 10px; border: 1px solid var(--accent); border-radius: 4px; background: #d63e2e18; font-size: 12px; color: #f3e6cc; }
+.picker-selected svg { color: var(--accent); flex: none; }
+
+/* the community list, as a picker panel */
+.community-picker { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.community-picker-intro { margin: 0; font-size: 11px; line-height: 1.5; color: var(--muted); }
+.community-picker .community-local { margin: 0; font-size: 11px; color: #f3c2b6; }
+.community-picker-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.community-picker-bar .circuit-tabs button { display: inline-flex; align-items: center; gap: 5px; }
+.community-picker .community-tags { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+.community-picker .community-tags::-webkit-scrollbar { display: none; }
+.community-picker .community-tags button { flex: 0 0 auto; }
+.community-picker .community-card { grid-template-columns: 96px minmax(0, 1fr); }
+.community-picker .community-map { height: 150px; }
+.community-card.is-selected { border-color: var(--accent); background: #1c1318; box-shadow: inset 0 0 0 1px #d63e2e66; }
+.community-pick.selected { border-color: var(--accent); color: #fff3dc; background: #d63e2e33; }
+
+/* ---------- championship: the season at a glance ---------- */
+.season-intro { margin: 0; font-size: 12px; line-height: 1.5; color: #a9b3c0; }
+.season-pane .circuit-canvas-wrap { min-height: 190px; flex: 1 1 240px; }
+@media (min-width: 1000px) {
+  .home-main .season-calendar ol { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 18px; }
+}
+.home-main .season-calendar { margin: 0; flex: none; }
+.home-main .season-calendar .section-topline { margin-bottom: 6px; }
+.home-main .season-calendar li { padding: 8px 10px; gap: 12px; }
+.home-main .season-calendar strong { font-size: 16px; letter-spacing: .6px; }
+.home-main .standings-pane .champ-table td, .home-main .standings-pane .champ-table th { padding-block: 5px; }
+.home-main .standings-pane .your-standing { margin-top: 6px; padding: 12px 14px; }
+.standings-pane h2 { font-size: 22px; margin: 0; }
+
+/* ---------- online ---------- */
+.online-intro h2 { margin: 0 0 4px; font-size: 26px; }
+.online-intro p { margin: 0; font-size: 13px; line-height: 1.5; color: #a9b3c0; }
+/* The doors stack: Host, the code entry, the ranked queue. The footer's HOST is the one primary button, so the
+   panel's own Host game steps down to a secondary look (it is the same door, and stays in the panel with its siblings). */
+.home-main .online-panel-row { flex-direction: column; align-items: stretch; justify-content: flex-start; }
+.home-main .online-panel-row > * { width: 100%; }
+.home-main .online-panel-row .button-primary { min-width: 0; justify-content: center; background: var(--kit-navy-3); color: var(--kit-parchment); border: 2px solid var(--kit-steel); box-shadow: 0 3px 0 #030a12; }
+.home-main .online-panel-row .button-primary svg { color: inherit; }
+.home-main .online-panel-row .button-primary:hover:not(:disabled) { background: #1a3048; border-color: #8d99a8; box-shadow: 0 3px 0 #030a12; }
+.home-main .online-panel-row .button-secondary { justify-content: center; }
+.home-main .online-code-entry { justify-content: space-between; }
+.home-main .online-code-entry input { flex: 1; min-width: 0; }
+.online-seats .driver-grid li.is-open, .online-seats .driver-grid li.is-ai { opacity: .85; }
+.online-seats .lobby-ai-badge { width: 42px; height: 42px; }
+
+/* ---------- workshop ---------- */
+.workshop-tracks .section-topline .eyebrow:last-child { color: var(--muted); }
+.workshop-list { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.workshop-row { cursor: default; }
+.workshop-row .track-thumb { flex: none; }
+.workshop-row-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; flex: none; }
+.workshop-row-actions .button-secondary { min-height: 34px; padding: 4px 12px; font-size: 13px; }
+.workshop-blurb { margin: 0; font-size: 12.5px; line-height: 1.55; color: #a9b3c0; }
+.workshop-banner-card { position: relative; overflow: hidden; border: 1px solid var(--kit-steel-line); border-radius: 6px; flex: none; }
+.workshop-banner-card img { display: block; width: 100%; height: 120px; object-fit: cover; }
+.workshop-banner-card > div { position: absolute; inset: auto 0 0 0; display: flex; flex-direction: column; gap: 2px; padding: 22px 12px 9px; background: linear-gradient(180deg, transparent, #040a12e6); }
+.workshop-banner-card strong { font: 700 24px/1 var(--display); letter-spacing: .6px; text-transform: uppercase; color: var(--kit-parchment); }
+.workshop-banner-card span { font: 9px var(--mono); letter-spacing: 1.2px; color: #c9c0a6; }
+.workshop-draft { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 10px; border: 1px solid #2a3a4a; border-radius: 6px; background: #0c1219; }
+.workshop-draft p { margin: 0; font-size: 12px; line-height: 1.5; }
+.workshop-draft-card { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; }
+.workshop-draft-card .track-thumb { flex: none; width: 48px; height: 54px; }
+.workshop-links { display: flex; flex-direction: column; gap: 8px; }
+.workshop-links .button-secondary { justify-content: flex-start; }
+
+/* ---------- tablet and landscape phone: the event (or the field) beside the garage ---------- */
+@media (max-width: 1180px) {
+  .home-main { grid-template-columns: minmax(0, 1fr) minmax(300px, 360px); }
+  .home-main [data-pane-id='field'], .home-main [data-pane-id='dossier'] { display: none; }
+  .home-page[data-pane='field'] .home-main :is([data-pane-id='field'], [data-pane-id='dossier']) { display: flex; grid-column: 1; }
+  .home-page[data-pane='field'] .home-main :is([data-pane-id='event'], [data-pane-id='chapters']) { display: none; }
+}
+@media (max-height: 520px) and (min-width: 761px) {
+  /* landscape phone is 375 px tall: the header gets slim, and the pane switcher and the one big button share a single
+     bottom bar instead of stacking, so the panes keep the room */
+  .home-page.fit-shell { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto minmax(0, 1fr) auto; }
+  .home-page.fit-shell .app-header { height: 48px; grid-column: 1 / -1; }
+  .home-page .brand-logo { height: 38px; }
+  .home-page .fit-main { grid-column: 1 / -1; padding-block: 8px; }
+  .home-page .pane-tabs { grid-column: 1; grid-row: 3; }
+  .home-page .fit-actions { grid-column: 2; grid-row: 3; padding-block: 5px; }
+  .home-page .fit-actions .launch-button { height: 38px; min-height: 38px; min-width: 190px; }
+  .home-page .home-hint { display: none; }
+  .home-page .pane-tabs button { padding-block: 8px; }
+}
+
+/* ---------- phone portrait: tabs under the logo, one pane at a time ---------- */
+@media (max-width: 760px) {
+  .fit-shell .app-header.home-header { height: auto; flex-wrap: wrap; align-content: flex-start; gap: 0 8px; padding: 6px 12px 0; }
+  .home-header .header-tools { margin-left: auto; gap: 6px; }
+  .home-tabs {
+    order: 3; flex: 1 0 100%; align-self: auto; margin: 4px -12px 0; padding: 0 12px; gap: 0;
+    overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
+  }
+  .home-tabs::-webkit-scrollbar { display: none; }
+  .home-tabs button { flex: 0 0 auto; height: 40px; padding: 0 14px; font-size: 14px; }
+  .home-tabs button.active::after { height: 3px; }
+  .home-retune { order: 3; flex: 1 0 100%; flex-direction: row; align-items: baseline; gap: 8px; margin: 4px 0 6px; }
+  .home-main { grid-template-columns: minmax(0, 1fr) !important; }
+  .home-main .fit-pane { display: none !important; }
+  .home-page[data-pane='event'] .home-main :is([data-pane-id='event'], [data-pane-id='chapters']),
+  .home-page[data-pane='garage'] .home-main [data-pane-id='garage'],
+  .home-page[data-pane='field'] .home-main :is([data-pane-id='field'], [data-pane-id='dossier']) { display: flex !important; grid-column: 1; }
+  .home-actions .launch-button { flex: 1; height: 44px; }
+  .home-garage .section-topline .eyebrow .muted { display: none; }
+  .workshop-row { flex-wrap: wrap; }
+  .workshop-row-actions { margin-left: 0; width: 100%; justify-content: flex-end; }
+  .community-picker .community-card { grid-template-columns: 84px minmax(0, 1fr); }
+  .community-picker .community-map { height: 140px; }
+  .online-intro h2 { font-size: 22px; }
+}
