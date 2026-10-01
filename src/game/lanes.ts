@@ -1,20 +1,38 @@
+// P2-00 (#124): three depth lanes (2.5D). Each lane is a flat 2D layer; depth is faked on screen.
+//
+// Presentation rules (approved from the prototype):
+// - The camera always "stands" on the lane you are on: that lane draws at scale 1, sharp, no fog.
+// - Only lanes BEHIND you are drawn. Lanes in front of you are never drawn over the player.
+// - Lanes behind are a little smaller, a little higher, hazed and blurred (one STEP per lane).
+// - Changing lane is a camera dolly: the camera's depth ("focus") eases from one lane to the next,
+//   so the lane you leave forward swells and fades out, and the lane you dive into sharpens.
+
 export const LANE_BACK = 0;
 export const LANE_MIDDLE = 1;
 export const LANE_FRONT = 2;
+export const LANE_NAMES = ['back', 'middle', 'front'] as const;
 
-export interface LaneLook {
-  name: string;
+/** Each lane behind you is drawn this much smaller. */
+export const LANE_STEP = 0.78;
+/** Each lane behind you sits this many world px higher (before zoom). */
+export const LANE_LIFT = 38;
+/** Fog added per lane behind you, capped at FOG_MAX. */
+export const LANE_FOG = 0.42;
+export const FOG_MAX = 0.75;
+/** Blur (screen px) per lane behind you. */
+export const LANE_BLUR = 2.2;
+/** How fast a lane in front of the camera fades out (alpha lost per lane of depth). */
+export const FRONT_FADE = 2.2;
+/** A lane change takes this long. */
+export const LANE_SWITCH_MS = 750;
+
+export interface LaneView {
   scale: number;
-  parallax: number;
+  lift: number;
   fog: number;
   blur: number;
+  alpha: number;
 }
-
-export const LANES: readonly LaneLook[] = [
-  { name: 'back', scale: 0.75, parallax: 0.7, fog: 0.35, blur: 3 },
-  { name: 'middle', scale: 1, parallax: 1, fog: 0, blur: 0 },
-  { name: 'front', scale: 1.25, parallax: 1.35, fog: 0, blur: 0 },
-];
 
 export const NON_LANE_MASK = 0x0fff;
 
@@ -29,22 +47,34 @@ export function laneMask(lane: number): number {
   return NON_LANE_MASK | laneCategory(lane);
 }
 
-export function laneBlend(
-  from: number,
-  to: number,
-  t: number,
-): { scale: number; parallax: number; fog: number; blur: number } {
-  const start = LANES[from];
-  const end = LANES[to];
-  const clampedT = Math.max(0, Math.min(1, t));
-  const easedT = clampedT * clampedT * (3 - 2 * clampedT);
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
+/** Ease in-out cubic: slow start, fast middle, soft landing (the camera dolly). */
+export function dollyEase(t: number): number {
+  const c = clamp(t, 0, 1);
+  return c < 0.5 ? 4 * c * c * c : 1 - Math.pow(-2 * c + 2, 3) / 2;
+}
+
+/** Camera depth during a lane change: `from` at t=0, `to` at t=1. */
+export function laneFocus(from: number, to: number, t: number): number {
+  return from + (to - from) * dollyEase(t);
+}
+
+/** How a lane looks from a camera standing at depth `focus` (a lane index, fractional mid-change). */
+export function laneView(lane: number, focus: number): LaneView {
+  const rel = focus - lane; // > 0: the lane is behind you
   return {
-    scale: start.scale + (end.scale - start.scale) * easedT,
-    parallax: start.parallax + (end.parallax - start.parallax) * easedT,
-    fog: start.fog + (end.fog - start.fog) * easedT,
-    blur: start.blur + (end.blur - start.blur) * easedT,
+    scale: Math.pow(LANE_STEP, rel),
+    lift: -rel * LANE_LIFT,
+    fog: clamp(rel * LANE_FOG, 0, FOG_MAX),
+    blur: Math.max(0, rel * LANE_BLUR),
+    alpha: rel >= 0 ? 1 : Math.max(0, 1 + rel * FRONT_FADE),
   };
+}
+
+/** Lanes to draw, back to front: everything behind the camera, plus a lane still fading out in front. */
+export function visibleLanes(focus: number): number[] {
+  return [LANE_BACK, LANE_MIDDLE, LANE_FRONT].filter((l) => laneView(l, focus).alpha > 0.01);
 }
 
 interface Pt {
@@ -52,25 +82,18 @@ interface Pt {
   y: number;
 }
 
+/** World point in `lane` to screen. The camera point of the focused lane is the screen centre. */
 export function projectToScreen(
   world: Pt,
   lane: number,
-  cam: { x: number; y: number; scale: number },
+  cam: { x: number; y: number; zoom: number; focus: number },
   view: { w: number; h: number },
 ): { x: number; y: number; scale: number } {
-  const look = LANES[lane];
+  const v = laneView(lane, cam.focus);
+  const s = cam.zoom * v.scale;
   return {
-    x: view.w / 2 + (world.x - cam.x) * cam.scale * look.parallax,
-    y: view.h / 2 + (world.y - cam.y) * cam.scale * look.parallax,
-    scale: cam.scale * look.scale,
+    x: view.w / 2 + (world.x - cam.x) * s,
+    y: view.h / 2 + (world.y - cam.y) * s + v.lift * cam.zoom,
+    scale: s,
   };
-}
-
-export function laneAlpha(lane: number, playerLane: number): number {
-  if (lane === playerLane) return 1;
-  return lane > playerLane ? 0.85 : 0.6;
-}
-
-export function drawOrder(): number[] {
-  return [LANE_BACK, LANE_MIDDLE, LANE_FRONT];
 }
