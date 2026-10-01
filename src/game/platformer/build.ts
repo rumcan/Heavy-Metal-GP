@@ -7,7 +7,7 @@ import type { TrackTheme } from '../types';
 import { laneCategory } from '../lanes';
 import { makePath } from '../course-path';
 import type { CoursePath } from '../course-path';
-import { planCourse } from './course';
+import { planCourse, planOfficial, platformerCourse } from './course';
 import type { CoursePlan, Lane } from './course';
 
 export interface PlatformerInfo {
@@ -40,9 +40,9 @@ function box(x: number, y: number, w: number, h: number, lane: number | null, ki
   return quad([{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }], lane, kind, depth);
 }
 
-/** Build the platformer Track for this seed. */
-export function buildPlatformerTrack(seed: number, theme: TrackTheme): Track {
-  const plan = planCourse(seed);
+/** Build the platformer Track: an official course by id, else a course planned from the seed. */
+export function buildPlatformerTrack(seed: number, theme: TrackTheme, courseId?: string): Track {
+  const plan = courseId ? planOfficial(platformerCourse(courseId)) : planCourse(seed);
   const bodies: Matter.Body[] = [];
   for (const f of plan.floors) {
     const depth = Math.max(240, plan.height - Math.max(f.y0, f.y1));

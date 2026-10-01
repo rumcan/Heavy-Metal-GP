@@ -7,7 +7,7 @@ import type { MarbleInfo } from '../../game/types';
 import CircuitPreview from '../CircuitPreview';
 import { CommunityPicker } from '../CommunityScreen';
 import TrackThumbnail from '../editor/TrackThumbnail';
-import { PLATFORMER_TRACK_ID } from '../../game/platformer/course';
+import { PLATFORMER_COURSES, PLATFORMER_PREFIX, PLATFORMER_TRACK_ID, isPlatformerPick, platformerCourse } from '../../game/platformer/course';
 
 /** Where the quick race's circuit comes from. */
 export type QuickSub = 'calendar' | 'mine' | 'community' | 'platformer';
@@ -49,8 +49,8 @@ export default function TrackPicker({ sub, onSub, circuitIndex, onCircuit, seed,
     // Going back to the calendar drops a picked track: the race is on the calendar again.
     if (next === 'calendar') onSelectCustom(null);
     // P2-00: the platformer preview is its own pick; leaving its tab puts the calendar back.
-    if (next === 'platformer') onSelectCustom(PLATFORMER_TRACK_ID);
-    else if (customTrackId === PLATFORMER_TRACK_ID) onSelectCustom(null);
+    if (next === 'platformer') { if (!isPlatformerPick(customTrackId)) onSelectCustom(PLATFORMER_TRACK_ID); }
+    else if (isPlatformerPick(customTrackId)) onSelectCustom(null);
     onSub(next);
   };
 
@@ -95,11 +95,16 @@ export default function TrackPicker({ sub, onSub, circuitIndex, onCircuit, seed,
         </div>
       </div>}
 
-      {sub === 'platformer' && <div className="custom-circuit-pane" aria-label="Platformer preview">
-        <div className="circuit-title-row"><div><h2 id="circuit-title">PLATFORMER</h2><span>PREVIEW • three depth lanes • turn your phone sideways</span></div><span className="circuit-seed">SEED<br /><b>{seed.toString(16).slice(0, 6).toUpperCase()}</b></span></div>
-        <p className="muted">The new course style, in progress: roll right, jump gaps with ↑ or Space, and switch lanes. Ramps take you to the next lane when you roll through them on the ground (jump over one to stay). In a door, press ↑ to go through.</p>
-        <p className="picker-selected" role="status"><Check size={14} aria-hidden="true" />Selected for the race: <b>Platformer preview</b></p>
-      </div>}
+      {sub === 'platformer' && (() => {
+        const course = platformerCourse(customTrackId);
+        return <div className="custom-circuit-pane" aria-label="Platformer courses">
+          <div className="circuit-title-row"><div><h2 id="circuit-title">{course.name.toUpperCase()}</h2><span>PLATFORMER • PREVIEW • three depth lanes • turn your phone sideways</span></div></div>
+          <p className="muted">{course.blurb}</p>
+          <p className="muted">Roll right with ← →, jump with ↑ or Space. A ramp takes you to the next lane when you roll through it on the ground (jump over it to stay). In a door, press ↑ to go through.</p>
+          <div className="circuit-selector" aria-label="Select a platformer course">{PLATFORMER_COURSES.map((c, i) => <button key={c.id} className={c.id === course.id ? 'selected' : ''} aria-pressed={c.id === course.id} onClick={() => onSelectCustom(PLATFORMER_PREFIX + c.id)}><span>{String(i + 1).padStart(2, '0')}</span><strong>{c.name}</strong></button>)}</div>
+          <p className="picker-selected" role="status"><Check size={14} aria-hidden="true" />Selected for the race: <b>{course.name}</b></p>
+        </div>;
+      })()}
       {sub === 'community' && <>
         {selectedCustom && <p className="picker-selected" role="status"><Check size={14} aria-hidden="true" />Selected for the race: <b>{selectedCustom.def.name}</b></p>}
         <CommunityPicker selectedId={customTrackId} onPick={onSelectCustom} onWorkshop={onWorkshop} />

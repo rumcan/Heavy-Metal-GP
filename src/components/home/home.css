@@ -202,3 +202,6 @@
   .community-picker .community-map { height: 140px; }
   .online-intro h2 { font-size: 22px; }
 }
+/* Four circuit sources (P2-00 added Platformer): share the row instead of running off the panel. */
+.home-event .circuit-tabs { align-self: stretch; }
+.home-event .circuit-tabs button { flex: 1 1 auto; min-width: 0; padding-inline: 5px; font-size: 10px; letter-spacing: .2px; white-space: normal; }
