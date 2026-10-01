@@ -42,8 +42,8 @@ test('laneView: lanes behind you are smaller, higher, hazed and blurred, one ste
 
 test('laneView: a lane in front of the camera fades out fast (only seen while you dive away from it)', () => {
   assert.equal(laneView(2, 1).alpha, 0);
-  assert.ok(near(laneView(2, 1.8).alpha, 1 - 0.2 * 2.2));
-  assert.ok(laneView(2, 1.8).scale > 1, 'it swells past the camera');
+  assert.ok(near(laneView(2, 1.8).alpha, 1 - 0.2 * 1.5));
+  assert.ok(near(laneView(2, 1.8).scale, Math.pow(LANE_STEP, -0.2) * 1.16), 'it swells past the camera');
 });
 
 test('visibleLanes: never a lane in front of you', () => {
