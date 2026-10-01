@@ -8,6 +8,7 @@ import type { ChatMsg } from '../net/protocol';
 import { raceAudio } from '../game/audio';
 import { Game } from '../game/engine';
 import { RaceSession } from '../net/session';
+import { houseInventory } from '../net/host';
 import type { RaceLink } from '../net/session';
 import type { RaceSettings, Seat } from '../net/protocol';
 import { render } from '../game/render';
@@ -155,6 +156,9 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
   /** Read by the room's message handler, which is subscribed once per race. */
   const chatSink = useRef<(msg: ChatMsg) => void>(() => {});
   const initialInventory = useRef(normalizeInventory(inventory));
+  // Results-only snapshots: online house stock is not a pickup or a trophy.
+  const resultStartKit = useRef(normalizeInventory(online ? houseInventory(online.settings)?.inventory ?? roster.find((m) => m.isPlayer)?.inventory : inventory));
+  const [resultEndKit, setResultEndKit] = useState<Inventory | null>(null);
   const inventoryCallback = useRef(onInventoryChange);
   inventoryCallback.current = onInventoryChange;
   const selectedRef = useRef<ItemType>(ITEM_TYPES.find((item) => inventory[item] > 0) ?? 'rocket');
@@ -428,6 +432,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       if (sessionRef.current) {
         if (!rows) return; // the host has not published it yet
         doneRef.current = true;
+        setResultEndKit(sessionRef.current.kit);
         setResults(rows);
         // MP-09: online, what this driver is holding lives on the host's marble,
         // so it is handed back with the result — that is what settles the kit.
@@ -436,6 +441,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       }
       doneRef.current = true;
       const classification = game.classify().map((r) => ({ id: r.marble.info.id, rank: r.rank, time: r.time, pegs: r.marble.pegs }));
+      setResultEndKit({ ...game.player.inventory });
       setResults(classification);
       finishedCallback.current(classification);
     };
@@ -574,6 +580,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       id: m.info.id, rank: i + 1, pegs: m.pegs,
       time: place === 'dnf' && m === game.player ? null : 95000 + i * 1300,
     }));
+    setResultEndKit({ ...game.player.inventory });
     setResults(classification);
     finishedCallback.current(classification);
   };
@@ -666,7 +673,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       </div><InventoryToolbar unlimited={online?.settings.items} inventory={hud.inventory} remaining={hud.remaining} selected={selected} blocked={paused || hud.finished || preStart || hud.frozen || !!results} coolingDown={hud.coolingDown} onUse={deploy} />
     </footer>
     {paused && !results && <Dialog titleId="pause-title" onClose={() => { setConfirmExit(false); setPause(false); }} className="pause-dialog"><span className="eyebrow"><Timer size={15} /> {confirmExit ? 'RACE CONTROL' : 'TIME OUT'}</span><h2 id="pause-title">{confirmExit ? 'Leaving the grid?' : 'A quick pit stop.'}</h2><p className="dialog-intro">{confirmExit ? 'This heat will not be scored or paid. Used items stay spent; unused items and pickups stay in your inventory. Previous results are safe.' : 'The clock, every marble, and all item timers are paused. Your next move can wait.'}</p><div className="pause-actions"><button className="button-primary" onClick={() => { setConfirmExit(false); setPause(false); }}><Play size={17} />Back to the race</button><button className="button-secondary" onClick={confirmExit ? onExit : () => setConfirmExit(true)}>{confirmExit ? 'Leave heat' : 'Return to paddock'}<ChevronRight size={16} /></button></div></Dialog>}
-    {results && <RaceResults results={results} roster={roster} title={title} subtitle={subtitle} actions={actions} championship={championship} payout={payout} credits={credits} onShop={onShop} isCustom={isCustom} rating={rating} />}
+    {results && <RaceResults results={results} roster={roster} title={title} subtitle={subtitle} actions={actions} championship={championship} payout={payout} credits={credits} startKit={resultStartKit.current} endKit={resultEndKit} onShop={onShop} isCustom={isCustom} rating={rating} />}
   </div>;
 }
 
