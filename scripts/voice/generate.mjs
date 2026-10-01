@@ -288,8 +288,16 @@ export function readCliResult(payload) {
 }
 
 function rundot(args, { cli, cwd }) {
-  const shell = process.platform === 'win32'; // `rundot` is a .cmd shim there and cannot be spawned bare
-  return spawnSync(cli, args, { cwd, shell, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+  // Invariant culture: on a machine whose locale writes decimals with a comma (e.g. en-ZA) the .NET CLI
+  // otherwise refuses "--stability 0.55".
+  const env = { ...process.env, DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: '1' };
+  const opts = { cwd, env, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 };
+  // Spawn without a shell so line text (spaces, quotes, "!") reaches the CLI as ONE argument.
+  const direct = spawnSync(cli, args, opts);
+  if (!(direct.error && direct.error.code === 'ENOENT' && process.platform === 'win32')) return direct;
+  // Windows `.cmd` shims only run through a shell: quote every argument for cmd.exe.
+  const quote = (a) => `"${String(a).replace(/"/g, '""')}"`;
+  return spawnSync([cli, ...args].map(quote).join(' '), { ...opts, shell: true });
 }
 
 function ffmpegPath() {
@@ -464,7 +472,15 @@ export async function main(argv = process.argv.slice(2), log = console.log) {
       }
       index++;
       const tmp = path.join(tmpdir(), `hmgp-voice-${process.pid}-${index}.mp3`);
-      const result = rundot(ttsArgs({ text: line.text, voiceId: line.settings.voiceId, out: tmp, model: line.settings.model, stability: line.settings.stability, speed: line.settings.speed }), { cli: args.cli, cwd: args.root });
+      let result;
+      for (let attempt = 0; ; attempt++) {
+        result = rundot(ttsArgs({ text: line.text, voiceId: line.settings.voiceId, out: tmp, model: line.settings.model, stability: line.settings.stability, speed: line.settings.speed }), { cli: args.cli, cwd: args.root });
+        // RUN rate-limits generation ("Rate limited; retry in 45 seconds"): wait and retry instead of failing the run.
+        const wait = /retry in (\d+) seconds/i.exec(`${result.stdout}${result.stderr}`);
+        if (!wait || attempt >= 8) break;
+        log(`  wait    rate limited — retrying ${entry.set}/${line.id} in ${Number(wait[1]) + 2}s`);
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, (Number(wait[1]) + 2) * 1000);
+      }
       const payload = parseCliJson(result.stdout);
       if (result.error || result.status !== 0) {
         rmSync(tmp, { force: true });
@@ -493,6 +509,12 @@ export async function main(argv = process.argv.slice(2), log = console.log) {
         rmSync(tmp, { force: true });
         const durationSec = round(told.durationSec || (convert ? ffprobeSeconds(args.cli, target) : 0) || mp3DurationSec(readFileSync(target)));
         next[line.id] = { file: `${entry.set}/${line.id}.mp3`, hash: line.hash, durationSec };
+        // Save progress after every line, so a failure later in the run never re-bills this one.
+        if (!args.dryRun) {
+          mkdirSync(path.dirname(generatedFile), { recursive: true });
+          writeFileSync(generatedFile, `${JSON.stringify({ ...previous, ...next }, null, 2)}
+`);
+        }
         log(`  new     ${entry.set}/${line.id}  ${mb(statSync(target).size)}${convert ? ' (mono 48 kbps)' : ''}  ${durationSec ? `${durationSec}s` : 'duration unknown'}`);
       }
     }
