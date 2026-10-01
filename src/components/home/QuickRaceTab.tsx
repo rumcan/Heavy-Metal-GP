@@ -8,6 +8,7 @@ import GaragePanel from './GaragePanel';
 import RosterGrid from './RosterGrid';
 import TrackPicker from './TrackPicker';
 import type { QuickSub } from './TrackPicker';
+import { PLATFORMER_TRACK_ID } from '../../game/platformer/course';
 import { rosterWith } from './roster';
 
 interface Props {
@@ -37,7 +38,7 @@ export default function QuickRaceTab({ garage, onGarage, rivals, onRerollRivals,
   // A pick that points at a track deleted since (in the Workshop) would leave the race on a circuit the picker
   // does not show: drop it.
   useEffect(() => {
-    if (customTrackId && !loadTracksSync().some((t) => t.id === customTrackId)) onSelectCustom(null);
+    if (customTrackId && customTrackId !== PLATFORMER_TRACK_ID && !loadTracksSync().some((t) => t.id === customTrackId)) onSelectCustom(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

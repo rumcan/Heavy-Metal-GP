@@ -1,5 +1,6 @@
 import Matter from 'matter-js';
 import { buildCourse } from './course-builder'; import { buildExperimentalCourse } from './course-builder-experimental';
+import { buildPlatformerTrack } from './platformer/build';
 import { massForWeight, mulberry32, TrackProfile, TrackTheme, ITEM_TYPES, CIRCUIT_LENGTH_MULTIPLIER, TRACK_THEMES } from './types';
 import type { ItemType } from './types';
 import { rampSurface } from './physics';
@@ -82,7 +83,10 @@ export type Kind =
   | 'vortex'
   | 'platform'
   | 'sign'
-  | 'loopRide';
+  | 'loopRide'
+  // P2-00: platformer floors and lane gates (drawn by src/game/platformer/render.ts)
+  | 'floor'
+  | 'laneGate';
 
 /**
  * MB-10 element framework. A kinematic driver for the moving pieces: a body's pose is a pure
@@ -319,6 +323,12 @@ export interface Meta {
   loopRide?: { cx: number; cy: number; r: number };
 
   sagAt?: number;
+  /** P2-00: the depth lane a platformer body belongs to (0 back, 1 middle, 2 front). */
+  lane?: number;
+  /** P2-00: a lane gate's rule (see src/game/platformer/course.ts). */
+  laneGate?: import('./platformer/course').LaneGate;
+  /** P2-00: how far a floor block is drawn below its top edge (art only). */
+  depth?: number;
 }
 
 /** Anchors for the art skin. Physics never reads these; sprites are drawn over the vector bodies. */
@@ -351,6 +361,8 @@ export interface Track {
   wreckers: Matter.Body[];
   /** MB-10F drop-target banks: per-bank pin/down bookkeeping and the gate plank they open. */
   targetBanks: TargetBank[];
+  /** P2-00: set on platformer courses (three depth lanes, raced left to right). Unset on classic drops. */
+  platformer?: import('./platformer/build').PlatformerInfo;
 }
 
 export function meta(b: Matter.Body): Meta {
@@ -2099,6 +2111,8 @@ export const DEFAULT_PROFILE: TrackProfile = {
 };
 
 export function generateTrack(seed: number, profile: TrackProfile = DEFAULT_PROFILE): Track {
+  // P2-00: platformer courses have their own planner and builder.
+  if (profile.generator === 'platformer') return buildPlatformerTrack(seed, profile.theme);
   return assembleTrack(new Builder(seed), seed, profile);
 }
 

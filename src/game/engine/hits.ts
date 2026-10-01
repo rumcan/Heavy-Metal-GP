@@ -625,6 +625,11 @@ export function onCollisionActive(game: Game, e: Matter.IEventCollision<Matter.E
     if (!m || (ma && mb) || m.frozen || m.finishedAt !== null || !game.gateOpen) continue;
     const md = meta(other);
     if (!md) continue;
+    // P2-00: touching a platformer floor below the marble's middle counts as grounded.
+    if (md.kind === 'floor') {
+      const support = pair.collision.supports[0];
+      if (support && support.y > m.body.position.y + 6) m.grounded = 0;
+    }
     // MB-10B skins paint contact flashes; reuse the one-shove-per-pass debounce so a marble
     // resting on a machine doesn't redraw its burst 120 times a second.
     if ((md.kind === 'blade' || md.kind === 'saw' || md.kind === 'mace' || md.kind === 'boulder') && game.time < (md.cooldownUntil ?? 0)) continue;

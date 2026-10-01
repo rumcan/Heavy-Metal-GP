@@ -41,6 +41,7 @@ import QuickRaceTab from './home/QuickRaceTab';
 import StoryTab from './home/StoryTab';
 import WorkshopTab from './home/WorkshopTab';
 import type { QuickSub } from './home/TrackPicker';
+import { PLATFORMER_TRACK_ID } from '../game/platformer/course';
 import './home/home.css';
 
 export interface SetupScreenProps {
@@ -125,7 +126,7 @@ export default function SetupScreen(props: SetupScreenProps) {
   // A mode with something waiting for the player (a race to rejoin, a search running) opens on it; every other mode
   // opens on the goblin, as the garage always did.
   const [pane, setPane] = useState<PaneId>(() => (tab === 'workshop' || (tab === 'online' && (rejoin || searching)) ? 'event' : 'garage'));
-  const [quickSub, setQuickSub] = useState<QuickSub>(customTrackId ? 'mine' : 'calendar');
+  const [quickSub, setQuickSub] = useState<QuickSub>(customTrackId === PLATFORMER_TRACK_ID ? 'platformer' : customTrackId ? 'mine' : 'calendar');
   const [dialog, setDialog] = useState<'rules' | 'lab' | null>(null);
   const [newTrackOpen, setNewTrackOpen] = useState(false);
   const [storyVersion, setStoryVersion] = useState(0);
@@ -169,7 +170,7 @@ export default function SetupScreen(props: SetupScreenProps) {
         if (season) return { label: 'New season', onClick: onStartSeason, hint: 'This season is finished.' };
         return { label: 'Start season', onClick: onStartSeason, hint: 'Six Grands Prix, three heats each.' };
       case 'quick':
-        return { label: 'Race', onClick: onStart, hint: `${selectedCustom ? selectedCustom.def.name : CALENDAR[circuitIndex].name} · one heat` };
+        return { label: 'Race', onClick: onStart, hint: `${customTrackId === PLATFORMER_TRACK_ID ? 'Platformer preview' : selectedCustom ? selectedCustom.def.name : CALENDAR[circuitIndex].name} · one heat` };
       case 'online': {
         const doors = !!(onHostGame && onJoinGame && onQuickGame);
         const offline = isOfflineMockRealtime();

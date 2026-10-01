@@ -159,6 +159,16 @@ export interface Marble {
   slingAt?: number;
   /** MB-10D: last flipper kick clock, so one swing delivers one swat per marble. */
   flipperKickAt?: number;
+  /** P2-00 platformer: depth lane (0 back, 1 middle, 2 front), the lane it came from and when it switched. */
+  lane?: number;
+  laneFrom?: number;
+  laneAt?: number;
+  /** P2-00 platformer: distance along the course path, and the best so far (the stall watchdog). */
+  progress?: number;
+  bestProgress?: number;
+  /** P2-00 platformer AI: the last door it decided about, and its jump cooldown. */
+  doorSeen?: number;
+  aiJumpAt?: number;
 }
 
 export interface OilSlick {
@@ -220,6 +230,7 @@ import * as story_hooks from './engine/story-hooks';
 import * as input from './engine/input';
 import type { EngineState, JumpState } from './controls';
 import * as ai from './engine/ai';
+import * as platformer from './engine/platformer';
 
 export class Game {
   engine: Matter.Engine;
@@ -337,7 +348,9 @@ export class Game {
     roster.forEach((info) => {
       const ph = statsToPhysics(info.stats);
       const slot = slots.find((s) => s.id === info.id)!;
-      const body = createMarble(info, { x: slot.x, y: this.track.startY });
+      // P2-00: a platformer grid lines up along the start floor, spread over the three lanes.
+      const spot = this.track.platformer ? platformer.gridSpot(this, slot.slot) : null;
+      const body = createMarble(info, spot ?? { x: slot.x, y: this.track.startY });
       const m: Marble = {
         info,
         body,
@@ -382,6 +395,11 @@ export class Game {
         crushCount: 0,
         machineHeld: MACHINE_HOLD_MS,
       };
+      if (spot) {
+        m.lane = m.laneFrom = spot.lane;
+        m.progress = m.bestProgress = 0;
+        platformer.applyLaneMask(this, m);
+      }
       this.marbles.push(m);
       this.byId.set(info.id, m);
     });
@@ -580,6 +598,7 @@ export class Game {
   }
 
   applyMask(m: Marble) {
+    if (this.track.platformer) return platformer.applyLaneMask(this, m);
     const ghost = m.ghostUntil > this.time;
     // Ghost marbles phase through rivals (CAT_MARBLE), fragile barricades (CAT_FRAGILE, MB-10A) and
     m.body.collisionFilter.mask = CAT_WALL | CAT_SENSOR | (ghost ? 0 : CAT_MARBLE | CAT_FRAGILE | CAT_DANGER) | (m.loopStage === 1 ? CAT_LOOP_CLOSE : CAT_LOOP_UP);
@@ -639,7 +658,8 @@ export class Game {
     if (m.body.isSensor) return;
     Composite.remove(this.world, m.body);
     m.body.isSensor = true;
-    Body.setPosition(m.body, { x: 80 + (m.info.id % 10) * 80, y: this.track.finishY + 75 });
+    const plan = this.track.platformer?.plan;
+    Body.setPosition(m.body, plan ? { x: plan.finishX + 200 + (m.info.id % 10) * 40, y: plan.finishY - MARBLE_RADIUS - 2 } : { x: 80 + (m.info.id % 10) * 80, y: this.track.finishY + 75 });
     Body.setVelocity(m.body, { x: 0, y: 0 });
     Body.setAngularVelocity(m.body, 0);
   }
@@ -725,6 +745,7 @@ export class Game {
   }
 
   updateRecovery(m: Marble, dt: number) {
+    if (this.track.platformer) return platformer.platformRecovery(this, m, dt);
     return recovery.updateRecovery(this, m, dt);
   }
 
@@ -991,6 +1012,11 @@ export class Game {
       }
 
       v = input.steer(this, m, v, s);
+      // P2-00: computer drivers have to drive a platformer (on a classic drop gravity does it for them).
+      if (this.track.platformer) {
+        if (!this.isHuman(m)) v = platformer.aiDrive(this, m, v, s);
+        platformer.laneGates(this, m);
+      }
 
       // speed cap
       const cap = this.speedLimit(m);
@@ -1035,7 +1061,10 @@ export class Game {
       if (launch) Body.setVelocity(m.body, launch);
       const cap = this.speedLimit(m);
       if (Body.getSpeed(m.body) > cap) Body.setSpeed(m.body, cap);
-      if (m.body.position.y >= this.track.finishY && m.body.position.x >= 0 && m.body.position.x <= W) this.finishMarble(m);
+      if (this.track.platformer) {
+        platformer.updateProgress(this, m);
+        if (platformer.crossedFinish(this, m)) this.finishMarble(m);
+      } else if (m.body.position.y >= this.track.finishY && m.body.position.x >= 0 && m.body.position.x <= W) this.finishMarble(m);
       this.updateRecovery(m, dt);
     }
     this.pendingLaunches.clear();
@@ -1054,7 +1083,10 @@ export class Game {
 
   ranking(): RankEntry[] {
     const finished = [...this.finishOrder];
-    const rest = this.marbles.filter((m) => m.finishedAt === null).sort((a, b) => b.body.position.y - a.body.position.y);
+    // P2-00: on a platformer "lower" is not "ahead": rank by distance along the course path.
+    const rest = this.track.platformer
+      ? this.marbles.filter((m) => m.finishedAt === null).sort((a, b) => (b.progress ?? 0) - (a.progress ?? 0) || a.info.id - b.info.id)
+      : this.marbles.filter((m) => m.finishedAt === null).sort((a, b) => b.body.position.y - a.body.position.y);
     return [...finished, ...rest].map((m, i) => ({ marble: m, rank: i + 1, finished: m.finishedAt !== null, time: m.finishedAt }));
   }
 

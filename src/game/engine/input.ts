@@ -4,6 +4,7 @@ import Matter from 'matter-js';
 import type { Game, Marble } from '../engine';
 import { CONTROL_TUNING, engineStep, engineThrust, jumpStep, newEngine, newJump, steerVelocity } from '../controls';
 import { TICK } from '../engine';
+import { tryDoor } from './platformer';
 
 /** Is this marble driven by a human (local or a guest)? Only humans get the engine and the core jump. */
 function handsOf(game: Game, m: Marble): { nudge: number; engine: boolean; jump: boolean } | null {
@@ -33,6 +34,8 @@ export function steer(game: Game, m: Marble, v: Matter.Vector, s: number): Matte
   const push = engineThrust(v.x, v.y, engine.firing, s);
   v = { x: v.x + push.x, y: v.y + push.y };
 
+  // P2-00: on a platformer, a jump press inside a lane door goes through the door instead.
+  if (hands.jump && game.track.platformer && tryDoor(game, m)) hands.jump = false;
   const jump = jumpStep(m.jumpState ?? newJump(), game.time, grounded, hands.jump);
   m.jumpState = jump.state;
   if (jump.jump) v = { x: v.x, y: Math.min(v.y, -CONTROL_TUNING.jumpSpeed) };

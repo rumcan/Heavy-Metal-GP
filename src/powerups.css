@@ -275,3 +275,48 @@
   .engine-heat { width: 70px; }
 }
 @media (prefers-reduced-motion: reduce) { .engine-heat.overheated { animation: none; } }
+
+/* P2-00 / P2-01: phones held sideways (races are played in landscape). The course gets the whole screen:
+   a slim top bar, and the controls float over the bottom of the track — steer bottom-left, items in the
+   middle, jump and engine bottom-right, where the thumbs are. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .race-shell { position: relative; grid-template-rows: 34px minmax(0, 1fr); }
+  .race-shell .race-topbar { gap: 10px; padding: 0 10px; }
+  .race-shell .race-topbar .brand-wordmark, .race-shell .race-event > span, .race-shell .race-clock > span, .race-shell .dev-skip-race { display: none; }
+  .race-shell .race-event { padding-left: 10px; }
+  .race-shell .race-event h1 { font-size: 11px; margin: 0; }
+  .race-shell .race-clock { display: block; }
+  .race-shell .race-clock > strong { font-size: 14px; }
+  .race-shell .race-top-actions { gap: 6px; padding-left: 8px; }
+  .race-shell .race-top-actions .icon-button { width: 26px; height: 26px; }
+  .race-shell .race-top-actions .text-button { font-size: 9px; }
+  .race-shell .race-minimap, .race-shell .timing-tower { display: none; }
+  .race-shell .race-sector { top: 8px; }
+  .race-shell .race-dashboard.race-cockpit { position: absolute; left: 0; right: 0; bottom: 0; z-index: 4; flex-direction: row; align-items: flex-end; gap: 8px; padding: 0 10px max(8px, env(safe-area-inset-bottom)); background: none; border: 0; pointer-events: none; }
+  .race-shell .race-telemetry, .race-shell .race-telemetry .race-controls { display: contents; }
+  .race-shell .race-dashboard button { pointer-events: auto; }
+  .race-shell .race-telemetry .marble-state, .race-shell .race-wallet, .race-shell .race-telemetry .speed-readout, .race-shell .race-telemetry .nudge-controls > span, .race-shell .inventory-toolbar-heading { display: none; }
+  .race-shell .race-telemetry .position-readout { position: fixed; top: 42px; left: 10px; width: auto; min-width: 0; text-shadow: 0 2px 6px #000; }
+  .race-shell .race-telemetry .position-readout > span { display: none; }
+  .race-shell .race-telemetry .position-readout strong { font-size: 26px; }
+  .race-shell .race-telemetry .engine-heat { position: fixed; top: 50px; left: 78px; margin: 0; width: 70px; }
+  .race-shell .nudge-controls { order: 1; }
+  .race-shell .nudge-controls > div { display: flex; gap: 6px; }
+  .race-shell .inventory-toolbar { order: 2; flex: 1 1 auto; min-width: 0; border: 0; padding: 0; }
+  .race-shell .inventory-slots { gap: 4px; }
+  .race-shell .inventory-slot { display: flex; flex-direction: column; justify-content: center; min-height: 42px; padding: 4px 2px; gap: 2px; background: #0d1520c8; }
+  .race-shell .inventory-item-name, .race-shell .inventory-item-state { display: none; }
+  .race-shell .inventory-glyph svg { width: 16px; height: 16px; }
+  .race-shell .thumb-controls { order: 3; }
+  .race-shell .race-telemetry .nudge-button { height: 46px; width: 50px; background: #0d1520d8; }
+  .race-shell .race-telemetry .thumb-controls .nudge-button { width: auto; min-width: 58px; }
+  .race-shell .zoom-controls { top: 8px; bottom: auto; right: 10px; left: auto; flex-direction: row; transform: none; }
+  .race-shell .race-toast { bottom: 64px; }
+  .race-shell .kit-slot-state { font-size: 6px; }
+}
+
+/* P2-00: platformer courses are raced sideways; on a phone held upright, say so. */
+.rotate-hint { display: none; }
+@media (orientation: portrait) and (max-width: 600px) {
+  .is-platformer .rotate-hint { display: block; position: absolute; top: 44px; left: 50%; transform: translateX(-50%); z-index: 3; padding: 7px 12px; background: #0d1722ec; border: 1px solid #344758; border-left: 2px solid var(--accent); font: 600 11px var(--display, sans-serif); letter-spacing: .5px; color: #e5edf5; white-space: nowrap; pointer-events: none; }
+}
