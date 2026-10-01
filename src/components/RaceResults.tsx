@@ -1,11 +1,11 @@
-import { useMemo } from 'react';
-import { ArrowRight, Flag, Timer, Trophy, Check, Coins, ShoppingBag } from 'lucide-react';
-import type { HeatResult, MarbleInfo } from '../game/types';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowRight, Flag, Timer, Trophy, Check } from 'lucide-react';
+import type { HeatResult, MarbleInfo, Inventory } from '../game/types';
 import { teamOf } from '../game/types';
 import { pointsFor } from '../game/season';
 import { formatTime } from '../game/physics';
 import type { RacePayout } from '../game/economy';
-import { CUSTOM_PAYOUT_NOTE } from '../game/economy';
+import { keptSkills, saveRaceTrophies } from '../game/economy';
 import { postRaceBanter } from '../game/characters';
 import Portrait from './Portrait';
 import Banter from './Banter';
@@ -13,6 +13,11 @@ import crowd from '../assets/game/goblin-crowd.webp';
 import raceFlag from '../assets/game/flag-race.webp';
 import RankResults, { RankDelta } from './RankResults';
 import type { RankedRaceView } from '../game/rank-view';
+import Podium from './results/Podium';
+import PayoutCounter from './results/PayoutCounter';
+import KeptSkills from './results/KeptSkills';
+import { useReducedMotion } from './results/motion';
+import './results/results.css';
 
 export interface RaceAction { label: string; onClick: () => void; primary?: boolean }
 interface Props {
@@ -24,6 +29,9 @@ interface Props {
   championship: boolean;
   payout?: RacePayout | null;
   credits?: number;
+  /** Frozen race snapshots, never the live wallet (shopping must not create trophies). */
+  startKit?: Inventory | null;
+  endKit?: Inventory | null;
   onShop?: () => void;
   /** MB-08: custom circuits pay 30 % (18 % online) — show the note under the payout. */
   isCustom?: boolean;
@@ -36,7 +44,7 @@ interface Props {
   rating?: RankedRaceView | null;
 }
 
-export default function RaceResults({ results, roster, title, subtitle, actions, championship, payout, credits, onShop, isCustom = false, rating = null }: Props) {
+export default function RaceResults({ results, roster, title, subtitle, actions, championship, payout, credits, startKit, endKit, onShop, isCustom = false, rating = null }: Props) {
   const byId = (id: number) => roster.find((m) => m.id === id)!;
   const me = results.find((r) => byId(r.id).isPlayer)!;
   const finished = results.filter((r) => r.time !== null);
@@ -44,16 +52,57 @@ export default function RaceResults({ results, roster, title, subtitle, actions,
   const winnerTime = fastest?.time ?? 0;
   const banter = useMemo(() => postRaceBanter(roster, [...results].sort((a, b) => a.rank - b.rank).map((r) => r.id), me.time !== null, Math.random), [roster, results, me.time]);
   const points = championship && me.time !== null ? pointsFor(me.rank) : 0;
+  const kept = useMemo(() => keptSkills(startKit, endKit), [startKit, endKit]);
+  const reducedMotion = useReducedMotion();
+  const [skipped, setSkipped] = useState(false);
+  const [countedRace, setCountedRace] = useState<string | null>(null);
+  const isCounting = !!payout && !reducedMotion && !skipped && countedRace !== payout.raceId;
+  const counted = useCallback(() => setCountedRace(payout?.raceId ?? null), [payout?.raceId]);
+  const trophyRace = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!startKit || !endKit) return;
+    // A paid heat has a durable id. Unscored story replays still bring skills
+    // home, but use a presentation id. Keep it stable if a payout arrives later
+    // or StrictMode replays the effect: neither may award the same kit twice.
+    trophyRace.current ??= payout?.raceId ?? `unscored:${crypto.randomUUID()}`;
+    saveRaceTrophies(trophyRace.current, startKit, endKit);
+  }, [payout?.raceId, startKit, endKit]);
+
+  useEffect(() => {
+    if (!isCounting) return;
+    const skip = (event: KeyboardEvent) => {
+      // In particular, Enter on the auto-focused action skips the show rather
+      // than accidentally starting another race before the final numbers land.
+      event.preventDefault();
+      event.stopPropagation();
+      setSkipped(true);
+    };
+    window.addEventListener('keydown', skip, true);
+    return () => window.removeEventListener('keydown', skip, true);
+  }, [isCounting]);
 
   return <div className="results-backdrop">
-    <section className="results-panel" role="dialog" aria-modal="true" aria-labelledby="results-title">
+    <section className="results-panel arcade-results" role="dialog" aria-modal="true" aria-labelledby="results-title" data-skipped={skipped || reducedMotion} onClickCapture={(event) => {
+      if (!isCounting) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setSkipped(true);
+    }}>
+      <div className="results-scroll" tabIndex={0} aria-label="Race results and rewards">
       <header className="results-header">
+        <div className="results-headline">
         <div className="eyebrow results-eyebrow"><Flag size={16} /> CHEQUERED FLAG <span className="muted">/ {subtitle}</span><span className="results-crowd" aria-hidden="true"><img src={raceFlag} alt="" className="results-flag" /><img src={crowd} alt="" /></span></div>
         <div className="results-heading-row"><div><h2 id="results-title" className="results-title">{me.time === null ? 'NEXT TIME. FULL SEND.' : me.rank === 1 ? 'THAT\'S A RACE WIN.' : me.rank <= 3 ? 'A PLACE ON THE PODIUM.' : 'EVERY POSITION COUNTS.'}</h2><p>{title}</p></div><div className="result-position"><span>YOUR FINISH</span><strong>{me.time === null ? 'DNF' : `P${me.rank}`}</strong></div></div>
         <div className="result-summary"><span><Timer size={14} /> {me.time === null ? 'Time limit reached' : formatTime(me.time)}</span>{championship && <span className="accent"><Trophy size={14} /> +{points} championship points</span>}<span><Check size={14} /> {finished.length}/{roster.length} finished</span></div>
         {rating && <RankResults view={rating} />}
-        <Banter lines={banter} className="results-banter" delay={600} interval={1100} />
+        </div>
+        <Podium results={results} roster={roster} />
       </header>
+      <div className="results-rewards">
+        {payout && <PayoutCounter key={payout.raceId} payout={payout} pegs={me.time === null ? 0 : me.pegs} points={championship ? points : undefined} credits={credits} isCustom={isCustom} instant={skipped || reducedMotion} onComplete={counted} onShop={onShop} />}
+        <KeptSkills kept={kept} ready={!isCounting} instant={skipped || reducedMotion} />
+      </div>
       <div className="results-table-wrap"><table className="results-table"><caption className="sr-only">Final race classification</caption>
         <thead><tr><th>POS</th><th>DRIVER / TEAM</th><th className="result-pegs">PEGS</th><th>TIME / GAP</th>{rating && <th className="result-rating-col">RATING</th>}{championship && <th>POINTS</th>}</tr></thead>
         <tbody>{results.map((result) => {
@@ -71,9 +120,14 @@ export default function RaceResults({ results, roster, title, subtitle, actions,
           </tr>;
         })}</tbody>
       </table></div>
-      <footer className="results-footer">{fastest && <div className="fastest-result"><Timer size={15} /><span>FASTEST FINISH</span><strong>{byId(fastest.id).isPlayer ? 'You' : byId(fastest.id).name}</strong><span>{formatTime(fastest.time!)}</span></div>}
-        {payout && <div className="race-payout" role="status"><div className="payout-total"><Coins size={24} /><div><span>{payout.total > 0 ? 'RACE WINNINGS' : 'NO PAYOUT / DNF'}</span><strong>+{payout.total.toLocaleString()} <small>CR</small></strong></div></div><p><span>Placement <b>{payout.placement} CR</b></span><span>Orange pegs <b>+{payout.pegBonus} CR</b></span></p>{isCustom && <p className="payout-custom-note" style={{ fontSize: '10px', color: 'var(--muted)', margin: '6px 0 0' }}>{CUSTOM_PAYOUT_NOTE}</p>}<div className="payout-wallet"><span>BALANCE: {(credits ?? payout.balance).toLocaleString()} CR</span>{onShop && <button className="text-button" onClick={onShop}><ShoppingBag size={14} />Spend winnings <ArrowRight size={14} /></button>}</div></div>}
-        <div className="results-actions">{actions.map((action, i) => <button key={action.label} autoFocus={i === 0} className={action.primary ? 'button-primary' : 'button-secondary'} onClick={action.onClick}>{action.label}{action.primary && <ArrowRight size={18} />}</button>)}</div></footer>
+      <div className="results-after-table">{fastest && <div className="fastest-result"><Timer size={15} /><span>FASTEST FINISH</span><strong>{byId(fastest.id).isPlayer ? 'You' : byId(fastest.id).name}</strong><span>{formatTime(fastest.time!)}</span></div>}
+        <Banter lines={banter} className="results-banter" delay={600} interval={1100} />
+      </div>
+      </div>
+      <footer className="results-footer">
+        <p className="results-skip-hint">{isCounting ? 'Click or press any key to skip the count.' : 'Chequered flag. Winnings and unused skills are yours.'}</p>
+        <div className="results-actions">{actions.map((action, i) => <button key={action.label} autoFocus={i === 0} className={action.primary ? 'button-primary' : 'button-secondary'} onClick={action.onClick}>{action.label}{action.primary && <ArrowRight size={18} />}</button>)}</div>
+      </footer>
     </section>
   </div>;
 }

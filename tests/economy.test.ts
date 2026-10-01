@@ -108,3 +108,74 @@ test('MP-09 economy: a driver who did not finish an online race is paid nothing'
   assert.equal(dnf.account.credits, 400);
   assert.equal(dnf.account.finishes, 0);
 });
+
+// ── P2-05: race loot and the additive v1 trophy ledger ─────────────────────
+test('Trophies: v1 saves migrate without losing credits, inventory or the payout ledger', async () => {
+  const { keptSkills } = await import('../src/game/economy');
+  const legacy = { version: 1, credits: 765, inventory: { ...emptyInventory(), rocket: 3 }, paidRaces: ['old-race'], totalWinnings: 365, finishes: 1 };
+  const loaded = parseAccount(JSON.stringify(legacy));
+  assert.equal(loaded.credits, legacy.credits);
+  assert.deepEqual(loaded.inventory, legacy.inventory);
+  assert.deepEqual(loaded.paidRaces, legacy.paidRaces);
+  assert.equal(loaded.totalWinnings, legacy.totalWinnings);
+  assert.equal(loaded.finishes, legacy.finishes);
+  assert.deepEqual(loaded.trophies, emptyInventory());
+  assert.deepEqual(loaded.trophyRaces, []);
+  assert.deepEqual(keptSkills(undefined, loaded.inventory), emptyInventory(), 'a missing snapshot must not invent loot');
+});
+
+test('Trophies: kept is the positive net change, not starting stock or spent skills', async () => {
+  const { keptSkills } = await import('../src/game/economy');
+  const start = { ...emptyInventory(), rocket: 2, oil: 3, anvil: 9 };
+  const end = { ...start, rocket: 5, oil: 1, jump: 2 };
+  assert.deepEqual(keptSkills(start, end), { ...emptyInventory(), rocket: 3, jump: 2 });
+  assert.deepEqual(start, { ...emptyInventory(), rocket: 2, oil: 3, anvil: 9 }, 'snapshots are not mutated');
+  assert.deepEqual(keptSkills(start, null), emptyInventory());
+});
+
+test('Trophies: races count once after reload and lifetime totals can exceed a full stack', async () => {
+  const { addRaceTrophies } = await import('../src/game/economy');
+  const start = { ...emptyInventory(), rocket: 1, oil: 2 };
+  const end = { ...start, rocket: 9, oil: 1 };
+  const base = { ...createAccount(), inventory: end };
+  const first = addRaceTrophies(base, 'race-a', start, end);
+  assert.equal(first.trophies.rocket, 8);
+  assert.equal(first.trophies.oil, 0);
+  assert.equal(first.credits, base.credits);
+  assert.deepEqual(first.inventory, end, 'recording trophies does not duplicate owned charges');
+  assert.deepEqual(first.paidRaces, [], 'trophies are independent of credits, including DNF/unscored heats');
+  const loaded = parseAccount(JSON.stringify(first));
+  assert.strictEqual(addRaceTrophies(loaded, 'race-a', start, end), loaded);
+  const second = addRaceTrophies(loaded, 'race-b', start, end);
+  assert.equal(parseAccount(JSON.stringify(second)).trophies.rocket, 16, 'lifetime is not capped at nine');
+  assert.equal(base.trophies.rocket, 0, 'the reducer is immutable');
+});
+
+test('Trophies: invalid counts and race ids are safely migrated', () => {
+  const loaded = parseAccount(JSON.stringify({ ...createAccount(), trophies: { rocket: 24, jump: -1, oil: 2.9, shock: '99', anvil: null, aero: 1e12, freeze: 0, ghost: 5, unknown: 8 }, trophyRaces: ['a', 'a', '', 3, 'x'.repeat(180)] }));
+  assert.deepEqual(loaded.trophies, { ...emptyInventory(), rocket: 24, oil: 2, aero: 1e9, ghost: 5 });
+  assert.deepEqual(loaded.trophyRaces, ['a']);
+});
+
+test('Trophies: stale wallet/shop saves cannot erase results trophies or double-count them', async () => {
+  const { ACCOUNT_KEY, loadAccount, saveAccount, saveRaceTrophies } = await import('../src/game/economy');
+  const storage = await import('../src/game/storage');
+  storage.removeItem(ACCOUNT_KEY);
+  try {
+    const beforeResults = { ...createAccount(), inventory: { ...emptyInventory(), freeze: 2 } };
+    saveAccount(beforeResults);
+    saveRaceTrophies('fixture-race', emptyInventory(), beforeResults.inventory);
+    assert.equal(loadAccount().trophies.freeze, 2);
+    const purchased = purchaseItem(beforeResults, 'jump').account;
+    saveAccount(purchased); // App's old account doesn't yet have the trophy ledger.
+    assert.equal(loadAccount().credits, purchased.credits);
+    assert.equal(loadAccount().inventory.jump, 1);
+    assert.equal(loadAccount().trophies.freeze, 2);
+    assert.deepEqual(loadAccount().trophyRaces, ['fixture-race']);
+    saveRaceTrophies('fixture-race', emptyInventory(), beforeResults.inventory);
+    assert.equal(loadAccount().trophies.freeze, 2, 'StrictMode/rating updates cannot count again');
+    saveRaceTrophies('next-race', beforeResults.inventory, { ...beforeResults.inventory, freeze: 3 });
+    assert.equal(loadAccount().trophies.freeze, 3);
+    assert.equal(loadAccount().inventory.jump, 1, 'a trophy write keeps the current wallet intact');
+  } finally { storage.removeItem(ACCOUNT_KEY); }
+});

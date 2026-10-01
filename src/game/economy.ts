@@ -1,5 +1,5 @@
 import * as storage from './storage';
-import { emptyInventory, ITEM_INFO, MAX_ITEM_STACK, normalizeInventory } from './types';
+import { emptyInventory, ITEM_INFO, ITEM_TYPES, MAX_ITEM_STACK, normalizeInventory } from './types';
 import type { HeatResult, Inventory, ItemType } from './types';
 
 export const ACCOUNT_KEY = 'mrr-account-v1';
@@ -11,6 +11,10 @@ export interface RacerAccount {
   version: 1;
   credits: number;
   inventory: Inventory;
+  /** Lifetime net pickups brought home, not capped at the nine-charge stack limit. */
+  trophies: Inventory;
+  /** Separate from payouts: presenting a result must never award trophies twice. */
+  trophyRaces: string[];
   paidRaces: string[];
   totalWinnings: number;
   finishes: number;
@@ -26,7 +30,7 @@ export interface RacePayout {
 }
 
 export function createAccount(): RacerAccount {
-  return { version: 1, credits: STARTER_CREDITS, inventory: emptyInventory(), paidRaces: [], totalWinnings: 0, finishes: 0 };
+  return { version: 1, credits: STARTER_CREDITS, inventory: emptyInventory(), trophies: emptyInventory(), trophyRaces: [], paidRaces: [], totalWinnings: 0, finishes: 0 };
 }
 
 export function purchaseItem(account: RacerAccount, item: ItemType): { account: RacerAccount; error?: string } {
@@ -131,16 +135,54 @@ export function settleCustomRace(account: RacerAccount, raceId: string, result: 
 /** Display note for results screens: why a custom purse is reduced. */
 export const CUSTOM_PAYOUT_NOTE = 'Custom circuits pay 30% — online custom 18% — to keep farming in check. Calendar races pay full purse.';
 
+/** Net new charges only: bought/unused starting stock is not a race trophy. */
+export function keptSkills(startKit?: Inventory | null, endKit?: Inventory | null): Inventory {
+  const kept = emptyInventory();
+  if (!startKit || !endKit) return kept;
+  const start = normalizeInventory(startKit);
+  const end = normalizeInventory(endKit);
+  for (const item of ITEM_TYPES) kept[item] = Math.max(0, end[item] - start[item]);
+  return kept;
+}
+
+const safeNumber = (n: unknown) => typeof n === 'number' && Number.isFinite(n) ? Math.max(0, Math.min(1e9, Math.floor(n))) : 0;
+const raceIds = (ids: unknown): string[] => Array.isArray(ids) ? [...new Set(ids.filter((id): id is string => typeof id === 'string' && id.length > 0 && id.length < 180))] : [];
+
+function normalizeTrophies(value: unknown): Inventory {
+  const counts = emptyInventory();
+  if (value && typeof value === 'object') {
+    for (const item of ITEM_TYPES) counts[item] = safeNumber((value as Record<string, unknown>)[item]);
+  }
+  return counts;
+}
+
+/** Record a race's snapshots once, independently of its payout animation or DNF. */
+export function addRaceTrophies(account: RacerAccount, raceId: string, startKit: Inventory, endKit: Inventory): RacerAccount {
+  if (!raceId || raceId.length >= 180 || account.trophyRaces.includes(raceId)) return account;
+  const kept = keptSkills(startKit, endKit);
+  const trophies = { ...account.trophies };
+  for (const item of ITEM_TYPES) trophies[item] = safeNumber(trophies[item] + kept[item]);
+  return { ...account, trophies, trophyRaces: [...account.trophyRaces, raceId] };
+}
+
+/** Results do not own the wallet; update only its additive trophy ledger. */
+export function saveRaceTrophies(raceId: string, startKit: Inventory, endKit: Inventory): void {
+  const account = loadAccount();
+  const next = addRaceTrophies(account, raceId, startKit, endKit);
+  if (next !== account) saveAccount(next);
+}
+
 export function parseAccount(raw: string | null): RacerAccount {
   try {
     const value: unknown = raw ? JSON.parse(raw) : null;
     if (!value || typeof value !== 'object') return createAccount();
     const account = value as Partial<RacerAccount>;
     if (account.version !== 1 || typeof account.credits !== 'number' || !Number.isFinite(account.credits) || account.credits < 0) return createAccount();
-    const safeNumber = (n: unknown) => typeof n === 'number' && Number.isFinite(n) ? Math.max(0, Math.min(1e9, Math.floor(n))) : 0;
     return {
       version: 1, credits: safeNumber(account.credits), inventory: normalizeInventory(account.inventory),
-      paidRaces: Array.isArray(account.paidRaces) ? [...new Set(account.paidRaces.filter((id) => typeof id === 'string' && id.length < 180))] : [],
+      // Additive v1 migration: old saves keep their wallet and start an empty shelf.
+      trophies: normalizeTrophies(account.trophies), trophyRaces: raceIds(account.trophyRaces),
+      paidRaces: raceIds(account.paidRaces),
       totalWinnings: safeNumber(account.totalWinnings), finishes: safeNumber(account.finishes),
     };
   } catch { return createAccount(); }
@@ -151,5 +193,13 @@ export function loadAccount(): RacerAccount {
 }
 
 export function saveAccount(account: RacerAccount) {
-  try { storage.setItem(ACCOUNT_KEY, JSON.stringify(account)); } catch { /* Play remains available when storage is blocked. */ }
+  try {
+    // App can still hold the pre-results account. A shop purchase or the next
+    // inventory callback must not overwrite trophies recorded by the results.
+    const saved = loadAccount();
+    const trophies = normalizeTrophies(account.trophies);
+    for (const item of ITEM_TYPES) trophies[item] = Math.max(trophies[item], saved.trophies[item]);
+    const trophyRaces = raceIds([...account.trophyRaces, ...saved.trophyRaces]);
+    storage.setItem(ACCOUNT_KEY, JSON.stringify({ ...account, trophies, trophyRaces }));
+  } catch { /* Play remains available when storage is blocked. */ }
 }
