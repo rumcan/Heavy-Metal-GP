@@ -22,7 +22,9 @@ export const FOG_MAX = 0.75;
 /** Blur (screen px) per lane behind you. */
 export const LANE_BLUR = 2.2;
 /** How fast a lane in front of the camera fades out (alpha lost per lane of depth). */
-export const FRONT_FADE = 2.2;
+export const FRONT_FADE = 1.5;
+/** A lane in front of the camera swells past it: extra scale per lane of depth (sells the dolly). */
+export const FRONT_SWELL = 0.8;
 /** A lane change takes this long. */
 export const LANE_SWITCH_MS = 750;
 
@@ -64,7 +66,7 @@ export function laneFocus(from: number, to: number, t: number): number {
 export function laneView(lane: number, focus: number): LaneView {
   const rel = focus - lane; // > 0: the lane is behind you
   return {
-    scale: Math.pow(LANE_STEP, rel),
+    scale: Math.pow(LANE_STEP, rel) * (rel < 0 ? 1 - rel * FRONT_SWELL : 1),
     lift: -rel * LANE_LIFT,
     fog: clamp(rel * LANE_FOG, 0, FOG_MAX),
     blur: Math.max(0, rel * LANE_BLUR),

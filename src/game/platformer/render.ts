@@ -291,8 +291,8 @@ function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, 
   if (info.plan.finishX > left && info.plan.finishX < right) drawFinish(ctx, info.plan.finishX, info.plan.finishY);
 }
 
-/** Render the race. `t` is the wall clock for animations. */
-export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam: PlatformCamera, cw: number, ch: number, t: number) {
+/** Render the race. `followed` is the marble the camera is on (never hidden behind a layer). */
+export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam: PlatformCamera, cw: number, ch: number, t: number, followed: Marble = game.player) {
   ctx.setTransform(ctx.getTransform().a, 0, 0, ctx.getTransform().d, 0, 0);
   const dpr = ctx.getTransform().a;
   sky(ctx, cam, cw, ch);
@@ -317,12 +317,8 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
     target.scale(s, s);
     target.translate(-cam.x, -cam.y);
     drawLaneWorld(target, game, lane, left, right, bottom, t);
-    // Marbles on this layer: depth in [lane, lane + 1) so a ball mid-change sits between the two layers.
-    for (const { m, z } of depths) {
-      if (z < lane || z >= lane + 1) continue;
-      if (z !== lane) continue;
-      drawBall(target, game, m, t);
-    }
+    // Marbles settled on this layer (a ball mid-change is drawn between layers, below).
+    for (const { m, z } of depths) if (z === lane) drawBall(target, game, m, t);
     target.restore();
     ctx.save();
     ctx.globalAlpha = v.alpha;
@@ -341,7 +337,7 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
     }
     // Balls changing lane are drawn on top of the layer they are leaving or entering, at their own depth.
     for (const { m, z } of depths) {
-      if (z <= lane || z >= lane + 1) continue;
+      if (z <= lane || z >= lane + 1 || m === followed) continue;
       const mv = laneView(z, cam.focus);
       if (mv.alpha <= 0.01) continue;
       ctx.save();
@@ -353,6 +349,18 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
       drawBall(ctx, game, m, t);
       ctx.restore();
     }
+  }
+  // The ball the camera follows is never hidden behind a layer: mid-dive it is drawn last, on top of everything.
+  const own = depths.find((d) => d.m === followed);
+  if (own && own.z !== Math.round(own.z)) {
+    const mv = laneView(own.z, cam.focus);
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.translate(cw / 2, ch / 2 + mv.lift * cam.scale);
+    ctx.scale(cam.scale * mv.scale, cam.scale * mv.scale);
+    ctx.translate(-cam.x, -cam.y);
+    drawBall(ctx, game, own.m, t);
+    ctx.restore();
   }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
