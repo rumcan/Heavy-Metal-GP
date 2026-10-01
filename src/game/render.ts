@@ -248,7 +248,7 @@ function shade(hex: string, amt: number): string {
   return `rgb(${r},${g},${b})`;
 }
 
-function drawMarble(ctx: CanvasRenderingContext2D, game: Game, m: Marble, t: number) {
+export function drawMarble(ctx: CanvasRenderingContext2D, game: Game, m: Marble, t: number) {
   const b = m.body;
   const { x, y } = b.position;
   const r = MARBLE_RADIUS;

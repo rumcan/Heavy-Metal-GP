@@ -44,6 +44,8 @@ import type { SeatGarage } from './net/lobby';
 import { MarbleInfo, AI_COLORS, randomStats, mulberry32, HeatResult, HEATS_PER_GP } from './game/types';
 import { SeasonState, newSeason, recordHeat, gridOrder, gpSeed, CALENDAR, saveSeason, loadSeason, roundTrack, roundName, setRoundTrack } from './game/season';
 import { officialTrack } from './game/official-tracks';
+import { PLATFORMER_TRACK_ID } from './game/platformer/course';
+import { TRACK_THEMES } from './game/types';
 import { loadAccount, saveAccount, purchaseItem, onlineRaceId, settleOnlineRace, settleRace, settleCustomRace } from './game/economy';
 import type { RacerAccount, RacePayout } from './game/economy';
 import { loadTracksSync } from './game/tracks';
@@ -617,7 +619,9 @@ export default function App() {
     setRaceId(`quick:${crypto.randomUUID()}`);
     setPayout(null);
     setRaceKey((k) => k + 1);
-    if (customTrackDef) {
+    if (customTrackId === PLATFORMER_TRACK_ID) {
+      setLoading({ eyebrow: 'QUICK RACE / PLATFORMER PREVIEW', title: 'PLATFORMER PREVIEW', cta: 'Lights out', banter: preRaceBanter(quickRoster, Math.random), next: 'quick' });
+    } else if (customTrackDef) {
       setLoading({ eyebrow: 'QUICK RACE / CUSTOM HEAT', title: customTrackDef.name.toUpperCase(), cta: 'Lights out', banter: preRaceBanter(quickRoster, Math.random), next: 'quick' });
     } else {
       const circuit = CALENDAR[circuitIndex];
@@ -887,10 +891,12 @@ export default function App() {
   ];
   // MB-08: quick race on a custom circuit — title/seed/profile follow the def when present.
   // Calendar circuits race the official archives: no quick-race layout is generated either.
-  const quickDef = customTrackDef ?? officialTrack(circuitIndex);
-  const quickProfile = customTrackDef ? CALENDAR[0].profile : CALENDAR[circuitIndex].profile;
-  const quickTitle = customTrackDef ? customTrackDef.name : CALENDAR[circuitIndex].name;
-  const quickSubtitle = customTrackDef ? `QUICK RACE / CUSTOM // ${customTrackDef.pieces.length} PCS` : "QUICK RACE / SINGLE HEAT";
+  // P2-00: the platformer preview is a generated course (no def), raced left to right in three depth lanes.
+  const platformerPick = customTrackId === PLATFORMER_TRACK_ID;
+  const quickDef = platformerPick ? null : customTrackDef ?? officialTrack(circuitIndex);
+  const quickProfile = platformerPick ? { ...CALENDAR[0].profile, generator: 'platformer' as const, theme: TRACK_THEMES.forest } : customTrackDef ? CALENDAR[0].profile : CALENDAR[circuitIndex].profile;
+  const quickTitle = platformerPick ? 'Platformer preview' : customTrackDef ? customTrackDef.name : CALENDAR[circuitIndex].name;
+  const quickSubtitle = platformerPick ? 'QUICK RACE / PLATFORMER PREVIEW' : customTrackDef ? `QUICK RACE / CUSTOM // ${customTrackDef.pieces.length} PCS` : "QUICK RACE / SINGLE HEAT";
   return withShop(
     <RaceScreen
       key={raceKey}
@@ -900,7 +906,7 @@ export default function App() {
       trackDef={quickDef}
       gridOrder={quickGrid}
       title={quickTitle}
-      isCustom={!!customTrackDef}
+      isCustom={!!customTrackDef || platformerPick}
       subtitle={quickSubtitle}
       onExit={() => setPhase('menu')}
       onFinished={(results) => awardWinnings(results)}

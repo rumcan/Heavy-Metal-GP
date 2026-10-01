@@ -13,6 +13,7 @@ import { houseInventory } from '../net/host';
 import type { RaceLink } from '../net/session';
 import type { RaceSettings, Seat } from '../net/protocol';
 import { render } from '../game/render';
+import { marbleDepth, platformScreenPoint, renderPlatformer } from '../game/platformer/render';
 import { W } from '../game/track';
 import type { Track } from '../game/track';
 import { HEAT_TIME_LIMIT, PHYSICS_STEP, formatTime } from '../game/physics';
@@ -306,6 +307,8 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
     if (!session) game.onInventoryChange = (items) => inventoryCallback.current(items);
     setMapTrack(game.track);
     gameRef.current = game;
+    // DEV probe: the live race, for debugging in the browser console. Stripped from production builds.
+    if (import.meta.env.DEV) (window as unknown as { __race?: unknown }).__race = game;
     // Frames from the room go to whichever screen is live. The room is
     // subscribed once (in App); this is the screen raising its hand.
     if (link) link.onMessage = (msg) => {
@@ -321,7 +324,8 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       setToast({ message, color });
       toastTimer = setTimeout(() => setToast(null), 2400);
     };
-    const camera = { x: W / 2, y: game.track.startY + 150, scale: 1 };
+    const camera = { x: W / 2, y: game.track.startY + 150, scale: 1, focus: 1 };
+    if (game.track.platformer) { camera.x = game.player.body.position.x + 200; camera.y = game.player.body.position.y - 40; camera.scale = 0.8; camera.focus = marbleDepth(game, game.player); }
     let width = 0;
     let height = 0;
     let raf = 0;
@@ -502,11 +506,23 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
         const halfWidth = availableWidth / 2 / scale;
         const halfHeight = height / 2 / scale;
         const targetX = (halfWidth >= W / 2 ? W / 2 : Math.max(halfWidth - 15, Math.min(W - halfWidth + 15, p.x))) - (sidebar - rightRail) / 2 / scale;
+        if (game.track.platformer) {
+          // P2-00: side-scrolling camera, framed for landscape: about 1000 world px across, looking ahead
+          // in the direction of travel. Its depth (focus) dollies with the followed marble's lane changes.
+          const platScale = Math.max(0.42, Math.min(1.25, Math.min(width / 1000, height / 520))) * zoomRef.current;
+          camera.scale += (platScale - camera.scale) * (1 - Math.exp(-dt / 180));
+          const ahead = Math.max(-160, Math.min(260, following.body.velocity.x * 26));
+          camera.x += (p.x + ahead - camera.x) * (1 - Math.exp(-dt / 220));
+          camera.y += (p.y - 40 - camera.y) * (1 - Math.exp(-dt / 200));
+          camera.focus = marbleDepth(game, following);
+          renderPlatformer(ctx, game, camera, width, height, pausedRef.current || doneRef.current ? game.time : now);
+        } else {
         camera.scale = scale;
         camera.x += (targetX - camera.x) * (1 - Math.exp(-dt / 150));
         camera.y += (p.y + 115 - camera.y) * (1 - Math.exp(-dt / 150));
         camera.y = halfHeight * 2 >= game.track.height ? game.track.height / 2 : Math.max(halfHeight - 15, Math.min(game.track.height - halfHeight + 15, camera.y));
         render(ctx, game, camera, width, height, pausedRef.current || doneRef.current ? game.time : now, { shake: !reduceMotion, minimap: false });
+        }
         // MP-CHAT: pin every bubble to the marble that said it, in the same
         // frame the marble was drawn in. World → screen is the camera's own
         // transform — the one `render` just used — so a bubble cannot drift
@@ -520,8 +536,10 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
           for (const node of Array.from(layer.children) as HTMLElement[]) {
             const marble = game.marbles.find((m) => m.info.id === Number(node.dataset.seat));
             if (!marble) { node.style.opacity = '0'; continue; }
-            const bx = (marble.body.position.x - camera.x) * camera.scale + width / 2;
-            const by = (marble.body.position.y - camera.y) * camera.scale + height / 2;
+            const sp = game.track.platformer ? platformScreenPoint(game, marble, camera, width, height) : null;
+            if (sp && !sp.visible) { node.style.opacity = '0'; continue; }
+            const bx = sp ? sp.x : (marble.body.position.x - camera.x) * camera.scale + width / 2;
+            const by = sp ? sp.y : (marble.body.position.y - camera.y) * camera.scale + height / 2;
             // 26 is the marble's own radius plus the bubble's tail: the line
             // sits above the ball, not on top of it.
             node.style.transform = `translate(${Math.round(bx)}px, ${Math.round(by - 26 * camera.scale)}px) translate(-50%, -100%)`;
@@ -553,7 +571,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
           sector: game.track.segments[section]?.name ?? 'Finish', sectorIndex: Math.max(0, section),
           // DEV probe (MP-10): where this screen's own marble is, right now.
           mx: p.x, my: p.y,
-          progress: Math.max(0, Math.min(1, (m.body.position.y - game.track.startY) / (game.track.finishY - game.track.startY))),
+          progress: game.track.platformer ? Math.max(0, Math.min(1, (m.progress ?? 0) / game.track.platformer.path.length)) : Math.max(0, Math.min(1, (m.body.position.y - game.track.startY) / (game.track.finishY - game.track.startY))),
           state: status, frozen: m.frozen, finishedCount: game.finishOrder.length,
           field: game.gateOpen ? ranking.map((r) => ({ id: r.marble.info.id, rank: r.rank, time: r.time, x: r.marble.body.position.x, y: r.marble.body.position.y })) : gridOrder.filter((id) => !game.benched.has(id)).map((id, i) => ({ id, rank: i + 1, time: null, x: game.marbles.find((m) => m.info.id === id)!.body.position.x, y: 116 })),
           following: following.info.isPlayer ? 'You' : following.info.name,
@@ -634,7 +652,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
     ? { 'data-mp-seat': String(online ? online.localSeat : 0), 'data-mp-x': hud.mx.toFixed(1), 'data-mp-y': hud.my.toFixed(1), 'data-mp-time': String(Math.round(hud.time)) }
     : {};
 
-  return <div className="race-shell" {...mpProbe}>
+  return <div className={`race-shell${mapTrack?.platformer ? ' is-platformer' : ''}`} {...mpProbe}>
     {online && <NetStats session={sessionRef.current} />}
     <header className="race-topbar"><Brand compact /><div className="race-event"><span>{subtitle}</span><h1>{title}</h1></div><div className="race-clock"><span>RACE TIME</span><strong>{formatTime(hud.time)}</strong></div><div className="race-top-actions">{import.meta.env.DEV && !results && !online && <div className="dev-skip-race" title="Dev only: finish this heat instantly with you in the chosen place"><span>SKIP</span>{([1, 3, 8, 'dnf'] as const).map((place) => <button key={place} className="text-button" onClick={() => devSkipRace(place)}>{place === 'dnf' ? 'DNF' : `P${place}`}</button>)}</div>}<button className="icon-button" onClick={toggleMute} aria-label={muted ? 'Unmute sound (M)' : 'Mute sound (M)'} aria-pressed={muted} title={muted ? 'Sound off (M)' : 'Sound on (M)'}>{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button><button className="icon-button" onClick={() => setPause(true)} aria-label="Pause race" disabled={!!results || !!online} title={online ? 'An online race cannot be paused' : 'Pause race'}><Pause size={18} /></button><button className="text-button" onClick={requestExit} disabled={!!results}>{online ? 'Leave race' : 'Exit'} <ArrowUpRightIcon /></button></div></header>
     <div className="race-stage">
@@ -646,6 +664,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
         return <li key={r.id} className={`${m.isPlayer ? 'timing-player' : ''} ${m.isHuman && !m.isPlayer ? 'timing-human' : ''}`}><span className="timing-rank">{r.rank}</span><i style={{ background: teamOf(r.id).color }} /><span className="timing-name">{m.isPlayer ? 'YOU' : m.name.toUpperCase()}</span><span className="timing-gap">{preStart ? teamOf(r.id).short : r.time !== null ? <Flag size={11} /> : leading.time !== null ? 'RACING' : r.rank === 1 ? 'LEADER' : `+${Math.max(0, (leading.y - r.y) / 100).toFixed(1)}m`}</span></li>;
       })}</ol><div className="timing-footer">{hud.finishedCount} / 10 FINISHED <span>{championship ? 'CHAMPIONSHIP' : 'QUICK RACE'}</span></div></aside>
       <div className="zoom-controls" role="group" aria-label="Zoom"><button className="icon-button" onClick={() => setZoom(zoom * 1.25)} disabled={zoom >= ZOOM_MAX} aria-label="Zoom in"><ZoomIn size={16} /></button><button className="zoom-level" onClick={() => setZoom(1)} aria-label="Reset zoom">{Math.round(zoom * 100)}%</button><button className="icon-button" onClick={() => setZoom(zoom / 1.25)} disabled={zoom <= ZOOM_MIN} aria-label="Zoom out"><ZoomOut size={16} /></button></div>
+      {mapTrack?.platformer && <div className="rotate-hint" aria-hidden="true">Turn your phone sideways to race</div>}
       <div className="race-sector"><span>SECTOR {String(hud.sectorIndex + 1).padStart(2, '0')}</span><b>{hud.sector.toUpperCase()}</b></div>
       {(preStart || showGo) && <div className={`start-sequence ${showGo ? 'lights-out' : ''}`}><div className="start-light-bank">{Array.from({ length: 5 }, (_, i) => <div key={i} className={`start-light-pair ${hud.lights > i ? 'lit' : ''}`}><i /><i /></div>)}</div><span>{showGo ? 'LIGHTS OUT. FULL SEND.' : hud.lights === 5 ? 'HOLD YOUR LINE.' : 'THE GRID IS SET.'}</span></div>}
       {toast && <div key={toast.message} className="race-toast" role="status" style={{ '--toast-color': toast.color } as CSSProperties}><span />{toast.message}</div>}
