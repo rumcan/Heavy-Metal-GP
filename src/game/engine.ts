@@ -87,7 +87,13 @@ export const TICK = 1000 / 60;
  */
 export const MACHINE_HOLD_MS = 5000;
 
+/** P2-01: one human seat's hands, as the host sees them. */
+export interface HumanInput { nudge: number; engine?: boolean; jump?: boolean }
+
 export interface Marble {
+  /** P2-01: Magic Engine heat and core-jump timing (humans only). */
+  engine?: EngineState;
+  jumpState?: JumpState;
   info: MarbleInfo;
   body: Matter.Body;
   baseDensity: number;
@@ -212,6 +218,7 @@ import * as recovery from './engine/recovery';
 import * as items from './engine/items';
 import * as story_hooks from './engine/story-hooks';
 import * as input from './engine/input';
+import type { EngineState, JumpState } from './controls';
 import * as ai from './engine/ai';
 
 export class Game {
@@ -236,9 +243,13 @@ export class Game {
    * An entry means "a person is in this seat", so the AI keeps its hands off
    * even before the guest's first intent arrives.
    */
-  humanInput = new Map<number, { nudge: number }>();
+  humanInput = new Map<number, HumanInput>();
   finishOrder: Marble[] = [];
   nudge = 0;
+  /** P2-01: the local driver holds the Magic Engine key. */
+  engineHeld = false;
+  /** P2-01: the local driver pressed jump since the last step (consumed by the step). */
+  jumpPressed = false;
   rng: () => number;
   shake = 0;
   raceStartTime = 0;

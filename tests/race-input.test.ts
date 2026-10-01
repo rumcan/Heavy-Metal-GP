@@ -11,13 +11,13 @@ const source = readFileSync(new URL('../src/components/RaceScreen.tsx', import.m
 
 test('Playtest input: the online loop sends the local controls to the session every frame', () => {
   const advance = source.slice(source.indexOf('const advanceSession'), source.indexOf('const heartbeat'));
-  assert.match(advance, /session\.setNudge\(nudgeOf\(controls\.current\)\)/, 'setNudge is called with the held controls');
+  assert.match(advance, /session\.setNudge\(nudgeOf\(controls\.current\), controls\.current\.engine\)/, 'setNudge is called with the held controls and the engine');
   assert.match(source, /if \(sessionRef\.current\) \{\s*advanceSession\(now\)/, 'the frame loop advances the session through it');
 });
 
-test('Playtest input: arrow keys and A/D both steer', () => {
-  assert.match(source, /event\.code === 'ArrowLeft' \|\| event\.code === 'KeyA'/);
-  assert.match(source, /event\.code === 'ArrowRight' \|\| event\.code === 'KeyD'/);
+test('P2-01 input: every race key goes through the key map (arrows steer, A/D are skills now)', () => {
+  assert.match(source, /const action = actionForKey\(event\.code\)/);
+  assert.doesNotMatch(source, /event\.code === 'KeyA'/, 'A no longer steers');
 });
 
 test('Playtest input: a host whose window is hidden keeps simulating on a timer', () => {

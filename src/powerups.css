@@ -261,3 +261,17 @@
   .inventory-toolbar { padding-top: 5px; }
   .race-minimap .minimap-svg { max-height: 125px; }
 }
+/* P2-01: Magic Engine heat meter (under the speed readout) and the jump/engine thumb buttons. */
+.engine-heat { position: relative; margin-top: 6px; width: 96px; height: 14px; background: #1b2633; border: 1px solid #314252; overflow: hidden; }
+.engine-heat > span { position: absolute; inset: 0; z-index: 1; font: 700 8px/14px var(--mono, monospace); letter-spacing: .6px; color: #e6edf3; text-align: center; }
+.engine-heat > i { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #f59e0b, #ef4444); transition: width .1s; }
+.engine-heat.overheated { border-color: #ef4444; animation: heat-blink .4s steps(2) infinite; }
+@keyframes heat-blink { 50% { opacity: .55; } }
+.thumb-controls { display: flex; gap: 6px; }
+.thumb-controls .nudge-button { min-width: 64px; font-weight: 800; letter-spacing: .5px; }
+.engine-button:active { background: #7c2d12; }
+@media (max-width: 760px) {
+  .race-controls { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .engine-heat { width: 70px; }
+}
+@media (prefers-reduced-motion: reduce) { .engine-heat.overheated { animation: none; } }

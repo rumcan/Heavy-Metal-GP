@@ -178,6 +178,7 @@ export class RaceSession {
   readonly seats: readonly Seat[];
   private lastNudgeSent = 0;
   private lastNudgeAt = 0;
+  private lastEngineSent = false;
 
   constructor(opts: SessionOptions) {
     this.send = opts.send;
@@ -298,11 +299,12 @@ export class RaceSession {
   }
 
   /** The local driver's hands. -1 (left) … 0 … +1 (right). */
-  setNudge(v: number): void {
+  setNudge(v: number, engine = false): void {
     if (this.host) {
       // The host's own hands are just another seat: no round trip, no intent,
       // no rate limit — `game.nudge` is the input the offline game uses.
       this.host.game.nudge = v;
+      this.host.game.engineHeld = engine;
       return;
     }
     // A guest leans its own marble the instant the key goes down (a render-only
@@ -311,11 +313,18 @@ export class RaceSession {
     // go would leave the marble leaning for the rest of the race.
     this.guest?.setLocalNudge(v);
     const now = this.clock();
-    const changed = v !== this.lastNudgeSent;
-    if (!changed && (v === 0 || now - this.lastNudgeAt < NUDGE_SEND_INTERVAL_MS)) return;
+    const changed = v !== this.lastNudgeSent || engine !== this.lastEngineSent;
+    if (!changed && ((v === 0 && !engine) || now - this.lastNudgeAt < NUDGE_SEND_INTERVAL_MS)) return;
     this.lastNudgeAt = now;
     this.lastNudgeSent = v;
-    this.send({ type: 'intent', kind: 'nudge', v });
+    this.lastEngineSent = engine;
+    this.send({ type: 'intent', kind: 'nudge', v, ...(engine ? { engine: true } : {}) });
+  }
+
+  /** P2-01: one press of the core jump. */
+  jump(): void {
+    if (this.host) { this.host.game.jumpPressed = true; return; }
+    this.send({ type: 'intent', kind: 'jump' });
   }
 
   /** Deploy one carried item. The host decides whether it is allowed. */
