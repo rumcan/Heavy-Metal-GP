@@ -567,7 +567,7 @@ export class Blackhole {
 /** Is something already serving the app at `url`? */
 export async function healthy(url: string): Promise<boolean> {
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(1_500) });
+    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
     return res.ok;
   } catch {
     return false;
@@ -585,6 +585,8 @@ export async function devServer(): Promise<() => void> {
   const child = spawn('npx', ['vite', '--port', '5173', '--strictPort'], {
     env: { ...process.env, RUNDOT_DEV_ROOMS_CONFIG: 'rundot/realtime.e2e.config.json' },
     stdio: ['ignore', 'pipe', 'pipe'],
+    // `npx` is `npx.cmd` on Windows: it only spawns through a shell.
+    shell: process.platform === 'win32',
   });
   child.stdout?.on('data', (chunk) => process.stdout.write(`[vite] ${chunk}`));
   child.stderr?.on('data', (chunk) => process.stderr.write(`[vite] ${chunk}`));
