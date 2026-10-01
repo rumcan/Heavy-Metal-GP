@@ -71,9 +71,11 @@ test('engine: about 3 s of holding overheats it, then it is locked for overheatL
   assert.equal(firing, false, 'it overheated');
   assert.ok(now >= 2900 && now <= 3100, `overheated after ${now} ms`);
   assert.ok(e.lockedUntil >= now - 10 + T.overheatLockMs - 10, 'locked out');
-  const during = engineStep(e, true, now + T.overheatLockMs / 2, 10);
-  assert.equal(during.firing, false, 'still locked while held');
-  const after = engineStep(during.state, true, e.lockedUntil + 1, 10);
+  // Keep holding through the lockout: it never fires, and it cools down meanwhile.
+  const lockedUntil = e.lockedUntil;
+  while (now < lockedUntil) { const r = engineStep(e, true, now, 10); assert.equal(r.firing, false, 'locked while held'); e = r.state; now += 10; }
+  assert.ok(e.heat < 1, 'it cooled during the lockout');
+  const after = engineStep(e, true, now, 10);
   assert.equal(after.firing, true, 'fires again after the lockout');
 });
 
