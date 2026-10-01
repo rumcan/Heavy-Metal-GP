@@ -59,7 +59,7 @@ export type { RaceEntry, RankWire };
  * lobby/ready/start, 20 Hz packed `state`, `events`, chunked `snapshot`,
  * `intent`, `resync`, `results`, presence and the hard refusal on mismatch.
  */
-export const PROTOCOL_VERSION = 5; // 5: P2-01 engine flag + jump intent; // 3: the rated wire (rating board, result claim, the room's result);
+export const PROTOCOL_VERSION = 6; // 6: P2-00 depth lane byte per marble; 5: P2-01 engine flag + jump intent; // 3: the rated wire (rating board, result claim, the room's result);
 // 4: MB-10 launchers (cannon/catapult/scoop holds, flipper firedAt, sling flash) and the movers' dynamic state
 
 /**
@@ -91,8 +91,8 @@ export const MARBLE_COUNT = 10;
 /** Floats per marble on the wire: x, y, vx, vy, angle. */
 export const FLOATS_PER_MARBLE = 5;
 
-/** Bytes per marble: five float32 plus one flag byte. */
-export const BYTES_PER_MARBLE = FLOATS_PER_MARBLE * 4 + 1;
+/** Bytes per marble: five float32, one flag byte and one lane byte (P2-00: depth lane in bits 0-1). */
+export const BYTES_PER_MARBLE = FLOATS_PER_MARBLE * 4 + 2;
 
 /** Characters of one packed frame's base64 (ten marbles → 280, no padding). */
 export function packedStateLength(count: number = MARBLE_COUNT): number {
@@ -436,6 +436,8 @@ export interface MarbleState {
   anvil: boolean;
   /** 0..7 loop/staging counter — three spare bits in the flag byte. */
   loop: number;
+  /** P2-00: depth lane on a platformer course (0 back, 1 middle, 2 front). Absent = middle. */
+  lane?: number;
 }
 
 /**
@@ -1143,6 +1145,7 @@ export function packState(marbles: readonly MarbleState[]): string {
     view.setFloat32(at + 12, finite(m.vy), true);
     view.setFloat32(at + 16, finite(m.a), true);
     view.setUint8(at + 20, packFlags(m));
+    view.setUint8(at + 21, Number.isInteger(m.lane) && m.lane! >= 0 && m.lane! <= 2 ? m.lane! : 1);
   });
   return encodeBase64(bytes);
 }
@@ -1167,6 +1170,7 @@ export function unpackState(data: string, count: number = MARBLE_COUNT): MarbleS
       vy: view.getFloat32(at + 12, true),
       a: view.getFloat32(at + 16, true),
       ...unpackFlags(view.getUint8(at + 20)),
+      lane: Math.min(2, view.getUint8(at + 21) & 0b11),
     });
   }
   return out;
@@ -1768,6 +1772,7 @@ export function isRaceSnapshot(value: unknown): value is RaceSnapshot {
       if (typeof marble[key] !== 'boolean') return false;
     }
     if (!isInt(marble.loop, 0, MAX_LOOP_STAGE)) return false;
+    if (marble.lane !== undefined && !isInt(marble.lane, 0, 2)) return false;
   }
   if (!Array.isArray(s.destroyed)) return false;
   for (const i of s.destroyed) if (!isInt(i, 0, MAX_BODY_INDEX)) return false;

@@ -124,3 +124,11 @@ test('official courses: every gate stands on floor in both lanes, and the whole 
     assert.ok(game.allFinished(), `${course.name}: ${game.finishOrder.length}/10 finished after ${Math.round(t / 1000)} s`);
   }
 });
+
+test('the wire carries each marble\'s lane (host state frames)', () => {
+  const game = new Game(3, roster(), { track: buildPlatformerTrack(3, TRACK_THEMES.forest) });
+  game.start();
+  game.openGate();
+  for (let i = 0; i < 600; i++) game.step(PHYSICS_STEP);
+  assert.deepEqual(game.marbleStates().map((s) => s.lane), game.marbles.map((m) => m.lane));
+});
