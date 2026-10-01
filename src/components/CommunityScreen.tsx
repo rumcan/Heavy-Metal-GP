@@ -1,9 +1,15 @@
 /**
- * Community tracks: two columns, the most upvoted and the newest, 20 at a time with Load more. Each card shows a
- * scrollable map of the whole track, who built it, its tags, an upvote button with the count, and Add to My tracks.
+ * Community tracks: the most upvoted and the newest, 20 at a time with Load more. Each card shows a scrollable map of
+ * the whole track, who built it, its tags, an upvote button with the count, and a button to use the track.
+ *
+ * One list, two faces (P2-04):
+ *   - `CommunityScreen` (default export) is the full page with its two columns. The Workshop's own Community button
+ *     still opens it.
+ *   - `CommunityPicker` is the same list as a panel inside the Quick race track picker: one column with a sort toggle,
+ *     and each card's button PICKS the track for the race (it is saved to My tracks first, so the race can find it).
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowBigUp, Check, ChevronDown, Hammer, Plus, Trophy, Sparkles, Users } from 'lucide-react';
+import { ArrowBigUp, Check, ChevronDown, Flag, Hammer, Plus, Trophy, Sparkles, Users } from 'lucide-react';
 import Brand from './Brand';
 import WalletButton from './WalletButton';
 import TrackMap from './TrackMap';
@@ -12,6 +18,7 @@ import type { CommunitySort, CommunityTrack } from '../game/community';
 import { createTrack, loadTracksSync } from '../game/tracks';
 import type { TrackDef } from '../game/trackdef';
 import type { RacerAccount } from '../game/economy';
+import { savedCopyOf } from './home/trackIdentity';
 
 interface Props {
   account: RacerAccount;
@@ -23,12 +30,11 @@ interface Props {
 interface Column { tracks: CommunityTrack[]; cursor?: string; loading: boolean; error: string | null; loaded: boolean }
 const EMPTY: Column = { tracks: [], loading: false, error: null, loaded: false };
 
-export default function CommunityScreen({ account, onShop, onGarage, onWorkshop }: Props) {
+/** Both feeds, their paging, and an upvote that is patched into both. */
+function useCommunityFeed() {
   const [top, setTop] = useState<Column>(EMPTY);
   const [fresh, setFresh] = useState<Column>(EMPTY);
   const [local, setLocal] = useState(false);
-  const [tag, setTag] = useState<string | null>(null);
-  const [pane, setPane] = useState<CommunitySort>('top');
 
   // Next-page cursors, kept outside state so `load` reads the current one synchronously.
   const cursors = useRef<Record<CommunitySort, string | undefined>>({ top: undefined, new: undefined });
@@ -45,18 +51,29 @@ export default function CommunityScreen({ account, onShop, onGarage, onWorkshop 
     }
   }, []);
 
-  useEffect(() => {
-    void isLocalCommunity().then(setLocal);
-    void load('top', false);
-    void load('new', false);
-  }, [load]);
+  useEffect(() => { void isLocalCommunity().then(setLocal); }, []);
 
   // An upvote changes the same track in both columns.
-  const patch = (id: string, changes: Partial<CommunityTrack>) => {
+  const patch = useCallback((id: string, changes: Partial<CommunityTrack>) => {
     const apply = (c: Column) => ({ ...c, tracks: c.tracks.map((t) => (t.id === id ? { ...t, ...changes } : t)) });
     setTop(apply);
     setFresh(apply);
-  };
+  }, []);
+
+  return { top, fresh, local, load, patch };
+}
+
+const LOCAL_NOTE = "Local test mode: you're not on RUN.world, so published tracks and upvotes are only saved on this device.";
+
+export default function CommunityScreen({ account, onShop, onGarage, onWorkshop }: Props) {
+  const { top, fresh, local, load, patch } = useCommunityFeed();
+  const [tag, setTag] = useState<string | null>(null);
+  const [pane, setPane] = useState<CommunitySort>('top');
+
+  useEffect(() => {
+    void load('top', false);
+    void load('new', false);
+  }, [load]);
 
   const columns: [CommunitySort, string, typeof Trophy, Column][] = [
     ['top', 'Most upvoted', Trophy, top],
@@ -79,14 +96,11 @@ export default function CommunityScreen({ account, onShop, onGarage, onWorkshop 
         <div>
           <span className="eyebrow"><Users size={14} /> COMMUNITY TRACKS</span>
           <p>Tracks built by other goblins. Scroll a map to see what's on it, upvote the good ones, and add any to My tracks to race or edit it.</p>
-          {local && <p className="community-local">Local test mode: you're not on RUN.world, so published tracks and upvotes are only saved on this device.</p>}
+          {local && <p className="community-local">{LOCAL_NOTE}</p>}
         </div>
         <button className="button-secondary" onClick={onWorkshop}><Hammer size={15} />Build and publish your own</button>
       </div>
-      <div className="community-tags" role="group" aria-label="Filter by tag">
-        <button className={tag === null ? 'selected' : ''} aria-pressed={tag === null} onClick={() => setTag(null)}>All</button>
-        {COMMUNITY_TAGS.map((t) => <button key={t} className={tag === t ? 'selected' : ''} aria-pressed={tag === t} onClick={() => setTag(tag === t ? null : t)}>{t}</button>)}
-      </div>
+      <TagFilter tag={tag} onTag={setTag} />
       <div className="community-columns">
         {columns.map(([sort, label, Icon, col]) => {
           const shown = tag ? col.tracks.filter((t) => t.tags.includes(tag)) : col.tracks;
@@ -94,10 +108,7 @@ export default function CommunityScreen({ account, onShop, onGarage, onWorkshop 
             <div className="section-topline"><h2><Icon size={18} /> {label}</h2><span className="eyebrow">{shown.length} shown</span></div>
             <div className="community-list">
               {shown.map((t, i) => <CommunityCard key={t.id} track={t} rank={sort === 'top' && !tag ? i + 1 : null} onPatch={patch} />)}
-              {col.loaded && !col.loading && shown.length === 0 && !col.error && <p className="muted community-empty">{tag ? `No ${tag} tracks here yet.` : 'No community tracks yet. Be the first: build one in the Workshop and press Publish.'}</p>}
-              {col.error && <p className="community-error">{col.error}</p>}
-              {col.loading && <p className="muted community-empty">Loading tracks…</p>}
-              {col.cursor && !col.loading && <button className="button-secondary community-more" onClick={() => void load(sort, true)}><ChevronDown size={15} />Load more</button>}
+              <FeedStatus col={col} shown={shown.length} tag={tag} onMore={() => void load(sort, true)} />
             </div>
           </section>;
         })}
@@ -110,11 +121,74 @@ export default function CommunityScreen({ account, onShop, onGarage, onWorkshop 
   </div>;
 }
 
-function CommunityCard({ track, rank, onPatch }: { track: CommunityTrack; rank: number | null; onPatch: (id: string, changes: Partial<CommunityTrack>) => void }) {
+interface PickerProps {
+  /** The saved track the quick race is set to run (a My tracks id), if any: its card shows as selected. */
+  selectedId: string | null;
+  /** The player picked a track. It has been saved to My tracks; `id` is its My tracks id. */
+  onPick: (id: string) => void;
+  /** Open the Workshop to build and publish a track of your own. */
+  onWorkshop?: () => void;
+}
+
+/**
+ * The community list as a picker panel (Quick race → Community). One column with a sort toggle and the tag filter;
+ * only the feed that is on screen is fetched.
+ */
+export function CommunityPicker({ selectedId, onPick, onWorkshop }: PickerProps) {
+  const { top, fresh, local, load, patch } = useCommunityFeed();
+  const [sort, setSort] = useState<CommunitySort>('top');
+  const [tag, setTag] = useState<string | null>(null);
+  const col = sort === 'top' ? top : fresh;
+
+  useEffect(() => {
+    if (!col.loaded && !col.loading) void load(sort, false);
+  }, [sort, col.loaded, col.loading, load]);
+
+  const shown = tag ? col.tracks.filter((t) => t.tags.includes(tag)) : col.tracks;
+  return <section className="community-picker" aria-label="Community tracks">
+    <p className="community-picker-intro">Tracks built by other goblins. Pick one to race it — it is saved to My tracks too. Races on your own or community tracks pay 30 % of the usual winnings.</p>
+    {local && <p className="community-local">{LOCAL_NOTE}</p>}
+    <div className="community-picker-bar">
+      <div className="circuit-tabs" role="group" aria-label="Sort community tracks">
+        <button className={sort === 'top' ? 'selected' : ''} aria-pressed={sort === 'top'} onClick={() => setSort('top')}><Trophy size={12} /> Most upvoted</button>
+        <button className={sort === 'new' ? 'selected' : ''} aria-pressed={sort === 'new'} onClick={() => setSort('new')}><Sparkles size={12} /> Just added</button>
+      </div>
+      {onWorkshop && <button className="text-button" onClick={onWorkshop}><Hammer size={14} />Build your own</button>}
+    </div>
+    <TagFilter tag={tag} onTag={setTag} />
+    <div className="community-list">
+      {shown.map((t, i) => <CommunityCard key={t.id} track={t} rank={sort === 'top' && !tag ? i + 1 : null} onPatch={patch} pick={{ selectedId, onPick }} />)}
+      <FeedStatus col={col} shown={shown.length} tag={tag} onMore={() => void load(sort, true)} />
+    </div>
+  </section>;
+}
+
+function TagFilter({ tag, onTag }: { tag: string | null; onTag: (tag: string | null) => void }) {
+  return <div className="community-tags" role="group" aria-label="Filter by tag">
+    <button className={tag === null ? 'selected' : ''} aria-pressed={tag === null} onClick={() => onTag(null)}>All</button>
+    {COMMUNITY_TAGS.map((t) => <button key={t} className={tag === t ? 'selected' : ''} aria-pressed={tag === t} onClick={() => onTag(tag === t ? null : t)}>{t}</button>)}
+  </div>;
+}
+
+/** What a feed says when it is empty, failed, loading, or has another page. */
+function FeedStatus({ col, shown, tag, onMore }: { col: Column; shown: number; tag: string | null; onMore: () => void }) {
+  return <>
+    {col.loaded && !col.loading && shown === 0 && !col.error && <p className="muted community-empty">{tag ? `No ${tag} tracks here yet.` : 'No community tracks yet. Be the first: build one in the Workshop and press Publish.'}</p>}
+    {col.error && <p className="community-error">{col.error}</p>}
+    {col.loading && <p className="muted community-empty">Loading tracks…</p>}
+    {col.cursor && !col.loading && <button className="button-secondary community-more" onClick={onMore}><ChevronDown size={15} />Load more</button>}
+  </>;
+}
+
+interface Pick { selectedId: string | null; onPick: (id: string) => void }
+
+function CommunityCard({ track, rank, onPatch, pick }: { track: CommunityTrack; rank: number | null; onPatch: (id: string, changes: Partial<CommunityTrack>) => void; pick?: Pick }) {
   const [def, setDef] = useState<TrackDef | null>(null);
   const [broken, setBroken] = useState(false);
   const [busy, setBusy] = useState(false);
   const [added, setAdded] = useState(() => loadTracksSync().some((t) => t.def.name === track.name));
+  /** Picker only: the My tracks id of this track's saved copy. */
+  const [savedId, setSavedId] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -124,6 +198,10 @@ function CommunityCard({ track, rank, onPatch }: { track: CommunityTrack; rank: 
     // Only the code matters: an upvote replaces the track object but must not re-decode and redraw the map.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [track.code]);
+
+  useEffect(() => {
+    if (pick && def) setSavedId(savedCopyOf(def, track.name)?.id ?? null);
+  }, [pick, def, track.name]);
 
   const vote = async () => {
     if (busy) return;
@@ -150,7 +228,23 @@ function CommunityCard({ track, rank, onPatch }: { track: CommunityTrack; rank: 
     void recordTrackUse(track);
   };
 
-  return <article className="community-card">
+  /** Picker: make sure the track is in My tracks (the race finds it there), then hand its id over. */
+  const choose = () => {
+    if (!def || !pick) return;
+    let id = savedId ?? savedCopyOf(def, track.name)?.id ?? null;
+    if (!id) {
+      const res = createTrack({ ...def, name: track.name });
+      if ('error' in res) { setMsg(res.error); return; }
+      id = res.id;
+      void recordTrackUse(track);
+    }
+    setSavedId(id);
+    setMsg(null);
+    pick.onPick(id);
+  };
+  const selected = !!pick && savedId !== null && pick.selectedId === savedId;
+
+  return <article className={`community-card ${selected ? 'is-selected' : ''}`}>
     <div className="community-map" tabIndex={0} aria-label={`Map of ${track.name}, scroll to see the whole track`}>
       {def ? <TrackMap def={def} width={112} /> : <div className="community-map-placeholder">{broken ? 'Map unavailable' : 'Loading…'}</div>}
     </div>
@@ -166,7 +260,11 @@ function CommunityCard({ track, rank, onPatch }: { track: CommunityTrack; rank: 
         <button className={`community-vote ${track.upvotedByMe ? 'voted' : ''}`} onClick={() => void vote()} aria-pressed={track.upvotedByMe} aria-label={`${track.upvotedByMe ? 'Remove upvote from' : 'Upvote'} ${track.name}, ${track.upvotes} upvotes`}>
           <ArrowBigUp size={20} /><span>{track.upvotes}</span>
         </button>
-        <button className="button-secondary community-add" onClick={add} disabled={!def || added}>{added ? <><Check size={14} />In My tracks</> : <><Plus size={14} />Add to My tracks</>}</button>
+        {pick
+          ? <button className={`button-secondary community-add community-pick ${selected ? 'selected' : ''}`} onClick={choose} disabled={!def} aria-pressed={selected} aria-label={`${selected ? 'Selected' : 'Race this track'}, ${track.name}`}>
+            {selected ? <><Check size={14} />Selected</> : <><Flag size={14} />Race this track</>}
+          </button>
+          : <button className="button-secondary community-add" onClick={add} disabled={!def || added}>{added ? <><Check size={14} />In My tracks</> : <><Plus size={14} />Add to My tracks</>}</button>}
       </div>
       {msg && <p className="community-msg" role="status">{msg}</p>}
     </div>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { ArrowRight, RotateCcw, Sparkles, Trophy } from 'lucide-react';
 import Brand from '../Brand';
 import ConfirmDialog from '../ConfirmDialog';
@@ -61,13 +62,29 @@ export interface StoryHubProps {
   onRestart: () => void;
   onShop: () => void;
   onExit: () => void;
+  /**
+   * The home screen's Story tab (P2-04): just the two panes — no page shell, header, footer or pane switcher.
+   * `children` (the garage) are drawn between the chapters and the dossier. The home owns the one big button;
+   * `storyPrimary()` says what it reads and opens.
+   */
+  embedded?: boolean;
+  children?: ReactNode;
+}
+
+/** What the hub's one big button reads and opens: a chapter, whether that is a replay, and the label. */
+export function storyPrimary(state: StoryState): { chapter: ChapterNumber; replay: boolean; label: string } {
+  const finished = state.season.complete;
+  const current = Math.min(6, Math.max(1, state.chapter)) as ChapterNumber;
+  const chapter = (finished ? 1 : CHAPTERS.find((def) => chapterUnlocked(state, def.chapter) && !isCleared(state, def.chapter))?.chapter ?? current) as ChapterNumber;
+  const label = finished ? 'Replay a chapter' : chaptersCleared(state) ? `Continue · ${chapterTitle(chapter)}` : 'Start the story';
+  return { chapter, replay: isCleared(state, chapter), label };
 }
 
 /**
  * The story hub (ST-08): chapter select over the six chapters, the story so far, and the cast. Cleared
  * chapters can be replayed; a replay never writes to the save.
  */
-export default function StoryHub({ state, account, notice, onPlay, onRestart, onShop, onExit }: StoryHubProps) {
+export default function StoryHub({ state, account, notice, onPlay, onRestart, onShop, onExit, embedded = false, children }: StoryHubProps) {
   const [pane, setPane] = useState<'chapters' | 'dossier'>('chapters');
   // In-game confirmation: RUN.world's frame blocks window.confirm(), which answered "no" there.
   const [confirmRestart, setConfirmRestart] = useState(false);
@@ -77,11 +94,10 @@ export default function StoryHub({ state, account, notice, onPlay, onRestart, on
   const unlocks = earnedUnlocks(state);
   const finished = state.season.complete;
   const ending = state.ending;
-  const current = Math.min(6, Math.max(1, state.chapter)) as ChapterNumber;
-  const nextChapter = (finished ? 1 : CHAPTERS.find((def) => chapterUnlocked(state, def.chapter) && !isCleared(state, def.chapter))?.chapter ?? current) as ChapterNumber;
+  const { chapter: nextChapter, replay: nextIsReplay, label: primaryLabel } = storyPrimary(state);
 
-  return <div className="app-shell story-page fit-shell" data-pane={pane}>
-    <header className="app-header">
+  return <div className={embedded ? 'story-embedded' : 'app-shell story-page fit-shell'} data-pane={pane}>
+    {!embedded && <header className="app-header">
       <Brand onClick={onExit} />
       <nav className="main-nav" aria-label="Main navigation">
         <button onClick={onExit}>Garage</button>
@@ -90,9 +106,9 @@ export default function StoryHub({ state, account, notice, onPlay, onRestart, on
       <div className="header-tools">
         <WalletButton credits={account.credits} onClick={onShop} />
       </div>
-    </header>
+    </header>}
 
-    <main className="fit-main story-fit">
+    <main className={embedded ? 'story-embedded-main' : 'fit-main story-fit'}>
       <div className="fit-pane story-chapters-pane" data-pane-id="chapters">
         <div className="section-topline">
           <span className="eyebrow"><Sparkles size={14} /> DOWN WE GO · {cleared} OF 6 CHAPTERS</span>
@@ -148,6 +164,8 @@ export default function StoryHub({ state, account, notice, onPlay, onRestart, on
         </div>
       </div>
 
+      {embedded && children}
+
       <div className="fit-pane story-dossier-pane" data-pane-id="dossier">
         <section className="story-dossier">
           <div className="section-topline"><h2>YOUR STORY SO FAR</h2><span className="eyebrow">{flags.length} TURNS</span></div>
@@ -196,23 +214,23 @@ export default function StoryHub({ state, account, notice, onPlay, onRestart, on
       </div>
     </main>
 
-    <footer className="fit-actions">
+    {!embedded && <footer className="fit-actions">
       <div className="mode-switch">
         <button onClick={onExit}>Garage</button>
         <button onClick={() => setConfirmRestart(true)}>
           <RotateCcw size={14} />Restart story
         </button>
       </div>
-      <button className="button-primary launch-button" onClick={() => onPlay(nextChapter, isCleared(state, nextChapter))}>
-        {finished ? 'Replay a chapter' : cleared ? `Continue · ${chapterTitle(nextChapter)}` : 'Start the story'}<ArrowRight size={18} />
+      <button className="button-primary launch-button" onClick={() => onPlay(nextChapter, nextIsReplay)}>
+        {primaryLabel}<ArrowRight size={18} />
       </button>
-    </footer>
-    {confirmRestart && <ConfirmDialog title="Start the story again?" message="Chapters, flags and unlocks are wiped. Your championship save is untouched." confirmLabel="Restart story" onConfirm={() => { setConfirmRestart(false); onRestart(); }} onCancel={() => setConfirmRestart(false)} />}
+    </footer>}
+    {!embedded && confirmRestart && <ConfirmDialog title="Start the story again?" message="Chapters, flags and unlocks are wiped. Your championship save is untouched." confirmLabel="Restart story" onConfirm={() => { setConfirmRestart(false); onRestart(); }} onCancel={() => setConfirmRestart(false)} />}
 
-    <nav className="pane-tabs" aria-label="Story panes">
+    {!embedded && <nav className="pane-tabs" aria-label="Story panes">
       <button className={pane === 'chapters' ? 'selected' : ''} onClick={() => setPane('chapters')}>Chapters</button>
       <button className={pane === 'dossier' ? 'selected' : ''} onClick={() => setPane('dossier')}>Dossier</button>
-    </nav>
+    </nav>}
   </div>;
 }
 
