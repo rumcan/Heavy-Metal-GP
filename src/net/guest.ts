@@ -23,6 +23,7 @@ import type { Marble } from '../game/engine';
 import type { Track } from '../game/track';
 import { meta } from '../game/track';
 import { elementBodies } from '../game/elements';
+import { updateProgress } from '../game/engine/platformer';
 import type { MarbleInfo } from '../game/types';
 import type { SoundEvent } from '../game/cues';
 import {
@@ -488,6 +489,12 @@ export class RaceGuest {
       // the flag byte, not on the wire, so the guest keeps them alive locally.
       m.ghostUntil = mb.ghost ? this.game.time + 1000 : 0;
       m.anvilUntil = mb.anvil ? this.game.time + 1000 : 0;
+      // P2-00: a lane change on the host starts the same depth dolly here; progress drives the ranking.
+      if (this.game.track.platformer) {
+        const lane = mb.lane ?? 1;
+        if (lane !== (m.lane ?? 1)) { m.laneFrom = m.lane ?? 1; m.lane = lane; m.laneAt = b.t; }
+        updateProgress(this.game, m);
+      }
       if (m.info.id === this.localSeat || m.info.isPlayer) {
         m.trail.push({ x: m.body.position.x, y: m.body.position.y });
         if (m.trail.length > 14) m.trail.shift();
@@ -533,6 +540,7 @@ export class RaceGuest {
       m.inOil = state.oil;
       m.ghostUntil = state.ghost ? snap.t + 1000 : 0;
       m.anvilUntil = state.anvil ? snap.t + 1000 : 0;
+      if (this.game.track.platformer) { m.lane = m.laneFrom = state.lane ?? 1; m.laneAt = undefined; m.progress = undefined; }
       m.finishedAt = snap.times[i] ?? null;
       m.pegs = snap.pegs[i] ?? 0;
       if (snap.inventories[i]) m.inventory = { ...snap.inventories[i] };

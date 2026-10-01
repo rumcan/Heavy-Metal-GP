@@ -517,6 +517,7 @@ export class Game {
       ghost: this.time < m.ghostUntil,
       anvil: this.time < m.anvilUntil,
       loop: this.stage,
+      lane: m.lane ?? 1,
     }));
   }
 

@@ -239,18 +239,18 @@ const check = (msg: unknown, opts?: ValidateOptions) => validateMessage(msg, opt
 test('MP-02 size: ten marbles pack into one frame far under the 4 KiB budget', () => {
   // The ticket's acceptance: `state` for ten marbles stays under 4 KiB.
   const bytes = frameBytes(STATE);
-  assert.equal(packedStateLength(), 280);
+  assert.equal(packedStateLength(), 296);
   assert.ok(bytes < STATE_BUDGET_BYTES, `state frame is ${bytes} bytes (budget ${STATE_BUDGET_BYTES})`);
   // And the real number, so a future field cannot quietly eat the headroom:
-  // 21 bytes a marble, base64'd, plus the envelope — ~330 bytes of 4096.
-  assert.ok(bytes < 512, `state frame is ${bytes} bytes, expected ~330`);
+  // 22 bytes a marble, base64'd, plus the envelope — ~350 bytes of 4096.
+  assert.ok(bytes < 512, `state frame is ${bytes} bytes, expected ~350`);
   // Twenty of these a second, and the 16 KiB frame is still mostly empty.
   assert.ok(bytes < FRAME_CAP_BYTES / 20, `20 Hz × ${bytes} bytes leaves no headroom in a ${FRAME_CAP_BYTES} byte frame`);
 });
 
 test('MP-02 size: the caps are the ones the gateway enforces', () => {
   assert.equal(FRAME_CAP_BYTES, 16 * 1024);
-  assert.equal(BYTES_PER_MARBLE, 21, 'five float32 plus one flag byte');
+  assert.equal(BYTES_PER_MARBLE, 22, 'five float32, one flag byte and one lane byte');
   assert.ok(SNAPSHOT_CHUNK_CHARS * 2 <= FRAME_CAP_BYTES, 'two chunks plus their envelopes fit the cap');
   assert.equal(STATE_BUDGET_BYTES, 4096);
   for (const msg of VALID) {
@@ -263,14 +263,14 @@ test('MP-02 size: the caps are the ones the gateway enforces', () => {
 // ══════════════════════════════════════════════════════════════════════════
 
 test('MP-02 pack: the byte layout is pinned, so both ends read the same bytes', () => {
-  // Two marbles, one with every flag set: 42 bytes → 56 base64 characters.
+  // Two marbles, one with every flag set: 44 bytes → 60 base64 characters. The last byte of each is its lane (P2-00).
   // Hardcoded on purpose — endianness is stated, not assumed, and a change
   // here is a wire change (bump PROTOCOL_VERSION).
   const pinned = packState([
-    { x: 1, y: 2, vx: -3.5, vy: 4.25, a: 0.5, finished: false, frozen: true, oil: false, ghost: true, anvil: false, loop: 0 },
-    { x: -1000.5, y: 20000, vx: 0, vy: 0, a: -1, finished: true, frozen: false, oil: true, ghost: false, anvil: true, loop: 7 },
+    { x: 1, y: 2, vx: -3.5, vy: 4.25, a: 0.5, finished: false, frozen: true, oil: false, ghost: true, anvil: false, loop: 0, lane: 0 },
+    { x: -1000.5, y: 20000, vx: 0, vy: 0, a: -1, finished: true, frozen: false, oil: true, ghost: false, anvil: true, loop: 7, lane: 2 },
   ]);
-  assert.equal(pinned, 'AACAPwAAAEAAAGDAAACIQAAAAD8KACB6xABAnEYAAAAAAAAAAAAAgL/1');
+  assert.equal(pinned, 'AACAPwAAAEAAAGDAAACIQAAAAD8KAAAgesQAQJxGAAAAAAAAAAAAAIC/9QI=');
   assert.equal(pinned.length, packedStateLength(2));
 });
 
@@ -867,4 +867,10 @@ test('Playtest validation: AI settings and kit frames are checked', () => {
   assert.equal(check({ type: 'lobby', seats: SEATS, settings: { circuit: 0, benched: 'all' } })?.code, 'malformed');
   assert.notEqual(check({ type: 'kit', kits: [{ slot: 42, inventory: {} }] }), null);
   assert.notEqual(check({ type: 'kit', kits: 'lots' }), null);
+});
+
+test('P2-00 pack: the depth lane survives the wire; a missing or bad lane reads as the middle lane', () => {
+  const base = { x: 0, y: 0, vx: 0, vy: 0, a: 0, finished: false, frozen: false, oil: false, ghost: false, anvil: false, loop: 6 };
+  const back = unpackState(packState([{ ...base, lane: 0 }, { ...base, lane: 2 }, { ...base }, { ...base, lane: 9 }]), 4);
+  assert.deepEqual(back?.map((m) => m.lane), [0, 2, 1, 1]);
 });
