@@ -50,7 +50,8 @@ export function canUseItem(game: Game, m: Marble, item: ItemType): boolean  {
 }
 
 export function speedLimit(game: Game, m: Marble): number  {
-  return Math.min(32, m.maxSpeed + (game.time < m.rocketUntil ? 8 : 0) + (game.time < m.anvilUntil ? 4 : 0) + (game.time < m.aeroUntil ? 3 : 0));
+  const base = m.maxSpeed + (game.time < m.rocketUntil ? 8 : 0) + (game.time < m.anvilUntil ? 4 : 0) + (game.time < m.aeroUntil ? 3 : 0);
+  return Math.min(32, base * (1 + (m.tfx?.topSpeedPct ?? 0) / 100)); // P2-17: Streamline
 }
 
 export function usePlayerItem(game: Game, item = game.availableItem()): boolean  {
@@ -80,8 +81,11 @@ export function useItem(game: Game, m: Marble, item = game.availableItem(m)): bo
     else m.aiUseAt = game.time + 1500;
     return false;
   }
-  if (!game.unlimitedItems.has(item)) m.inventory[item]--;
-  m.itemCooldownUntil = game.time + 450;
+  const fx = m.tfx;
+  // P2-17: Quick Hands may keep the charge; Nimble/Rapid shorten the pause between skills
+  const refunded = !!fx && (fx.refundChancePct ?? 0) > 0 && game.rng() * 100 < fx.refundChancePct;
+  if (!game.unlimitedItems.has(item) && !refunded) m.inventory[item]--;
+  m.itemCooldownUntil = game.time + Math.max(150, 450 * (1 + (fx?.skillCooldownPct ?? 0) / 100));
   game.sfx('item', m, p.x, p.y);
   game.emit({ kind: 'item', seat: m.info.id, item });
   switch (item) {
@@ -105,7 +109,7 @@ export function useItem(game: Game, m: Marble, item = game.availableItem(m)): bo
       break;
     }
     case 'rocket': {
-      m.rocketUntil = game.time + ITEM_INFO.rocket.duration;
+      m.rocketUntil = game.time + ITEM_INFO.rocket.duration * (1 + (fx?.skillDurationPct ?? 0) / 100);
       break;
     }
     case 'jump': {
@@ -116,7 +120,7 @@ export function useItem(game: Game, m: Marble, item = game.availableItem(m)): bo
       break;
     }
     case 'aero': {
-      m.aeroUntil = game.time + ITEM_INFO.aero.duration;
+      m.aeroUntil = game.time + ITEM_INFO.aero.duration * (1 + (fx?.skillDurationPct ?? 0) / 100);
       m.body.frictionAir = m.frictionAir * 0.05;
       m.body.friction = 0;
       game.effects.push({ type: 'ring', x: p.x, y: p.y, ttl: 24, maxTtl: 24, color: ITEM_INFO.aero.color });
@@ -152,13 +156,13 @@ export function useItem(game: Game, m: Marble, item = game.availableItem(m)): bo
       break;
     }
     case 'anvil': {
-      m.anvilUntil = game.time + ITEM_INFO.anvil.duration;
+      m.anvilUntil = game.time + ITEM_INFO.anvil.duration * (1 + (fx?.skillDurationPct ?? 0) / 100);
       if (!m.frozen) Body.setDensity(m.body, m.baseDensity * 3);
       game.effects.push({ type: 'ring', x: p.x, y: p.y, ttl: 20, maxTtl: 20, color: '#cbd5e1' });
       break;
     }
     case 'ghost': {
-      m.ghostUntil = game.time + ITEM_INFO.ghost.duration;
+      m.ghostUntil = game.time + ITEM_INFO.ghost.duration * (1 + (fx?.skillDurationPct ?? 0) / 100);
       game.applyMask(m);
       break;
     }

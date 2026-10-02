@@ -31,9 +31,12 @@ export function steer(game: Game, m: Marble, v: Matter.Vector, s: number): Matte
 
   // P2-08: Overdrive: the engine never overheats and pushes half as hard again
   const overdrive = (m.fx?.overdriveUntil ?? 0) > game.time;
-  const engine = engineStep(m.engine ?? newEngine(), hands.engine, game.time, s * TICK);
+  // P2-17: Engine talents: more heat capacity, faster cooling, a shorter lock-out, more thrust
+  const fx = m.tfx;
+  const tune = fx ? { ...CONTROL_TUNING, engineHeatPerMs: CONTROL_TUNING.engineHeatPerMs / (1 + (fx.engineHeatPct ?? 0) / 100), engineCoolPerMs: CONTROL_TUNING.engineCoolPerMs * (1 + (fx.engineCoolPct ?? 0) / 100), overheatLockMs: CONTROL_TUNING.overheatLockMs * (1 + (fx.overheatLockPct ?? 0) / 100), engineThrust: CONTROL_TUNING.engineThrust * (1 + (fx.thrustPct ?? 0) / 100) } : CONTROL_TUNING;
+  const engine = engineStep(m.engine ?? newEngine(), hands.engine, game.time, s * TICK, tune);
   m.engine = overdrive ? { heat: 0, lockedUntil: 0 } : engine.state;
-  const push = engineThrust(v.x, v.y, engine.firing || (overdrive && hands.engine), s * (overdrive ? 1.5 : 1));
+  const push = engineThrust(v.x, v.y, engine.firing || (overdrive && hands.engine), s * (overdrive ? 1.5 : 1), tune);
   v = { x: v.x + push.x, y: v.y + push.y };
 
   // P2-00: on a platformer, a jump press inside a lane door goes through the door instead.

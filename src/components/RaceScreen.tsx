@@ -21,6 +21,7 @@ import { teamOf, ITEM_TYPES, emptyInventory, normalizeInventory } from '../game/
 import type { MarbleInfo, ItemType, TrackProfile, HeatResult, Inventory } from '../game/types';
 import type { TrackDef } from '../game/trackdef';
 import type { RacePayout } from '../game/economy';
+import { loadAccount } from '../game/economy';
 import { pointsFor } from '../game/season';
 import Brand from './Brand';
 import Dialog from './Dialog';
@@ -99,7 +100,7 @@ interface LiveRow { id: number; rank: number; time: number | null; x: number; y:
 interface Hud {
   rank: number; time: number; inventory: Inventory; remaining: Record<ItemType, number>; coolingDown: boolean; speed: number; cap: number;
   /** P2-01: Magic Engine heat 0..1, and whether it is locked out after overheating. */
-  heat: number; overheated: boolean; hp: number; dnf: boolean; healthOn: boolean;
+  heat: number; overheated: boolean; hp: number; maxHp: number; dnf: boolean; healthOn: boolean;
   /** DEV probe (MP-10): the local marble's position, read by the browser suite. */
   mx: number; my: number;
   lights: number; finished: boolean; playerTime: number | null; pegs: number;
@@ -171,7 +172,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
   const selectedRef = useRef<ItemType>(ITEM_TYPES.find((item) => inventory[item] > 0) ?? 'rocket');
   const [selected, setSelected] = useState<ItemType>(selectedRef.current);
   const [hud, setHud] = useState<Hud>({
-    rank: Math.max(0, gridOrder.indexOf(playerId)) + 1, time: 0, inventory: { ...initialInventory.current }, remaining: emptyInventory(), coolingDown: false, speed: 0, cap: 100, heat: 0, overheated: false, hp: 100, dnf: false, healthOn: false, lights: 0, mx: 0, my: 0,
+    rank: Math.max(0, gridOrder.indexOf(playerId)) + 1, time: 0, inventory: { ...initialInventory.current }, remaining: emptyInventory(), coolingDown: false, speed: 0, cap: 100, heat: 0, overheated: false, hp: 100, maxHp: 100, dnf: false, healthOn: false, lights: 0, mx: 0, my: 0,
     finished: false, playerTime: null, pegs: 0, sector: 'Starting grid', sectorIndex: 0,
     progress: 0, state: 'ON THE GRID', frozen: false, finishedCount: 0, following: 'You',
     field: gridOrder.map((id, i) => ({ id, rank: i + 1, time: null, x: 60 + i * 86, y: 116 })),
@@ -303,7 +304,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
         })
       : null;
     sessionRef.current = session;
-    const game = session ? session.game : new Game(seed, roster, { profile, gridOrder, inventory: initialInventory.current, story: story?.hooks, def: trackDef ?? undefined, dropPool: slotSkills(slotsRef.current) });
+    const game = session ? session.game : new Game(seed, roster, { profile, gridOrder, inventory: initialInventory.current, story: story?.hooks, def: trackDef ?? undefined, dropPool: slotSkills(slotsRef.current), talents: loadAccount().talents, slots: slotsRef.current });
     // Online, this screen does not own the wallet: the race inventory is the
     // host's book until MP-09 puts each driver's own items on the grid, and a
     // pickup here must not empty the account it was bought with.
@@ -570,7 +571,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
           rank: game.gateOpen ? game.playerRank() : m.gridSlot, time: m.finishedAt ?? game.raceTime(),
           inventory: { ...m.inventory }, remaining, coolingDown: game.time < m.itemCooldownUntil,
           heat: m.engine?.heat ?? 0, overheated: (m.engine?.lockedUntil ?? 0) > game.time,
-          hp: m.health?.hp ?? 100, dnf: !!m.dnf, healthOn: game.healthOn,
+          hp: m.health?.hp ?? 100, maxHp: m.maxHp ?? 100, dnf: !!m.dnf, healthOn: game.healthOn,
           speed: Math.hypot(velocity.x, velocity.y) * 6, cap: game.speedLimit(m) * 6,
           lights, finished: m.finishedAt !== null, playerTime: m.finishedAt, pegs: m.pegs,
           sector: game.track.segments[section]?.name ?? 'Finish', sectorIndex: Math.max(0, section),
@@ -704,7 +705,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
     </div>
     <footer className="race-dashboard race-cockpit"><div className="race-telemetry">
       <div className="position-readout"><span>POSITION</span><div><strong>P{hud.rank}</strong><span>/ 10</span></div></div>
-      <div className="speed-readout"><div className="readout-caption"><Gauge size={13} /><span>SPEED</span></div><div><strong>{Math.round(hud.speed)}</strong><span>cm/s</span></div><div className="speed-meter"><span style={{ width: `${Math.min(100, hud.speed / hud.cap * 100)}%` }} /></div></div>{hud.healthOn && <div className={`hp-meter ${hud.hp < 40 ? 'low' : ''}`} title="Health: 0 and you are out of the race"><span>HP {Math.ceil(hud.hp)}</span><i style={{ width: `${Math.max(0, Math.min(100, hud.hp))}%` }} /></div>}<div className={`engine-heat ${hud.overheated ? 'overheated' : ''}`} title="Magic Engine heat: hold ↓ to fire, let go to cool"><span>{hud.overheated ? 'OVERHEAT' : 'ENGINE ↓'}</span><i style={{ width: `${Math.round(hud.heat * 100)}%` }} /></div>
+      <div className="speed-readout"><div className="readout-caption"><Gauge size={13} /><span>SPEED</span></div><div><strong>{Math.round(hud.speed)}</strong><span>cm/s</span></div><div className="speed-meter"><span style={{ width: `${Math.min(100, hud.speed / hud.cap * 100)}%` }} /></div></div>{hud.healthOn && <div className={`hp-meter ${hud.hp / hud.maxHp < 0.4 ? 'low' : ''}`} title="Health: 0 and you are out of the race"><span>HP {Math.ceil(hud.hp)}</span><i style={{ width: `${Math.max(0, Math.min(100, hud.hp / hud.maxHp * 100))}%` }} /></div>}<div className={`engine-heat ${hud.overheated ? 'overheated' : ''}`} title="Magic Engine heat: hold ↓ to fire, let go to cool"><span>{hud.overheated ? 'OVERHEAT' : 'ENGINE ↓'}</span><i style={{ width: `${Math.round(hud.heat * 100)}%` }} /></div>
       <div className={`marble-state ${hud.frozen ? 'is-frozen' : ''}`}><span className="readout-caption">MARBLE STATUS</span><strong>{hud.frozen && <Snowflake size={14} />}{hud.state}</strong><span className="peg-readout"><i className="orange-peg" />{hud.pegs} orange pegs</span></div>
       <div className="race-wallet"><Coins size={16} /><strong>{credits.toLocaleString()}</strong><span>CR</span></div>
       <div className="race-controls"><div className="nudge-controls"><span>FIND YOUR LINE</span><div><button className="nudge-button" aria-label="Nudge left" {...nudgeButton(-1)} disabled={hud.finished || preStart || paused}><ArrowLeft size={18} /><kbd>←</kbd></button><button className="nudge-button" aria-label="Nudge right" {...nudgeButton(1)} disabled={hud.finished || preStart || paused}><ArrowRight size={18} /><kbd>→</kbd></button></div></div><div className="thumb-controls"><button className="nudge-button jump-button" aria-label="Jump" onPointerDown={(e) => { e.preventDefault(); pressJump(); }} disabled={hud.finished || preStart || paused}>JUMP<kbd>↑</kbd></button><button className="nudge-button engine-button" aria-label="Magic Engine (hold)" onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); controls.current.engine = true; }} onPointerUp={() => { controls.current.engine = false; }} onPointerCancel={() => { controls.current.engine = false; }} onLostPointerCapture={() => { controls.current.engine = false; }} disabled={hud.finished || preStart || paused}>ENGINE<kbd>↓</kbd></button></div></div>
