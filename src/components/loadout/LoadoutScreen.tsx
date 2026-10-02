@@ -9,8 +9,8 @@ import { GROUP_COLORS, SKILLS, STARTER_SKILLS } from '../../game/skills/catalog'
 import type { SkillGroup } from '../../game/skills/catalog';
 import { lockReason } from '../../game/loadout';
 import type { Catalog } from '../../game/loadout';
-import { loadSlots, saveSlots } from '../../game/loadout-store';
-import type { Slots } from '../../game/loadout-store';
+import { loadSlots, saveSlots, LOADOUT_MODES } from '../../game/loadout-store';
+import type { LoadoutMode, Slots } from '../../game/loadout-store';
 import { progressOf } from '../../game/economy';
 import type { RacerAccount } from '../../game/economy';
 import { ITEM_INFO, ITEM_TYPES, MAX_ITEM_STACK } from '../../game/types';
@@ -22,19 +22,28 @@ interface Props { account: RacerAccount; onBuy: (item: ItemType) => string | und
 const GROUPS: { id: SkillGroup; label: string }[] = [
   { id: 'movement', label: 'Movement' }, { id: 'offence', label: 'Offence' }, { id: 'defence', label: 'Defence' }, { id: 'utility', label: 'Utility' },
 ];
+/** P2-20: the mode switch — every mode keeps its own bar. */
+const MODE_LABELS: Record<LoadoutMode, string> = { quick: 'Quick', championship: 'Championship', story: 'Story', online: 'Online' };
 const CATALOG: Catalog = Object.fromEntries(ITEM_TYPES.map((id) => {
   const d = SKILLS[id];
   return [id, { price: ITEM_INFO[id].price, unlockLevel: d.unlockLevel, starter: (STARTER_SKILLS as readonly string[]).includes(id) }];
 }));
 
 export default function LoadoutScreen({ account, onBuy, onClose }: Props) {
-  const [slots, setSlots] = useState<Slots>(() => loadSlots());
+  // P2-20: one bar per mode; the switch picks which one is shown and saved.
+  const [mode, setMode] = useState<LoadoutMode>('quick');
+  const [slots, setSlots] = useState<Slots>(() => loadSlots('quick'));
   const [at, setAt] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const level = progressOf(account).level;
   const driver = useMemo(() => ({ level, campaignComplete: account.campaignComplete === true }), [level, account.campaignComplete]);
 
-  const commit = (next: Slots) => { setSlots(next); saveSlots(next); };
+  const commit = (next: Slots) => { setSlots(next); saveSlots(next, mode); };
+  const pickMode = (next: LoadoutMode) => {
+    setMode(next);
+    setSlots(loadSlots(next));
+    setError(null);
+  };
   const place = (item: ItemType) => {
     const why = lockReason(item, CATALOG, driver, false);
     if (why) { setError(why === 'level' ? `${ITEM_INFO[item].name} unlocks at level ${CATALOG[item].unlockLevel}` : 'That skill is not available'); return; }
@@ -50,7 +59,10 @@ export default function LoadoutScreen({ account, onBuy, onClose }: Props) {
 
   return <Dialog titleId="loadout-title" onClose={onClose} className="loadout-dialog">
     <div className="loadout-head"><h2 id="loadout-title">LOADOUT</h2><span className="loadout-wallet"><Coins size={14} />{account.credits.toLocaleString()} CR · LEVEL {level}</span></div>
-    <p className="dialog-intro">Pick up to 8 skills for your keys. Tap a slot, then a skill. Charges are shared by every mode and carry between races.</p>
+    <div className="mode-switch loadout-mode" role="group" aria-label="Loadout mode">
+      {LOADOUT_MODES.map((m) => <button key={m} className={m === mode ? 'selected' : ''} aria-pressed={m === mode} onClick={() => pickMode(m)}>{MODE_LABELS[m]}</button>)}
+    </div>
+    <p className="dialog-intro">Pick up to 8 skills for your keys in <b>{MODE_LABELS[mode]}</b> mode. Each mode keeps its own bar; charges are shared by every mode and carry between races.</p>
     {error && <p className="loadout-error" role="alert">{error}</p>}
     <div className="loadout-slots" role="group" aria-label="Your eight skill slots">
       {slots.map((item, i) => <div key={i} className={`loadout-slot ${i === at ? 'is-selected' : ''} ${item ? 'is-filled' : ''}`} style={item ? { '--item-color': ITEM_INFO[item].color } as CSSProperties : undefined}>

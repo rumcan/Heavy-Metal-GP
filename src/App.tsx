@@ -870,6 +870,7 @@ export default function App() {
         title={roundName(season, season.round)}
         subtitle={`ROUND ${String(season.round + 1).padStart(2, '0')} / HEAT ${heatNo} OF ${HEATS_PER_GP}`}
         championship
+        loadoutMode="championship"
         onExit={() => {
           setPendingResult(null);
           setPhase('hub');
@@ -905,6 +906,7 @@ export default function App() {
         title={onlinePlatformer ? onlinePlatformer.name : gp.name}
         isCustom={isCustomOnline || !!onlinePlatformer}
         subtitle={`ONLINE / ${online.isHost ? 'HOSTING' : 'JOINED'} / ${drivers} DRIVERS${onlinePlatformer ? ' / PLATFORMER' : isCustomOnline ? ' / CUSTOM' : ''}`}
+        loadoutMode="online"
         onExit={leaveRoom}
         // MP-09: an online race settles this screen's own seat, at the online
         // scale, and writes back the kit it came home with.
@@ -949,6 +951,7 @@ export default function App() {
       title={quickTitle}
       isCustom={!!customTrackDef || platformerPick}
       subtitle={quickSubtitle}
+      loadoutMode="quick"
       onExit={() => setPhase('menu')}
       onFinished={(results) => awardWinnings(results, undefined, 'quick')}
       actions={quickActions}

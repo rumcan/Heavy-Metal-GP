@@ -423,6 +423,7 @@ export default function StoryMode({ driver, account, onAccount, onLevelUp, onSho
         title={gp.name}
         subtitle={`STORY · CHAPTER ${String(stage.chapter).padStart(2, '0')} / HEAT ${stage.heat} OF ${HEATS_PER_GP}`}
         championship
+        loadoutMode="story"
         onExit={leaveToHub}
         onFinished={onRaceFinished}
         actions={actions}

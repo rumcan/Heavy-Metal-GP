@@ -28,6 +28,7 @@ import Dialog from './Dialog';
 import NetStats from './NetStats';
 import InventoryToolbar from './InventoryToolbar';
 import { loadSlots, slotSkills } from '../game/loadout-store';
+import type { LoadoutMode } from '../game/loadout-store';
 import RaceMinimap from './RaceMinimap';
 import RaceBubbles from './RaceBubbles';
 import type { SpeechBubble } from './RaceBubbles';
@@ -58,6 +59,11 @@ interface Props {
   isCustom?: boolean;
   /** Story mode only (ST-03/ST-07): mid-race beats, objective chips and chapter engine hooks. */
   story?: StoryRaceProps;
+  /**
+   * P2-20: which mode's saved bar this race arms (quick, championship, story,
+   * online). Absent reads the old shared bar — same as before P2-20.
+   */
+  loadoutMode?: LoadoutMode;
   /**
    * MP-06: an ONLINE race. When this is set the screen does not own the world —
    * a `RaceSession` does, and it is either the simulation (host) or the picture
@@ -109,7 +115,7 @@ interface Hud {
   viewTop: number; viewBottom: number;
 }
 
-export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef, title, subtitle, onExit, onFinished, actions, championship = false, inventory, credits, onInventoryChange, payout, onShop, isCustom = false, story, online, rating = null }: Props) {
+export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef, title, subtitle, onExit, onFinished, actions, championship = false, inventory, credits, onInventoryChange, payout, onShop, isCustom = false, story, loadoutMode, online, rating = null }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef<Game | null>(null);
   /** MP-06: the online session, when there is one. The host's simulation or the guest's picture. */
@@ -137,8 +143,8 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
   const [fast, setFast] = useState(1);
   const [toast, setToast] = useState<{ message: string; color: string } | null>(null);
   const [results, setResults] = useState<HeatResult[] | null>(null);
-  /** P2-10: the eight skills on the keys for this race (read once, so a race never changes mid-way). */
-  const slotsRef = useRef(loadSlots());
+  /** P2-10: the eight skills on the keys for this race (read once, so a race never changes mid-way). P2-20: the mode's own bar. */
+  const slotsRef = useRef(loadSlots(loadoutMode));
   const [mapTrack, setMapTrack] = useState<Track | null>(null);
   // ── MP-CHAT: race talk, as a bubble over the marble that said it ─────────
   /**

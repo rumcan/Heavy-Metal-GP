@@ -6,6 +6,7 @@ export const STORAGE_KEYS = [
   'heavy-metal-gp:portrait',
   'heavy-metal-gp:garages:v1',
   'heavy-metal-gp:loadout:v1',
+  'heavy-metal-gp:loadout:v2',
   'heavy-metal-gp:zoom',
   'heavy-metal-gp:muted',
   'mrr-account-v1',
