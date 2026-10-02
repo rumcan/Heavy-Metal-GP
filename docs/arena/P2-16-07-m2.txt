@@ -1,0 +1,9 @@
+Now build it. Option A = ALPHA, Option B = BRAVO: do ONLY your own job.
+
+Create these files in your project, then install, type-check and run your tests:
+- package.json and tsconfig.json as described
+- ALPHA: src/game/ai-brain.ts and tests/ai-brain.test.ts (exactly as given, do not edit it)
+- BRAVO: src/game/settlement.ts and tests/settlement.test.ts (exactly as given, do not edit it)
+
+Run the type-check and your test file. Fix until both pass with zero errors. No other source files, no imports from other project files.
+Do not paste code in the chat. Finish by replying with your test summary line only.

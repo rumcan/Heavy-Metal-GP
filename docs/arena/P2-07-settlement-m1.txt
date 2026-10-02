@@ -1,0 +1,116 @@
+You are an engineer building one small, pure TypeScript module for Heavy Metal GP, an open-source 2D goblin marble-racing game. Read everything below. Do NOT write any code yet.
+
+THE REPO (public, read it for context): https://github.com/rumcan/Heavy-Metal-GP
+Branch with this exact test: p2-battle-ai-settlement. The test is tests/settlement.test.ts (also pasted below).
+You only WRITE src/game/settlement.ts. It imports nothing from other project files. Do not invent other APIs: the names and rules below are the contract.
+
+======================================================================
+YOUR JOB: src/game/settlement.ts (the race purse)
+======================================================================
+After a race each driver is paid: a placement prize, a bonus per orange peg hit, and a bounty per rival knocked out (KO). A driver whose
+health hit 0 is out (DNF: Did Not Finish): no placement prize, and in the career modes the Shaman charges to revive the ball.
+
+Exports (exact names):
+  export const PRIZES = [500, 350, 275, 220, 180, 150, 120, 100, 80, 60] as const;   // rank 1..10
+  export const PEG_CREDITS = 5;
+  export const KO_BOUNTY = 75;
+  export type PurseMode = 'championship' | 'story' | 'quick' | 'custom' | 'online' | 'online-custom';
+  export const MODE_SCALE: Record<PurseMode, number> = { championship: 1, story: 1, quick: 1, custom: 0.3, online: 0.6, 'online-custom': 0.18 };
+  export interface RaceOutcome { finished: boolean; rank: number; pegs: number; kos: number; dnf: boolean }
+  export interface PurseTalents { prizePct: number; pegBonusPct: number; koBountyPct: number; shamanFeePct: number }
+  export type LineKind = 'placement' | 'pegs' | 'kos' | 'shaman';
+
+  export function shamanFee(mode: PurseMode, credits: number, feePct = 0): { due: number; fee: number; short: boolean; takeCharges: number }
+    championship / story: due = round(max(250, credits * 0.30) * (1 + feePct / 100)).
+    quick: due = round(max(50, credits * 0.10) * (1 + feePct / 100)).  custom / online / online-custom: due = 0.
+    fee = min(due, max(0, credits)). short = due > credits. takeCharges = (short and championship or story) ? 2 : 0.
+  export function settle(o: RaceOutcome, mode: PurseMode, credits: number, t: PurseTalents): { lines: { kind: LineKind; amount: number }[]; total: number; takeCharges: number }
+    k = MODE_SCALE[mode]; rank clamped to 1..10 (floor).
+    Lines in this order, each left out when its amount is 0:
+      placement (only if finished and not dnf): round(PRIZES[rank - 1] * (1 + prizePct / 100) * k)
+      pegs: round(max(0, pegs) * PEG_CREDITS * (1 + pegBonusPct / 100) * k)
+      kos: round(max(0, kos) * KO_BOUNTY * (1 + koBountyPct / 100) * k)
+      shaman (only if dnf): -fee, where fee = shamanFee(mode, credits + earned so far, shamanFeePct).fee; takeCharges from the same call.
+    total = sum of the line amounts. takeCharges is 0 unless the shaman line applied it.
+
+======================================================================
+THE TEST (it must pass, unchanged)
+======================================================================
+----- tests/settlement.test.ts (BRAVO) -----
+// P2-07 (#113) battle tests, job BRAVO: the pure race purse in src/game/settlement.ts.
+// Standalone: imports only the module under test.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+import { PRIZES, PEG_CREDITS, KO_BOUNTY, MODE_SCALE, settle, shamanFee } from '../src/game/settlement';
+import type { RaceOutcome } from '../src/game/settlement';
+
+const NONE = { prizePct: 0, pegBonusPct: 0, koBountyPct: 0, shamanFeePct: 0 };
+const win: RaceOutcome = { finished: true, rank: 1, pegs: 0, kos: 0, dnf: false };
+
+test('constants', () => {
+  assert.deepEqual([...PRIZES], [500, 350, 275, 220, 180, 150, 120, 100, 80, 60]);
+  assert.equal(PEG_CREDITS, 5);
+  assert.equal(KO_BOUNTY, 75);
+  assert.deepEqual(MODE_SCALE, { championship: 1, story: 1, quick: 1, custom: 0.3, online: 0.6, 'online-custom': 0.18 });
+});
+
+test('shamanFee: championship and story 30 % (min 250), quick 10 % (min 50), online and custom free; short = cannot pay', () => {
+  assert.deepEqual(shamanFee('championship', 2000), { due: 600, fee: 600, short: false, takeCharges: 0 });
+  assert.deepEqual(shamanFee('story', 500), { due: 250, fee: 250, short: false, takeCharges: 0 });
+  assert.deepEqual(shamanFee('championship', 100), { due: 250, fee: 100, short: true, takeCharges: 2 });
+  assert.deepEqual(shamanFee('quick', 1000), { due: 100, fee: 100, short: false, takeCharges: 0 });
+  assert.deepEqual(shamanFee('quick', 20), { due: 50, fee: 20, short: true, takeCharges: 0 });
+  assert.deepEqual(shamanFee('online', 5000), { due: 0, fee: 0, short: false, takeCharges: 0 });
+  assert.deepEqual(shamanFee('custom', 5000), { due: 0, fee: 0, short: false, takeCharges: 0 });
+  assert.deepEqual(shamanFee('story', 1000, -20), { due: 240, fee: 240, short: false, takeCharges: 0 }, 'a talent can cut the fee: 30 % then -20 %, the minimum too');
+});
+
+test('settle: a clean win pays the placement prize; lines are in display order', () => {
+  const r = settle(win, 'championship', 1000, NONE);
+  assert.deepEqual(r.lines, [{ kind: 'placement', amount: 500 }]);
+  assert.equal(r.total, 500);
+  assert.equal(r.takeCharges, 0);
+});
+
+test('settle: placement, pegs and KO bounties add up; talents raise each part; the mode scale applies to everything earned', () => {
+  const r = settle({ finished: true, rank: 3, pegs: 10, kos: 2, dnf: false }, 'championship', 0, NONE);
+  assert.deepEqual(r.lines, [{ kind: 'placement', amount: 275 }, { kind: 'pegs', amount: 50 }, { kind: 'kos', amount: 150 }]);
+  assert.equal(r.total, 475);
+  const t = settle({ finished: true, rank: 3, pegs: 10, kos: 2, dnf: false }, 'championship', 0, { prizePct: 10, pegBonusPct: 20, koBountyPct: 50, shamanFeePct: 0 });
+  assert.deepEqual(t.lines, [{ kind: 'placement', amount: 303 }, { kind: 'pegs', amount: 60 }, { kind: 'kos', amount: 225 }]);
+  const online = settle({ finished: true, rank: 3, pegs: 10, kos: 2, dnf: false }, 'online', 0, NONE);
+  assert.deepEqual(online.lines, [{ kind: 'placement', amount: 165 }, { kind: 'pegs', amount: 30 }, { kind: 'kos', amount: 90 }]);
+});
+
+test('settle: rank is clamped to 1..10; zero lines are left out', () => {
+  assert.deepEqual(settle({ finished: true, rank: 14, pegs: 0, kos: 0, dnf: false }, 'quick', 0, NONE).lines, [{ kind: 'placement', amount: 60 }]);
+  assert.deepEqual(settle({ finished: false, rank: 5, pegs: 0, kos: 0, dnf: false }, 'quick', 0, NONE).lines, [], 'did not finish (no DNF): nothing');
+});
+
+test('settle: a DNF pays no placement but keeps pegs and KOs, and the Shaman takes his fee from the wallet plus the winnings', () => {
+  const r = settle({ finished: false, rank: 7, pegs: 4, kos: 1, dnf: true }, 'championship', 1000, NONE);
+  // earned 20 + 75 = 95; fee 30 % of (1000 + 95) = 329 (min 250)
+  assert.deepEqual(r.lines, [{ kind: 'pegs', amount: 20 }, { kind: 'kos', amount: 75 }, { kind: 'shaman', amount: -329 }]);
+  assert.equal(r.total, 95 - 329);
+  assert.equal(r.takeCharges, 0);
+});
+
+test('settle: a DNF the team cannot pay for costs what there is, and the Shaman takes 2 skill charges', () => {
+  const r = settle({ finished: false, rank: 9, pegs: 0, kos: 0, dnf: true }, 'story', 120, NONE);
+  assert.deepEqual(r.lines, [{ kind: 'shaman', amount: -120 }]);
+  assert.equal(r.total, -120);
+  assert.equal(r.takeCharges, 2);
+});
+
+test('settle: online and custom DNFs are free', () => {
+  assert.deepEqual(settle({ finished: false, rank: 9, pegs: 0, kos: 0, dnf: true }, 'online', 5000, NONE).lines, []);
+});
+
+======================================================================
+PROJECT SETUP FOR YOUR SANDBOX
+======================================================================
+Plain Node 22+ TypeScript: devDependencies "typescript" and "tsx"; tsconfig "strict": true, "noUnusedLocals": true, "noUnusedParameters": true, "module": "ESNext", "moduleResolution": "Bundler", "target": "ES2022", "noEmit": true.
+Run: npx tsc --noEmit -p .  and  node --import tsx --test tests/settlement.test.ts
+
+Reply with ONLY: Context received.

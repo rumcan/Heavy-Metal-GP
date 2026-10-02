@@ -1,0 +1,273 @@
+You are two engineers building two small, pure TypeScript modules for Heavy Metal GP, an open-source 2D goblin marble-racing game. Read everything below. Do NOT write any code yet.
+
+THE REPO (public, read it for context): https://github.com/rumcan/Heavy-Metal-GP
+Branch with these exact tests: p2-battle-ai-settlement. The tests are tests/ai-brain.test.ts and tests/settlement.test.ts (also pasted below).
+You may read the repo to understand the game, but you only WRITE the one module your job names. Do not invent other APIs: the names and rules below are the contract.
+
+Option A is ALPHA. Option B is BRAVO. Each of you does ONLY your own job below; do not do the other's. The two modules are independent (no imports between them, no imports from other project files).
+
+======================================================================
+ALPHA'S JOB: src/game/ai-brain.ts (the computer driver's decisions)
+======================================================================
+Courses are side-scrolling platformer tracks (the ball rolls right). Every physics step the game builds a Sense for each computer driver
+and asks decide() what to do. The brain is pure: same Sense in, same decision out (randomness only through s.rng).
+
+Exports (exact names):
+  export const SAMPLE_STEP = 20;     // ahead[i] is the floor (i + 1) * 20 px ahead
+  export const DIFFICULTY = {
+    easy:   { speedCap: 7,   reactPx: 20, mistakeChance: 0.15, skillDelayMs: 2500 },
+    normal: { speedCap: 8.5, reactPx: 34, mistakeChance: 0.05, skillDelayMs: 1200 },
+    hard:   { speedCap: 10,  reactPx: 48, mistakeChance: 0,    skillDelayMs: 400 },
+  };
+  export type Difficulty = 'easy' | 'normal' | 'hard';
+  export type AiHint = 'ahead-rival' | 'behind' | 'danger' | 'wall' | 'low-hp' | 'gap';
+  export interface Sense {
+    time: number; difficulty: Difficulty; grounded: boolean; vx: number;
+    ahead: (number | null)[];          // floor height relative to the floor under the ball: + lower, - higher, null = no floor (a gap)
+    crateAt: number | null; wallAt: number | null; dangerAt: number | null;   // px ahead to the next crate / breakable wall / hazard
+    heat: number; overheated: boolean; hp: number;
+    rivalAhead: { dx: number; dy: number } | null; rivalBehind: { dx: number } | null;
+    slots: { charges: number; hint: AiHint }[]; lastSkillAt: number;
+    door: { dist: number; better: boolean } | null; ramp: { dist: number; better: boolean } | null;
+    rng: () => number;
+  }
+  export function decide(s: Sense): { nudge: number; jump: boolean; engine: boolean; slot: number | null; takeDoor: boolean }
+
+Rules (d = DIFFICULTY[s.difficulty]; a sample i is (i + 1) * SAMPLE_STEP px ahead):
+  nudge: 1 when s.vx < d.speedCap, else 0.
+  jump: only when grounded.
+    WANT a jump if: a null sample within d.reactPx + 7 * vx; or crateAt !== null and crateAt <= d.reactPx + 5 * vx; or a STEP UP:
+      walk the samples within d.reactPx + 7 * vx in order, keeping `prev` (starts at 0; a null sample resets prev to 0);
+      a step up is a non-null sample h with h - prev <= -12; then prev = h.
+    A wanted jump happens only if s.rng() >= d.mistakeChance (call rng once, only when a jump is wanted).
+    Also jump (no rng) when ramp && !ramp.better && ramp.dist <= 40 (hop over a ramp to a worse lane).
+  engine: grounded && !overheated && heat < 0.7 && vx < d.speedCap - 1 && NOT downhill (downhill = the last sample is non-null and > 40).
+  slot: null unless s.time - s.lastSkillAt >= d.skillDelayMs. Then: first a slot with charges > 0 and hint 'low-hp' that fits;
+    otherwise the first slot (in order) with charges > 0 whose hint fits. Fits:
+      'ahead-rival': rivalAhead with 0 < dx <= 300;  'behind': rivalBehind with dx <= 200;  'danger': dangerAt <= 200;
+      'wall': wallAt <= 150;  'low-hp': hp < 40;  'gap': a null sample within 200 px.
+  takeDoor: door && door.dist <= 20 && door.better.
+
+======================================================================
+BRAVO'S JOB: src/game/settlement.ts (the race purse)
+======================================================================
+After a race each driver is paid: a placement prize, a bonus per orange peg hit, and a bounty per rival knocked out (KO). A driver whose
+health hit 0 is out (DNF: Did Not Finish): no placement prize, and in the career modes the Shaman charges to revive the ball.
+
+Exports (exact names):
+  export const PRIZES = [500, 350, 275, 220, 180, 150, 120, 100, 80, 60] as const;   // rank 1..10
+  export const PEG_CREDITS = 5;
+  export const KO_BOUNTY = 75;
+  export type PurseMode = 'championship' | 'story' | 'quick' | 'custom' | 'online' | 'online-custom';
+  export const MODE_SCALE: Record<PurseMode, number> = { championship: 1, story: 1, quick: 1, custom: 0.3, online: 0.6, 'online-custom': 0.18 };
+  export interface RaceOutcome { finished: boolean; rank: number; pegs: number; kos: number; dnf: boolean }
+  export interface PurseTalents { prizePct: number; pegBonusPct: number; koBountyPct: number; shamanFeePct: number }
+  export type LineKind = 'placement' | 'pegs' | 'kos' | 'shaman';
+
+  export function shamanFee(mode: PurseMode, credits: number, feePct = 0): { due: number; fee: number; short: boolean; takeCharges: number }
+    championship / story: due = round(max(250, credits * 0.30) * (1 + feePct / 100)).
+    quick: due = round(max(50, credits * 0.10) * (1 + feePct / 100)).  custom / online / online-custom: due = 0.
+    fee = min(due, max(0, credits)). short = due > credits. takeCharges = (short and championship or story) ? 2 : 0.
+  export function settle(o: RaceOutcome, mode: PurseMode, credits: number, t: PurseTalents): { lines: { kind: LineKind; amount: number }[]; total: number; takeCharges: number }
+    k = MODE_SCALE[mode]; rank clamped to 1..10 (floor).
+    Lines in this order, each left out when its amount is 0:
+      placement (only if finished and not dnf): round(PRIZES[rank - 1] * (1 + prizePct / 100) * k)
+      pegs: round(max(0, pegs) * PEG_CREDITS * (1 + pegBonusPct / 100) * k)
+      kos: round(max(0, kos) * KO_BOUNTY * (1 + koBountyPct / 100) * k)
+      shaman (only if dnf): -fee, where fee = shamanFee(mode, credits + earned so far, shamanFeePct).fee; takeCharges from the same call.
+    total = sum of the line amounts. takeCharges is 0 unless the shaman line applied it.
+
+======================================================================
+THE TESTS (they must all pass, unchanged)
+======================================================================
+----- tests/ai-brain.test.ts (ALPHA) -----
+// P2-16 (#122) battle tests, job ALPHA: the pure AI driving brain in src/game/ai-brain.ts.
+// Standalone: imports only the module under test.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+import { DIFFICULTY, SAMPLE_STEP, decide } from '../src/game/ai-brain';
+import type { Sense } from '../src/game/ai-brain';
+
+const never = () => 0.99; // rng that never triggers a mistake
+const always = () => 0;   // rng that always triggers a mistake
+
+/** A calm, flat stretch: nothing ahead, nobody near, full health, cold engine, no skills. */
+function sense(over: Partial<Sense> = {}): Sense {
+  return {
+    time: 10_000, difficulty: 'normal', grounded: true, vx: 5, ahead: Array(16).fill(0), crateAt: null, wallAt: null, dangerAt: null,
+    heat: 0, overheated: false, hp: 100, rivalAhead: null, rivalBehind: null, slots: [], lastSkillAt: -Infinity,
+    door: null, ramp: null, rng: never, ...over,
+  };
+}
+
+test('difficulty table and sample spacing', () => {
+  assert.equal(SAMPLE_STEP, 20);
+  assert.deepEqual(DIFFICULTY, {
+    easy: { speedCap: 7, reactPx: 20, mistakeChance: 0.15, skillDelayMs: 2500 },
+    normal: { speedCap: 8.5, reactPx: 34, mistakeChance: 0.05, skillDelayMs: 1200 },
+    hard: { speedCap: 10, reactPx: 48, mistakeChance: 0, skillDelayMs: 400 },
+  });
+});
+
+test('steering: full throttle under the difficulty speed cap, coast at or above it', () => {
+  assert.equal(decide(sense({ vx: 5 })).nudge, 1);
+  assert.equal(decide(sense({ vx: 8.5 })).nudge, 0);
+  assert.equal(decide(sense({ vx: 9, difficulty: 'hard' })).nudge, 1);
+});
+
+test('jumping a gap: when a missing floor sample is within reactPx + 7 × vx', () => {
+  const ahead = Array(16).fill(0);
+  ahead[3] = null; // a gap 80 px ahead (sample i is (i + 1) × 20 px ahead)
+  assert.equal(decide(sense({ vx: 7, ahead })).jump, true, '80 <= 34 + 49');
+  assert.equal(decide(sense({ vx: 2, ahead })).jump, false, '80 > 34 + 14: not yet');
+  assert.equal(decide(sense({ vx: 7, ahead, grounded: false })).jump, false, 'only from the ground');
+});
+
+test('jumping a crate (within reactPx + 5 × vx) and a step up (a sample 12+ px higher within the same reach)', () => {
+  assert.equal(decide(sense({ vx: 4, crateAt: 50 })).jump, true, '50 <= 34 + 20');
+  assert.equal(decide(sense({ vx: 4, crateAt: 60 })).jump, false);
+  const step = Array(16).fill(0);
+  step[2] = -20; // 60 px ahead the floor is 20 px higher
+  assert.equal(decide(sense({ vx: 5, ahead: step })).jump, true);
+  const slope = Array(16).fill(0).map((_, i) => -(i + 1) * 2); // a smooth uphill: never 12 px between neighbours
+  assert.equal(decide(sense({ vx: 5, ahead: slope })).jump, false, 'smooth uphill is not a step');
+});
+
+test('mistakes: when the rng roll is under mistakeChance the jump is missed', () => {
+  const ahead = Array(16).fill(0);
+  ahead[1] = null;
+  assert.equal(decide(sense({ vx: 6, ahead, rng: always })).jump, false);
+  assert.equal(decide(sense({ vx: 6, ahead, rng: always, difficulty: 'hard' })).jump, true, 'hard never misses');
+});
+
+test('ramps: jump over a ramp that leads to a worse lane; roll through a better one', () => {
+  assert.equal(decide(sense({ ramp: { dist: 30, better: false } })).jump, true);
+  assert.equal(decide(sense({ ramp: { dist: 30, better: true } })).jump, false);
+  assert.equal(decide(sense({ ramp: { dist: 90, better: false } })).jump, false, 'not yet');
+});
+
+test('doors: take a door into a better lane when standing in it', () => {
+  assert.equal(decide(sense({ door: { dist: 0, better: true } })).takeDoor, true);
+  assert.equal(decide(sense({ door: { dist: 0, better: false } })).takeDoor, false);
+  assert.equal(decide(sense({ door: { dist: 80, better: true } })).takeDoor, false);
+});
+
+test('the Magic Engine: on the ground, below the cap by 1+, heat under 0.7, not overheated, and not heading downhill', () => {
+  assert.equal(decide(sense({ vx: 5 })).engine, true);
+  assert.equal(decide(sense({ vx: 8 })).engine, false, 'within 1 of the cap');
+  assert.equal(decide(sense({ heat: 0.75 })).engine, false);
+  assert.equal(decide(sense({ overheated: true })).engine, false);
+  assert.equal(decide(sense({ grounded: false })).engine, false);
+  const downhill = Array(16).fill(0).map((_, i) => (i + 1) * 4); // the last sample 64 px lower
+  assert.equal(decide(sense({ ahead: downhill })).engine, false, 'gravity is doing the work');
+});
+
+test('skills: the first slot with charges whose hint fits the moment, after the difficulty delay', () => {
+  const slots = [
+    { charges: 1, hint: 'low-hp' as const },
+    { charges: 0, hint: 'ahead-rival' as const },
+    { charges: 2, hint: 'ahead-rival' as const },
+  ];
+  const rival = { dx: 200, dy: 0 };
+  assert.equal(decide(sense({ slots, rivalAhead: rival })).slot, 2, 'slot 1 is empty; slot 0 does not fit');
+  assert.equal(decide(sense({ slots, rivalAhead: rival, hp: 30 })).slot, 0, 'low HP comes first');
+  assert.equal(decide(sense({ slots, rivalAhead: { dx: 400, dy: 0 } })).slot, null, 'rival out of range (300)');
+  assert.equal(decide(sense({ slots, rivalAhead: rival, lastSkillAt: 9_000 })).slot, null, 'too soon after the last skill (1.2 s on normal)');
+  assert.equal(decide(sense({ slots, rivalAhead: rival, lastSkillAt: 9_500, difficulty: 'hard' })).slot, 2, 'hard waits only 0.4 s');
+});
+
+test('skills: each hint and when it fits', () => {
+  const one = (hint: Sense['slots'][number]['hint'], over: Partial<Sense>) => decide(sense({ slots: [{ charges: 1, hint }], ...over })).slot;
+  assert.equal(one('behind', { rivalBehind: { dx: 150 } }), 0);
+  assert.equal(one('behind', { rivalBehind: { dx: 250 } }), null, 'within 200 behind');
+  assert.equal(one('danger', { dangerAt: 180 }), 0);
+  assert.equal(one('danger', { dangerAt: 220 }), null, 'within 200');
+  assert.equal(one('wall', { wallAt: 120 }), 0);
+  assert.equal(one('wall', { wallAt: 160 }), null, 'within 150');
+  const gap = Array(16).fill(0);
+  gap[8] = null; // 180 px ahead
+  assert.equal(one('gap', { ahead: gap }), 0, 'a gap within 200');
+  assert.equal(one('low-hp', { hp: 39 }), 0);
+  assert.equal(one('low-hp', { hp: 40 }), null, 'under 40');
+});
+
+----- tests/settlement.test.ts (BRAVO) -----
+// P2-07 (#113) battle tests, job BRAVO: the pure race purse in src/game/settlement.ts.
+// Standalone: imports only the module under test.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+import { PRIZES, PEG_CREDITS, KO_BOUNTY, MODE_SCALE, settle, shamanFee } from '../src/game/settlement';
+import type { RaceOutcome } from '../src/game/settlement';
+
+const NONE = { prizePct: 0, pegBonusPct: 0, koBountyPct: 0, shamanFeePct: 0 };
+const win: RaceOutcome = { finished: true, rank: 1, pegs: 0, kos: 0, dnf: false };
+
+test('constants', () => {
+  assert.deepEqual([...PRIZES], [500, 350, 275, 220, 180, 150, 120, 100, 80, 60]);
+  assert.equal(PEG_CREDITS, 5);
+  assert.equal(KO_BOUNTY, 75);
+  assert.deepEqual(MODE_SCALE, { championship: 1, story: 1, quick: 1, custom: 0.3, online: 0.6, 'online-custom': 0.18 });
+});
+
+test('shamanFee: championship and story 30 % (min 250), quick 10 % (min 50), online and custom free; short = cannot pay', () => {
+  assert.deepEqual(shamanFee('championship', 2000), { due: 600, fee: 600, short: false, takeCharges: 0 });
+  assert.deepEqual(shamanFee('story', 500), { due: 250, fee: 250, short: false, takeCharges: 0 });
+  assert.deepEqual(shamanFee('championship', 100), { due: 250, fee: 100, short: true, takeCharges: 2 });
+  assert.deepEqual(shamanFee('quick', 1000), { due: 100, fee: 100, short: false, takeCharges: 0 });
+  assert.deepEqual(shamanFee('quick', 20), { due: 50, fee: 20, short: true, takeCharges: 0 });
+  assert.deepEqual(shamanFee('online', 5000), { due: 0, fee: 0, short: false, takeCharges: 0 });
+  assert.deepEqual(shamanFee('custom', 5000), { due: 0, fee: 0, short: false, takeCharges: 0 });
+  assert.deepEqual(shamanFee('story', 1000, -20), { due: 240, fee: 240, short: false, takeCharges: 0 }, 'a talent can cut the fee: 30 % then -20 %, the minimum too');
+});
+
+test('settle: a clean win pays the placement prize; lines are in display order', () => {
+  const r = settle(win, 'championship', 1000, NONE);
+  assert.deepEqual(r.lines, [{ kind: 'placement', amount: 500 }]);
+  assert.equal(r.total, 500);
+  assert.equal(r.takeCharges, 0);
+});
+
+test('settle: placement, pegs and KO bounties add up; talents raise each part; the mode scale applies to everything earned', () => {
+  const r = settle({ finished: true, rank: 3, pegs: 10, kos: 2, dnf: false }, 'championship', 0, NONE);
+  assert.deepEqual(r.lines, [{ kind: 'placement', amount: 275 }, { kind: 'pegs', amount: 50 }, { kind: 'kos', amount: 150 }]);
+  assert.equal(r.total, 475);
+  const t = settle({ finished: true, rank: 3, pegs: 10, kos: 2, dnf: false }, 'championship', 0, { prizePct: 10, pegBonusPct: 20, koBountyPct: 50, shamanFeePct: 0 });
+  assert.deepEqual(t.lines, [{ kind: 'placement', amount: 303 }, { kind: 'pegs', amount: 60 }, { kind: 'kos', amount: 225 }]);
+  const online = settle({ finished: true, rank: 3, pegs: 10, kos: 2, dnf: false }, 'online', 0, NONE);
+  assert.deepEqual(online.lines, [{ kind: 'placement', amount: 165 }, { kind: 'pegs', amount: 30 }, { kind: 'kos', amount: 90 }]);
+});
+
+test('settle: rank is clamped to 1..10; zero lines are left out', () => {
+  assert.deepEqual(settle({ finished: true, rank: 14, pegs: 0, kos: 0, dnf: false }, 'quick', 0, NONE).lines, [{ kind: 'placement', amount: 60 }]);
+  assert.deepEqual(settle({ finished: false, rank: 5, pegs: 0, kos: 0, dnf: false }, 'quick', 0, NONE).lines, [], 'did not finish (no DNF): nothing');
+});
+
+test('settle: a DNF pays no placement but keeps pegs and KOs, and the Shaman takes his fee from the wallet plus the winnings', () => {
+  const r = settle({ finished: false, rank: 7, pegs: 4, kos: 1, dnf: true }, 'championship', 1000, NONE);
+  // earned 20 + 75 = 95; fee 30 % of (1000 + 95) = 329 (min 250)
+  assert.deepEqual(r.lines, [{ kind: 'pegs', amount: 20 }, { kind: 'kos', amount: 75 }, { kind: 'shaman', amount: -329 }]);
+  assert.equal(r.total, 95 - 329);
+  assert.equal(r.takeCharges, 0);
+});
+
+test('settle: a DNF the team cannot pay for costs what there is, and the Shaman takes 2 skill charges', () => {
+  const r = settle({ finished: false, rank: 9, pegs: 0, kos: 0, dnf: true }, 'story', 120, NONE);
+  assert.deepEqual(r.lines, [{ kind: 'shaman', amount: -120 }]);
+  assert.equal(r.total, -120);
+  assert.equal(r.takeCharges, 2);
+});
+
+test('settle: online and custom DNFs are free', () => {
+  assert.deepEqual(settle({ finished: false, rank: 9, pegs: 0, kos: 0, dnf: true }, 'online', 5000, NONE).lines, []);
+});
+
+======================================================================
+PROJECT SETUP FOR YOUR SANDBOX (both)
+======================================================================
+Plain Node 22+ TypeScript: devDependencies "typescript" and "tsx"; tsconfig "strict": true, "noUnusedLocals": true, "noUnusedParameters": true, "module": "ESNext", "moduleResolution": "Bundler", "target": "ES2022", "noEmit": true.
+ALPHA runs: npx tsc --noEmit -p .  and  node --import tsx --test tests/ai-brain.test.ts
+BRAVO runs: npx tsc --noEmit -p .  and  node --import tsx --test tests/settlement.test.ts
+
+Reply with ONLY: Context received.
