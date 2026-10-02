@@ -19,5 +19,6 @@ for (; t < 180000 && !game.allFinished(); t += PHYSICS_STEP) {
   for (const m of game.marbles) maxV = Math.max(maxV, Math.hypot(m.body.velocity.x, m.body.velocity.y));
   if (Math.round(t) % 20000 < PHYSICS_STEP) console.log(`${Math.round(t / 1000)}s`, game.ranking().slice(0, 3).map((r) => `${r.marble.info.id}:${Math.round(r.marble.progress ?? 0)}`).join(' '), 'last', Math.round(game.ranking().at(-1)!.marble.progress ?? 0));
 }
+console.log('dnf', game.marbles.filter((m) => m.dnf).map((m) => m.info.id).join(','), 'kos', game.marbles.map((m) => m.kos ?? 0).join(','));
 console.log(`done ${(t / 1000).toFixed(1)}s sim in ${Date.now() - t0}ms wall; max speed ${maxV.toFixed(1)}`);
 for (const r of game.ranking()) console.log(r.rank, r.marble.info.id, r.finished ? (r.time! / 1000).toFixed(1) + 's' : 'DNF', 'falls', r.marble.recoveries, 'lane', r.marble.lane);

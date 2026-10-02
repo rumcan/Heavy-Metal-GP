@@ -241,3 +241,53 @@ test('cannon start: everyone starts in their own cannon (nobody stacked); people
   for (let t = 0; t < CANNON_AUTOFIRE_MS + 100; t += PHYSICS_STEP) idle.step(PHYSICS_STEP);
   assert.ok(idle.player.cannon!.fired);
 });
+
+test('health: damage hurts, 0 HP is a DNF (last in the order, off the course), the last attacker gets the KO', () => {
+  const game = new Game(6, roster(), { track: buildPlatformerTrack(6, TRACK_THEMES.forest, 'rolling-hills') });
+  assert.equal(game.healthOn, true);
+  game.start();
+  game.openGate();
+  for (let i = 0; i < 600; i++) game.step(PHYSICS_STEP);
+  const victim = game.marbles[3], killer = game.marbles[5];
+  assert.equal(game.damage(victim, 25, killer.info.id, 'bolt'), false);
+  assert.equal(victim.health!.hp, 75);
+  assert.equal(game.damage(victim, 25, null, 'wrecker'), false, 'a second hit straight away is still in the grace period');
+  game.time += 800;
+  assert.equal(game.damage(victim, 25, null, 'wrecker'), false);
+  assert.equal(victim.health!.hp, 50);
+  game.time += 800;
+  assert.equal(game.damage(victim, 60, null, 'wrecker'), true);
+  assert.ok(victim.dnf);
+  assert.equal(killer.kos, 1, 'the rival who hurt it last within 4 s gets the KO');
+  const order = game.ranking();
+  assert.equal(order.at(-1)!.marble, victim);
+  assert.equal(order.at(-1)!.dnf, true);
+  assert.equal(order.at(-1)!.finished, false);
+});
+
+test('health: a race where everyone still racing finishes ends even with a DNF in it, and classic drops have no health', () => {
+  const game = new Game(6, roster(), { track: buildPlatformerTrack(6, TRACK_THEMES.forest, 'rolling-hills') });
+  game.start();
+  game.openGate();
+  game.damage(game.marbles[2], 500, null, 'crusher');
+  assert.ok(game.marbles[2].dnf);
+  for (let t = 0; t < 120000 && !game.allFinished(); t += PHYSICS_STEP) game.step(PHYSICS_STEP);
+  assert.ok(game.allFinished());
+  assert.equal(game.finishOrder.length, 9);
+});
+
+test('the purse: a DNF in a quick race pays the Shaman 10 %; a KO pays 75; a finish pays the placement', async () => {
+  const { createAccount, settleRace } = await import('../src/game/economy');
+  const acc = { ...createAccount(), credits: 1000 };
+  const dnf = settleRace(acc, 'r1', { id: 0, rank: 10, time: null, pegs: 2, dnf: true, kos: 1 }, 1, 'quick');
+  assert.equal(dnf.payout.koBounty, 75);
+  assert.equal(dnf.payout.pegBonus, 10);
+  assert.equal(dnf.payout.shamanFee, Math.round((1000 + 85) * 0.1));
+  assert.equal(dnf.account.credits, 1000 + 85 - dnf.payout.shamanFee!);
+  assert.equal(settleRace(dnf.account, 'r1', { id: 0, rank: 10, time: null, pegs: 2, dnf: true, kos: 1 }, 1, 'quick').account.credits, dnf.account.credits, 'paid once');
+  const win = settleRace(acc, 'r2', { id: 0, rank: 1, time: 40000, pegs: 0, dnf: false, kos: 0 }, 1, 'quick');
+  assert.equal(win.payout.placement, 500);
+  assert.equal(win.payout.shamanFee, 0);
+  const old = settleRace(acc, 'r3', { id: 0, rank: 1, time: 40000, pegs: 0 });
+  assert.equal(old.payout.total, 500, 'results without health pay exactly as before');
+});

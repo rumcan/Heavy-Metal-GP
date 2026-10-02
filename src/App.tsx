@@ -585,10 +585,10 @@ export default function App() {
   }, [online, publishAccount, room, claimRanked]);
 
   /** `isCustom`: the heat ran on a player-built track (pays 30%). Quick races pass the Garage pick; a championship heat its round's track. */
-  const awardWinnings = (results: HeatResult[], isCustom = !!customTrackDef) => {
+  const awardWinnings = (results: HeatResult[], isCustom = !!customTrackDef, mode: 'quick' | 'championship' = 'championship') => {
     const result = results.find((r) => r.id === 0);
     if (!result) return;
-    const paid = isCustom ? settleCustomRace(accountRef.current, raceId, result, false) : settleRace(accountRef.current, raceId, result);
+    const paid = isCustom ? settleCustomRace(accountRef.current, raceId, result, false) : settleRace(accountRef.current, raceId, result, 1, mode);
     publishAccount(paid.account);
     setPayout(paid.payout);
   };
@@ -912,7 +912,7 @@ export default function App() {
       isCustom={!!customTrackDef || platformerPick}
       subtitle={quickSubtitle}
       onExit={() => setPhase('menu')}
-      onFinished={(results) => awardWinnings(results)}
+      onFinished={(results) => awardWinnings(results, undefined, 'quick')}
       actions={quickActions}
       inventory={account.inventory}
       credits={account.credits}

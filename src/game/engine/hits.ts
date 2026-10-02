@@ -8,6 +8,7 @@ import { MAX_ITEM_STACK } from '../types';
 
 
 import { BASE_TICK } from '../physics';
+import { DAMAGE, recordBump } from '../health';
 
 
 
@@ -30,6 +31,11 @@ export function onCollisionStart(game: Game, e: Matter.IEventCollision<Matter.En
     }
     else if (ma && mb) {
       if (ma.hold || mb.hold) continue; // a hidden marble clacks with nobody
+      // P2-07: a hard enough bump is remembered, so a rival who knocks you into a hazard gets the KO
+      if (game.healthOn && ma.health && mb.health && Math.hypot(ma.body.velocity.x - mb.body.velocity.x, ma.body.velocity.y - mb.body.velocity.y) > 4) {
+        ma.health = recordBump(ma.health, mb.info.id, game.time);
+        mb.health = recordBump(mb.health, ma.info.id, game.time);
+      }
       const sp = Math.hypot(ma.body.velocity.x - mb.body.velocity.x, ma.body.velocity.y - mb.body.velocity.y);
       if (sp > 4) {
         game.sfx('clack', ma.info.isPlayer ? ma : mb, a.position.x, a.position.y);
@@ -127,6 +133,7 @@ export function marbleHits(game: Game, m: Marble, other: Matter.Body) {
       const push = 7;
       Body.setVelocity(m.body, { x: v.x * 0.4 + dx / d * push, y: v.y * 0.4 + dy / d * push });
       game.shake = Math.max(game.shake, 5);
+      game.damage(m, DAMAGE.wrecker, null, 'wrecker'); // P2-07 (platformer races)
       game.sfx('clang', m, other.position.x, other.position.y);
       game.effects.push({ type: 'ring', x: m.body.position.x, y: m.body.position.y, ttl: 14, maxTtl: 14, color: '#e2e8f0' });
       break;
