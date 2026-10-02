@@ -626,7 +626,7 @@ export function onCollisionActive(game: Game, e: Matter.IEventCollision<Matter.E
     const md = meta(other);
     if (!md) continue;
     // P2-00: touching a platformer floor below the marble's middle counts as grounded.
-    if (md.kind === 'floor') {
+    if (md.kind === 'floor' || md.kind === 'ledge') {
       const support = pair.collision.supports[0];
       if (support && support.y > m.body.position.y + 6) m.grounded = 0;
     }

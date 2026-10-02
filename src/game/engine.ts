@@ -169,6 +169,8 @@ export interface Marble {
   /** P2-00 platformer AI: the last door it decided about, and its jump cooldown. */
   doorSeen?: number;
   aiJumpAt?: number;
+  /** P2-00 platformer: the last spring launch (one launch per landing). */
+  springAt?: number;
 }
 
 export interface OilSlick {
@@ -1014,16 +1016,19 @@ export class Game {
 
       v = input.steer(this, m, v, s);
       // P2-00: computer drivers have to drive a platformer (on a classic drop gravity does it for them).
-      if (this.track.platformer) {
-        if (!this.isHuman(m)) v = platformer.aiDrive(this, m, v, s);
-        platformer.laneGates(this, m);
-      }
+      if (this.track.platformer && !this.isHuman(m)) v = platformer.aiDrive(this, m, v, s);
 
       // speed cap
       const cap = this.speedLimit(m);
       const sp = Math.hypot(v.x, v.y);
       if (sp > cap) v = { x: (v.x / sp) * cap, y: (v.y / sp) * cap };
       Body.setVelocity(b, v);
+      // P2-00: ramps, springs and the one-way mask act after this step's velocity is set, so a launch or a
+      // lane-change hop is not overwritten by it.
+      if (this.track.platformer) {
+        platformer.laneGates(this, m);
+        platformer.laneStep(this, m);
+      }
 
       // trail
       if (m.info.isPlayer || this.time < m.rocketUntil) {

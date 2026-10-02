@@ -23,4 +23,5 @@ Every platformer course (the block courses and the rolling-slope courses) is dra
 - **Depth is done by the game.** Lanes behind you are drawn smaller, higher, hazier and blurred, so draw everything **sharp and fully coloured**. Don't add haze yourself.
 - **Side view, light from the top left.** Everything is seen from the side, like a classic platformer.
 - **One theme is one set of these seven files.** For more themes (e.g. a mine, a scrapyard), deliver the same seven per theme and I'll add a theme switch.
+- **Also drawn in code for now (art welcome):** `ledge.webp`, a plank walkway about 512 × 64, seamless left to right, transparent; and `spring.webp`, a spring pad about 128 × 96, transparent.
 - **Nice to have later:** a finish arch (about 400 × 400, transparent), ball trail and dust puffs, and background props (rocks, ruins, flags) to scatter along the slopes.

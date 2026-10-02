@@ -6,7 +6,9 @@ import type { Game, Marble } from '../engine';
 import { meta } from '../track';
 import { laneFocus, laneView, visibleLanes, LANE_SWITCH_MS, LANE_MIDDLE } from '../lanes';
 import { drawMarble } from '../render';
+import { SPRING_W, floorAt } from './course';
 import type { CoursePlan, Floor, LaneGate } from './course';
+import { LEDGE_H } from './build';
 import earthUrl from '../../assets/game/platformer/earth.webp';
 import grassUrl from '../../assets/game/platformer/grass.webp';
 import crateUrl from '../../assets/game/platformer/crate.webp';
@@ -276,6 +278,43 @@ function drawGate(ctx: CanvasRenderingContext2D, g: LaneGate, t: number, near: b
   }
 }
 
+/** A one-way ledge: a plank walkway on two posts (art: `ledge.webp` when supplied, see docs/art). */
+function drawLedge(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, ground: (x: number) => number | null) {
+  // posts down to the ground wherever there is ground under them (not over the chasm)
+  ctx.fillStyle = '#4a3420';
+  for (let px = x + 14; px < x + w - 14; px += 180) {
+    const g = ground(px + 4);
+    if (g !== null) ctx.fillRect(px, y + LEDGE_H, 8, g - y - LEDGE_H + 6);
+  }
+  ctx.fillStyle = '#8a6036';
+  ctx.fillRect(x, y, w, LEDGE_H);
+  ctx.fillStyle = '#a8784a';
+  ctx.fillRect(x, y, w, 4);
+  ctx.strokeStyle = '#3a2614';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x + 1, y + 1, w - 2, LEDGE_H - 2);
+  ctx.beginPath();
+  for (let px = x + 36; px < x + w - 10; px += 36) { ctx.moveTo(px, y + 2); ctx.lineTo(px, y + LEDGE_H - 2); }
+  ctx.stroke();
+}
+
+/** A spring pad: a steel plate on a coil, squashed for a moment when it fires. */
+function drawSpring(ctx: CanvasRenderingContext2D, x: number, y: number, firing: boolean) {
+  const h = firing ? 26 : 14;
+  ctx.strokeStyle = '#9aa4ad';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  for (let i = 0; i <= 4; i++) {
+    const yy = y - (h * i) / 4;
+    ctx.lineTo(x + (i % 2 ? SPRING_W - 12 : 12), yy);
+  }
+  ctx.stroke();
+  ctx.fillStyle = '#d63e2e';
+  ctx.fillRect(x, y - h - 7, SPRING_W, 7);
+  ctx.fillStyle = '#3a3f46';
+  ctx.fillRect(x + 4, y - 3, SPRING_W - 8, 5);
+}
+
 function drawFinish(ctx: CanvasRenderingContext2D, x: number, y: number) {
   const sq = 12;
   for (let r = 0; r < 18; r++) for (let c = 0; c < 2; c++) {
@@ -301,6 +340,8 @@ function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, 
     if (v.length === 4 && md.depth !== undefined && md.depth > 100) drawFloor(ctx, v[0].x, v[0].y, v[1].x, v[1].y, md.depth, lane, bottom);
     else drawBump(ctx, body.bounds.min.x, body.bounds.min.y, body.bounds.max.x - body.bounds.min.x, md.depth ?? body.bounds.max.y - body.bounds.min.y);
   }
+  for (const l of info.plan.ledges ?? []) if (l.lane === lane && l.x + l.w > left && l.x < right) drawLedge(ctx, l.x, l.y, l.w, (px) => floorAt(info.plan, l.lane, px));
+  for (const s of info.plan.springs ?? []) if (s.lane === lane && s.x + SPRING_W > left && s.x < right) drawSpring(ctx, s.x, s.y, game.marbles.some((m) => m.springAt !== undefined && game.time - m.springAt < 220 && (m.lane ?? 1) === lane && Math.abs(m.body.position.x - s.x - SPRING_W / 2) < 80));
   const player = game.player;
   for (const g of info.plan.gates) {
     if (g.lane !== lane || g.x + g.w < left || g.x > right) continue;

@@ -55,6 +55,11 @@ export interface Bump { lane: Lane; x: number; w: number; y: number; h: number }
  * - `door`: press jump inside it to go through to `to`.
  */
 export interface LaneGate { kind: 'ramp' | 'door'; lane: Lane; to: Lane; x: number; w: number; y: number }
+/** A spring pad on the floor (`x`..`x + SPRING_W`, top at `y`): rolling or landing on it launches you up. */
+export interface Spring { lane: Lane; x: number; y: number }
+/** A one-way ledge: jump up through it from below, land and roll on top (`y` is its top). */
+export interface Ledge { lane: Lane; x: number; w: number; y: number }
+export const SPRING_W = 60;
 
 export interface CoursePlan {
   seed: number;
@@ -72,6 +77,9 @@ export interface CoursePlan {
   /** Crossing this x (on any lane) finishes the race. */
   finishX: number;
   finishY: number;
+  /** Spring pads and one-way ledges (absent = none). */
+  springs?: Spring[];
+  ledges?: Ledge[];
   /** P2-00: 'flow' = rolling slopes (src/game/platformer/flow.ts); absent = the block style. */
   style?: 'blocks' | 'flow';
 }

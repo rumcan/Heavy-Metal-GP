@@ -86,6 +86,7 @@ export type Kind =
   | 'loopRide'
   // P2-00: platformer floors and lane gates (drawn by src/game/platformer/render.ts)
   | 'floor'
+  | 'ledge'
   | 'laneGate';
 
 /**
