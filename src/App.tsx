@@ -53,9 +53,9 @@ import { loadAccount, saveAccount, purchaseItem, onlineRaceId, settleOnlineRace,
 import type { RacerAccount, RacePayout } from './game/economy';
 import { loadTracksSync } from './game/tracks';
 import type { TrackDef } from './game/trackdef';
-import { normalizeInventory } from './game/types';
 import type { Inventory, ItemType } from './game/types';
 import LoadoutScreen from './components/loadout/LoadoutScreen';
+import { mergeRaceKit } from './game/loadout';
 import { RIVALS, PLAYER_PORTRAIT_COUNT, preRaceBanter } from './game/characters';
 import type { Line } from './game/characters';
 import LoadingScreen from './components/LoadingScreen';
@@ -607,8 +607,11 @@ export default function App() {
       next = r.account;
       if (r.levelsGained.length) setLevelUp({ from: r.from, to: r.to, xp: r.xp });
     }
-    // What you came home with is what you have: spent is spent, picked is kept.
-    publishAccount(kit ? { ...next, inventory: normalizeInventory(kit) } : next);
+    // What you came home with is what you have: spent is spent, picked is kept. Under the host's
+    // loadout budget (P2-20) only the skills you RACED replaced the wallet — the ones left at
+    // home stayed untouched, as did any pickup of a type the budget trimmed.
+    const slots = online.settings.loadoutSlots;
+    publishAccount(kit ? { ...next, inventory: mergeRaceKit(next.inventory, kit, slots) } : next);
     setPayout(paid.payout);
   }, [online, publishAccount, room, claimRanked]);
 

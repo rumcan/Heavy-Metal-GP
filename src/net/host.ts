@@ -28,6 +28,7 @@
 import { Game } from '../game/engine';
 import type { Marble } from '../game/engine';
 import { HEAT_TIME_LIMIT, PHYSICS_STEP } from '../game/physics';
+import { LOADOUT_SLOTS, trimKit } from '../game/loadout';
 import type { Inventory, ItemType, MarbleInfo, TrackProfile } from '../game/types';
 import type { Track } from '../game/track';
 import { generateTrack } from '../game/track';
@@ -190,7 +191,14 @@ export class RaceHost {
     this.kitAt = '';
     this.send = opts.send;
     this.clock = opts.now ?? (() => Date.now());
-    const seats = [...opts.seats].sort((a, b) => a.slot - b.slot);
+    // P2-20: the host's loadout budget — trim each seat's own kit to the published rule before it
+    // becomes the roster (and before publishLobby rebroadcasts the seats). Host authority: the
+    // guest receives the trimmed kit and only ever displays the rule; it never trims (or untrims)
+    // its own. Absent settings read as 8 — a full kit, i.e. no trim for an 8-slot kit.
+    const slots = opts.settings?.loadoutSlots ?? LOADOUT_SLOTS;
+    const seats = [...opts.seats]
+      .sort((a, b) => a.slot - b.slot)
+      .map((seat) => (seat.inventory === undefined ? seat : { ...seat, inventory: trimKit(seat.inventory, slots) }));
     this.seats = seats;
     const humanSeats = seats.filter((s) => !s.isAI).map((s) => s.slot);
     const house = houseInventory(opts.settings);

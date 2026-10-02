@@ -752,3 +752,39 @@ test('house rules: every seat starts with the host\'s power-ups, and unlimited o
   assert.ok(h.host.game.useItem(me, 'rocket'), 'the rocket fires');
   assert.equal(me.inventory.rocket, before, 'an unlimited item is never spent');
 });
+
+test('P2-20 host: the loadout budget trims each seat kit, host-side, and publishes the trimmed seat', async () => {
+  const { buildPlatformerTrack } = await import('../src/game/platformer/build');
+  const { TRACK_THEMES, ITEM_TYPES } = await import('../src/game/types');
+  const track = buildPlatformerTrack(SEED, TRACK_THEMES.forest, 'rolling-hills');
+  // Four charged types — ITEM_TYPES table order is rocket, jump, oil, ..., bolt.
+  const kit = { ...emptyInventory(), rocket: 3, oil: 2, bolt: 1, jump: 4 };
+  const seats = grid().map((seat) => (seat.slot === 1 ? { ...seat, inventory: kit } : seat));
+
+  // Budget of 2: the first two charged types survive, the rest are dropped before the race.
+  const h = harness({ seats, track, settings: { circuit: 0, loadoutSlots: 2 } });
+  start(h);
+  const marble = h.host.game.marbles[1];
+  assert.equal(marble.inventory.rocket, 3, 'kept — first charged type in table order');
+  assert.equal(marble.inventory.jump, 4, 'kept — second');
+  assert.equal(marble.inventory.oil, 0, 'the budget trimmed this one');
+  assert.equal(marble.inventory.bolt, 0, 'and this one');
+  assert.equal(ITEM_TYPES[0], 'rocket', 'the trim order is the table order this test leans on');
+
+  // The seat the guests receive is the SAME trimmed kit — host authority, display-only for guests.
+  h.host.publishLobby(); // what the room relays to anyone who joins (or rejoins)
+  const lobby = h.frames.find((f) => f.type === 'lobby');
+  assert.ok(lobby && lobby.type === 'lobby', 'the host published the lobby');
+  const seatKit = lobby.seats.find((s) => s.slot === 1)?.inventory;
+  assert.ok(seatKit, 'the seat carries its kit');
+  assert.equal(seatKit.oil, 0, 'published trimmed');
+  assert.equal(seatKit.rocket, 3, 'published with what it races');
+
+  // No budget in the settings: absent reads as 8, so a four-type kit races untouched.
+  const full = harness({ seats, track });
+  start(full);
+  const kept = full.host.game.marbles[1].inventory;
+  assert.equal(kept.oil, 2, 'an absent rule never cuts a kit that fits');
+  assert.equal(kept.bolt, 1);
+  assert.equal(kept.jump, 4);
+});

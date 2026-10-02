@@ -42,6 +42,7 @@ import { encodeShareCode } from '../game/sharecode';
 import LobbyGrid from './LobbyGrid';
 import ItemGlyph from './ItemGlyph';
 import { ITEM_INFO, ITEM_TYPES } from '../game/types';
+import { LOADOUT_SLOTS } from '../game/loadout';
 import type { ItemType } from '../game/types';
 import { UNLIMITED_ITEM } from '../net/protocol';
 import Brand from './Brand';
@@ -110,7 +111,7 @@ interface Props {
 
 
 /** The host's full rules, with defaults left out so an untouched lobby sends what it always did. */
-function buildSettings(circuit: number, items: Partial<Record<ItemType, number>> | null, benched: readonly number[], aiItems: boolean, platformer: string | null = null, talents = true): RaceSettings {
+function buildSettings(circuit: number, items: Partial<Record<ItemType, number>> | null, benched: readonly number[], aiItems: boolean, platformer: string | null = null, talents = true, loadoutSlots = LOADOUT_SLOTS): RaceSettings {
   return {
     circuit,
     ...(platformer ? { platformer } : {}),
@@ -119,6 +120,8 @@ function buildSettings(circuit: number, items: Partial<Record<ItemType, number>>
     ...(aiItems ? {} : { aiItems: false }),
     // P2-19: talents are on unless the host turned them off (absent reads as on).
     ...(talents ? {} : { talents: false }),
+    // P2-20: the loadout budget is always filed, explicitly — guests display this rule only.
+    loadoutSlots,
   };
 }
 
@@ -147,6 +150,8 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
   const [aiItems, setAiItems] = useState(true);
   /** Host only (P2-19): whether the grid races with talent builds. Ranked lobbies always turn this off. */
   const [talents, setTalents] = useState(true);
+  /** P2-20: the host's loadout budget — how many skill types each driver races (state default 8 = a full kit). */
+  const [loadoutSlots, setLoadoutSlots] = useState(LOADOUT_SLOTS);
   /** Host only: whether new drivers may still join. */
   const [open, setOpen] = useState(true);
   /** Guests: the host's open flag, from the last `lobby`. */
@@ -168,7 +173,7 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
 
   const isHost = welcome ? welcome.hostId === room.playerId : room.isCreator;
   const seats = (isHost ? grid ?? welcome?.seats : lobbySeats ?? welcome?.seats) ?? [];
-  const settings: RaceSettings = isHost ? buildSettings(circuitIndex, items, benched, aiItems, platformer) : lobbySettings ?? welcome?.settings ?? { circuit: circuitIndex };
+  const settings: RaceSettings = isHost ? buildSettings(circuitIndex, items, benched, aiItems, platformer, true, loadoutSlots) : lobbySettings ?? welcome?.settings ?? { circuit: circuitIndex };
   const circuit = isHost ? circuitIndex : circuitIndexOf(settings);
   const gp = CALENDAR[circuit] ?? CALENDAR[0];
   const localSeat = seatOfPlayer(seats, room.playerId) ?? 0;
@@ -229,14 +234,14 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
   const filed = useRef(new Map<string, SeatGarage>());
   const readies = useRef(new Map<string, boolean>());
   // Everything the message handler needs, without re-subscribing on every render.
-  const latest = useRef({ welcome, grid, lobbySeats, isHost, circuit: circuitIndex, items, open, benched, aiItems, hostRated, platformer, talents, autoStart });
-  latest.current = { welcome, grid, lobbySeats, isHost, circuit: circuitIndex, items, open, benched, aiItems, hostRated, platformer, talents, autoStart };
+  const latest = useRef({ welcome, grid, lobbySeats, isHost, circuit: circuitIndex, items, open, benched, aiItems, hostRated, platformer, talents, loadoutSlots, autoStart });
+  latest.current = { welcome, grid, lobbySeats, isHost, circuit: circuitIndex, items, open, benched, aiItems, hostRated, platformer, talents, loadoutSlots, autoStart };
   /** The host's full rules for a circuit: the circuit plus any power-up house rules. */
   const hostSettings = (circuitId: number): RaceSettings => {
     const l = latest.current;
     // P2-19: a rated race never runs talent builds — the ladder pays for driving, not for winning an
     // arms race in the talent tree. The switch is forced off rather than merely defaulted off.
-    const base = buildSettings(circuitId, l.items, l.benched, l.aiItems, l.platformer, !l.autoStart && l.talents);
+    const base = buildSettings(circuitId, l.items, l.benched, l.aiItems, l.platformer, !l.autoStart && l.talents, l.loadoutSlots);
     if (customCode) (base as unknown as { customCode: string }).customCode = customCode;
     return base;
   };
@@ -282,6 +287,15 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
     if (!isHost || autoStart) return;
     setTalents(next);
     latest.current.talents = next;
+    publish(latest.current.grid ?? seats, circuitIndex);
+  };
+
+  /** Host only (P2-20): how many skill types each driver races from their own kit. Guests only display it. */
+  const changeLoadoutSlots = (next: number) => {
+    if (!isHost) return;
+    const slots = Math.min(8, Math.max(1, Math.round(next)));
+    setLoadoutSlots(slots);
+    latest.current.loadoutSlots = slots;
     publish(latest.current.grid ?? seats, circuitIndex);
   };
 
@@ -684,6 +698,16 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
           <div className="mode-switch" role="group" aria-label="Driver talents">
             <button className={settings.talents !== false ? 'selected' : ''} aria-pressed={settings.talents !== false} disabled={!isHost || autoStart} onClick={() => changeTalents(true)}>On</button>
             <button className={settings.talents === false ? 'selected' : ''} aria-pressed={settings.talents === false} disabled={!isHost || autoStart} onClick={() => changeTalents(false)}>Off</button>
+          </div>
+        </div>
+        {/* P2-20: the host's loadout budget — how many skill types each driver races from their
+            own kit (8 = a full kit). Host-only; guests display the filed rule. */}
+        <div className="lobby-ai-items">
+          <span>Loadout slots</span>
+          <div className="mode-switch" role="group" aria-label="Loadout slots per driver">
+            {[8, 6, 4, 2, 1].map((n) => (
+              <button key={n} className={(settings.loadoutSlots ?? LOADOUT_SLOTS) === n ? 'selected' : ''} aria-pressed={(settings.loadoutSlots ?? LOADOUT_SLOTS) === n} disabled={!isHost} onClick={() => changeLoadoutSlots(n)}>{n}</button>
+            ))}
           </div>
         </div>
         {autoStart && <p className="lobby-note">A rated race runs without talents.</p>}

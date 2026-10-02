@@ -61,7 +61,7 @@ export type { RaceEntry, RankWire };
  * lobby/ready/start, 20 Hz packed `state`, `events`, chunked `snapshot`,
  * `intent`, `resync`, `results`, presence and the hard refusal on mismatch.
  */
-export const PROTOCOL_VERSION = 8; // 8: P2-19 hp byte + DNF flag per marble, ko/skillfx events, dnf/kos result rows, talents; 7: P2-08 24-skill inventories; 6: P2-00 depth lane byte per marble; 5: P2-01 engine flag + jump intent; // 3: the rated wire (rating board, result claim, the room's result);
+export const PROTOCOL_VERSION = 9; // 9: P2-20 loadoutSlots house rule (host trims each kit to N skill types); 8: P2-19 hp byte + DNF flag per marble, ko/skillfx events, dnf/kos result rows, talents; 7: P2-08 24-skill inventories; 6: P2-00 depth lane byte per marble; 5: P2-01 engine flag + jump intent; // 3: the rated wire (rating board, result claim, the room's result);
 // 4: MB-10 launchers (cannon/catapult/scoop holds, flipper firedAt, sling flash) and the movers' dynamic state
 
 /**
@@ -278,6 +278,12 @@ export interface RaceSettings {
    * pays rating does not pay it for a talent tree.
    */
   talents?: boolean;
+  /**
+   * P2-20: the host's loadout budget — how many skill TYPES from their own kit each driver
+   * races (1-8; 8 is a full kit). Absent reads as 8. The host trims its own seats' kits to this
+   * before racing and publishes the trimmed seat inventory; guests only display it.
+   */
+  loadoutSlots?: number;
 }
 
 /** An item the host set to "unlimited". */
@@ -1589,6 +1595,7 @@ export function readRaceSettings(value: unknown): RaceSettings | null {
   }
   if (s.aiItems !== undefined && typeof s.aiItems !== 'boolean') return null;
   if (s.talents !== undefined && typeof s.talents !== 'boolean') return null; // P2-19
+  if (s.loadoutSlots !== undefined && !isInt(s.loadoutSlots, 1, 8)) return null; // P2-20
   if (s.platformer !== undefined && (typeof s.platformer !== 'string' || !/^[a-z0-9-]{1,32}$/.test(s.platformer))) return null;
   let benched: number[] | undefined;
   if (s.benched !== undefined) {
@@ -1603,6 +1610,7 @@ export function readRaceSettings(value: unknown): RaceSettings | null {
     ...(typeof s.customCode === 'string' ? { customCode: s.customCode } : {}),
     ...(s.aiItems !== undefined ? { aiItems: s.aiItems as boolean } : {}),
     ...(s.talents !== undefined ? { talents: s.talents as boolean } : {}),
+    ...(s.loadoutSlots !== undefined ? { loadoutSlots: s.loadoutSlots as number } : {}),
     ...(benched ? { benched } : {}),
     ...(typeof s.platformer === 'string' ? { platformer: s.platformer } : {}),
   };
