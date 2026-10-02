@@ -181,6 +181,8 @@ export interface Marble {
   /** P2-17: this driver's talent effects (stat -> total), and max HP. Computers have none. */
   tfx?: Record<string, number>;
   maxHp?: number;
+  /** P2-16: when a computer driver last used a skill (the brain's pause between skills). */
+  aiSkillAt?: number;
   /** P2-08: skill timers and state (shield, ram, hover, charm, EMP...), and two debounce clocks. */
   fx?: SkillFx;
   spikedAt?: number;
@@ -1103,7 +1105,7 @@ export class Game {
       }
 
       // AI item usage (P2-16 replaces this with a real driving brain)
-      ai.useItems(this, m);
+      if (!this.track.platformer) ai.useItems(this, m); // platformer drivers use skills through the AI brain (engine/platformer.ts)
     }
 
     this.ageEffects(dt);
