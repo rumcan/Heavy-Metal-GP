@@ -54,7 +54,7 @@ import { loadTracksSync } from './game/tracks';
 import type { TrackDef } from './game/trackdef';
 import { normalizeInventory } from './game/types';
 import type { Inventory, ItemType } from './game/types';
-import PitShop from './components/PitShop';
+import LoadoutScreen from './components/loadout/LoadoutScreen';
 import { RIVALS, PLAYER_PORTRAIT_COUNT, preRaceBanter } from './game/characters';
 import type { Line } from './game/characters';
 import LoadingScreen from './components/LoadingScreen';
@@ -625,7 +625,7 @@ export default function App() {
         onRetry={openLadder}
         onClose={() => setLadderOpen(false)}
       />}
-      {shopOpen && <PitShop account={account} onBuy={buy} onClose={() => setShopOpen(false)} />}
+      {shopOpen && <LoadoutScreen account={account} onBuy={buy} onClose={() => setShopOpen(false)} />}
       {whatsNew && phase === 'menu' && <WhatsNew onClose={closeWhatsNew} />}
       {confirmNewSeason && <ConfirmDialog title="Start a new championship?" message="This replaces your saved season." confirmLabel="Start new" onConfirm={() => startSeason(true)} onCancel={() => setConfirmNewSeason(false)} />}
     </>

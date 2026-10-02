@@ -34,6 +34,8 @@ export interface GameOptions {
   benched?: number[];
   /** STORY HOOKS (ST-07), additive and optional. Unset: the engine behaves exactly as before. */
   story?: StoryHooks;
+  /** P2-10: the skills an item box may drop for this race (the local driver's loadout). Unset: the old pools. */
+  dropPool?: ItemType[];
   /**
    * MP-04: marble ids (seat slots) driven by a human on ANOTHER machine. The
    * host seats them and drives them from their intents; the AI never touches
@@ -173,6 +175,10 @@ export interface Marble {
   springAt?: number;
   /** P2-00 platformer: the start cannon this marble is loaded in (fired = out on the course). */
   cannon?: platformer.Cannon;
+  /** P2-08: skill timers and state (shield, ram, hover, charm, EMP...), and two debounce clocks. */
+  fx?: SkillFx;
+  spikedAt?: number;
+  ramHitAt?: number;
   /** P2-07: health (platformer races, offline for now), knocked out of the race, and KOs scored. */
   health?: Health;
   dnf?: boolean;
@@ -243,6 +249,8 @@ import * as ai from './engine/ai';
 import * as platformer from './engine/platformer';
 import { applyDamage, newHealth, regen, koCredit, KO_BOUNTY } from './health';
 import type { DamageKind, Health } from './health';
+import * as skillfx from './skills/effects';
+import type { SkillFx, Projectile, Bomb, SpikePatch, Decoy } from './skills/effects';
 
 export class Game {
   engine: Matter.Engine;
@@ -318,6 +326,14 @@ export class Game {
    * old rules (and their determinism), and online races wait for health on the wire.
    */
   healthOn = false;
+  /** P2-10: what an item box may drop (the loadout), or undefined for the original pools. */
+  dropPool?: ItemType[];
+  /** P2-08: homing bolts in flight, sticky bombs, spike patches and decoys (host-side state). */
+  projectiles: Projectile[] = [];
+  bombs: Bomb[] = [];
+  spikes: SpikePatch[] = [];
+  decoys: Decoy[] = [];
+  nextProjectileId = 1;
 
   /** Items that never run out this race (online house rules). */
   readonly unlimitedItems: Set<ItemType>;
@@ -330,6 +346,7 @@ export class Game {
 
   constructor(seed: number, roster: MarbleInfo[], opts: GameOptions = {}) {
     this.unlimitedItems = new Set(opts.unlimitedItems ?? []);
+    this.dropPool = opts.dropPool && opts.dropPool.length ? [...opts.dropPool] : undefined;
     this.rng = mulberry32(seed ^ 0x9e3779b9);
     this.engine = Engine.create({
       enableSleeping: false,
@@ -1081,6 +1098,7 @@ export class Game {
     }
 
     this.ageEffects(dt);
+    skillfx.step(this, dt); // P2-08: bolts, bombs, spikes, decoys, grapple pull, hovering
 
     this.supports.clear();
     Engine.update(this.engine, dt);
@@ -1160,7 +1178,20 @@ export class Game {
   damage(m: Marble, amount: number, by: number | null, kind: DamageKind): boolean {
     if (!this.healthOn || !m.health || m.dnf || m.finishedAt !== null) return false;
     const before = m.health.hp;
-    const r = applyDamage(m.health, amount, this.time, by);
+    // P2-08: a Bubble Shield soaks damage first (up to what is left of its 40)
+    const fx = m.fx;
+    if (fx && (fx.shieldUntil ?? 0) > this.time && (fx.shieldHp ?? 0) > 0) {
+      const soaked = Math.min(amount, fx.shieldHp ?? 0);
+      fx.shieldHp = (fx.shieldHp ?? 0) - soaked;
+      if (fx.shieldHp <= 0) fx.shieldUntil = 0;
+      amount -= soaked;
+      this.effects.push({ type: 'ring', x: m.body.position.x, y: m.body.position.y, ttl: 14, maxTtl: 14, color: '#60a5fa' });
+      if (amount <= 0) return false;
+    }
+    // P2-08: the Shaman's Charm leaves a killing hit on 1 HP instead (once)
+    const charmed = !!fx && (fx.charmUntil ?? 0) > this.time;
+    const r = applyDamage(m.health, amount, this.time, by, { charm: charmed });
+    if (r.saved && fx) { fx.charmUntil = 0; if (m.info.isPlayer) this.onEvent?.("Shaman's Charm saved you!", '#34d399'); }
     if (r.health === m.health) return false; // invulnerable
     m.health = { ...r.health, invulnUntil: Math.max(r.health.invulnUntil, this.time + 700) };
     this.shake = Math.max(this.shake, 4);

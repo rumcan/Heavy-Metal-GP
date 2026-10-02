@@ -1,0 +1,85 @@
+// P2-10: pick up to eight skills for the keys Q W E R / A S D F, and buy charges for them, in one screen
+// (the shop is folded in). Saved as you go; locked skills say why. Replaces the old pit shop.
+import { useMemo, useState } from 'react';
+import type { CSSProperties } from 'react';
+import { X, Coins, Lock } from 'lucide-react';
+import Dialog from '../Dialog';
+import ItemGlyph from '../ItemGlyph';
+import { GROUP_COLORS, SKILLS, STARTER_SKILLS } from '../../game/skills/catalog';
+import type { SkillGroup } from '../../game/skills/catalog';
+import { lockReason } from '../../game/loadout';
+import type { Catalog } from '../../game/loadout';
+import { loadSlots, saveSlots } from '../../game/loadout-store';
+import type { Slots } from '../../game/loadout-store';
+import { progressOf } from '../../game/economy';
+import type { RacerAccount } from '../../game/economy';
+import { ITEM_INFO, ITEM_TYPES, MAX_ITEM_STACK } from '../../game/types';
+import type { ItemType } from '../../game/types';
+import { SLOT_KEYS } from '../../game/loadout';
+
+interface Props { account: RacerAccount; onBuy: (item: ItemType) => string | undefined; onClose: () => void }
+
+const GROUPS: { id: SkillGroup; label: string }[] = [
+  { id: 'movement', label: 'Movement' }, { id: 'offence', label: 'Offence' }, { id: 'defence', label: 'Defence' }, { id: 'utility', label: 'Utility' },
+];
+const CATALOG: Catalog = Object.fromEntries(ITEM_TYPES.map((id) => {
+  const d = SKILLS[id];
+  return [id, { price: ITEM_INFO[id].price, unlockLevel: d.unlockLevel, starter: (STARTER_SKILLS as readonly string[]).includes(id) }];
+}));
+
+export default function LoadoutScreen({ account, onBuy, onClose }: Props) {
+  const [slots, setSlots] = useState<Slots>(() => loadSlots());
+  const [at, setAt] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const level = progressOf(account).level;
+  const driver = useMemo(() => ({ level, campaignComplete: account.campaignComplete === true }), [level, account.campaignComplete]);
+
+  const commit = (next: Slots) => { setSlots(next); saveSlots(next); };
+  const place = (item: ItemType) => {
+    const why = lockReason(item, CATALOG, driver, false);
+    if (why) { setError(why === 'level' ? `${ITEM_INFO[item].name} unlocks at level ${CATALOG[item].unlockLevel}` : 'That skill is not available'); return; }
+    setError(null);
+    const next = slots.map((s) => (s === item ? null : s));
+    next[at] = item;
+    commit(next);
+    const free = next.findIndex((s) => s === null);
+    if (free >= 0) setAt(free);
+  };
+  const clear = (i: number) => { const next = [...slots]; next[i] = null; commit(next); setAt(i); };
+  const buy = (item: ItemType) => setError(onBuy(item) ?? null);
+
+  return <Dialog titleId="loadout-title" onClose={onClose} className="loadout-dialog">
+    <div className="loadout-head"><h2 id="loadout-title">LOADOUT</h2><span className="loadout-wallet"><Coins size={14} />{account.credits.toLocaleString()} CR · LEVEL {level}</span></div>
+    <p className="dialog-intro">Pick up to 8 skills for your keys. Tap a slot, then a skill. Charges are shared by every mode and carry between races.</p>
+    {error && <p className="loadout-error" role="alert">{error}</p>}
+    <div className="loadout-slots" role="group" aria-label="Your eight skill slots">
+      {slots.map((item, i) => <div key={i} className={`loadout-slot ${i === at ? 'is-selected' : ''} ${item ? 'is-filled' : ''}`} style={item ? { '--item-color': ITEM_INFO[item].color } as CSSProperties : undefined}>
+        <button className="loadout-slot-main" onClick={() => setAt(i)} aria-pressed={i === at} aria-label={`Slot ${SLOT_KEYS[i]}${item ? `: ${ITEM_INFO[item].name}, ${account.inventory[item]} charges` : ', empty'}`}>
+          <kbd>{SLOT_KEYS[i]}</kbd>
+          {item ? <><ItemGlyph item={item} size={22} /><b>{ITEM_INFO[item].short}</b><span>x{account.inventory[item]}</span></> : <span className="loadout-empty">empty</span>}
+        </button>
+        {item && <div className="loadout-slot-tools">
+          <button onClick={() => buy(item)} disabled={account.inventory[item] >= MAX_ITEM_STACK || account.credits < ITEM_INFO[item].price} title={`Buy one charge for ${ITEM_INFO[item].price} CR`}>+1 · {ITEM_INFO[item].price}</button>
+          <button onClick={() => clear(i)} aria-label={`Clear slot ${SLOT_KEYS[i]}`}><X size={12} /></button>
+        </div>}
+      </div>)}
+    </div>
+    <div className="loadout-groups">
+      {GROUPS.map((g) => <section key={g.id} aria-label={g.label}>
+        <h3 style={{ color: GROUP_COLORS[g.id] }}>{g.label}</h3>
+        <div className="loadout-skill-list">
+          {ITEM_TYPES.filter((id) => SKILLS[id].group === g.id).map((id) => {
+            const why = lockReason(id, CATALOG, driver, false);
+            const on = slots.includes(id);
+            return <button key={id} className={`loadout-skill ${why ? 'is-locked' : ''} ${on ? 'is-slotted' : ''}`} style={{ '--item-color': ITEM_INFO[id].color } as CSSProperties} onClick={() => place(id)} aria-disabled={!!why} title={`${ITEM_INFO[id].name}: ${ITEM_INFO[id].desc}`}>
+              <ItemGlyph item={id} size={18} />
+              <span><b>{ITEM_INFO[id].name}</b><small>{why ? <><Lock size={9} /> Level {SKILLS[id].unlockLevel}</> : `${ITEM_INFO[id].price} CR · own ${account.inventory[id]}`}</small></span>
+              {on && <i>{SLOT_KEYS[slots.indexOf(id)]}</i>}
+            </button>;
+          })}
+        </div>
+      </section>)}
+    </div>
+    <div className="pause-actions"><button className="button-primary" onClick={onClose} autoFocus>Done</button></div>
+  </Dialog>;
+}

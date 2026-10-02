@@ -100,6 +100,8 @@ export function applyLaneMask(game: Game, m: Marble): void {
   const lane = m.lane ?? LANE_MIDDLE;
   const ghost = m.ghostUntil > game.time;
   m.body.collisionFilter.category = laneCategory(lane);
+  // P2-08: a Drill passes through the floor (only sensors are felt for its second)
+  if ((m.fx?.drillUntil ?? 0) > game.time) { m.body.collisionFilter.mask = CAT_SENSOR; return; }
   m.body.collisionFilter.mask = CAT_WALL | CAT_SENSOR | (ghost ? 0 : laneCategory(lane) | CAT_FRAGILE | CAT_DANGER) | (onLedgeSide(game, m) ? CAT_ONEWAY : 0);
 }
 
