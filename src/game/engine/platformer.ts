@@ -40,6 +40,9 @@ export function switchLane(game: Game, m: Marble, to: Lane): void {
   m.lane = to;
   m.laneAt = game.time;
   applyLaneMask(game, m);
+  // Lanes have their own hills: if the new lane's floor is above the ball, the ball goes on top of it.
+  const floor = floorAt(game.track.platformer!.plan, to, m.body.position.x);
+  if (floor !== null && m.body.position.y > floor - MARBLE_RADIUS - 2) Body.setPosition(m.body, { x: m.body.position.x, y: floor - MARBLE_RADIUS - 2 });
   const v = Body.getVelocity(m.body);
   Body.setVelocity(m.body, { x: v.x, y: Math.min(v.y, -4) });
   if (m.info.isPlayer) game.sfx('spring', m, m.body.position.x, m.body.position.y);
@@ -146,7 +149,9 @@ export function aiDrive(game: Game, m: Marble, v: Matter.Vector, s: number): Mat
   const ahead = floorAt(plan, lane, p.x + look);
   const bump = plan.bumps.some((b) => b.lane === lane && b.x > p.x && b.x - p.x < 20 + Math.max(0, v.x) * 5);
   const gap = ahead === null;
-  const climb = here !== null && ahead !== null && ahead < here - 12;
+  // A step up (a sudden rise), not a smooth uphill: compare the floor just before `ahead` with it.
+  const before = floorAt(plan, lane, p.x + look - 10);
+  const climb = here !== null && ahead !== null && ahead < here - 12 && (before === null || before - ahead > 8);
   // Pushing but not moving: a rival (or anything else) is in the way. Hop it.
   const blocked = v.x < 1.2 && game.time - game.raceStartTime > 1500;
   if (gap || bump || climb || blocked) {
