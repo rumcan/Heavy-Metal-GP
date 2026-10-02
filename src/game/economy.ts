@@ -2,6 +2,8 @@ import * as storage from './storage';
 import { emptyInventory, ITEM_INFO, ITEM_TYPES, MAX_ITEM_STACK, normalizeInventory } from './types';
 import type { HeatResult, Inventory, ItemType } from './types';
 import { settle } from './settlement';
+import { awardXp, migrateAccount, newProgress } from './progression';
+import type { ProgressState } from './progression';
 import type { PurseMode } from './settlement';
 
 const NO_TALENTS = { prizePct: 0, pegBonusPct: 0, koBountyPct: 0, shamanFeePct: 0 };
@@ -22,6 +24,10 @@ export interface RacerAccount {
   paidRaces: string[];
   totalWinnings: number;
   finishes: number;
+  /** P2-09: XP, level and talent points. Absent on old saves: `progressOf` backfills it from `finishes`. */
+  progress?: ProgressState;
+  /** P2-09: the campaign has been finished (unlocks every skill online). */
+  campaignComplete?: boolean;
 }
 
 export interface RacePayout {
@@ -38,7 +44,25 @@ export interface RacePayout {
 }
 
 export function createAccount(): RacerAccount {
-  return { version: 1, credits: STARTER_CREDITS, inventory: emptyInventory(), trophies: emptyInventory(), trophyRaces: [], paidRaces: [], totalWinnings: 0, finishes: 0 };
+  return { version: 1, credits: STARTER_CREDITS, inventory: emptyInventory(), trophies: emptyInventory(), trophyRaces: [], paidRaces: [], totalWinnings: 0, finishes: 0, progress: newProgress() };
+}
+
+/** P2-09: this driver's progress; an old account gets 50 XP per past finish. */
+export function progressOf(account: RacerAccount): ProgressState {
+  return account.progress ?? migrateAccount(account.finishes);
+}
+
+/** P2-09: give XP for one race (once per race id) and say which levels it earned. */
+export function awardRaceXp(account: RacerAccount, raceId: string, xp: number): { account: RacerAccount; levelsGained: number[] } {
+  const r = awardXp(progressOf(account), raceId, xp);
+  return { account: { ...account, progress: r.state }, levelsGained: r.levelsGained };
+}
+
+function readProgress(value: unknown): ProgressState | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const p = value as Partial<ProgressState>;
+  if (typeof p.xp !== 'number' || !Number.isFinite(p.xp) || p.xp < 0 || typeof p.level !== 'number' || typeof p.talentPoints !== 'number') return undefined;
+  return { xp: p.xp, level: Math.max(1, Math.min(30, Math.floor(p.level))), talentPoints: Math.max(0, Math.floor(p.talentPoints)), awarded: Array.isArray(p.awarded) ? p.awarded.filter((x): x is string => typeof x === 'string').slice(-200) : [] };
 }
 
 export function purchaseItem(account: RacerAccount, item: ItemType): { account: RacerAccount; error?: string } {
@@ -206,6 +230,7 @@ export function parseAccount(raw: string | null): RacerAccount {
       trophies: normalizeTrophies(account.trophies), trophyRaces: raceIds(account.trophyRaces),
       paidRaces: raceIds(account.paidRaces),
       totalWinnings: safeNumber(account.totalWinnings), finishes: safeNumber(account.finishes),
+      ...(readProgress(account.progress) ? { progress: readProgress(account.progress) } : {}), ...(account.campaignComplete === true ? { campaignComplete: true } : {}),
     };
   } catch { return createAccount(); }
 }
