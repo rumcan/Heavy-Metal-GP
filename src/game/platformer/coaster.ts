@@ -4,7 +4,9 @@
 // plain floor pieces from build.ts). Returns false until the art has loaded, and the caller draws a fallback.
 import type { CoursePlan, Floor, Lane } from './course';
 import { SPRING_W } from './course';
+import type Matter from 'matter-js';
 import { LEDGE_H } from './build';
+import wreckingBallUrl from '../../assets/game/wrecking-ball.webp';
 import railWoodUrl from '../../assets/game/rail-wood.webp';
 import rockFillUrl from '../../assets/game/rock-fill.webp';
 import mossUrl from '../../assets/game/strip-moss.webp';
@@ -19,7 +21,7 @@ import stripWoodUrl from '../../assets/game/strip-wood.webp';
 const load = (src: string) => (typeof Image !== 'undefined' ? Object.assign(new Image(), { src }) : null);
 const ART = {
   wood: load(railWoodUrl), rock: load(rockFillUrl), moss: load(mossUrl), sheep: load(sheepUrl),
-  crate: load(crateUrl), towers: [load(tower1Url), load(tower2Url), load(tower3Url)], torch: load(torchUrl),
+  crate: load(crateUrl), ball: load(wreckingBallUrl), towers: [load(tower1Url), load(tower2Url), load(tower3Url)], torch: load(torchUrl),
 };
 const ready = (img: HTMLImageElement | null): img is HTMLImageElement => !!img && img.complete && img.naturalWidth > 0;
 const allReady = () => ready(ART.wood) && ready(ART.rock) && ready(ART.moss);
@@ -175,7 +177,7 @@ function trestle(ctx: CanvasRenderingContext2D, run: Pt[], x0: number, x1: numbe
  * Draw one lane of a flow course in the coaster look. Returns false (draws nothing) until the art is loaded.
  * Order: cliffs, towers, trestles, the beam and rail, then props on the track.
  */
-export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan, lane: Lane, left: number, right: number, bottom: number, time: number, springFired: (x: number) => boolean): boolean {
+export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan, lane: Lane, left: number, right: number, bottom: number, time: number, springFired: (x: number) => boolean, pieces: Matter.Body[] = []): boolean {
   if (!allReady()) return false;
   const runs = runsOf(plan)[lane];
   const rock = rockPattern(ctx);
@@ -259,5 +261,98 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
     const h = (ART.sheep.naturalHeight / ART.sheep.naturalWidth) * w * squash;
     ctx.drawImage(ART.sheep, s.x - 9, s.y - h + 4, w, h);
   }
+  drawMapPieces(ctx, pieces, lane, left, right, time);
   return true;
+}
+
+/**
+ * The classic map pieces on a coaster course, in this lane: boost pads on the track, wrecking balls swinging
+ * from a gantry (one of the owner's posts plus a beam), and power-up boxes hovering over the line.
+ */
+function drawMapPieces(ctx: CanvasRenderingContext2D, pieces: Matter.Body[], lane: Lane, left: number, right: number, time: number) {
+  for (const b of pieces) {
+    const md = b.plugin as { kind: string; lane?: number; dir?: Matter.Vector; pivot?: Matter.Vector; chain?: number; active?: boolean };
+    if (md.lane !== lane || b.bounds.max.x < left - 300 || b.bounds.min.x > right + 300) continue;
+    if (md.kind === 'boost') {
+      // glowing arrows along the track
+      const v = b.vertices;
+      const len = Math.hypot(v[1].x - v[0].x, v[1].y - v[0].y);
+      ctx.save();
+      ctx.translate(b.position.x, b.position.y);
+      ctx.rotate(b.angle);
+      const glow = ctx.createLinearGradient(0, -18, 0, 18);
+      glow.addColorStop(0, 'rgba(255,170,60,0)');
+      glow.addColorStop(0.75, 'rgba(255,170,60,0.45)');
+      glow.addColorStop(1, 'rgba(255,170,60,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(-len / 2, -18, len, 36);
+      for (let i = 0; i < 4; i++) {
+        const x = -len / 2 + 22 + i * ((len - 44) / 3);
+        const a = 0.45 + 0.55 * (((time / 120 + i) % 4) / 4);
+        ctx.fillStyle = `rgba(255,${150 + i * 20},40,${a.toFixed(2)})`;
+        ctx.beginPath();
+        ctx.moveTo(x - 10, 4); ctx.lineTo(x + 6, 12); ctx.lineTo(x - 10, 20); ctx.lineTo(x - 4, 12);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    } else if (md.kind === 'wrecker' && md.pivot) {
+      const pv = md.pivot;
+      // the gantry: a post standing on the track beside the pivot, and a beam out over it
+      const postX = pv.x - 70;
+      const postImg = POSTS[Math.floor(hash(Math.round(pv.x), 41) * POSTS.length)];
+      const foot = pv.y + (md.chain ?? 140) + 44;
+      if (ready(postImg)) {
+        const h = foot - (pv.y - 26);
+        const w = Math.min((postImg.naturalWidth / postImg.naturalHeight) * h, 110);
+        ctx.drawImage(postImg, postX - w / 2, pv.y - 26, w, h);
+      }
+      if (ready(ART.wood)) stripAlong(ctx, middle(ART.wood), [{ x: postX - 10, y: pv.y - 14 }, { x: pv.x + 26, y: pv.y - 14 }], 2, 20);
+      // chain
+      const dx = b.position.x - pv.x, dy = b.position.y - pv.y;
+      const len = Math.hypot(dx, dy) || 1;
+      ctx.strokeStyle = '#1f2937';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(pv.x, pv.y);
+      ctx.lineTo(b.position.x, b.position.y);
+      ctx.stroke();
+      ctx.strokeStyle = '#6b7280';
+      ctx.lineWidth = 2;
+      for (let d = 6; d < len - 20; d += 11) {
+        ctx.beginPath();
+        ctx.ellipse(pv.x + (dx * d) / len, pv.y + (dy * d) / len, 2.6, 5, Math.atan2(dy, dx) + ((d / 11) % 2 < 1 ? Math.PI / 2 : 0), 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      if (ready(ART.ball)) {
+        // the art hangs from a chain stub; its ball centre sits ~62% down the image
+        const bw = 24 * 3.1, bh = (bw * ART.ball.naturalHeight) / ART.ball.naturalWidth;
+        ctx.save();
+        ctx.translate(b.position.x, b.position.y);
+        ctx.rotate(-Math.atan2(dx, dy));
+        ctx.drawImage(ART.ball, -bw / 2, -bh * 0.62, bw, bh);
+        ctx.restore();
+      }
+    } else if (md.kind === 'itembox' && md.active !== false) {
+      const y = b.position.y + Math.sin(time / 300 + b.position.x) * 4;
+      const halo = ctx.createRadialGradient(b.position.x, y, 4, b.position.x, y, 34);
+      halo.addColorStop(0, 'rgba(255,214,90,0.55)');
+      halo.addColorStop(1, 'rgba(255,214,90,0)');
+      ctx.fillStyle = halo;
+      ctx.fillRect(b.position.x - 34, y - 34, 68, 68);
+      ctx.save();
+      ctx.translate(b.position.x, y);
+      ctx.rotate(Math.sin(time / 500 + b.position.x) * 0.25);
+      if (ready(ART.crate)) ctx.drawImage(ART.crate, -18, -16, 36, 32);
+      ctx.font = 'bold 20px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#451a03';
+      ctx.strokeText('?', 0, 1);
+      ctx.fillStyle = '#fde047';
+      ctx.fillText('?', 0, 1);
+      ctx.restore();
+    }
+  }
 }

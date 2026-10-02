@@ -1,13 +1,13 @@
 // P2-00 (#124): turn a course plan into a Track the engine races on. Physics stays plain vector shapes:
 // every floor and bump is a static quad in its own depth lane (collision mask = that lane's bit only).
 import Matter from 'matter-js';
-import { CAT_WALL } from '../track';
+import { CAT_SENSOR, CAT_WALL } from '../track';
 import type { Track } from '../track';
 import type { TrackTheme } from '../types';
 import { laneCategory } from '../lanes';
 import { makePath } from '../course-path';
 import type { CoursePath } from '../course-path';
-import { planCourse, planOfficial, platformerCourse } from './course';
+import { floorAt, planCourse, planOfficial, platformerCourse } from './course';
 import type { CoursePlan, Lane } from './course';
 
 export interface PlatformerInfo {
@@ -60,6 +60,35 @@ export function buildPlatformerTrack(seed: number, theme: TrackTheme, courseId?:
     body.plugin = { kind: 'ledge', lane: l.lane, depth: 0 };
     bodies.push(body);
   }
+  // The classic map pieces, each in its own lane's collision layer.
+  const itemBoxes: Matter.Body[] = [];
+  const wreckers: Matter.Body[] = [];
+  for (const b of plan.itemBoxes ?? []) {
+    const body = Matter.Bodies.circle(b.x, b.y, 17, { isStatic: true, isSensor: true, label: 'itembox', collisionFilter: { category: CAT_SENSOR, mask: laneCategory(b.lane), group: 0 } });
+    body.plugin = { kind: 'itembox', active: true, respawnAt: 0, lane: b.lane };
+    bodies.push(body);
+    itemBoxes.push(body);
+  }
+  for (const w of plan.wreckers ?? []) {
+    const pivot = { x: w.x, y: w.pivotY };
+    const angle = w.amp * Math.sin(w.phase);
+    const body = Matter.Bodies.circle(pivot.x + Math.sin(angle) * w.chain, pivot.y + Math.cos(angle) * w.chain, 24, {
+      isStatic: true, label: 'wrecker', restitution: 0.6, friction: 0.002, collisionFilter: { category: CAT_WALL, mask: laneCategory(w.lane), group: 0 },
+    });
+    body.plugin = { kind: 'wrecker', pivot, chain: w.chain, amp: w.amp, spin: w.speed, phase: w.phase, radius: 24, lane: w.lane };
+    bodies.push(body);
+    wreckers.push(body);
+  }
+  for (const b of plan.boosts ?? []) {
+    const y0 = floorAt(plan, b.lane, b.x) ?? 0, y1 = floorAt(plan, b.lane, b.x + b.w) ?? y0;
+    const len = Math.hypot(b.w, y1 - y0);
+    const dir = { x: b.w / len, y: (y1 - y0) / len };
+    const body = Matter.Bodies.rectangle(b.x + b.w / 2, (y0 + y1) / 2 - 18, len, 36, {
+      isStatic: true, isSensor: true, label: 'boost', angle: Math.atan2(y1 - y0, b.w), collisionFilter: { category: CAT_SENSOR, mask: laneCategory(b.lane), group: 0 },
+    });
+    body.plugin = { kind: 'boost', dir, lane: b.lane };
+    bodies.push(body);
+  }
   // Shared walls: behind the grid and after the run-out.
   bodies.push(box(-240, plan.startY - 1400, 40, 1400 + FLOOR_DEPTH, null, 'wall'));
   bodies.push(box(plan.width + 200, -400, 40, plan.height + 400, null, 'wall'));
@@ -75,7 +104,7 @@ export function buildPlatformerTrack(seed: number, theme: TrackTheme, courseId?:
     segments: [{ name: 'Course', y: 0, h: plan.height }],
     spinners: [],
     turnstiles: [],
-    itemBoxes: [],
+    itemBoxes,
     ramps: [],
     buckets: [],
     targetBanks: [],
@@ -85,7 +114,7 @@ export function buildPlatformerTrack(seed: number, theme: TrackTheme, courseId?:
     finishY: plan.finishY,
     theme,
     decor: [],
-    wreckers: [],
+    wreckers,
     platformer: { plan, path: makePath(plan.path) },
   };
 }

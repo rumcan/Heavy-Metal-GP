@@ -59,7 +59,7 @@ test('buildPlatformerTrack: floors collide only with their own lane; shared wall
   assert.ok(track.platformer);
   for (const body of track.bodies) {
     const md = meta(body);
-    if (md.kind === 'floor' || md.kind === 'ledge') assert.equal(body.collisionFilter.mask, laneCategory(md.lane!));
+    if (md.lane !== undefined) assert.equal(body.collisionFilter.mask, laneCategory(md.lane), `${md.kind} sees only its own lane`);
     else assert.equal(body.collisionFilter.mask, ALL_LANES, md.kind);
   }
   assert.equal(meta(track.gate).kind, 'gate');
@@ -186,4 +186,26 @@ test('springs and one-way ledges: a ball passes up through a ledge, lands on it,
   assert.ok(launched > 0, 'springs launched someone');
   assert.ok(onLedge > 0, 'someone rode a ledge');
   assert.ok(game.allFinished(), 'and everyone still finished');
+});
+
+test('map pieces on flow courses: power-up boxes get picked up, wrecking balls swing, boosts push, everyone finishes', () => {
+  const track = buildPlatformerTrack(2, TRACK_THEMES.forest, 'rolling-hills');
+  const plan = track.platformer!.plan;
+  assert.ok((plan.itemBoxes?.length ?? 0) >= 6, 'power-up boxes');
+  assert.ok((plan.wreckers?.length ?? 0) >= 3, 'wrecking balls');
+  assert.ok((plan.boosts?.length ?? 0) >= 2, 'boost pads');
+  assert.equal(track.itemBoxes.length, plan.itemBoxes!.length);
+  assert.equal(track.wreckers.length, plan.wreckers!.length);
+  const game = new Game(2, roster(), { track });
+  game.start();
+  game.openGate();
+  const start = track.wreckers.map((w) => ({ ...w.position }));
+  let picked = 0;
+  for (let i = 0; i < 18000 && !game.allFinished(); i++) {
+    game.step(PHYSICS_STEP);
+    if (i === 60) assert.ok(track.wreckers.some((w, k) => Math.abs(w.position.x - start[k].x) > 1), 'the wrecking balls swing');
+  }
+  for (const box of track.itemBoxes) if (meta(box).respawnAt) picked++;
+  assert.ok(picked > 0, 'someone picked up a power-up box');
+  assert.ok(game.allFinished(), `everyone finished (${game.finishOrder.length}/10)`);
 });

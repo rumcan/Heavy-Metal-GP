@@ -364,7 +364,8 @@ function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, 
   // Flow courses: the coaster skin (track on trestles over cliffs) once its art is loaded; until then the
   // slope as whole runs of earth and grass. Either way never thousands of little blocks.
   const fired = (sx: number) => game.marbles.some((m) => m.springAt !== undefined && game.time - m.springAt < 220 && (m.lane ?? 1) === lane && Math.abs(m.body.position.x - sx - SPRING_W / 2) < 80);
-  const coaster = flow && drawCoasterLane(ctx, info.plan, lane as Lane, left, right, bottom, t, fired);
+  const pieces = flow ? game.track.bodies.filter((b) => { const k = meta(b).kind; return (k === 'wrecker' || k === 'itembox' || k === 'boost') && meta(b).lane === lane; }) : [];
+  const coaster = flow && drawCoasterLane(ctx, info.plan, lane as Lane, left, right, bottom, t, fired, pieces);
   if (flow && !coaster) drawFlowGround(ctx, info.plan, lane, left, right, bottom);
   for (const body of game.track.bodies) {
     const md = meta(body);
