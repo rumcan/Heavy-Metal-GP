@@ -140,3 +140,22 @@ test('online: race settings carry a platformer course id; a bad id is refused', 
   assert.equal(readRaceSettings({ circuit: 0, platformer: 7 }), null);
   assert.deepEqual(readRaceSettings({ circuit: 2 }), { circuit: 2 });
 });
+
+test('flow courses: smooth, descending, and the back ridge always stands above the middle one out on the slopes', async () => {
+  const { planFlow } = await import('../src/game/platformer/flow');
+  const plan = planFlow(11);
+  assert.equal(plan.style, 'flow');
+  assert.ok(plan.finishY > plan.startY + 1500, 'a long descent');
+  for (const lane of LANES) {
+    const floors = plan.floors.filter((f) => f.lane === lane).sort((a, b) => a.x0 - b.x0);
+    for (let i = 1; i < floors.length; i++) {
+      const a = floors[i - 1], b = floors[i];
+      if (b.x0 - a.x1 < 0.5) assert.ok(Math.abs(b.y0 - a.y1) < 0.01, `lane ${lane}: the slope is continuous at ${b.x0}`);
+      else assert.ok(b.x0 - a.x1 <= 170, `lane ${lane}: a jumpable chasm at ${a.x1}`);
+    }
+  }
+  for (let x = 3000; x < plan.width - 3000; x += 250) {
+    const back = floorAt(plan, 0, x), middle = floorAt(plan, 1, x);
+    if (back !== null && middle !== null) assert.ok(back < middle, `back ridge above the middle at ${x}`);
+  }
+});

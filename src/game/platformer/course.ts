@@ -3,13 +3,14 @@
 // Deterministic from the seed (multiplayer and replays build the same course).
 import { mulberry32 } from '../types';
 import { LANE_BACK, LANE_FRONT, LANE_MIDDLE } from '../lanes';
+import { planFlow } from './flow';
 
 export type Lane = 0 | 1 | 2;
 
 /** Quick race picks a platformer course with an id like `platformer:greenhollow` (it stands in for a My tracks id). */
 export const PLATFORMER_PREFIX = 'platformer:';
 /** The default pick (the first official course). */
-export const PLATFORMER_TRACK_ID = 'platformer:greenhollow';
+export const PLATFORMER_TRACK_ID = 'platformer:rolling-hills';
 export const isPlatformerPick = (id: string | null | undefined): id is string => !!id && id.startsWith(PLATFORMER_PREFIX);
 
 export interface PlatformerCourse {
@@ -20,10 +21,13 @@ export interface PlatformerCourse {
   seed: number;
   length?: number;
   tutorial?: boolean;
+  /** Rolling slopes (src/game/platformer/flow.ts) instead of blocks. */
+  flow?: boolean;
 }
 
 /** The official platformer courses (owner playtest first, then the other calendar slots convert). */
 export const PLATFORMER_COURSES: readonly PlatformerCourse[] = [
+  { id: 'rolling-hills', name: 'Rolling Hills', blurb: 'Long rolling slopes: build speed on the descents, fly off the crests, jump the chasms and hop the crates. The ridges behind you are the other lanes.', seed: 11, flow: true },
   { id: 'greenhollow', name: 'Greenhollow Run', blurb: 'A long green descent with ten lane gates. The back lane is the shortcut if you can clear its gaps.', seed: 7 },
   { id: 'misty-ridge', name: 'Misty Ridge', blurb: 'Longer and busier: thirteen gates, more doors, and crates in every lane.', seed: 23, length: 28000 },
   { id: 'training', name: 'Training Grounds', blurb: 'The short tutorial course: one crate, one gap, one ramp, one door, a slope and a climb.', seed: 1, tutorial: true },
@@ -37,6 +41,7 @@ export function platformerCourse(id: string | null | undefined): PlatformerCours
 /** The plan for an official course. */
 export function planOfficial(course: PlatformerCourse): CoursePlan {
   if (course.tutorial) return planTutorial();
+  if (course.flow) return planFlow(course.seed);
   return planCourse(course.seed, course.length ? { ...COURSE_TUNING, length: course.length } : COURSE_TUNING);
 }
 
@@ -67,6 +72,8 @@ export interface CoursePlan {
   /** Crossing this x (on any lane) finishes the race. */
   finishX: number;
   finishY: number;
+  /** P2-00: 'flow' = rolling slopes (src/game/platformer/flow.ts); absent = the block style. */
+  style?: 'blocks' | 'flow';
 }
 
 export const COURSE_TUNING = {
@@ -184,11 +191,26 @@ export function planCourse(seed: number, tuning = COURSE_TUNING): CoursePlan {
   return { seed, width: tuning.length, height, floors, bumps, gates, path, startX, startY, finishX, finishY: y };
 }
 
+/** Per-plan index: each lane's floors sorted by x (flow courses have thousands of short pieces). */
+const floorIndex = new WeakMap<CoursePlan, Floor[][]>();
+
 /** The floor height under `x` in `lane`, or null over a gap. */
 export function floorAt(plan: CoursePlan, lane: Lane, x: number): number | null {
-  for (const f of plan.floors) {
-    if (f.lane !== lane || x < f.x0 || x > f.x1) continue;
-    return f.y0 + ((x - f.x0) / (f.x1 - f.x0)) * (f.y1 - f.y0);
+  let index = floorIndex.get(plan);
+  if (!index) {
+    index = [0, 1, 2].map((l) => plan.floors.filter((f) => f.lane === l).sort((a, b) => a.x0 - b.x0));
+    floorIndex.set(plan, index);
+  }
+  const list = index[lane];
+  // The last floor starting at or before x.
+  let lo = 0, hi = list.length - 1, at = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (list[mid].x0 <= x) { at = mid; lo = mid + 1; } else hi = mid - 1;
+  }
+  for (let i = at; i >= 0 && i >= at - 1; i--) {
+    const f = list[i];
+    if (x >= f.x0 && x <= f.x1) return f.y0 + ((x - f.x0) / (f.x1 - f.x0)) * (f.y1 - f.y0);
   }
   return null;
 }

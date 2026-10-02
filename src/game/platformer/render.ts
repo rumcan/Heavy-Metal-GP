@@ -6,7 +6,7 @@ import type { Game, Marble } from '../engine';
 import { meta } from '../track';
 import { laneFocus, laneView, visibleLanes, LANE_SWITCH_MS, LANE_MIDDLE } from '../lanes';
 import { drawMarble } from '../render';
-import type { LaneGate } from './course';
+import type { CoursePlan, Floor, LaneGate } from './course';
 import earthUrl from '../../assets/game/platformer/earth.webp';
 import grassUrl from '../../assets/game/platformer/grass.webp';
 import crateUrl from '../../assets/game/platformer/crate.webp';
@@ -289,9 +289,13 @@ function drawFinish(ctx: CanvasRenderingContext2D, x: number, y: number) {
 /** Draw one lane's world (floors, bumps, gates, the finish) in world coordinates. */
 function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, left: number, right: number, bottom: number, t: number) {
   const info = game.track.platformer!;
+  const flow = info.plan.style === 'flow';
+  // Flow courses: the slope is drawn as whole runs (between chasms), not as thousands of little blocks.
+  if (flow) drawFlowGround(ctx, info.plan, lane, left, right, bottom);
   for (const body of game.track.bodies) {
     const md = meta(body);
     if (md.kind !== 'floor' || md.lane !== lane) continue;
+    if (flow && md.depth !== undefined && md.depth > 100) continue;
     if (body.bounds.max.x < left || body.bounds.min.x > right) continue;
     const v = body.vertices;
     if (v.length === 4 && md.depth !== undefined && md.depth > 100) drawFloor(ctx, v[0].x, v[0].y, v[1].x, v[1].y, md.depth, lane, bottom);
@@ -303,6 +307,98 @@ function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, 
     drawGate(ctx, g, t, Math.abs(player.body.position.x - (g.x + g.w / 2)) < 260);
   }
   if (info.plan.finishX > left && info.plan.finishX < right) drawFinish(ctx, info.plan.finishX, info.plan.finishY);
+}
+
+/** Each lane's floors joined into runs (the stretches between chasms) — one polygon per run. */
+const runCache = new WeakMap<CoursePlan, { x: number; y: number }[][][]>();
+function runsOf(plan: CoursePlan): { x: number; y: number }[][][] {
+  let runs = runCache.get(plan);
+  if (runs) return runs;
+  runs = [0, 1, 2].map((lane) => {
+    const floors = plan.floors.filter((f) => f.lane === lane).sort((a, b) => a.x0 - b.x0);
+    const out: { x: number; y: number }[][] = [];
+    let run: { x: number; y: number }[] = [];
+    let last: Floor | null = null;
+    for (const f of floors) {
+      if (!last || Math.abs(f.x0 - last.x1) > 0.5) {
+        if (run.length) out.push(run);
+        run = [{ x: f.x0, y: f.y0 }];
+      }
+      run.push({ x: f.x1, y: f.y1 });
+      last = f;
+    }
+    if (run.length) out.push(run);
+    return out;
+  });
+  runCache.set(plan, runs);
+  return runs;
+}
+
+/** A flow course's ground in one lane: the earth texture under the curve, the grass laid along it. */
+function drawFlowGround(ctx: CanvasRenderingContext2D, plan: CoursePlan, lane: number, left: number, right: number, bottom: number) {
+  const earth = earthPattern(ctx);
+  const pal = PALETTE[lane];
+  for (const run of runsOf(plan)[lane]) {
+    if (run[run.length - 1].x < left || run[0].x > right) continue;
+    let i0 = 0;
+    while (i0 < run.length - 1 && run[i0 + 1].x < left) i0++;
+    let i1 = run.length - 1;
+    while (i1 > 0 && run[i1 - 1].x > right) i1--;
+    const pts = run.slice(i0, i1 + 1);
+    const top = Math.min(...pts.map((p) => p.y));
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (const p of pts) ctx.lineTo(p.x, p.y);
+    ctx.lineTo(pts[pts.length - 1].x, bottom);
+    ctx.lineTo(pts[0].x, bottom);
+    ctx.closePath();
+    ctx.fillStyle = earth ?? pal.face;
+    ctx.fill();
+    const g = ctx.createLinearGradient(0, top, 0, top + 420);
+    g.addColorStop(0, 'rgba(20,12,6,0.12)');
+    g.addColorStop(1, 'rgba(12,8,4,0.8)');
+    ctx.fillStyle = g;
+    ctx.fill();
+    // run ends (chasm walls) get the same dark edge as a block
+    ctx.strokeStyle = 'rgba(25,15,8,0.8)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    if (i0 === 0) { ctx.moveTo(pts[0].x + 1.5, pts[0].y); ctx.lineTo(pts[0].x + 1.5, bottom); }
+    if (i1 === run.length - 1) { const e = pts[pts.length - 1]; ctx.moveTo(e.x - 1.5, e.y); ctx.lineTo(e.x - 1.5, bottom); }
+    ctx.stroke();
+    // grass: the strip texture laid piece by piece along the curve, continuing where the last piece stopped
+    if (ready(ART.grass)) {
+      const img = ART.grass;
+      const tw = (img.naturalWidth / img.naturalHeight) * GRASS_H;
+      const srcPerPx = img.naturalWidth / tw;
+      let u = 0;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const a = pts[i], b = pts[i + 1];
+        const len = Math.hypot(b.x - a.x, b.y - a.y);
+        ctx.save();
+        ctx.translate(a.x, a.y);
+        ctx.rotate(Math.atan2(b.y - a.y, b.x - a.x));
+        let done = 0;
+        while (done < len - 0.01) {
+          // Snap a sliver at the end of the texture to its start, so every pass moves at least half a pixel.
+          let at = (u + done) % tw;
+          if (tw - at < 0.5) at = 0;
+          const piece = Math.max(0.5, Math.min(len - done, tw - at));
+          ctx.drawImage(img, at * srcPerPx, 0, Math.max(1, piece * srcPerPx), img.naturalHeight, done - 0.5, -GRASS_UP, piece + 1, GRASS_H);
+          done += piece;
+        }
+        ctx.restore();
+        u = (u + len) % tw;
+      }
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (const p of pts) ctx.lineTo(p.x, p.y);
+      ctx.strokeStyle = pal.grass;
+      ctx.lineWidth = 10;
+      ctx.stroke();
+    }
+  }
 }
 
 /** Render the race. `followed` is the marble the camera is on (never hidden behind a layer). */
