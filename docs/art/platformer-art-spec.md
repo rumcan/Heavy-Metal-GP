@@ -1,27 +1,36 @@
 # Platformer art: what the game needs
 
-Every platformer course (the block courses and the rolling-slope courses) is drawn from the images below. Physics never reads them: they are a skin over plain shapes. Replace a file and the game uses the new one; keep the **same file name**.
+**The look:** the owner's reference images. A wooden coaster track (a red-and-white chevron rail on a timber beam) on braced trestles over mossy cliffs, waterfalls and floating islands, with goblin towers, banners, torches, sheep springs, wrecking balls, loops and coin trails. Three depth lanes: the lanes behind you are further tracks in the distance.
 
-**Where:** `src/assets/game/platformer/`
+Art is a skin only; physics never reads it. Replace a file and keep its **name**. Deliver PNG or WebP, with transparent backgrounds where noted. Painterly style, side view, light from the top left. Draw everything sharp and fully coloured: **the game adds the haze and blur for depth itself.**
 
-**Format:** WebP (PNG is fine to hand over; I convert it). Transparent background wherever it says "transparent". The whole set should stay under about 4 MB.
+## Already in the game (reused, replace if you want)
 
-**Today's files are placeholders** (generated). Yours replace them one for one.
+| File (in `src/assets/game/`) | Used for |
+|---|---|
+| `rail-chevron.webp` | The track surface: tiled along every slope. The middle 75 % is the repeating part; the ends are iron caps. |
+| `rail-wood.webp` | The beam under the rail, and the spur tracks (ledges). |
+| `rock-fill.webp` | The cliff mass under the trestles (repeats). |
+| `strip-moss.webp` | The mossy top edge of the cliffs. |
+| `sheep-spring.webp` | Spring pads. |
+| `crate.webp` | Obstacles to jump. |
+| `tower-1…3.webp`, `torch.webp`, `banner.webp` | Scenery along the track. |
+| `wrecking-ball.webp`, `loop-ring.webp` | Ready for the next pieces (swinging hazard, loops). |
 
-| File | What it is | Size to deliver | Tiling | Background | How the game uses it |
-|---|---|---|---|---|---|
-| `earth.webp` | The inside of the ground: soil, stones, roots | 512 × 512 | **Seamless** both ways | Opaque | Fills every floor and slope below the surface, repeated. The game darkens it toward the bottom. |
-| `grass.webp` | The top edge of the ground: the grass lip and a thin soil band | about 800 × 340 (wide strip) | **Seamless** left to right | Transparent above and below | Laid along every floor top and bent along slopes. The top edge of the ground sits about 40 % down the strip. |
-| `crate.webp` | A crate you jump over | 256 × 256 | — | Transparent | The obstacles in every lane (stretched to each crate's size; wide ones repeat it). |
-| `door.webp` | A lane door (press ↑ inside to change lane) | about 260 × 340 | — | Transparent | Stands on the floor. The game adds a glow and an "↑ IN / ↑ OUT" label. |
-| `sign.webp` | The ramp signpost | about 200 × 260, with a **blank board** in the top half | — | Transparent | Stands just before each ramp. The game writes "↗ BACK" or "↘ FRONT" on the board. |
-| `far.webp` | The distant background: mountains or sky line | about 1600 × 700 | **Seamless** left to right | Opaque (it includes the sky) | Fills the screen behind everything and scrolls very slowly. |
-| `trees.webp` | A closer background band (a tree line, hills, ruins…) | about 1600 × 700, art in the **bottom half** | **Seamless** left to right | Transparent top | Drawn over `far.webp`, scrolling a little faster. |
+## Wanted from the owner
 
-## Things to know when drawing
+| What | Size | Tiling | Background | Where it goes |
+|---|---|---|---|---|
+| **Sky + far background**: sky, clouds, distant floating islands with waterfalls | about 2000 × 900 | Seamless left to right | Opaque | Behind everything; scrolls very slowly. Replaces `platformer/far.webp`. |
+| **Middle background**: cliffs, waterfalls, pines, an aqueduct | about 2000 × 900, art in the **bottom 60 %** | Seamless left to right | Transparent top | Over the sky, scrolling a little faster. Replaces `platformer/trees.webp`. |
+| **Foreground water** at the bottom of chasms: river, foam, rocks | about 1024 × 256 | Seamless left to right | Transparent top | Drawn at the bottom of every chasm. |
+| **Coin** (gold, crown emblem) and its sparkle | 128 × 128 | — | Transparent | Coin trails along the routes. |
+| **Rope bridge** (lower alternative route) | about 512 × 96 | Seamless left to right | Transparent | A second, lower route under the main track. |
+| **Wrecking-ball gantry**: the timber arm the ball hangs from | about 256 × 384 | — | Transparent | The swinging hazard on the track. |
+| **Lane door / tunnel mouth** in the reference style | about 260 × 340 | — | Transparent | Replaces `platformer/door.webp`. Press ↑ to change lane. |
+| **Ramp marker**: a post with a red flag and a blank sign board | about 200 × 260 | — | Transparent | Replaces `platformer/sign.webp`. The game writes BACK or FRONT on it. |
+| **HUD**: coin counter plate, distance bar with flags and skull marker, round pause button | as in the reference | — | Transparent | The race HUD on platformer courses. |
 
-- **Depth is done by the game.** Lanes behind you are drawn smaller, higher, hazier and blurred, so draw everything **sharp and fully coloured**. Don't add haze yourself.
-- **Side view, light from the top left.** Everything is seen from the side, like a classic platformer.
-- **One theme is one set of these seven files.** For more themes (e.g. a mine, a scrapyard), deliver the same seven per theme and I'll add a theme switch.
-- **Also drawn in code for now (art welcome):** `ledge.webp`, a plank walkway about 512 × 64, seamless left to right, transparent; and `spring.webp`, a spring pad about 128 × 96, transparent.
-- **Nice to have later:** a finish arch (about 400 × 400, transparent), ball trail and dust puffs, and background props (rocks, ruins, flags) to scatter along the slopes.
+**One theme is one set of these.** For more themes (a mine, a scrapyard), deliver the same set per theme.
+
+*The block-style courses (Greenhollow, Misty Ridge, Training Grounds) still use the placeholder earth, grass, crate, door, sign, far and trees images in `src/assets/game/platformer/`.*
