@@ -38,6 +38,8 @@
 import { ITEM_TYPES, LEGACY_ITEMS, MAX_ITEM_STACK, STAT_MAX, STAT_MIN } from '../game/types';
 import type { Inventory, ItemType, MarbleStats, TrackProfile, TrackTheme } from '../game/types';
 import { SOUND_EVENTS, isSoundEvent } from '../game/cues';
+import { talentDef, validateBuild } from '../game/talents';
+import type { Build } from '../game/talents';
 import type { SoundEvent } from '../game/cues';
 export type { SoundEvent };
 // RK-01's shapes, by TYPE only: `rating.ts` is pure (no SDK, no DOM, no clock),
@@ -214,6 +216,12 @@ export interface Seat {
   /** Lobby ready flag (MP-06). Absent reads as not ready. */
   ready?: boolean;
   /**
+   * P2-19: this driver's talent build, filed with the garage like the kit. Absent reads as untalented.
+   * The HOST applies it to this seat's marble (`Game.applyTalents`), so talents are part of the world
+   * the host simulates and not a local opinion each client may hold.
+   */
+  talents?: Build;
+  /**
    * What this driver is CARRYING (MP-09). Absent reads as empty.
    *
    * An online race spends each driver's own kit, not the host's: a guest files
@@ -264,6 +272,12 @@ export interface RaceSettings {
   aiItems?: boolean;
   /** AI seats the host took off the grid: they do not race. Human seats are never benched. */
   benched?: number[];
+  /**
+   * P2-19: whether the race is run with talent builds. Absent reads as true (every seat races the
+   * build it filed); false turns every build off, which is what a RANKED lobby does — a ladder that
+   * pays rating does not pay it for a talent tree.
+   */
+  talents?: boolean;
 }
 
 /** An item the host set to "unlimited". */
@@ -350,6 +364,12 @@ export interface SeatGarage {
   portrait: number;
   /** MP-09: this driver's own items, filed against their seat. */
   inventory?: Inventory;
+  /**
+   * P2-19: this driver's talent build, sent with the garage. The host reads it with `readTalents`
+   * — shape-checked against the talent table and trimmed to a maxed driver's budget — and applies
+   * it to the seat's marble when the lobby has talents on.
+   */
+  talents?: Build;
 }
 
 /**
@@ -1568,6 +1588,7 @@ export function readRaceSettings(value: unknown): RaceSettings | null {
     if (!/^[A-Za-z0-9_-]+$/.test(s.customCode.slice(2))) return null;
   }
   if (s.aiItems !== undefined && typeof s.aiItems !== 'boolean') return null;
+  if (s.talents !== undefined && typeof s.talents !== 'boolean') return null; // P2-19
   if (s.platformer !== undefined && (typeof s.platformer !== 'string' || !/^[a-z0-9-]{1,32}$/.test(s.platformer))) return null;
   let benched: number[] | undefined;
   if (s.benched !== undefined) {
@@ -1581,6 +1602,7 @@ export function readRaceSettings(value: unknown): RaceSettings | null {
     ...(items ? { items } : {}),
     ...(typeof s.customCode === 'string' ? { customCode: s.customCode } : {}),
     ...(s.aiItems !== undefined ? { aiItems: s.aiItems as boolean } : {}),
+    ...(s.talents !== undefined ? { talents: s.talents as boolean } : {}),
     ...(benched ? { benched } : {}),
     ...(typeof s.platformer === 'string' ? { platformer: s.platformer } : {}),
   };
@@ -1598,6 +1620,29 @@ function validateFrom(msg: { from?: unknown }): ProtocolError | null {
  * `STAT_BUDGET` — same call as `validateSeat`: the budget is a garage rule for
  * building a marble, and refusing a whole room over it would strand everyone.
  */
+/** P2-19: a wire talent build is checked against a maxed driver — level 30, 30 talent points. */
+export const MAX_WIRE_TALENT_LEVEL = 30;
+export const MAX_WIRE_TALENT_POINTS = 30;
+
+/**
+ * P2-19: a talent build, as `ready` and `seat` frames carry it.
+ *
+ * Shape-checked against the real talent table — an unknown id or an out-of-range rank is refused,
+ * not quietly filed away — and then run through `validateBuild` at a maxed driver's level and
+ * budget. The host cannot know how many points the sender actually earned, so a build nobody could
+ * have bought arrives trimmed to one somebody could, rather than being trusted.
+ */
+export function readTalents(raw: unknown): Build | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const build: Build = {};
+  for (const [id, rank] of Object.entries(raw as Record<string, unknown>)) {
+    const def = talentDef(id);
+    if (!def || !isInt(rank, 0, def.maxRank)) return null;
+    if ((rank as number) > 0) build[id] = rank as number;
+  }
+  return validateBuild(build, MAX_WIRE_TALENT_LEVEL, MAX_WIRE_TALENT_POINTS);
+}
+
 export function validateGarage(value: unknown): ProtocolError | null {
   if (!value || typeof value !== 'object') return bad('Garage is not an object.');
   const g = value as Record<string, unknown>;
@@ -1612,6 +1657,7 @@ export function validateGarage(value: unknown): ProtocolError | null {
   // A kit is counts, and counts have a ceiling: an inventory is not a wallet a
   // client may top up on the way through the wire.
   if (g.inventory !== undefined && readInventory(g.inventory) === null) return forged('Garage inventory is not an inventory.');
+  if (g.talents !== undefined && readTalents(g.talents) === null) return forged('Garage talents are not a talent build.');
   return null;
 }
 
@@ -1636,6 +1682,7 @@ export function validateSeat(value: unknown): ProtocolError | null {
   if (typeof s.isAI !== 'boolean') return bad('Seat isAI flag is not a boolean.');
   if (s.ready !== undefined && typeof s.ready !== 'boolean') return bad('Seat ready flag is not a boolean.');
   if (s.inventory !== undefined && readInventory(s.inventory) === null) return forged('Seat inventory is not an inventory.');
+  if (s.talents !== undefined && readTalents(s.talents) === null) return forged('Seat talents are not a talent build.');
   if (s.isAI && s.playerId !== '') return forged('An AI seat must not claim a player id.');
   if (!s.isAI && s.playerId === '') return forged('A human seat must carry its player id.');
   return null;

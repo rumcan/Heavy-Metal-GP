@@ -86,6 +86,8 @@ export function fileGarage(seats: readonly Seat[], playerId: string, garage: Sea
           // The kit travels with the garage (MP-09): what a driver bought is
           // what that marble carries, and nothing here invents an item.
           inventory: garage.inventory ? { ...garage.inventory } : seat.inventory,
+          // P2-19: so do the driver's talents — the seat is what the race is built from.
+          talents: garage.talents ? { ...garage.talents } : seat.talents,
         }
       : seat,
   );

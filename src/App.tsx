@@ -47,7 +47,7 @@ import { officialTrack } from './game/official-tracks';
 import LevelUpCard from './components/progression/LevelUpCard';
 import TalentsScreen from './components/talents/TalentsScreen';
 import { raceXp } from './game/progression';
-import { talentEffects } from './game/talents';
+import { talentEffects, validateBuild } from './game/talents';
 import { isPlatformerPick, platformerCourse } from './game/platformer/course';
 import { TRACK_THEMES } from './game/types';
 import { loadAccount, saveAccount, purchaseItem, onlineRaceId, settleOnlineRace, settleRace, settleCustomRace, progressOf, awardRaceXp } from './game/economy';
@@ -380,8 +380,17 @@ export default function App() {
   const garage = useMemo<SeatGarage>(
     // MP-09: the kit goes with the garage — an online race spends what this
     // driver bought, not what the host happens to be carrying.
-    () => ({ name: room?.players.find((p) => p.id === room.playerId)?.username || 'You', color: garages.online.color, stats: garages.online.stats, portrait: garages.online.portrait, inventory: account.inventory }),
-    [room, garages.online, account.inventory],
+    () => ({
+      name: room?.players.find((p) => p.id === room.playerId)?.username || 'You',
+      color: garages.online.color,
+      stats: garages.online.stats,
+      portrait: garages.online.portrait,
+      inventory: account.inventory,
+      // P2-19: the build travels with the garage, validated HERE against this driver's own level and
+      // points — the host checks it again, and trims anything a maxed driver could not have bought.
+      talents: validateBuild(account.talents ?? {}, progressOf(account).level, progressOf(account).talentPoints),
+    }),
+    [room, garages.online, account.inventory, account.talents, account.progress],
   );
 
   /** Why a room did not open, in words a player can act on. */

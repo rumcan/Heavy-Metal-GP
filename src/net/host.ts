@@ -39,6 +39,7 @@ import {
   chunkSnapshot,
   nextSeq,
   packState,
+  readTalents,
   SEQ_START,
   UNLIMITED_ITEM,
 } from './protocol';
@@ -219,9 +220,31 @@ export class RaceHost {
       gridOrder: opts.gridOrder ?? seats.map((s) => s.slot),
     });
     this.game.start();
+    this.applySeatTalents();
     // The kit as the grid was built — the baseline a change is measured from.
     this.kitAt = this.kitNow();
     this.lastPublishAt = this.clock();
+  }
+
+  /**
+   * P2-19: every seat races the build it filed.
+   *
+   * A guest's build travelled with its garage in `ready`, was shape-checked and trimmed to a maxed
+   * driver's budget on the wire, and is applied HERE — on the host's marble — so a talent is part of
+   * the world the host simulates, not a number each client keeps its own opinion of. Absent setting
+   * means on; `talents: false` (a ranked lobby) turns the whole grid's builds off.
+   */
+  private applySeatTalents(): void {
+    if (this.settings?.talents === false) return;
+    for (const seat of this.seats) {
+      const build = readTalents(seat.talents);
+      if (!build || Object.keys(build).length === 0) continue;
+      const marble = this.game.marbles.find((m) => m.info.id === seat.slot);
+      // The seat's kit, in table order: `applyTalents` gives Stockpile's extra charge to the first
+      // OFFENCE skill a seat carries, which is the closest online gets to the loadout screen's slots.
+      const slots: ItemType[] = ITEM_TYPES.filter((item) => (seat.inventory?.[item] ?? 0) > 0);
+      if (marble) this.game.applyTalents(marble, build, slots);
+    }
   }
 
   /** True once the gate has dropped. */

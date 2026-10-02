@@ -21,7 +21,7 @@ import assert from 'node:assert/strict';
 import { Game } from '../src/game/engine';
 import { PHYSICS_STEP } from '../src/game/physics';
 import { generateTrack, meta } from '../src/game/track';
-import { AI_COLORS, AI_NAMES, mulberry32, randomStats } from '../src/game/types';
+import { AI_COLORS, AI_NAMES, emptyInventory, mulberry32, randomStats } from '../src/game/types';
 import { RaceHost, COUNTDOWN_MS, LIGHT_INTERVAL_MS, NUDGE_RATE_PER_SECOND, STATE_INTERVAL_MS } from '../src/net/host';
 import type { RaceHostOptions } from '../src/net/host';
 import {
@@ -337,6 +337,29 @@ test('P2-19 host: a knock-out and a skill effect ride the wire', async () => {
   assert.equal(fx.fx, 'spikes');
   assert.equal(fx.seat, 0);
   assert.ok(fx.until > 0, 'and it says when it is gone');
+});
+
+test('P2-19 host: a filed talent build is applied to the seat that bought it', async () => {
+  const { buildPlatformerTrack } = await import('../src/game/platformer/build');
+  const { TRACK_THEMES } = await import('../src/game/types');
+  const track = buildPlatformerTrack(SEED, TRACK_THEMES.forest, 'rolling-hills');
+  // A legal 14-point build: Plating raises the HP ceiling, Stockpile adds a charge to the seat's
+  // first OFFENCE skill (bolt is one — rocket is movement).
+  const talents = { plating: 3, 'patch-up': 3, padding: 1, sharpened: 3, 'quick-fuse': 3, stockpile: 1 };
+  const seats = grid().map((seat) => (seat.slot === 1 ? { ...seat, inventory: { ...emptyInventory(), bolt: 1 }, talents } : seat));
+
+  const h = harness({ seats, track });
+  const guestMarble = h.host.game.marbles[1];
+  assert.equal(guestMarble.maxHp, 130, 'Plating raised the ceiling');
+  assert.equal(guestMarble.health?.hp, 130, 'and the marble starts full');
+  assert.equal(guestMarble.inventory.bolt, 2, 'Stockpile added a charge to the seat’s offence skill');
+  const hostMarble = h.host.game.marbles[0];
+  assert.equal(hostMarble.maxHp ?? 100, 100, 'a seat with no build races stock');
+
+  // P2-19: a ranked lobby turns the whole grid's builds off, whatever the seats filed.
+  const off = harness({ seats, track, settings: { circuit: 0, talents: false } });
+  assert.equal(off.host.game.marbles[1].maxHp ?? 100, 100, 'talents off: the build is ignored');
+  assert.equal(off.host.game.marbles[1].inventory.bolt, 1, 'and no charge was handed out');
 });
 
 test('MP-08 host: three seconds without a driver and the AI has the marble', () => {

@@ -33,6 +33,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(here, '..');
 
 import { ITEM_TYPES, MAX_ITEM_STACK } from '../src/game/types';
+import { pointsSpent } from '../src/game/talents';
 import {
   BYTES_PER_MARBLE,
   FRAME_CAP_BYTES,
@@ -65,7 +66,10 @@ import {
   readRankBoard,
   readRankedOrder,
   readRankWire,
+  readRaceSettings,
+  readTalents,
   rejectionFor,
+  validateGarage,
   unpackState,
   validateMessage,
   isRaceSnapshot,
@@ -542,6 +546,41 @@ test('MP-02 validation: results cannot put one marble in two places', () => {
   assert.equal(check({ ...results, kos: kos.map(() => 1.5) })?.code, 'malformed', 'a KO count is whole');
 });
 
+test('P2-19 validation: a wire talent build is checked against the real tree, then trimmed', () => {
+  // A build a driver could really have: whole ranks on real talents, in tier order.
+  assert.deepEqual(readTalents({ coolant: 3, 'heat-sink': 2 }), { coolant: 3, 'heat-sink': 2 });
+  assert.deepEqual(readTalents({}), {}, 'an unspent driver files an empty build');
+  assert.deepEqual(readTalents({ coolant: 0 }), {}, 'a rank of zero is no rank');
+  // Shape lies are refused, not filed away.
+  assert.equal(readTalents({ 'not-a-talent': 1 }), null, 'an unknown talent is not a build');
+  assert.equal(readTalents({ coolant: 1.5 }), null, 'a rank is a whole number');
+  assert.equal(readTalents({ coolant: 4 }), null, 'a rank above the talent’s ceiling');
+  assert.equal(readTalents({ coolant: -1 }), null);
+  assert.equal(readTalents('talented'), null);
+  assert.equal(readTalents([1, 2]), null);
+  // A build nobody could have bought arrives trimmed to one somebody could.
+  const greedy = {
+    'heat-sink': 3, coolant: 3, turbo: 3, streamline: 3, 'big-tank': 2, nitro: 2, afterburner: 1,
+    plating: 3, 'patch-up': 3, padding: 3, mender: 3, bulwark: 2, 'thick-skin': 2, 'iron-belly': 1,
+    sharpened: 3, 'quick-fuse': 3, stockpile: 1, 'heavy-hitter': 3, 'long-range': 2, demolition: 2, 'bounty-hunter': 1,
+  };
+  const trimmed = readTalents(greedy)!;
+  assert.ok(trimmed, 'the shape was fine');
+  assert.ok(pointsSpent(trimmed) <= 30, `trimmed to a maxed driver's 30 points, got ${pointsSpent(trimmed)}`);
+  assert.ok(pointsSpent(trimmed) > 0, 'and it kept what it could');
+  // A tier nobody had opened yet is not a tier the host accepts entries from.
+  assert.deepEqual(readTalents({ 'iron-belly': 1 }), {}, 'a tier-4 talent with no points below it');
+
+  // The garage carries the build, and the wire refuses one it cannot read.
+  const g = { name: 'Sprocket', color: '#22d3ee', stats: { weight: 7, speed: 4, bounce: 4 }, portrait: 3 };
+  assert.equal(validateGarage({ ...g, talents: { coolant: 2 } }), null);
+  assert.equal(validateGarage({ ...g, talents: { coolant: 'lots' } })?.code, 'forged');
+  assert.equal(check({ type: 'lobby', seats: SEATS, settings: { circuit: 0, talents: false } }), null);
+  assert.equal(check({ type: 'lobby', seats: SEATS, settings: { circuit: 0, talents: 'off' } })?.code, 'malformed');
+  assert.equal(readRaceSettings({ circuit: 0, talents: false })?.talents, false);
+  assert.equal(readRaceSettings({ circuit: 0 })?.talents, undefined, 'absent reads as on where it is used');
+});
+
 test('RK-03 validation: the rated wire, and every way it can lie', () => {
   // A rating is the one number a player is allowed to be wrong about: a low one
   // is CLAMPED to the floor rather than refused, and the reader is what the room
@@ -860,14 +899,16 @@ test('MP-02 purity: the protocol imports nothing the room bundle may not have', 
   // the room bundle cannot grow by accident. RK-03 added `./rating`: the
   // arithmetic (RK-01) is pure, SDK-free and DOM-free by construction, which is
   // the same reason the wire can name its `RaceEntry` / `RankWire` shapes
-  // instead of re-declaring them and drifting.
-  assert.deepEqual([...new Set(imports)].sort(), ['../game/cues', '../game/types', './rating']);
+  // instead of re-declaring them and drifting. P2-19 added `../game/talents`
+  // (pure, no imports): the wire validates a filed build against the real
+  // talent table rather than a second copy of it that could drift.
+  assert.deepEqual([...new Set(imports)].sort(), ['../game/cues', '../game/talents', '../game/types', './rating']);
 });
 
-test('MP-02 purity: the two game modules the protocol imports are pure too', () => {
+test('MP-02 purity: the game modules the protocol imports are pure too', () => {
   // Enforced where it matters (the room bundle), checked here so a future edit
-  // to `types.ts` or `audio.ts` fails in the suite rather than in a worker.
-  for (const file of ['src/game/types.ts', 'src/game/cues.ts']) {
+  // to `types.ts`, `cues.ts` or `talents.ts` fails in the suite rather than in a worker.
+  for (const file of ['src/game/types.ts', 'src/game/cues.ts', 'src/game/talents.ts']) {
     const source = readFileSync(join(ROOT, file), 'utf8');
     assert.equal(/from '[^']+'/.test(source), false, `${file} must have no imports of its own`);
   }
