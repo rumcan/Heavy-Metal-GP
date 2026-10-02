@@ -320,3 +320,12 @@
 @media (orientation: portrait) and (max-width: 600px) {
   .is-platformer .rotate-hint { display: block; position: absolute; top: 44px; left: 50%; transform: translateX(-50%); z-index: 3; padding: 7px 12px; background: #0d1722ec; border: 1px solid #344758; border-left: 2px solid var(--accent); font: 600 11px var(--display, sans-serif); letter-spacing: .5px; color: #e5edf5; white-space: nowrap; pointer-events: none; }
 }
+
+/* P2-07: the health bar beside the engine heat meter (races with health). */
+.hp-meter { position: relative; margin-top: 6px; width: 96px; height: 14px; background: #1b2633; border: 1px solid #314252; overflow: hidden; }
+.hp-meter > span { position: absolute; inset: 0; z-index: 1; font: 700 8px/14px var(--mono, monospace); letter-spacing: .6px; color: #e6edf3; text-align: center; }
+.hp-meter > i { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #16a34a, #4ade80); transition: width .12s; }
+.hp-meter.low > i { background: linear-gradient(90deg, #b91c1c, #ef4444); }
+@media (orientation: landscape) and (max-height: 520px) {
+  .race-shell .race-telemetry .hp-meter { position: fixed; top: 50px; left: 154px; margin: 0; width: 70px; }
+}

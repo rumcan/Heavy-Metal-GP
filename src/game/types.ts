@@ -177,6 +177,10 @@ export interface HeatResult {
   rank: number;
   time: number | null; // ms; non-finishers earn no points
   pegs: number;
+  /** P2-07: knocked out of the race (0 HP): Did Not Finish. Absent where health is off. */
+  dnf?: boolean;
+  /** P2-07: rivals this driver knocked out. */
+  kos?: number;
 }
 
 export interface TrackTheme {

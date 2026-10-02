@@ -173,6 +173,10 @@ export interface Marble {
   springAt?: number;
   /** P2-00 platformer: the start cannon this marble is loaded in (fired = out on the course). */
   cannon?: platformer.Cannon;
+  /** P2-07: health (platformer races, offline for now), knocked out of the race, and KOs scored. */
+  health?: Health;
+  dnf?: boolean;
+  kos?: number;
 }
 
 export interface OilSlick {
@@ -223,6 +227,8 @@ export interface RankEntry {
   rank: number;
   finished: boolean;
   time: number | null;
+  /** P2-07: knocked out (0 HP). */
+  dnf: boolean;
 }
 
 import * as hits from './engine/hits';
@@ -235,6 +241,8 @@ import * as input from './engine/input';
 import type { EngineState, JumpState } from './controls';
 import * as ai from './engine/ai';
 import * as platformer from './engine/platformer';
+import { applyDamage, newHealth, regen, koCredit, KO_BOUNTY } from './health';
+import type { DamageKind, Health } from './health';
 
 export class Game {
   engine: Matter.Engine;
@@ -305,6 +313,12 @@ export class Game {
   loadedCells = '';
   streaming = false;
 
+  /**
+   * P2-07: health, damage and DNF. On for platformer races played on this machine alone; classic drops keep their
+   * old rules (and their determinism), and online races wait for health on the wire.
+   */
+  healthOn = false;
+
   /** Items that never run out this race (online house rules). */
   readonly unlimitedItems: Set<ItemType>;
   /** Seats that are not racing (online, taken off the grid by the host). */
@@ -333,6 +347,7 @@ export class Game {
     // race agrees on, and either way the circuit is built once, here.
     this.track = opts.track ?? this.trackFor(seed, profile, opts.def);
     this.wireEvents = opts.wireEvents === true;
+    this.healthOn = !!this.track.platformer && !this.wireEvents;
     // The wire names track bodies by their index in `track.bodies`. Both sides
     // build the identical circuit from the seed, so an index IS the body — and
     // an index either end can check against `track.bodies.length`.
@@ -411,6 +426,7 @@ export class Game {
       this.byId.set(info.id, m);
     });
     this.marbles.sort((a, b) => a.info.id - b.info.id);
+    if (this.healthOn) for (const m of this.marbles) { m.health = newHealth(); m.kos = 0; }
     // Guest seats are human from the moment they are seated, not from their
     // first intent: an idle guest must not be driven by the AI.
     for (const id of opts.humanSeats ?? []) if (!this.humanInput.has(id)) this.humanInput.set(id, { nudge: 0 });
@@ -925,7 +941,8 @@ export class Game {
     for (const m of this.marbles) {
       const b = m.body;
       m.grounded += s;
-      if (m.finishedAt !== null) continue;
+      if (m.finishedAt !== null || m.dnf) continue;
+      if (m.health) m.health = regen(m.health, this.time, dt);
 
       // MB-10: a marble hidden inside an element glides from capture to exit — hidden from every
       // screen (draw + minimap skip it), but the wire positions stay continuous so nobody watches
@@ -1074,6 +1091,7 @@ export class Game {
     this.moverDynamics(dt);
 
     for (const m of this.marbles) {
+      if (m.dnf) continue;
       if (m.finishedAt !== null) {
         this.park(m);
         continue;
@@ -1109,10 +1127,13 @@ export class Game {
   ranking(): RankEntry[] {
     const finished = [...this.finishOrder];
     // P2-00: on a platformer "lower" is not "ahead": rank by distance along the course path.
+    const alive = this.marbles.filter((m) => m.finishedAt === null && !m.dnf);
     const rest = this.track.platformer
-      ? this.marbles.filter((m) => m.finishedAt === null).sort((a, b) => (b.progress ?? 0) - (a.progress ?? 0) || a.info.id - b.info.id)
-      : this.marbles.filter((m) => m.finishedAt === null).sort((a, b) => b.body.position.y - a.body.position.y);
-    return [...finished, ...rest].map((m, i) => ({ marble: m, rank: i + 1, finished: m.finishedAt !== null, time: m.finishedAt }));
+      ? alive.sort((a, b) => (b.progress ?? 0) - (a.progress ?? 0) || a.info.id - b.info.id)
+      : alive.sort((a, b) => b.body.position.y - a.body.position.y);
+    // P2-07: the knocked-out come last, the furthest-along first.
+    const out = this.marbles.filter((m) => m.dnf && m.finishedAt === null).sort((a, b) => (b.progress ?? 0) - (a.progress ?? 0) || a.info.id - b.info.id);
+    return [...finished, ...rest, ...out].map((m, i) => ({ marble: m, rank: i + 1, finished: m.finishedAt !== null, time: m.finishedAt, dnf: !!m.dnf }));
   }
 
   /** Force-classify anyone still on track (used when the heat timer expires). */
@@ -1129,7 +1150,40 @@ export class Game {
   }
 
   allFinished(): boolean {
-    return this.marbles.every((m) => m.finishedAt !== null);
+    return this.marbles.every((m) => m.finishedAt !== null || m.dnf);
+  }
+
+  /**
+   * P2-07: hurt a marble. Returns true when that put it out of the race. A hit also gives a short grace period so one
+   * touch of a wrecking ball is one hit, and credits the last attacker (or the rival who bumped it) with the KO.
+   */
+  damage(m: Marble, amount: number, by: number | null, kind: DamageKind): boolean {
+    if (!this.healthOn || !m.health || m.dnf || m.finishedAt !== null) return false;
+    const before = m.health.hp;
+    const r = applyDamage(m.health, amount, this.time, by);
+    if (r.health === m.health) return false; // invulnerable
+    m.health = { ...r.health, invulnUntil: Math.max(r.health.invulnUntil, this.time + 700) };
+    this.shake = Math.max(this.shake, 4);
+    this.effects.push({ type: 'text', x: m.body.position.x, y: m.body.position.y - 26, ttl: 40, maxTtl: 40, color: '#f87171', text: `-${Math.round(before - m.health.hp)}` });
+    if (r.died) this.knockOut(m, kind);
+    return r.died;
+  }
+
+  private knockOut(m: Marble, kind: DamageKind) {
+    m.dnf = true;
+    const credit = m.health ? koCredit(m.health, this.time) : null;
+    const killer = credit !== null ? this.byIdOrNull(credit) : null;
+    if (killer && killer !== m) killer.kos = (killer.kos ?? 0) + 1;
+    this.effects.push({ type: 'ring', x: m.body.position.x, y: m.body.position.y, ttl: 30, maxTtl: 30, color: '#ef4444' });
+    this.effects.push({ type: 'debris', x: m.body.position.x, y: m.body.position.y, ttl: 40, maxTtl: 40, color: '#9ca3af', particles: this.makeParticles(m.body.position.x, m.body.position.y, 16, 5) });
+    this.sfx('smash', m, m.body.position.x, m.body.position.y);
+    Composite.remove(this.world, m.body);
+    Body.setPosition(m.body, { x: -5000, y: -5000 });
+    Body.setVelocity(m.body, { x: 0, y: 0 });
+    m.trail = [];
+    if (m.info.isPlayer) this.onEvent?.(`DID NOT FINISH: ${kind} took you out`, '#ef4444');
+    else if (killer?.info.isPlayer) this.onEvent?.(`KO! ${m.info.name} is out (+${KO_BOUNTY} CR)`, '#facc15');
+    else this.onEvent?.(`${m.info.name} is out of the race`, '#94a3b8');
   }
 
   /** MB-10A: a trapdoor's eased 0..1 pose for skins and previews. */

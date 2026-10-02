@@ -1,6 +1,10 @@
 import * as storage from './storage';
 import { emptyInventory, ITEM_INFO, ITEM_TYPES, MAX_ITEM_STACK, normalizeInventory } from './types';
 import type { HeatResult, Inventory, ItemType } from './types';
+import { settle } from './settlement';
+import type { PurseMode } from './settlement';
+
+const NO_TALENTS = { prizePct: 0, pegBonusPct: 0, koBountyPct: 0, shamanFeePct: 0 };
 
 export const ACCOUNT_KEY = 'mrr-account-v1';
 export const STARTER_CREDITS = 400;
@@ -27,6 +31,10 @@ export interface RacePayout {
   total: number;
   balance: number;
   alreadyPaid: boolean;
+  /** P2-07: credits earned for knocking rivals out (races with health). */
+  koBounty?: number;
+  /** P2-07: what the Shaman charged to revive a knocked-out ball (a positive amount). */
+  shamanFee?: number;
 }
 
 export function createAccount(): RacerAccount {
@@ -97,8 +105,22 @@ export function settleRace(
   raceId: string,
   result: HeatResult,
   scale = 1,
+  mode: PurseMode = 'championship',
 ): { account: RacerAccount; payout: RacePayout } {
   const alreadyPaid = account.paidRaces.includes(raceId);
+  // P2-07: a race with health (result.dnf is set) is paid by the purse rules: KO bounties, and the Shaman's fee for a DNF.
+  if (result.dnf !== undefined) {
+    const o = { finished: result.time !== null && !result.dnf, rank: result.rank, pegs: result.pegs, kos: result.kos ?? 0, dnf: result.dnf };
+    const s = settle(o, mode, account.credits, NO_TALENTS);
+    const amount = (kind: string) => s.lines.find((l) => l.kind === kind)?.amount ?? 0;
+    const paid: RacePayout = { raceId, placement: amount('placement'), pegBonus: amount('pegs'), koBounty: amount('kos'), shamanFee: Math.abs(amount('shaman')), total: s.total, balance: account.credits, alreadyPaid };
+    if (alreadyPaid) return { account, payout: paid };
+    const next = {
+      ...account, credits: Math.max(0, account.credits + s.total), totalWinnings: account.totalWinnings + Math.max(0, s.total),
+      finishes: account.finishes + (paid.placement > 0 ? 1 : 0), paidRaces: [...account.paidRaces, raceId],
+    };
+    return { account: next, payout: { ...paid, balance: next.credits } };
+  }
   const prize = prizeFor(result);
   const placement = Math.round(prize.placement * scale);
   const pegBonus = Math.round(prize.pegBonus * scale);
