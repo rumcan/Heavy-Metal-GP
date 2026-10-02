@@ -91,23 +91,42 @@ export const MARBLE_COUNT = 10;
 /** Floats per marble on the wire: x, y, vx, vy, angle. */
 export const FLOATS_PER_MARBLE = 5;
 
-/** Bytes per marble: five float32, one flag byte and one lane byte (P2-00: depth lane in bits 0-1). */
-export const BYTES_PER_MARBLE = FLOATS_PER_MARBLE * 4 + 2;
+/**
+ * Bytes per marble: five float32, one flag byte, one lane byte (P2-00: depth lane in bits 0-1,
+ * P2-19: the start-light stage in bits 2-4) and one hp byte (P2-19).
+ */
+export const BYTES_PER_MARBLE = FLOATS_PER_MARBLE * 4 + 3;
 
 /** Characters of one packed frame's base64 (ten marbles → 280, no padding). */
 export function packedStateLength(count: number = MARBLE_COUNT): number {
   return Math.ceil((count * BYTES_PER_MARBLE) / 3) * 4;
 }
 
-/** Flag-byte layout. Three bits are left for a loop/staging counter. */
+/**
+ * Flag-byte layout (byte 20 of every marble). Five effect bits, the DNF bit, and two spare:
+ *
+ *   bit 0 finished · bit 1 frozen · bit 2 oil · bit 3 ghost · bit 4 anvil · bit 5 DNF · bits 6-7 spare
+ *
+ * The start-light stage used to live in bits 5-7; P2-19's DNF bit took bit 5 and the stage moved to
+ * the lane byte (bits 2-4), which keeps every value 0..7 expressible and leaves room for the future.
+ */
 export const FLAG_FINISHED = 1 << 0;
 export const FLAG_FROZEN = 1 << 1;
 export const FLAG_OIL = 1 << 2;
 export const FLAG_GHOST = 1 << 3;
 export const FLAG_ANVIL = 1 << 4;
-export const FLAG_LOOP_MASK = 0b1110_0000;
+/** P2-19: the marble is out of the race (0 HP). A DNF marble is hidden, not drawn. */
+export const FLAG_DNF = 1 << 5;
+/**
+ * Lane-byte layout (byte 21): the depth lane in bits 0-1 (P2-00) and the loop/staging counter in
+ * bits 2-4. `lane | (loop << 2)` — so a peer that only reads bits 0-1 still reads the lane.
+ */
+export const LANE_STAGE_SHIFT = 2;
+export const LANE_STAGE_MASK = 0b0001_1100;
 /** The loop counter is three bits: 0..7. */
 export const MAX_LOOP_STAGE = 7;
+/** The hp byte (byte 22) is 0..255; 255 is full health. */
+export const HP_FULL = 255;
 
 /**
  * Characters of snapshot JSON per chunk frame: 8 KiB against the 16 KiB cap,
@@ -439,10 +458,19 @@ export interface MarbleState {
   oil: boolean;
   ghost: boolean;
   anvil: boolean;
-  /** 0..7 loop/staging counter — three spare bits in the flag byte. */
+  /** 0..7 loop/staging counter, carried in the lane byte's bits 2-4. */
   loop: number;
   /** P2-00: depth lane on a platformer course (0 back, 1 middle, 2 front). Absent = middle. */
   lane?: number;
+  /**
+   * P2-19: health as a fraction of the marble's max HP, 0..1 (the frame scales it to a byte;
+   * a snapshot carries it as a float). Absent on a race with no health — reads as full.
+   */
+  hp?: number;
+  /** P2-19: out of the race (0 HP). Absent reads as false. Mirrors `Health.dnf`. */
+  dnf?: boolean;
+  /** P2-19: rivals this marble knocked out (the HUD and the purse read it). Absent reads as 0. */
+  kos?: number;
 }
 
 /**
@@ -1116,26 +1144,38 @@ function finite(value: number): number {
 }
 
 function packFlags(m: MarbleState): number {
-  const loop = Number.isFinite(m.loop) ? Math.max(0, Math.min(MAX_LOOP_STAGE, Math.floor(m.loop))) : 0;
   return (
     (m.finished ? FLAG_FINISHED : 0) |
     (m.frozen ? FLAG_FROZEN : 0) |
     (m.oil ? FLAG_OIL : 0) |
     (m.ghost ? FLAG_GHOST : 0) |
     (m.anvil ? FLAG_ANVIL : 0) |
-    (loop << 5)
+    (m.dnf ? FLAG_DNF : 0)
   );
 }
 
-function unpackFlags(byte: number): Pick<MarbleState, 'finished' | 'frozen' | 'oil' | 'ghost' | 'anvil' | 'loop'> {
+function unpackFlags(byte: number): Pick<MarbleState, 'finished' | 'frozen' | 'oil' | 'ghost' | 'anvil' | 'dnf'> {
   return {
     finished: (byte & FLAG_FINISHED) !== 0,
     frozen: (byte & FLAG_FROZEN) !== 0,
     oil: (byte & FLAG_OIL) !== 0,
     ghost: (byte & FLAG_GHOST) !== 0,
     anvil: (byte & FLAG_ANVIL) !== 0,
-    loop: (byte & FLAG_LOOP_MASK) >>> 5,
+    dnf: (byte & FLAG_DNF) !== 0,
   };
+}
+
+/** The lane byte: depth lane in bits 0-1, the loop/staging counter in bits 2-4. */
+function packLane(m: MarbleState): number {
+  const loop = Number.isFinite(m.loop) ? Math.max(0, Math.min(MAX_LOOP_STAGE, Math.floor(m.loop))) : 0;
+  const lane = Number.isInteger(m.lane) && m.lane! >= 0 && m.lane! <= 2 ? m.lane! : 1;
+  return lane | (loop << LANE_STAGE_SHIFT);
+}
+
+/** The hp byte: `round(hp / maxHp * 255)`. Absent hp is full health. */
+function packHp(m: MarbleState): number {
+  const hp = Number.isFinite(m.hp) ? Math.max(0, Math.min(1, m.hp!)) : 1;
+  return Math.round(hp * HP_FULL);
 }
 
 /** Pack marble states into the base64 a `state` frame carries. */
@@ -1150,7 +1190,8 @@ export function packState(marbles: readonly MarbleState[]): string {
     view.setFloat32(at + 12, finite(m.vy), true);
     view.setFloat32(at + 16, finite(m.a), true);
     view.setUint8(at + 20, packFlags(m));
-    view.setUint8(at + 21, Number.isInteger(m.lane) && m.lane! >= 0 && m.lane! <= 2 ? m.lane! : 1);
+    view.setUint8(at + 21, packLane(m));
+    view.setUint8(at + 22, packHp(m));
   });
   return encodeBase64(bytes);
 }
@@ -1176,6 +1217,8 @@ export function unpackState(data: string, count: number = MARBLE_COUNT): MarbleS
       a: view.getFloat32(at + 16, true),
       ...unpackFlags(view.getUint8(at + 20)),
       lane: Math.min(2, view.getUint8(at + 21) & 0b11),
+      loop: (view.getUint8(at + 21) & LANE_STAGE_MASK) >>> LANE_STAGE_SHIFT,
+      hp: view.getUint8(at + 22) / HP_FULL,
     });
   }
   return out;
@@ -1782,6 +1825,11 @@ export function isRaceSnapshot(value: unknown): value is RaceSnapshot {
     }
     if (!isInt(marble.loop, 0, MAX_LOOP_STAGE)) return false;
     if (marble.lane !== undefined && !isInt(marble.lane, 0, 2)) return false;
+    // P2-19: hp and dnf per marble. Optional (a classic race has no health) — but when they are
+    // present they must be readable: a fraction 0..1, a flag, and a KO count.
+    if (marble.hp !== undefined && (!isNumber(marble.hp) || marble.hp < 0 || marble.hp > 1)) return false;
+    if (marble.dnf !== undefined && typeof marble.dnf !== 'boolean') return false;
+    if (marble.kos !== undefined && !isInt(marble.kos, 0, 100_000)) return false;
   }
   if (!Array.isArray(s.destroyed)) return false;
   for (const i of s.destroyed) if (!isInt(i, 0, MAX_BODY_INDEX)) return false;

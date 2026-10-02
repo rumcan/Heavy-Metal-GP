@@ -495,6 +495,8 @@ export class RaceHost {
       marbles: this.game.marbleStates().map((m) => ({
         x: r2(m.x), y: r2(m.y), vx: r2(m.vx), vy: r2(m.vy), a: r2(m.a),
         finished: m.finished, frozen: m.frozen, oil: m.oil, ghost: m.ghost, anvil: m.anvil, loop: m.loop,
+        // P2-19: a joiner gets the health it missed: hp as a fraction of max HP, DNF, KO count.
+        ...(m.hp !== undefined ? { hp: r2(m.hp), dnf: !!m.dnf, kos: m.kos ?? 0 } : {}),
       })),
       destroyed: this.game.destroyedIndices(),
       boxes: this.game.boxStates(),

@@ -255,7 +255,7 @@ import * as input from './engine/input';
 import type { EngineState, JumpState } from './controls';
 import * as ai from './engine/ai';
 import * as platformer from './engine/platformer';
-import { applyDamage, newHealth, regen, koCredit, KO_BOUNTY, REGEN_PER_SEC, REGEN_DELAY_MS } from './health';
+import { applyDamage, newHealth, regen, koCredit, KO_BOUNTY, MAX_HP, REGEN_PER_SEC, REGEN_DELAY_MS } from './health';
 import { talentEffects } from './talents';
 import { SKILLS } from './skills/catalog';
 import type { DamageKind, Health } from './health';
@@ -332,8 +332,9 @@ export class Game {
   streaming = false;
 
   /**
-   * P2-07: health, damage and DNF. On for platformer races played on this machine alone; classic drops keep their
-   * old rules (and their determinism), and online races wait for health on the wire.
+   * P2-07/P2-19: health, damage and DNF. On for every platformer race — offline and on a host, where the
+   * state frames carry each marble's HP and DNF to the guests. Classic drops keep their old rules (and
+   * their determinism).
    */
   healthOn = false;
   /** P2-10: what an item box may drop (the loadout), or undefined for the original pools. */
@@ -374,7 +375,9 @@ export class Game {
     // race agrees on, and either way the circuit is built once, here.
     this.track = opts.track ?? this.trackFor(seed, profile, opts.def);
     this.wireEvents = opts.wireEvents === true;
-    this.healthOn = !!this.track.platformer && !this.wireEvents;
+    // P2-19: health is on for every platformer race — a host with `wireEvents` included, because the
+    // host is the single source of truth and the frames carry each marble's HP and DNF to the guests.
+    this.healthOn = !!this.track.platformer;
     // The wire names track bodies by their index in `track.bodies`. Both sides
     // build the identical circuit from the seed, so an index IS the body — and
     // an index either end can check against `track.bodies.length`.
@@ -570,6 +573,9 @@ export class Game {
       anvil: this.time < m.anvilUntil,
       loop: this.stage,
       lane: m.lane ?? 1,
+      // P2-19: health rides as a 0..1 fraction of max HP (the frame scales it to a byte), with the DNF
+      // flag and the KO count. Absent on a classic race, where a marble has no health to report.
+      ...(m.health ? { hp: Math.max(0, Math.min(1, m.health.hp / (m.maxHp ?? MAX_HP))), dnf: !!m.dnf, kos: m.kos ?? 0 } : {}),
     }));
   }
 

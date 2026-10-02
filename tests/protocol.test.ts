@@ -118,6 +118,10 @@ function marble(i: number): MarbleState {
     ghost: i === 5,
     anvil: i === 6,
     loop: i % (MAX_LOOP_STAGE + 1),
+    // P2-19: health rides every frame on a platformer race — a knocked-out marble carries dnf.
+    hp: i === 3 ? 0.5 : 1,
+    dnf: i === 7,
+    kos: i % 3,
   };
 }
 
@@ -239,18 +243,18 @@ const check = (msg: unknown, opts?: ValidateOptions) => validateMessage(msg, opt
 test('MP-02 size: ten marbles pack into one frame far under the 4 KiB budget', () => {
   // The ticket's acceptance: `state` for ten marbles stays under 4 KiB.
   const bytes = frameBytes(STATE);
-  assert.equal(packedStateLength(), 296);
+  assert.equal(packedStateLength(), 308);
   assert.ok(bytes < STATE_BUDGET_BYTES, `state frame is ${bytes} bytes (budget ${STATE_BUDGET_BYTES})`);
   // And the real number, so a future field cannot quietly eat the headroom:
-  // 22 bytes a marble, base64'd, plus the envelope — ~350 bytes of 4096.
-  assert.ok(bytes < 512, `state frame is ${bytes} bytes, expected ~350`);
+  // 23 bytes a marble (P2-19 added the hp byte), base64'd, plus the envelope — ~370 bytes of 4096.
+  assert.ok(bytes < 512, `state frame is ${bytes} bytes, expected ~370`);
   // Twenty of these a second, and the 16 KiB frame is still mostly empty.
   assert.ok(bytes < FRAME_CAP_BYTES / 20, `20 Hz × ${bytes} bytes leaves no headroom in a ${FRAME_CAP_BYTES} byte frame`);
 });
 
 test('MP-02 size: the caps are the ones the gateway enforces', () => {
   assert.equal(FRAME_CAP_BYTES, 16 * 1024);
-  assert.equal(BYTES_PER_MARBLE, 22, 'five float32, one flag byte and one lane byte');
+  assert.equal(BYTES_PER_MARBLE, 23, 'five float32, one flag byte, one lane byte and one hp byte');
   assert.ok(SNAPSHOT_CHUNK_CHARS * 2 <= FRAME_CAP_BYTES, 'two chunks plus their envelopes fit the cap');
   assert.equal(STATE_BUDGET_BYTES, 4096);
   for (const msg of VALID) {
@@ -263,15 +267,23 @@ test('MP-02 size: the caps are the ones the gateway enforces', () => {
 // ══════════════════════════════════════════════════════════════════════════
 
 test('MP-02 pack: the byte layout is pinned, so both ends read the same bytes', () => {
-  // Two marbles, one with every flag set: 44 bytes → 60 base64 characters. The last byte of each is its lane (P2-00).
+  // Two marbles, one with every flag set, the second knocked out: 46 bytes → 64 base64 characters.
+  // Byte 20 is the flags (DNF is bit 5, P2-19), byte 21 the lane + stage, byte 22 the hp byte.
   // Hardcoded on purpose — endianness is stated, not assumed, and a change
   // here is a wire change (bump PROTOCOL_VERSION).
   const pinned = packState([
-    { x: 1, y: 2, vx: -3.5, vy: 4.25, a: 0.5, finished: false, frozen: true, oil: false, ghost: true, anvil: false, loop: 0, lane: 0 },
-    { x: -1000.5, y: 20000, vx: 0, vy: 0, a: -1, finished: true, frozen: false, oil: true, ghost: false, anvil: true, loop: 7, lane: 2 },
+    { x: 1, y: 2, vx: -3.5, vy: 4.25, a: 0.5, finished: false, frozen: true, oil: false, ghost: true, anvil: false, loop: 0, lane: 0, hp: 1, dnf: false },
+    { x: -1000.5, y: 20000, vx: 0, vy: 0, a: -1, finished: true, frozen: false, oil: true, ghost: false, anvil: true, loop: 7, lane: 2, hp: 0.5, dnf: true },
   ]);
-  assert.equal(pinned, 'AACAPwAAAEAAAGDAAACIQAAAAD8KAAAgesQAQJxGAAAAAAAAAAAAAIC/9QI=');
+  assert.equal(pinned, 'AACAPwAAAEAAAGDAAACIQAAAAD8KAP8AIHrEAECcRgAAAAAAAAAAAACAvzUegA==');
   assert.equal(pinned.length, packedStateLength(2));
+  // The two P2-19 fields survive the round trip at wire precision.
+  const back = unpackState(pinned, 2)!;
+  assert.equal(back[0].hp, 1, 'full health is 255/255');
+  assert.equal(back[0].dnf, false);
+  assert.ok(Math.abs(back[1].hp - 0.5) < 1 / 255, 'half health is 128/255');
+  assert.equal(back[1].dnf, true, 'the DNF bit is the flag byte');
+  assert.equal(back[1].loop, 7, 'the stage still rides in the lane byte');
 });
 
 test('MP-02 pack: a state frame round-trips through float32', () => {
@@ -289,7 +301,10 @@ test('MP-02 pack: a state frame round-trips through float32', () => {
     assert.equal(m.oil, want.oil);
     assert.equal(m.ghost, want.ghost);
     assert.equal(m.anvil, want.anvil);
-    assert.equal(m.loop, want.loop, 'the three spare flag bits survive');
+    assert.equal(m.loop, want.loop, 'the loop/stage bits survive');
+    // P2-19: hp is a byte (255 steps), so it survives to a 255th; dnf is a bit and is exact.
+    assert.ok(m.hp !== undefined && Math.abs(m.hp - want.hp!) <= 1 / 255, `hp of marble ${i}`);
+    assert.equal(m.dnf, want.dnf, `dnf of marble ${i}`);
   });
 });
 
