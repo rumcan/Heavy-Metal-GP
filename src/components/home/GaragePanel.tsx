@@ -8,6 +8,8 @@ import type { RacerAccount } from '../../game/economy';
 import type { RankChipModel } from '../../game/rank-view';
 import Portrait from '../Portrait';
 import RankChip from '../RankChip';
+import XpBar from '../progression/XpBar';
+import { progressOf } from '../../game/economy';
 import LoadoutPreview from '../LoadoutPreview';
 import { playerOf } from './roster';
 
@@ -69,6 +71,7 @@ export default function GaragePanel({ mode, garage, onChange, locked = false, lo
         <div><span className="eyebrow accent">{kicker ?? 'APEX RACING'}</span><h2 id="tuning-title">{(name ?? DRIVER_NAMES[portrait]).toUpperCase()}</h2><span className="marble-mass">{Math.round(ph.mass * 100)}g <span>/</span> DRIVER {portrait + 1}/{PLAYER_PORTRAIT_COUNT}</span></div>
         <button className="icon-button" onClick={() => step(1)} aria-label="Next driver"><ChevronRight size={18} /></button>
       </div>
+      <XpBar progress={progressOf(account)} />
       <fieldset className="paint-selector"><legend>Ball livery</legend><div>{PLAYER_COLORS.map((c, i) => <button key={c} type="button" style={{ '--paint': c } as CSSProperties} className={`paint-swatch ${c === color ? 'selected' : ''}`} onClick={() => onChange({ ...garage, color: c })} aria-label={`${COLOR_NAMES[i]} livery`} aria-pressed={c === color}><span /></button>)}</div></fieldset>
       <div className="stat-controls">{STAT_META.map(({ key, label, Icon, hint, color: statColor }) => <div className="stat-control" key={key} style={{ '--stat-color': statColor, '--range-fill': `${(stats[key] - 1) / 9 * 100}%` } as CSSProperties}>
         <div className="stat-label"><label htmlFor={`stat-${key}`}><Icon size={16} />{label}</label><output htmlFor={`stat-${key}`}>{String(stats[key]).padStart(2, '0')}<span>/10</span></output></div>

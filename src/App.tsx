@@ -44,9 +44,11 @@ import type { SeatGarage } from './net/lobby';
 import { MarbleInfo, AI_COLORS, randomStats, mulberry32, HeatResult, HEATS_PER_GP } from './game/types';
 import { SeasonState, newSeason, recordHeat, gridOrder, gpSeed, CALENDAR, saveSeason, loadSeason, roundTrack, roundName, setRoundTrack } from './game/season';
 import { officialTrack } from './game/official-tracks';
+import LevelUpCard from './components/progression/LevelUpCard';
+import { raceXp } from './game/progression';
 import { isPlatformerPick, platformerCourse } from './game/platformer/course';
 import { TRACK_THEMES } from './game/types';
-import { loadAccount, saveAccount, purchaseItem, onlineRaceId, settleOnlineRace, settleRace, settleCustomRace } from './game/economy';
+import { loadAccount, saveAccount, purchaseItem, onlineRaceId, settleOnlineRace, settleRace, settleCustomRace, progressOf, awardRaceXp } from './game/economy';
 import type { RacerAccount, RacePayout } from './game/economy';
 import { loadTracksSync } from './game/tracks';
 import type { TrackDef } from './game/trackdef';
@@ -111,6 +113,8 @@ export default function App() {
   const [shopOpen, setShopOpen] = useState(false);
   const [raceId, setRaceId] = useState('');
   const [payout, setPayout] = useState<RacePayout | null>(null);
+  /** P2-09: a level-up to show (the old and new level). */
+  const [levelUp, setLevelUp] = useState<{ from: number; to: number; xp: number } | null>(null);
 
   // ---- online (MP-06) -----------------------------------------------------
   // The room lives here, not in a screen: a lobby, a race and the next race are
@@ -589,13 +593,24 @@ export default function App() {
     const result = results.find((r) => r.id === 0);
     if (!result) return;
     const paid = isCustom ? settleCustomRace(accountRef.current, raceId, result, false) : settleRace(accountRef.current, raceId, result, 1, mode);
-    publishAccount(paid.account);
+    // P2-09: XP for the race, once (same race id as the purse).
+    let next = paid.account;
+    if (!paid.payout.alreadyPaid) {
+      const finished = result.time !== null && !result.dnf;
+      const xp = raceXp({ finished, rank: result.rank, pegs: result.pegs, kos: result.kos ?? 0, beatBest: false });
+      const before = progressOf(next).level;
+      const r = awardRaceXp(next, raceId, xp);
+      next = r.account;
+      if (r.levelsGained.length) setLevelUp({ from: before, to: progressOf(next).level, xp });
+    }
+    publishAccount(next);
     setPayout(paid.payout);
   };
   const openShop = () => setShopOpen(true);
   const withShop = (screen: ReactNode) => (
     <>
       {screen}
+      {levelUp && <LevelUpCard from={levelUp.from} to={levelUp.to} xp={levelUp.xp} onClose={() => setLevelUp(null)} />}
       {/* MP-08: a drop is not a phase's business — the strip rides over the
           lobby and the race alike. */}
       {peers.length > 0 && !hostGone && <PeerStrip peers={peers} hostId={hostId} now={now} />}
