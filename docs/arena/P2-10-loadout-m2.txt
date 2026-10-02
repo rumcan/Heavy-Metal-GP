@@ -1,0 +1,9 @@
+Now build it.
+
+Create these files in your project, then install, type-check and run the test:
+- package.json and tsconfig.json as described
+- src/game/loadout.ts and tests/loadout.test.ts (exactly as given, do not edit it)
+
+Run: npx tsc --noEmit -p .  and  node --import tsx --test tests/loadout.test.ts
+Fix until both pass with zero errors. No other source files, no UI, no imports from other project files.
+Do not paste code in the chat. Finish by replying with the test summary line only.
