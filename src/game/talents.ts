@@ -1,8 +1,8 @@
 // P2-17 (#125): talent trees, like Gunfire Reborn. Each driver level gives a talent point; points buy ranks in
-// five trees. A tier opens at a driver level AND after enough points in the lower tiers of the same tree.
+// six trees (P2-20 adds Driver). A tier opens at a driver level AND after enough points in the lower tiers of the same tree.
 // Pure: no imports. The engine and economy read talentEffects() at their hook points.
 
-export const TREES = ['engine', 'chassis', 'arsenal', 'tactics', 'fortune'] as const;
+export const TREES = ['engine', 'chassis', 'arsenal', 'tactics', 'fortune', 'driver'] as const;
 export type Tree = typeof TREES[number];
 export const RESPEC_PRICE = 500;
 
@@ -48,6 +48,11 @@ export const TALENTS: TalentDef[] = [
   t('collector', 'fortune', 3, 2, 'pegBonusPct', 10, 'Collector', 'Another 10 % peg bonus per rank.'),
   t('thrifty', 'fortune', 3, 2, 'shamanFeePct', -10, 'Thrifty', 'Another 10 % off the Shaman fee per rank.'),
   t('lucky-goblin', 'fortune', 4, 1, 'xpPct', 15, 'Lucky Goblin', 'Earn 15 % more XP from every race.'),
+  // P2-20: the DRIVER tree — the hands, not the car. Four tiers, one talent each, gated like the rest.
+  t('quick-reflexes', 'driver', 1, 3, 'laneSwitchPct', -10, 'Quick Reflexes', 'Lane changes finish 10 % sooner per rank.'),
+  t('steady-hands', 'driver', 2, 3, 'landingKeepPct', 10, 'Steady Hands', 'A hard landing keeps 10 % more of your roll per rank.'),
+  t('second-wind', 'driver', 3, 3, 'regenDelayMs', -1500, 'Second Wind', 'Health starts coming back 1.5 s sooner per rank — a bigger cut than Chassis gives.'),
+  t('lucky-draw', 'driver', 4, 1, 'boxLuckPct', 15, 'Lucky Draw', '15 % of item boxes pay out twice.'),
 ];
 
 export const STAT_KEYS: readonly string[] = [...new Set(TALENTS.map((d) => d.stat))];

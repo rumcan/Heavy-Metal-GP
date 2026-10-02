@@ -162,7 +162,11 @@ export function switchLane(game: Game, m: Marble, to: Lane): void {
 
 /** Is this marble mid lane change (the dolly is still running)? */
 export function switching(game: Game, m: Marble): boolean {
-  return m.laneAt !== undefined && game.time - m.laneAt < LANE_SWITCH_MS;
+  // P2-20: Quick Reflexes (laneSwitchPct, negative) ends the change sooner — without the talent this
+  // is the same 750 ms the renderer's dolly runs for.
+  const speedUp = m.tfx?.laneSwitchPct ?? 0;
+  const window = LANE_SWITCH_MS * Math.max(0.25, 1 + speedUp / 100);
+  return m.laneAt !== undefined && game.time - m.laneAt < window;
 }
 
 function inside(g: LaneGate, m: Marble): boolean {

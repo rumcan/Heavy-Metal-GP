@@ -1,13 +1,16 @@
-// P2-17: talents in the game — the account, the engine hook points, and the purse.
+// P2-17: talents in the game — the account, the engine hook points, and the purse. P2-20: the Driver tree.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import Matter from 'matter-js';
 
 import { Game } from '../src/game/engine';
 import { PHYSICS_STEP } from '../src/game/physics';
-import { AI_COLORS, AI_NAMES, emptyInventory, mulberry32, randomStats, TRACK_THEMES } from '../src/game/types';
+import { AI_COLORS, AI_NAMES, emptyInventory, mulberry32, randomStats, TRACK_THEMES, ITEM_TYPES } from '../src/game/types';
 import { buildPlatformerTrack } from '../src/game/platformer/build';
+import { floorAt } from '../src/game/platformer/course';
 import { createAccount, awardRaceXp, freeTalentPoints, setTalents, respec, settleRace, parseAccount } from '../src/game/economy';
 import { talentEffects } from '../src/game/talents';
+import { totalXpForLevel } from '../src/game/progression';
 
 function roster() {
   const rng = mulberry32(3);
@@ -102,4 +105,86 @@ test('Fortune: Sponsor, Peg Hunter, Haggler and Lucky Goblin act on the purse', 
   assert.equal(win.payout.pegBonus, 65, '50 + 30 %');
   const out = settleRace({ ...acc, credits: 1000 }, 'd', { id: 0, rank: 10, time: null, pegs: 0, dnf: true, kos: 0 }, 1, 'quick');
   assert.equal(out.payout.shamanFee, Math.round(100 * 0.7), 'the Shaman charges 30 % less');
+});
+
+// ─── P2-20: the sixth tree, the DRIVER ────────────────────────────────────────
+
+test('Driver: the tree gates like the others — tier levels 1/6/11/16 and 3 points below each tier', () => {
+  // Level 5, 4 points: tier 1 open, tier 2 (level 6) not.
+  let acc = level(1526);
+  acc = setTalents(acc, { 'quick-reflexes': 3, 'steady-hands': 3 });
+  assert.deepEqual(acc.talents, { 'quick-reflexes': 3 }, 'Steady Hands needs level 6');
+  // Level 15: tiers 1-3 affordable, the tier-4 capstone still locked.
+  let near = level(totalXpForLevel(15));
+  near = setTalents(near, { 'quick-reflexes': 3, 'steady-hands': 3, 'second-wind': 3, 'lucky-draw': 1 });
+  assert.equal(near.talents['lucky-draw'], undefined, 'Lucky Draw needs level 16 and 9 points below');
+  assert.equal(pointsSpentGuard(near), 9, 'the three lower tiers are maxed');
+  // Level 16: the capstone opens once 9 points sit below it.
+  let rich = setTalents(level(totalXpForLevel(16)), { 'quick-reflexes': 3, 'steady-hands': 3, 'second-wind': 3, 'lucky-draw': 1 });
+  assert.equal(rich.talents['lucky-draw'], 1, 'the capstone opens at level 16 with 9 points below');
+  assert.equal(talentEffects(rich.talents).boxLuckPct, 15);
+});
+
+function pointsSpentGuard(acc: ReturnType<typeof createAccount>): number {
+  return Object.values(acc.talents ?? {}).reduce((a, v) => a + v, 0);
+}
+
+test('Driver: Quick Reflexes ends a lane change sooner; without the talent the 750 ms window is untouched', async () => {
+  const { switching } = await import('../src/game/engine/platformer');
+  const quick = raceWith({ 'quick-reflexes': 3 }), plain = raceWith({});
+  for (const g of [quick, plain]) { g.start(); g.player.laneAt = g.time; g.time += 600; }
+  assert.equal(switching(quick, quick.player), false, 'rank 3 (-30 %) ends the change at 525 ms');
+  assert.equal(switching(plain, plain.player), true, 'no talent: still mid-change at 600 of 750 ms');
+});
+
+test('Driver: Steady Hands keeps more roll speed through a hard landing', () => {
+  const drop = (g: Game): number => {
+    g.start(); g.openGate();
+    for (let i = 0; i < 120; i++) g.step(PHYSICS_STEP); // out of the start cannons, as the arena tests do
+    const plan = g.track.platformer!.plan;
+    const floor = floorAt(plan, 1, 600);
+    assert.ok(floor !== null, 'the rolling-hills middle lane has floor at x=600');
+    const p = g.player;
+    p.cannon = undefined; // the human's start cannon never fires itself — drop the marble free
+    p.lane = 1; // the middle lane's floor is the one we aim at — take its mask, as place() does
+    Matter.Body.setPosition(p.body, { x: 600, y: floor - 40 });
+    Matter.Body.setVelocity(p.body, { x: 6, y: 6 });
+    g.applyMask(p);
+    // Read the roll speed exactly where Steady Hands works: as the first landing contact resolves.
+    let atLanding: number | null = null;
+    const contact = g.contactSurface.bind(g);
+    (g as unknown as { contactSurface: typeof g.contactSurface }).contactSurface = (m, obstacle, pair, landing) => {
+      const r = contact(m, obstacle, pair, landing);
+      if (m === p && landing && atLanding === null) atLanding = m.body.velocity.x;
+      return r;
+    };
+    for (let i = 0; i < 400 && atLanding === null; i++) g.step(PHYSICS_STEP);
+    assert.ok(atLanding !== null, 'the marble landed');
+    return atLanding;
+  };
+  const steady = drop(raceWith({ 'steady-hands': 3 }));
+  const plain = drop(raceWith({}));
+  assert.ok(steady > plain + 0.2, `steady hands kept more roll: ${steady.toFixed(2)} vs ${plain.toFixed(2)}`);
+});
+
+test('Driver: Second Wind brings health back sooner than the plain wait', () => {
+  const quick = raceWith({ 'second-wind': 3 }), plain = raceWith({});
+  for (const g of [quick, plain]) { g.start(); g.openGate(); g.damage(g.player, 50, 3, 'bolt'); }
+  for (const g of [quick, plain]) for (let t = 0; t < 4000; t += PHYSICS_STEP) g.step(PHYSICS_STEP);
+  assert.ok(quick.player.health!.hp > plain.player.health!.hp, `${quick.player.health!.hp} vs ${plain.player.health!.hp}`);
+});
+
+test('Driver: Lucky Draw can make an item box pay out twice', () => {
+  const openOnce = (g: Game): number => {
+    g.start(); g.openGate();
+    const m = g.player;
+    m.inventory = emptyInventory();
+    const box = g.track.itemBoxes[0];
+    (box.plugin as { active: boolean }).active = true;
+    g.rng = () => 0; // pick index 0, then roll 0 — under any boxLuckPct, so the double fires
+    g.marbleHits(m, box);
+    return ITEM_TYPES.reduce((a, id) => a + m.inventory[id], 0);
+  };
+  assert.equal(openOnce(raceWith({})), 1, 'no talent: one charge per box');
+  assert.equal(openOnce(raceWith({ 'lucky-draw': 1 })), 2, 'a 15 % roll doubles the box');
 });

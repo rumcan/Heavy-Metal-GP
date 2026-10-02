@@ -25,10 +25,10 @@ export function onCollisionStart(game: Game, e: Matter.IEventCollision<Matter.En
     const ma = game.marbleOf(a);
     const mb = game.marbleOf(b);
     if (ma && !mb) {
-      game.contactSurface(ma, b, pair);
+      game.contactSurface(ma, b, pair, true);
       game.marbleHits(ma, b);
     } else if (mb && !ma) {
-      game.contactSurface(mb, a, pair);
+      game.contactSurface(mb, a, pair, true);
       game.marbleHits(mb, a);
     }
     else if (ma && mb) {
@@ -564,6 +564,12 @@ export function marbleHits(game: Game, m: Marble, other: Matter.Body) {
       md.active = false;
       md.respawnAt = game.time + 7000;
       game.grantItem(m, available[Math.floor(game.rng() * available.length)]);
+      // P2-20: Lucky Draw — a slice of boxes pays out twice. The talent check comes FIRST so a
+      // marble without it never spends an rng roll (the classic race stream stays byte-identical).
+      if ((m.tfx?.boxLuckPct ?? 0) > 0 && game.rng() * 100 < (m.tfx?.boxLuckPct ?? 0)) {
+        const spare = pool.filter((item) => m.inventory[item] < MAX_ITEM_STACK);
+        if (spare.length) game.grantItem(m, spare[Math.floor(game.rng() * spare.length)]);
+      }
       game.sfx('pickup', m, other.position.x, other.position.y);
       game.storyCounter('itemBoxes', m); // STORY HOOK (ST-07)
       game.emit({ kind: 'box', i: game.indexOf(other), taken: true, seat: m.info.id });
@@ -670,13 +676,30 @@ export function onCollisionActive(game: Game, e: Matter.IEventCollision<Matter.E
   }
 }
 
-export function contactSurface(game: Game, m: Marble, obstacle: Matter.Body, pair: Matter.Pair) {
+export function contactSurface(game: Game, m: Marble, obstacle: Matter.Body, pair: Matter.Pair, landing = false) {
   const omd = meta(obstacle);
   // MB-10B: danger bodies carry no ramp surface, so a marble resting on (or grinding against)
   // one falls here instead of marbleHits. Apply the same one-shove-per-beat knock the
   // collision-start path gives, straight from game pair.
   if (omd && !m.frozen && m.finishedAt === null && (omd.kind === 'blade' || omd.kind === 'saw' || omd.kind === 'mace' || omd.kind === 'crusher' || omd.kind === 'boulder') && game.time >= (omd.cooldownUntil ?? 0)) {
     game.marbleHits(m, obstacle);
+  }
+  // P2-20: Steady Hands — the FIRST contact of a hard landing (impact over the same 1.3 the stick
+  // rule uses) hands back a slice of the roll as tangential speed. The normal comes from the pair,
+  // so platformer floors (which carry no ramp surface) get it too. Talent only: a marble without
+  // `landingKeepPct` runs the exact physics it always did — the engine checksum covers this path.
+  if (landing) {
+    const keep = m.tfx?.landingKeepPct ?? 0;
+    const n = pair.collision?.normal;
+    if (keep > 0 && n) {
+      const v = Body.getVelocity(m.body);
+      const impact = Math.abs(v.x * n.x + v.y * n.y);
+      if (impact >= 1.3) {
+        const tx = -n.y, ty = n.x;
+        const along = v.x * tx + v.y * ty;
+        Body.setVelocity(m.body, { x: v.x + tx * along * keep / 100, y: v.y + ty * along * keep / 100 });
+      }
+    }
   }
   const surface = omd?.surface;
   if (!surface || m.frozen || m.finishedAt !== null) return;

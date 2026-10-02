@@ -31,10 +31,13 @@ const TABLE: [string, string, number, number, string, number][] = [
   ['haggler', 'fortune', 2, 3, 'shamanFeePct', -10], ['big-sponsor', 'fortune', 2, 3, 'prizePct', 5],
   ['collector', 'fortune', 3, 2, 'pegBonusPct', 10], ['thrifty', 'fortune', 3, 2, 'shamanFeePct', -10],
   ['lucky-goblin', 'fortune', 4, 1, 'xpPct', 15],
+  // P2-20: the sixth tree — the driver.
+  ['quick-reflexes', 'driver', 1, 3, 'laneSwitchPct', -10], ['steady-hands', 'driver', 2, 3, 'landingKeepPct', 10],
+  ['second-wind', 'driver', 3, 3, 'regenDelayMs', -1500], ['lucky-draw', 'driver', 4, 1, 'boxLuckPct', 15],
 ];
 
 test('the trees and talents: exactly this table, in this order', () => {
-  assert.deepEqual([...TREES], ['engine', 'chassis', 'arsenal', 'tactics', 'fortune']);
+  assert.deepEqual([...TREES], ['engine', 'chassis', 'arsenal', 'tactics', 'fortune', 'driver']);
   assert.deepEqual(TALENTS.map((t) => [t.id, t.tree, t.tier, t.maxRank, t.stat, t.perRank]), TABLE);
   for (const t of TALENTS) {
     assert.ok(t.name.length >= 3, `${t.id}: a name`);

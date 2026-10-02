@@ -681,8 +681,8 @@ export class Game {
     return hits.onCollisionActive(this, e);
   }
 
-  contactSurface(m: Marble, obstacle: Matter.Body, pair: Matter.Pair) {
-    return hits.contactSurface(this, m, obstacle, pair);
+  contactSurface(m: Marble, obstacle: Matter.Body, pair: Matter.Pair, landing = false) {
+    return hits.contactSurface(this, m, obstacle, pair, landing);
   }
 
   /**
