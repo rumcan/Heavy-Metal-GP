@@ -3,7 +3,7 @@ import LoadingScreen from '../LoadingScreen';
 import RaceScreen from '../RaceScreen';
 import type { RaceAction } from '../RaceScreen';
 import { gridOrder } from '../../game/season';
-import { settleRace } from '../../game/economy';
+import { awardResultXp, settleRace } from '../../game/economy';
 import type { RacerAccount, RacePayout } from '../../game/economy';
 import { HEATS_PER_GP } from '../../game/types';
 import type { HeatResult, MarbleInfo, TrackProfile } from '../../game/types';
@@ -64,6 +64,11 @@ export interface StoryModeProps {
   account: RacerAccount;
   /** Publish credits/inventory changes (App owns the wallet and its save). */
   onAccount: (account: RacerAccount) => void;
+  /**
+   * P2-20: the race paid XP and the driver levelled up — App shows the level-up
+   * card over the results screen (it owns that overlay, like every other mode).
+   */
+  onLevelUp?: (from: number, to: number, xp: number) => void;
   onShop: () => void;
   onExit: () => void;
 }
@@ -83,7 +88,7 @@ function runSeed(driver: StoryDriver): number {
  * next chapter. Owns the story save end to end; the championship save and the wallet's paid-race ledger
  * are the only things it shares with the rest of the game.
  */
-export default function StoryMode({ driver, account, onAccount, onShop, onExit }: StoryModeProps) {
+export default function StoryMode({ driver, account, onAccount, onLevelUp, onShop, onExit }: StoryModeProps) {
   const [state, setState] = useState<StoryState>(() => loadStory() ?? newStory(runSeed(driver), driver, Date.now()));
   const stateRef = useRef(state);
   const accountRef = useRef(account);
@@ -305,9 +310,19 @@ export default function StoryMode({ driver, account, onAccount, onShop, onExit }
     setLiveCounters(snapshot);
     if (replay) { setPayout(null); return; }
     const raceId = `story:${settlement.state.seed}:${settlement.chapterRaced}:${heatRef.current}`;
-    const paid = settleRace(accountRef.current, raceId, settlement.player);
-    accountRef.current = paid.account;
-    onAccount(paid.account);
+    // P2-20: the story heat pays through the same purse every offline mode uses —
+    // the Shaman's fee and KO bounties ride on the same settleRace call.
+    const paid = settleRace(accountRef.current, raceId, settlement.player, 1, 'story');
+    let next = paid.account;
+    // P2-20: XP once per race id (the same id the purse was paid under), and the
+    // level-up card on the results screen when the XP pushed the driver up a level.
+    if (!paid.payout.alreadyPaid) {
+      const r = awardResultXp(next, raceId, settlement.player);
+      next = r.account;
+      if (r.levelsGained.length) onLevelUp?.(r.from, r.to, r.xp);
+    }
+    accountRef.current = next;
+    onAccount(next);
     setPayout(paid.payout);
   };
 
