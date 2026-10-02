@@ -236,6 +236,11 @@ export interface RaceSettings {
    * decoded.
    */
   customCode?: string;
+  /**
+   * P2-00: an official platformer course id (`PLATFORMER_COURSES` in src/game/platformer/course.ts).
+   * When present the race is on that course; `circuit` is kept for compatibility only.
+   */
+  platformer?: string;
   /** False: AI drivers never use power-ups. Absent reads as true. */
   aiItems?: boolean;
   /** AI seats the host took off the grid: they do not race. Human seats are never benched. */
@@ -1458,6 +1463,7 @@ export function readRaceSettings(value: unknown): RaceSettings | null {
     if (!/^[A-Za-z0-9_-]+$/.test(s.customCode.slice(2))) return null;
   }
   if (s.aiItems !== undefined && typeof s.aiItems !== 'boolean') return null;
+  if (s.platformer !== undefined && (typeof s.platformer !== 'string' || !/^[a-z0-9-]{1,32}$/.test(s.platformer))) return null;
   let benched: number[] | undefined;
   if (s.benched !== undefined) {
     if (!Array.isArray(s.benched) || s.benched.length > MARBLE_COUNT) return null;
@@ -1471,6 +1477,7 @@ export function readRaceSettings(value: unknown): RaceSettings | null {
     ...(typeof s.customCode === 'string' ? { customCode: s.customCode } : {}),
     ...(s.aiItems !== undefined ? { aiItems: s.aiItems as boolean } : {}),
     ...(benched ? { benched } : {}),
+    ...(typeof s.platformer === 'string' ? { platformer: s.platformer } : {}),
   };
 }
 

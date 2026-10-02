@@ -132,3 +132,11 @@ test('the wire carries each marble\'s lane (host state frames)', () => {
   for (let i = 0; i < 600; i++) game.step(PHYSICS_STEP);
   assert.deepEqual(game.marbleStates().map((s) => s.lane), game.marbles.map((m) => m.lane));
 });
+
+test('online: race settings carry a platformer course id; a bad id is refused', async () => {
+  const { readRaceSettings } = await import('../src/net/protocol');
+  assert.deepEqual(readRaceSettings({ circuit: 0, platformer: 'misty-ridge' }), { circuit: 0, platformer: 'misty-ridge' });
+  assert.equal(readRaceSettings({ circuit: 0, platformer: 'Misty Ridge!' }), null);
+  assert.equal(readRaceSettings({ circuit: 0, platformer: 7 }), null);
+  assert.deepEqual(readRaceSettings({ circuit: 2 }), { circuit: 2 });
+});

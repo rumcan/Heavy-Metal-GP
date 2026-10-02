@@ -853,18 +853,20 @@ export default function App() {
     const isCustomOnline = !!(online.settings as unknown as { customCode?: string })?.customCode;
     const gp = isCustomOnline && onlineCustomDef ? { name: onlineCustomDef.name, profile: CALENDAR[0].profile } as unknown as typeof CALENDAR[0] : CALENDAR[circuitIndexOf(online.settings)] ?? CALENDAR[0];
     const drivers = online.seats.filter((s) => !s.isAI).length;
+    // P2-00: a platformer course is generated from its id (no def), the same on every machine.
+    const onlinePlatformer = online.settings.platformer ? platformerCourse(online.settings.platformer) : null;
     return withShop(
       <RaceScreen
         key={raceKey}
         seed={online.seed}
         roster={onlineRoster}
-        profile={gp.profile}
+        profile={onlinePlatformer ? { ...CALENDAR[0].profile, generator: 'platformer' as const, course: onlinePlatformer.id, theme: TRACK_THEMES.forest } : gp.profile}
         // Calendar circuits race their official archives online too — never a generated layout.
-        trackDef={isCustomOnline ? onlineCustomDef : officialTrack(circuitIndexOf(online.settings)) ?? onlineCustomDef}
+        trackDef={onlinePlatformer ? null : isCustomOnline ? onlineCustomDef : officialTrack(circuitIndexOf(online.settings)) ?? onlineCustomDef}
         gridOrder={onlineGrid}
-        title={gp.name}
-        isCustom={isCustomOnline}
-        subtitle={`ONLINE / ${online.isHost ? 'HOSTING' : 'JOINED'} / ${drivers} DRIVERS${isCustomOnline ? ' / CUSTOM' : ''}`}
+        title={onlinePlatformer ? onlinePlatformer.name : gp.name}
+        isCustom={isCustomOnline || !!onlinePlatformer}
+        subtitle={`ONLINE / ${online.isHost ? 'HOSTING' : 'JOINED'} / ${drivers} DRIVERS${onlinePlatformer ? ' / PLATFORMER' : isCustomOnline ? ' / CUSTOM' : ''}`}
         onExit={leaveRoom}
         // MP-09: an online race settles this screen's own seat, at the online
         // scale, and writes back the kit it came home with.

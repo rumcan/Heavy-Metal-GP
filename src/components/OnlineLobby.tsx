@@ -47,6 +47,7 @@ import { UNLIMITED_ITEM } from '../net/protocol';
 import Brand from './Brand';
 import RankChip from './RankChip';
 import type { RankChipLookup } from '../game/rank-view';
+import { PLATFORMER_COURSES, platformerCourse } from '../game/platformer/course';
 
 /**
  * RK-05: is this lobby a RATED one? The host's answer: they came in through
@@ -55,8 +56,9 @@ import type { RankChipLookup } from '../game/rank-view';
  * same race as everybody else — and the ROOM still ANDs it with the rules it
  * can see for itself before any rating moves (`ResultMsg.rated`).
  */
-export function lobbyIsRated(autoStart: boolean, settings: Pick<RaceSettings, 'items'>): boolean {
-  return autoStart && settings.items === undefined;
+export function lobbyIsRated(autoStart: boolean, settings: Pick<RaceSettings, 'items' | 'platformer'>): boolean {
+  // P2-00: platformer courses are a preview, never rated yet.
+  return autoStart && settings.items === undefined && settings.platformer === undefined;
 }
 
 /** What App needs to launch an online race once the lights are armed. */
@@ -108,9 +110,10 @@ interface Props {
 
 
 /** The host's full rules, with defaults left out so an untouched lobby sends what it always did. */
-function buildSettings(circuit: number, items: Partial<Record<ItemType, number>> | null, benched: readonly number[], aiItems: boolean): RaceSettings {
+function buildSettings(circuit: number, items: Partial<Record<ItemType, number>> | null, benched: readonly number[], aiItems: boolean, platformer: string | null = null): RaceSettings {
   return {
     circuit,
+    ...(platformer ? { platformer } : {}),
     ...(items ? { items } : {}),
     ...(benched.length ? { benched: [...benched] } : {}),
     ...(aiItems ? {} : { aiItems: false }),
@@ -132,7 +135,9 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
   // MB-08: custom track picking for the host — share-code in settings.customCode
   // Parsing saved tracks checks every one of them: once per visit, not on every render.
   const myTracks = useMemo(() => loadTracksSync(), []);
-  const [circuitTab, setCircuitTab] = useState<'calendar' | 'custom'>('calendar');
+  const [circuitTab, setCircuitTab] = useState<'calendar' | 'custom' | 'platformer'>('calendar');
+  /** Host only (P2-00): the platformer course picked, or null for the calendar / a custom track. */
+  const [platformer, setPlatformer] = useState<string | null>(null);
   const [customCode, setCustomCode] = useState<string | null>(null);
   const [customName, setCustomName] = useState<string | null>(null);
   /** Host only: AI seats taken off the grid, and whether AI may use power-ups. */
@@ -159,7 +164,7 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
 
   const isHost = welcome ? welcome.hostId === room.playerId : room.isCreator;
   const seats = (isHost ? grid ?? welcome?.seats : lobbySeats ?? welcome?.seats) ?? [];
-  const settings: RaceSettings = isHost ? buildSettings(circuitIndex, items, benched, aiItems) : lobbySettings ?? welcome?.settings ?? { circuit: circuitIndex };
+  const settings: RaceSettings = isHost ? buildSettings(circuitIndex, items, benched, aiItems, platformer) : lobbySettings ?? welcome?.settings ?? { circuit: circuitIndex };
   const circuit = isHost ? circuitIndex : circuitIndexOf(settings);
   const gp = CALENDAR[circuit] ?? CALENDAR[0];
   const localSeat = seatOfPlayer(seats, room.playerId) ?? 0;
@@ -220,12 +225,12 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
   const filed = useRef(new Map<string, SeatGarage>());
   const readies = useRef(new Map<string, boolean>());
   // Everything the message handler needs, without re-subscribing on every render.
-  const latest = useRef({ welcome, grid, lobbySeats, isHost, circuit: circuitIndex, items, open, benched, aiItems, hostRated });
-  latest.current = { welcome, grid, lobbySeats, isHost, circuit: circuitIndex, items, open, benched, aiItems, hostRated };
+  const latest = useRef({ welcome, grid, lobbySeats, isHost, circuit: circuitIndex, items, open, benched, aiItems, hostRated, platformer });
+  latest.current = { welcome, grid, lobbySeats, isHost, circuit: circuitIndex, items, open, benched, aiItems, hostRated, platformer };
   /** The host's full rules for a circuit: the circuit plus any power-up house rules. */
   const hostSettings = (circuitId: number): RaceSettings => {
     const l = latest.current;
-    const base = buildSettings(circuitId, l.items, l.benched, l.aiItems);
+    const base = buildSettings(circuitId, l.items, l.benched, l.aiItems, l.platformer);
     if (customCode) (base as unknown as { customCode: string }).customCode = customCode;
     return base;
   };
@@ -264,6 +269,17 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
     if (!isHost) return;
     setAiItems(next);
     latest.current.aiItems = next;
+    publish(latest.current.grid ?? seats, circuitIndex);
+  };
+
+  /** Host only (P2-00): race a platformer course (null = back to the calendar). */
+  const pickPlatformer = (id: string | null) => {
+    if (!isHost) return;
+    setPlatformer(id);
+    latest.current.platformer = id;
+    setCustomCode(null);
+    setCustomName(null);
+    setCircuitTab(id ? 'platformer' : 'calendar');
     publish(latest.current.grid ?? seats, circuitIndex);
   };
 
@@ -544,11 +560,18 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
         </div>
         {isHost && (
           <div className="circuit-tabs" role="tablist" aria-label="Circuit source">
-            <button role="tab" aria-selected={circuitTab === 'calendar'} className={circuitTab === 'calendar' ? 'selected' : ''} onClick={() => { setCircuitTab('calendar'); setCustomCode(null); setCustomName(null); publish(latest.current.grid ?? seats, circuitIndex); }}>Calendar</button>
+            <button role="tab" aria-selected={circuitTab === 'calendar'} className={circuitTab === 'calendar' ? 'selected' : ''} onClick={() => pickPlatformer(null)}>Calendar</button>
             <button role="tab" aria-selected={circuitTab === 'custom'} className={circuitTab === 'custom' ? 'selected' : ''} onClick={() => setCircuitTab('custom')}>My tracks{myTracks.length ? ` (${myTracks.length})` : ''}</button>
+            <button role="tab" aria-selected={circuitTab === 'platformer'} className={circuitTab === 'platformer' ? 'selected' : ''} onClick={() => pickPlatformer(settings.platformer ?? PLATFORMER_COURSES[0].id)}>Platformer</button>
           </div>
         )}
-        {customCode ? (
+        {settings.platformer ? (
+          <div>
+            <h2 id="lobby-circuit-title">{platformerCourse(settings.platformer).name.toUpperCase()}</h2>
+            <span className="muted">PLATFORMER • PREVIEW • unrated • turn your phone sideways</span>
+            <p className="lobby-circuit-desc">{platformerCourse(settings.platformer).blurb}</p>
+          </div>
+        ) : customCode ? (
           <div>
             <h2 id="lobby-circuit-title">{(customName ?? 'CUSTOM CIRCUIT').toUpperCase()}</h2>
             <span className="muted">CUSTOM • Host's track • {customCode.slice(0, 8)}…</span>
@@ -562,14 +585,18 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
             <p className="lobby-circuit-desc">{gp.desc}</p>
           </div>
         )}
-        {circuitTab === 'calendar' || !isHost ? (
+        {isHost && circuitTab === 'platformer' ? (
+          <div className="circuit-selector" aria-label="Select a platformer course">
+            {PLATFORMER_COURSES.map((c, i) => <button key={c.id} className={c.id === settings.platformer ? 'selected' : ''} aria-pressed={c.id === settings.platformer} onClick={() => pickPlatformer(c.id)}><span>{String(i + 1).padStart(2, '0')}</span><strong>{c.name}</strong></button>)}
+          </div>
+        ) : circuitTab === 'calendar' || !isHost ? (
           <div className="circuit-selector" aria-label="Select a circuit">
             {CALENDAR.map((item, i) => <button
               key={item.id}
               className={i === circuit && !customCode ? 'selected' : ''}
               aria-pressed={i === circuit && !customCode}
               disabled={!isHost}
-              onClick={() => { if (!isHost) return; setCustomCode(null); setCustomName(null); onCircuit(i); publish(latest.current.grid ?? seats, i); }}
+              onClick={() => { if (!isHost) return; setCustomCode(null); setCustomName(null); setPlatformer(null); latest.current.platformer = null; onCircuit(i); publish(latest.current.grid ?? seats, i); }}
             ><span>{String(i + 1).padStart(2, '0')}</span><strong>{item.short}</strong></button>)}
           </div>
         ) : (
