@@ -7,7 +7,8 @@ import { meta } from '../track';
 import { laneFocus, laneView, visibleLanes, LANE_SWITCH_MS, LANE_MIDDLE } from '../lanes';
 import { drawMarble } from '../render';
 import { SPRING_W, floorAt } from './course';
-import type { CoursePlan, Floor, LaneGate } from './course';
+import type { CoursePlan, Floor, Lane, LaneGate } from './course';
+import { drawCoasterLane } from './coaster';
 import { LEDGE_H } from './build';
 import earthUrl from '../../assets/game/platformer/earth.webp';
 import grassUrl from '../../assets/game/platformer/grass.webp';
@@ -329,19 +330,25 @@ function drawFinish(ctx: CanvasRenderingContext2D, x: number, y: number) {
 function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, left: number, right: number, bottom: number, t: number) {
   const info = game.track.platformer!;
   const flow = info.plan.style === 'flow';
-  // Flow courses: the slope is drawn as whole runs (between chasms), not as thousands of little blocks.
-  if (flow) drawFlowGround(ctx, info.plan, lane, left, right, bottom);
+  // Flow courses: the coaster skin (track on trestles over cliffs) once its art is loaded; until then the
+  // slope as whole runs of earth and grass. Either way never thousands of little blocks.
+  const fired = (sx: number) => game.marbles.some((m) => m.springAt !== undefined && game.time - m.springAt < 220 && (m.lane ?? 1) === lane && Math.abs(m.body.position.x - sx - SPRING_W / 2) < 80);
+  const coaster = flow && drawCoasterLane(ctx, info.plan, lane as Lane, left, right, bottom, t, fired);
+  if (flow && !coaster) drawFlowGround(ctx, info.plan, lane, left, right, bottom);
   for (const body of game.track.bodies) {
     const md = meta(body);
     if (md.kind !== 'floor' || md.lane !== lane) continue;
     if (flow && md.depth !== undefined && md.depth > 100) continue;
+    if (coaster) continue; // the coaster skin drew the crates
     if (body.bounds.max.x < left || body.bounds.min.x > right) continue;
     const v = body.vertices;
     if (v.length === 4 && md.depth !== undefined && md.depth > 100) drawFloor(ctx, v[0].x, v[0].y, v[1].x, v[1].y, md.depth, lane, bottom);
     else drawBump(ctx, body.bounds.min.x, body.bounds.min.y, body.bounds.max.x - body.bounds.min.x, md.depth ?? body.bounds.max.y - body.bounds.min.y);
   }
-  for (const l of info.plan.ledges ?? []) if (l.lane === lane && l.x + l.w > left && l.x < right) drawLedge(ctx, l.x, l.y, l.w, (px) => floorAt(info.plan, l.lane, px));
-  for (const s of info.plan.springs ?? []) if (s.lane === lane && s.x + SPRING_W > left && s.x < right) drawSpring(ctx, s.x, s.y, game.marbles.some((m) => m.springAt !== undefined && game.time - m.springAt < 220 && (m.lane ?? 1) === lane && Math.abs(m.body.position.x - s.x - SPRING_W / 2) < 80));
+  if (!coaster) {
+    for (const l of info.plan.ledges ?? []) if (l.lane === lane && l.x + l.w > left && l.x < right) drawLedge(ctx, l.x, l.y, l.w, (px) => floorAt(info.plan, l.lane, px));
+    for (const s of info.plan.springs ?? []) if (s.lane === lane && s.x + SPRING_W > left && s.x < right) drawSpring(ctx, s.x, s.y, fired(s.x));
+  }
   const player = game.player;
   for (const g of info.plan.gates) {
     if (g.lane !== lane || g.x + g.w < left || g.x > right) continue;
