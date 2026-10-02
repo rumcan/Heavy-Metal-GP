@@ -324,7 +324,7 @@ test('Story hooks: chapter weights reshape the circuit, deterministically', () =
     return all;
   }, {});
   assert.ok((kinds.breakable ?? 0) >= 1, 'the montage track has no crack wall to break');
-  assert.ok((kinds.loopTop ?? 0) >= 1, 'the montage track has no loop to clear');
+  assert.ok((kinds.loopRide ?? kinds.loopTop ?? 0) >= 1, 'the montage track has no loop to clear');
   assert.ok((kinds.hoop ?? 0) >= 3, `the montage track has only ${kinds.hoop ?? 0} fire hoops, the lesson asks for 3`);
   assert.ok(training.pegCount.orange >= 10, 'a chapter asking for 10 orange pegs needs 10 orange pegs');
 });
