@@ -8,8 +8,10 @@ import { progressAlong, pointAt } from '../course-path';
 import { floorAt, SPRING_W } from '../platformer/course';
 import { CAT_ONEWAY } from '../platformer/build';
 import type { Lane, LaneGate } from '../platformer/course';
-import { CAT_WALL, CAT_SENSOR, CAT_FRAGILE, CAT_DANGER } from '../track';
+import { CAT_WALL, CAT_SENSOR, CAT_FRAGILE, CAT_DANGER, meta } from '../track';
 import { CONTROL_TUNING, steerVelocity } from '../controls';
+import { SAMPLE_STEP, decide } from '../ai-brain';
+import type { Difficulty, Sense } from '../ai-brain';
 import { MARBLE_RADIUS } from '../types';
 
 const { Body } = Matter;
@@ -236,39 +238,79 @@ export function platformRecovery(game: Game, m: Marble, dt: number): void {
   void dt;
 }
 
-/**
- * Baseline AI driver (P2-16 makes it smart): roll right at its own pace, jump gaps, bumps and climbs,
- * and sometimes take a door. Returns the velocity to use this step.
- */
-export function aiDrive(game: Game, m: Marble, v: Matter.Vector, s: number): Matter.Vector {
-  const info = game.track.platformer!;
-  const plan = info.plan;
+/** Computer drivers' skill level, from their Speed stat (stronger rivals are better drivers). */
+function difficultyOf(m: Marble): Difficulty {
+  const sp = m.info.stats.speed;
+  return sp >= 8 ? 'hard' : sp <= 3 ? 'easy' : 'normal';
+}
+
+/** Does this lane change make sense? Into the safe middle lane always; elsewhere about half the gates (stable per gate). */
+function betterLane(g: { x: number; to: number }): boolean {
+  return g.to === LANE_MIDDLE || ((g.x / 10) | 0) % 2 === 0;
+}
+
+/** What a computer driver senses this step (src/game/ai-brain.ts decides from it). */
+function sense(game: Game, m: Marble, vx: number, grounded: boolean): Sense {
+  const plan = game.track.platformer!.plan;
   const lane = (m.lane ?? LANE_MIDDLE) as Lane;
   const p = m.body.position;
-  const grounded = m.grounded < 5;
-  const cap = 7 + m.info.stats.speed * 0.25;
-  if (v.x < cap) v = { x: Math.min(cap, steerVelocity(v.x, 1, grounded, s)), y: v.y };
-
-  if (!grounded || game.time < (m.aiJumpAt ?? 0)) return v;
-  const here = floorAt(plan, lane, p.x);
-  const look = 34 + Math.max(0, v.x) * 7;
-  const ahead = floorAt(plan, lane, p.x + look);
-  const bump = plan.bumps.some((b) => b.lane === lane && b.x > p.x && b.x - p.x < 20 + Math.max(0, v.x) * 5);
-  const gap = ahead === null;
-  // A step up (a sudden rise), not a smooth uphill: compare the floor just before `ahead` with it.
-  const before = floorAt(plan, lane, p.x + look - 10);
-  const climb = here !== null && ahead !== null && ahead < here - 12 && (before === null || before - ahead > 8);
-  // Pushing but not moving: a rival (or anything else) is in the way. Hop it.
-  const blocked = v.x < 1.2 && game.time - game.raceStartTime > 1500;
-  if (gap || bump || climb || blocked) {
-    m.aiJumpAt = game.time + CONTROL_TUNING.jumpCooldownMs;
-    return { x: v.x, y: Math.min(v.y, -CONTROL_TUNING.jumpSpeed) };
+  const here = floorAt(plan, lane, p.x) ?? p.y + MARBLE_RADIUS;
+  const ahead: (number | null)[] = [];
+  for (let i = 1; i <= 16; i++) {
+    const f = floorAt(plan, lane, p.x + i * SAMPLE_STEP);
+    ahead.push(f === null ? null : f - here);
   }
-  // Doors: decide once per door, from the race rng (deterministic on the host).
+  const dist = (xs: number[]) => xs.filter((x) => x > p.x).reduce((a, x) => Math.min(a, x - p.x), Infinity);
+  const nearest = (xs: number[]) => { const d = dist(xs); return Number.isFinite(d) ? d : null; };
+  const crateAt = nearest(plan.bumps.filter((b) => b.lane === lane).map((b) => b.x));
+  const dangerAt = nearest(game.track.wreckers.filter((w) => meta(w).lane === lane).map((w) => w.position.x - 30));
+  let rivalAhead: Sense['rivalAhead'] = null;
+  let rivalBehind: Sense['rivalBehind'] = null;
+  for (const o of game.marbles) {
+    if (o === m || o.finishedAt !== null || (o.lane ?? LANE_MIDDLE) !== lane) continue;
+    const dx = o.body.position.x - p.x;
+    if (dx > 0 && (!rivalAhead || dx < rivalAhead.dx)) rivalAhead = { dx, dy: o.body.position.y - p.y };
+    else if (dx <= 0 && (!rivalBehind || -dx < rivalBehind.dx)) rivalBehind = { dx: -dx };
+  }
+  const gate = (kind: 'ramp' | 'door') => {
+    let best: { dist: number; better: boolean } | null = null;
+    for (const g of plan.gates) {
+      if (g.kind !== kind || g.lane !== lane) continue;
+      const d = g.x - p.x;
+      const inside = p.x >= g.x && p.x <= g.x + g.w;
+      if (!inside && d < 0) continue;
+      const dd = inside ? 0 : d;
+      if (!best || dd < best.dist) best = { dist: dd, better: betterLane(g) };
+    }
+    return best;
+  };
+  return {
+    time: game.time, difficulty: difficultyOf(m), grounded, vx, ahead, crateAt, wallAt: null, dangerAt,
+    heat: m.engine?.heat ?? 0, overheated: (m.engine?.lockedUntil ?? 0) > game.time, hp: 100,
+    rivalAhead, rivalBehind, slots: [], lastSkillAt: -Infinity, door: gate('door'), ramp: gate('ramp'), rng: () => game.rng(),
+  };
+}
+
+/**
+ * The computer driver (P2-16): the pure brain in ai-brain.ts decides from what it senses; this applies it.
+ * Skills and the Magic Engine are not used yet (they arrive with the skill system).
+ */
+export function aiDrive(game: Game, m: Marble, v: Matter.Vector, s: number): Matter.Vector {
+  const grounded = m.grounded < 5;
+  const d = decide(sense(game, m, v.x, grounded));
+  if (d.nudge !== 0) v = { x: steerVelocity(v.x, d.nudge, grounded, s), y: v.y };
+  if (grounded && game.time >= (m.aiJumpAt ?? 0)) {
+    // Pushing but not moving: a rival (or anything else) is in the way. Hop it.
+    const blocked = v.x < 1.2 && game.time - game.raceStartTime > 1500;
+    if (d.jump || blocked) {
+      m.aiJumpAt = game.time + CONTROL_TUNING.jumpCooldownMs;
+      v = { x: v.x, y: Math.min(v.y, -CONTROL_TUNING.jumpSpeed) };
+    }
+  }
   const door = doorAt(game, m);
-  if (door && m.doorSeen !== door.x) {
+  if (door && d.takeDoor && m.doorSeen !== door.x) {
     m.doorSeen = door.x;
-    if (game.rng() < 0.45) switchLane(game, m, door.to);
+    switchLane(game, m, door.to);
   }
   return v;
 }
