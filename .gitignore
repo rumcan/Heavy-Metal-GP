@@ -2,3 +2,5 @@ node_modules/
 dist/
 tests/artifacts/
 *.local
+# Owner art drop folder: source files are converted into src/assets before use, never committed raw.
+assets/new-art/

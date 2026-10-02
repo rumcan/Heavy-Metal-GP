@@ -1,11 +1,10 @@
 // P2-00 (#124): the coaster skin for rolling-slope (flow) courses — the owner's reference look: a red-and-white
-// chevron rail on a wooden beam, carried on braced timber trestles over mossy rock cliffs, with goblin towers,
+// wooden beam track, carried on the owner's scaffold supports over mossy rock cliffs, with goblin towers,
 // torches, banners and the sheep spring. Built from the game's existing painted art; a skin only (physics is the
 // plain floor pieces from build.ts). Returns false until the art has loaded, and the caller draws a fallback.
 import type { CoursePlan, Floor, Lane } from './course';
 import { SPRING_W } from './course';
 import { LEDGE_H } from './build';
-import railChevronUrl from '../../assets/game/rail-chevron.webp';
 import railWoodUrl from '../../assets/game/rail-wood.webp';
 import rockFillUrl from '../../assets/game/rock-fill.webp';
 import mossUrl from '../../assets/game/strip-moss.webp';
@@ -19,11 +18,11 @@ import stripWoodUrl from '../../assets/game/strip-wood.webp';
 
 const load = (src: string) => (typeof Image !== 'undefined' ? Object.assign(new Image(), { src }) : null);
 const ART = {
-  chevron: load(railChevronUrl), wood: load(railWoodUrl), rock: load(rockFillUrl), moss: load(mossUrl), sheep: load(sheepUrl),
+  wood: load(railWoodUrl), rock: load(rockFillUrl), moss: load(mossUrl), sheep: load(sheepUrl),
   crate: load(crateUrl), towers: [load(tower1Url), load(tower2Url), load(tower3Url)], torch: load(torchUrl),
 };
 const ready = (img: HTMLImageElement | null): img is HTMLImageElement => !!img && img.complete && img.naturalWidth > 0;
-const allReady = () => ready(ART.chevron) && ready(ART.wood) && ready(ART.rock) && ready(ART.moss);
+const allReady = () => ready(ART.wood) && ready(ART.rock) && ready(ART.moss);
 
 /** Rail images have iron end caps: the plank between them is what tiles along a curve. */
 const RAIL_CAP = 0.125;
@@ -48,10 +47,9 @@ function rockPattern(ctx: CanvasRenderingContext2D): CanvasPattern | null {
   return p ?? null;
 }
 
-/** The chevron rail's thickness and where it sits on the floor's top edge (the ball rolls on the rail's top). */
-const RAIL_T = 26;
+/** The track beam's thickness and how far it rises above the floor's top edge (the ball rolls on its top). */
+const TRACK_T = 30;
 const RAIL_UP = 5;
-const BEAM_T = 24;
 
 /** How far the cliffs sit below the track: a slow swell, 150..280 px, the same on every machine. */
 function clearance(x: number): number {
@@ -155,7 +153,7 @@ function trestle(ctx: CanvasRenderingContext2D, run: Pt[], x0: number, x1: numbe
     const set = k % 2 === 0 ? BENTS : POSTS;
     const img = set[Math.floor(hash(k, 17) * set.length)];
     if (!ready(img)) continue;
-    supports.push({ x, top: yOn(run, x) + RAIL_T - RAIL_UP + BEAM_T - 14, foot: ground(x) + 14, img });
+    supports.push({ x, top: yOn(run, x) + TRACK_T - RAIL_UP - 8, foot: ground(x) + 14, img });
   }
   // plank struts first, so the supports stand in front of them
   if (ready(plank)) {
@@ -214,9 +212,8 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
       ctx.drawImage(img, x - w / 2, foot - h, w, h);
     }
     trestle(ctx, run, pts[0].x - SUPPORT_EVERY, pts[pts.length - 1].x + SUPPORT_EVERY, (x) => yOn(run, x) + clearance(x));
-    // the track: a wooden beam, and the chevron rail on top of it
-    stripAlong(ctx, middle(ART.wood!), pts, RAIL_UP - RAIL_T + 10, BEAM_T + 4);
-    stripAlong(ctx, middle(ART.chevron!), pts, RAIL_UP, RAIL_T);
+    // the track: a plain wooden beam (no chevron rail, per the owner)
+    stripAlong(ctx, middle(ART.wood!), pts, RAIL_UP, TRACK_T);
     // torches on the beam now and then
     for (let x = Math.ceil(pts[0].x / 600) * 600; x < pts[pts.length - 1].x; x += 600) {
       const r = hash(Math.round(x), lane + 3);
