@@ -24,6 +24,7 @@ import type { Track } from '../game/track';
 import { meta } from '../game/track';
 import { elementBodies } from '../game/elements';
 import { updateProgress } from '../game/engine/platformer';
+import { newHealth } from '../game/health';
 import type { MarbleInfo } from '../game/types';
 import type { SoundEvent } from '../game/cues';
 import {
@@ -479,7 +480,15 @@ export class RaceGuest {
       const m = marbles[i];
       const ma = a.marbles[i];
       const mb = b.marbles[i];
-      if (!ma || !mb || m.finishedAt !== null || m.dnf) continue; // parked at the finish, or out of the race
+      if (!ma || !mb) continue;
+      // P2-19: health off the frame, for the HUD's HP meter. The DNF bit is a LATCH — a marble
+      // that is out never comes back, even if an older frame in the buffer still says it is racing.
+      if (this.game.healthOn) this.applyHealth(m, mb);
+      if (mb.dnf && !m.dnf) {
+        m.dnf = true;
+        this.hideDnf(m);
+      }
+      if (m.finishedAt !== null || m.dnf) continue; // parked at the finish, or out of the race
       Body.setPosition(m.body, { x: lerp(ma.x, mb.x, alpha), y: lerp(ma.y, mb.y, alpha) });
       Body.setAngle(m.body, lerp(ma.a, mb.a, alpha));
       Body.setVelocity(m.body, { x: lerp(ma.vx, mb.vx, alpha), y: lerp(ma.vy, mb.vy, alpha) });
@@ -542,6 +551,15 @@ export class RaceGuest {
       m.ghostUntil = state.ghost ? snap.t + 1000 : 0;
       m.anvilUntil = state.anvil ? snap.t + 1000 : 0;
       if (this.game.track.platformer) { m.lane = m.laneFrom = state.lane ?? 1; m.laneAt = undefined; m.progress = undefined; }
+      // P2-19: a joiner gets the health, the DNF latch and the KO count the frames would have told it.
+      if (this.game.healthOn) {
+        this.applyHealth(m, state);
+        m.kos = state.kos ?? 0;
+      }
+      if (state.dnf) {
+        m.dnf = true;
+        this.hideDnf(m);
+      }
       m.finishedAt = snap.times[i] ?? null;
       m.pegs = snap.pegs[i] ?? 0;
       if (snap.inventories[i]) m.inventory = { ...snap.inventories[i] };
@@ -801,6 +819,20 @@ export class RaceGuest {
     // (or a forged frame) hands us numbers past the end of the array.
     if (!Number.isInteger(index) || index < 0 || index >= this.game.track.bodies.length) return undefined;
     return this.game.track.bodies[index];
+  }
+
+  /**
+   * P2-19: a marble's health, as the frame reports it. The wire carries a 0..1 fraction of the
+   * host's max HP, so the guest keeps a plain 100-point bar (the ratio is what the HUD draws);
+   * `dnf` rides along so `game.player.dnf` is true here exactly when it is on the host.
+   */
+  private applyHealth(m: Marble, state: MarbleState): void {
+    // The guest's own Game seeds `health` at full HP (health is on for a platformer), but the bar's
+    // scale is the guest's: 100 points, with the wire's 0..1 fraction mapped onto it.
+    const maxHp = (m.maxHp ??= 100);
+    if (!m.health) m.health = newHealth();
+    m.health.hp = Math.max(0, Math.min(1, state.hp ?? 1)) * maxHp;
+    m.health.dnf = state.dnf === true;
   }
 
   /**

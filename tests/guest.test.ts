@@ -433,6 +433,44 @@ test('MP-05 guest: the host\'s events change what the guest draws', () => {
   assert.ok((guest.game.marbles[3].fx?.empUntil ?? 0) > 0, 'the EMP aura is drawn');
 });
 
+test('P2-19 guest: HP and the DNF latch come off the frames, and a knock-out hides the marble', async () => {
+  const { buildPlatformerTrack } = await import('../src/game/platformer/build');
+  const { TRACK_THEMES } = await import('../src/game/types');
+  const guest = new RaceGuest({
+    seed: SEED,
+    seats: grid(),
+    track: buildPlatformerTrack(SEED, TRACK_THEMES.forest, 'rolling-hills'),
+    localSeat: 1,
+    now: () => 0,
+    send: () => {},
+  });
+  let clock = 1000;
+  let seq = 0;
+  /** One state frame (patched) and enough drawing to reach it. */
+  const play = (patch: (m: MarbleState, seat: number) => MarbleState) => {
+    seq++;
+    guest.acceptState({ type: 'state', seq, t: seq * 50, marbles: packState(guest.game.marbleStates().map(patch)) }, clock);
+    for (let i = 0; i < 10; i++) {
+      clock += FRAME_MS;
+      guest.update(clock);
+    }
+  };
+
+  assert.equal(guest.game.healthOn, true, 'a guest on a platformer course knows health is in play');
+  play((m) => ({ ...m, hp: 0.5 }));
+  assert.ok(Math.abs(guest.game.marbles[1].health!.hp - 50) < 0.5, `half the bar is 50 HP, got ${guest.game.marbles[1].health!.hp}`);
+  assert.equal(guest.game.marbles[1].maxHp, 100, 'the guest draws a 100-point bar');
+
+  play((m) => ({ ...m, hp: 0, dnf: true }));
+  assert.equal(guest.game.marbles[1].dnf, true, 'the DNF bit is latched');
+  assert.equal(guest.game.marbles[1].health!.dnf, true, 'and health knows');
+  assert.equal(Math.round(guest.game.marbles[1].body.position.x), -5000, 'the marble left the world');
+  assert.equal(guest.game.marbles[1].body.isSensor, true, 'and cannot be drawn as racing');
+
+  play((m) => ({ ...m, hp: 1, dnf: false })); // a frame from before the knock-out
+  assert.equal(guest.game.marbles[1].dnf, true, 'a stale frame cannot resurrect it');
+});
+
 test('MP-05 guest: an events frame the network eats is said again', () => {
   const out: RaceProtocol[] = [];
   let clock = 0;
