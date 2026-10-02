@@ -1,0 +1,306 @@
+You are two engineers building two small, pure TypeScript modules for Heavy Metal GP, an open-source 2D goblin marble-racing game. Read everything below. Do NOT write any code yet.
+
+THE REPO (public, read it for context): https://github.com/rumcan/Heavy-Metal-GP
+Branch with these exact tests: p2-battle-skills-progression. The tests are tests/skill-catalog.test.ts and tests/progression.test.ts (also pasted below).
+You may read the repo to understand the game, but you only WRITE the one module your job names. Do not invent other APIs: the names and rules below are the contract.
+
+Option A is ALPHA. Option B is BRAVO. Each of you does ONLY your own job below; do not do the other's. The two modules are independent (no imports between them, no imports from other project files).
+
+======================================================================
+ALPHA'S JOB: src/game/skills/catalog.ts (the 24-skill catalogue)
+======================================================================
+Racers carry skills (power-ups) into a race. There are 24, in four groups. Each unlocks at a driver level. This module is the single source of truth: data plus a few lookups.
+
+Exports (exact names):
+  export const SKILL_IDS = [24 ids in the table order below] as const;
+  export type SkillId = typeof SKILL_IDS[number];
+  export type SkillGroup = 'movement' | 'offence' | 'defence' | 'utility';
+  export type AiHint = 'ahead-rival' | 'behind' | 'danger' | 'wall' | 'low-hp' | 'gap';
+  export interface SkillDef { id: SkillId; name: string; short: string; group: SkillGroup; unlockLevel: number; price: number; durationMs: number; color: string; desc: string; aiHint: AiHint; legacy: boolean }
+  export const SKILLS: Record<SkillId, SkillDef>
+  export const STARTER_SKILLS = ['rocket', 'jump', 'shield'] as const;
+  export const LEGACY_SKILLS = ['rocket', 'jump', 'oil', 'shock', 'anvil', 'aero', 'freeze', 'ghost'] as const;   // ids old save files hold; SkillDef.legacy is true exactly for these
+  export const GROUP_COLORS: Record<SkillGroup, string> = { movement: '#38bdf8', offence: '#ef4444', defence: '#22c55e', utility: '#f59e0b' };
+
+  The table (id | name | short | group | unlockLevel | price | durationMs | color | aiHint | what it does, for desc):
+    rocket | Speed Boost | BOOST | movement | 1 | 90 | 3000 | #d63e2e | gap | +8 top speed and thrust for 3 s
+    jump | Super Jump | JUMP | movement | 1 | 65 | 1000 | #b6a0ff | gap | about twice the height of the normal jump
+    shield | Bubble Shield | SHIELD | defence | 1 | 80 | 4000 | #60a5fa | danger | absorbs the next 40 damage or lasts 4 s
+    oil | Oil Slick | OIL | offence | 2 | 55 | 9000 | #c084fc | behind | a slippery trail behind you for 9 s
+    ram | Battering Ram | RAM | utility | 3 | 95 | 2500 | #b45309 | wall | a 2.5 s charge that smashes breakable walls and barricades
+    repair | Repair Kit | REPAIR | defence | 4 | 70 | 0 | #4ade80 | low-hp | heal 40 HP instantly
+    shock | Shockwave | SHOCK | offence | 5 | 100 | 0 | #facc15 | ahead-rival | blasts nearby rivals away
+    anvil | Heavy Metal | MASS | defence | 6 | 80 | 5000 | #c5d1e1 | danger | triple your mass for 5 s
+    brake | Air Brake | BRAKE | movement | 7 | 60 | 1000 | #94a3b8 | gap | kill most of your speed and hover for 1 s
+    freeze | Freeze Ray | FREEZE | offence | 8 | 110 | 2500 | #7dd3fc | ahead-rival | freezes the nearest rival ahead for 2.5 s
+    aero | Slipstream | AERO | movement | 9 | 75 | 6000 | #5eead4 | gap | -95 % drag for 6 s
+    bolt | Homing Bolt | BOLT | offence | 10 | 105 | 0 | #f97316 | ahead-rival | seeks the nearest rival ahead for 25 damage
+    ghost | Ghost Mode | GHOST | defence | 11 | 85 | 3000 | #e2e8f0 | danger | pass through hazards and marbles for 3 s
+    overdrive | Overdrive | OVERDRIVE | movement | 12 | 90 | 5000 | #ef4444 | gap | the Magic Engine never overheats for 5 s and pushes harder
+    spikes | Caltrops | SPIKES | offence | 13 | 70 | 6000 | #a8a29e | behind | spikes behind you for 6 s
+    decoy | Decoy | DECOY | defence | 14 | 65 | 5000 | #fbbf24 | danger | a fake marble that homing skills chase for 5 s
+    grapple | Grapple Hook | GRAPPLE | movement | 15 | 85 | 0 | #a16207 | gap | yanks you to the nearest ledge ahead
+    bomb | Sticky Bomb | BOMB | offence | 16 | 115 | 2000 | #dc2626 | ahead-rival | sticks to a rival and explodes after 2 s for 35 damage
+    reflect | Mirror Plate | MIRROR | defence | 17 | 95 | 3000 | #e0f2fe | danger | bounces freeze, bolts and bombs back for 3 s
+    blink | Blink | BLINK | movement | 18 | 100 | 0 | #a78bfa | gap | teleport 140 px forward if the spot is clear
+    emp | EMP | EMP | offence | 19 | 120 | 4000 | #38bdf8 | ahead-rival | nearby rivals cannot use skills for 4 s
+    lightning | Lightning Strike | STRIKE | offence | 20 | 130 | 1000 | #fde047 | ahead-rival | strikes the leader for 30 damage and a 1 s stun
+    drill | Drill | DRILL | utility | 22 | 110 | 1000 | #78716c | wall | drop straight through the next floor below you
+    charm | Shaman's Charm | CHARM | defence | 25 | 150 | 8000 | #34d399 | low-hp | the next killing hit leaves you on 1 HP instead, for 8 s
+  desc: one plain sentence (20..120 characters) written for players, based on "what it does".
+
+  export function skillDef(id: string): SkillDef | null              // own keys only ('toString' -> null)
+  export function skillsInGroup(group: SkillGroup): SkillDef[]       // catalogue order
+  export function unlockedSkills(level: number): SkillId[]           // unlockLevel <= level, catalogue order
+  export function newUnlocks(fromLevel: number, toLevel: number): SkillId[]   // fromLevel < unlockLevel <= toLevel
+  export function nextUnlock(level: number): { id: SkillId; level: number } | null   // first skill with unlockLevel > level
+  export function allowedOnline(id: string, level: number, campaignComplete: boolean): boolean
+    unknown id -> false; a starter -> true; otherwise campaignComplete && unlockLevel <= level.
+  export function sanitizeSkillList(raw: unknown, max = 8): SkillId[]
+    not an array -> []; keep known ids only, first occurrence wins, stop at max.
+
+======================================================================
+BRAVO'S JOB: src/game/progression.ts (XP, levels, talent points)
+======================================================================
+Drivers earn XP from races and story chapters, level up (1..30) and get a talent point per level.
+
+Exports (exact names):
+  export const MAX_LEVEL = 30;
+  export const XP = { finish: 50, perPlace: 10, perPeg: 2, perKo: 50, personalBest: 25, chapterFirst: 300, bonusObjective: 100 };
+  export const AWARDED_KEEP = 200;
+  export function xpToNext(level: number): number        // round(100 * level^1.4); 0 when level >= MAX_LEVEL
+  export function totalXpForLevel(level: number): number // sum of xpToNext(l) for l = 1 .. level-1 (so level 1 -> 0)
+  export function levelForXp(xp: number): { level: number; into: number; toNext: number }
+    negative xp counts as 0. level = the highest level whose total <= xp, capped at MAX_LEVEL. into = xp - totalXpForLevel(level). toNext = xpToNext(level).
+  export interface RaceXpInput { finished: boolean; rank: number; pegs: number; kos: number; beatBest: boolean }
+  export function raceXp(r: RaceXpInput): number
+    rank is clamped to 1..10. Finished: finish + (11 - rank) * perPlace + (beatBest ? personalBest : 0). Not finished (DNF): none of those.
+    Always add pegs * perPeg + kos * perKo.
+  export function chapterXp(firstTime: boolean, bonusObjectives: number): number   // (firstTime ? 300 : 0) + 100 * bonusObjectives
+  export interface ProgressState { xp: number; level: number; talentPoints: number; awarded: string[] }
+  export function newProgress(): ProgressState   // { xp: 0, level: 1, talentPoints: 0, awarded: [] }
+  export function awardXp(state: ProgressState, raceId: string, xp: number): { state: ProgressState; levelsGained: number[] }
+    Never mutate state. If raceId is already in state.awarded: return the same state and []. Otherwise add the xp, recompute the level,
+    levelsGained = every level gained in order (e.g. [2, 3]), talentPoints += levelsGained.length, append raceId to awarded keeping only the last AWARDED_KEEP.
+  export function migrateAccount(finishes: number): ProgressState
+    xp = 50 * max(0, finishes); level from that xp; talentPoints = level - 1; awarded [].
+  export function onlineSkillGate(campaignComplete: boolean): 'starters' | 'unlocked'
+
+======================================================================
+THE TESTS (they must all pass, unchanged)
+======================================================================
+----- tests/skill-catalog.test.ts (ALPHA) -----
+// P2-08 (#114) battle tests, job ALPHA: the skills catalogue in src/game/skills/catalog.ts.
+// Standalone: imports only the module under test.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  SKILL_IDS, SKILLS, STARTER_SKILLS, LEGACY_SKILLS, GROUP_COLORS,
+  skillDef, skillsInGroup, unlockedSkills, newUnlocks, nextUnlock, allowedOnline, sanitizeSkillList,
+} from '../src/game/skills/catalog';
+
+// id, name, short, group, unlock level, price, duration (ms), colour, AI hint
+const TABLE: [string, string, string, string, number, number, number, string, string][] = [
+  ['rocket', 'Speed Boost', 'BOOST', 'movement', 1, 90, 3000, '#d63e2e', 'gap'],
+  ['jump', 'Super Jump', 'JUMP', 'movement', 1, 65, 1000, '#b6a0ff', 'gap'],
+  ['shield', 'Bubble Shield', 'SHIELD', 'defence', 1, 80, 4000, '#60a5fa', 'danger'],
+  ['oil', 'Oil Slick', 'OIL', 'offence', 2, 55, 9000, '#c084fc', 'behind'],
+  ['ram', 'Battering Ram', 'RAM', 'utility', 3, 95, 2500, '#b45309', 'wall'],
+  ['repair', 'Repair Kit', 'REPAIR', 'defence', 4, 70, 0, '#4ade80', 'low-hp'],
+  ['shock', 'Shockwave', 'SHOCK', 'offence', 5, 100, 0, '#facc15', 'ahead-rival'],
+  ['anvil', 'Heavy Metal', 'MASS', 'defence', 6, 80, 5000, '#c5d1e1', 'danger'],
+  ['brake', 'Air Brake', 'BRAKE', 'movement', 7, 60, 1000, '#94a3b8', 'gap'],
+  ['freeze', 'Freeze Ray', 'FREEZE', 'offence', 8, 110, 2500, '#7dd3fc', 'ahead-rival'],
+  ['aero', 'Slipstream', 'AERO', 'movement', 9, 75, 6000, '#5eead4', 'gap'],
+  ['bolt', 'Homing Bolt', 'BOLT', 'offence', 10, 105, 0, '#f97316', 'ahead-rival'],
+  ['ghost', 'Ghost Mode', 'GHOST', 'defence', 11, 85, 3000, '#e2e8f0', 'danger'],
+  ['overdrive', 'Overdrive', 'OVERDRIVE', 'movement', 12, 90, 5000, '#ef4444', 'gap'],
+  ['spikes', 'Caltrops', 'SPIKES', 'offence', 13, 70, 6000, '#a8a29e', 'behind'],
+  ['decoy', 'Decoy', 'DECOY', 'defence', 14, 65, 5000, '#fbbf24', 'danger'],
+  ['grapple', 'Grapple Hook', 'GRAPPLE', 'movement', 15, 85, 0, '#a16207', 'gap'],
+  ['bomb', 'Sticky Bomb', 'BOMB', 'offence', 16, 115, 2000, '#dc2626', 'ahead-rival'],
+  ['reflect', 'Mirror Plate', 'MIRROR', 'defence', 17, 95, 3000, '#e0f2fe', 'danger'],
+  ['blink', 'Blink', 'BLINK', 'movement', 18, 100, 0, '#a78bfa', 'gap'],
+  ['emp', 'EMP', 'EMP', 'offence', 19, 120, 4000, '#38bdf8', 'ahead-rival'],
+  ['lightning', 'Lightning Strike', 'STRIKE', 'offence', 20, 130, 1000, '#fde047', 'ahead-rival'],
+  ['drill', 'Drill', 'DRILL', 'utility', 22, 110, 1000, '#78716c', 'wall'],
+  ['charm', "Shaman's Charm", 'CHARM', 'defence', 25, 150, 8000, '#34d399', 'low-hp'],
+];
+
+test('the catalogue: 24 skills in this order, with exactly these numbers', () => {
+  assert.deepEqual([...SKILL_IDS], TABLE.map((r) => r[0]));
+  for (const [id, name, short, group, unlockLevel, price, durationMs, color, aiHint] of TABLE) {
+    const d = SKILLS[id as keyof typeof SKILLS];
+    assert.deepEqual(
+      { id: d.id, name: d.name, short: d.short, group: d.group, unlockLevel: d.unlockLevel, price: d.price, durationMs: d.durationMs, color: d.color, aiHint: d.aiHint },
+      { id, name, short, group, unlockLevel, price, durationMs, color, aiHint }, id,
+    );
+    assert.ok(d.desc.length >= 20 && d.desc.length <= 120, `${id}: a one-sentence description`);
+    assert.equal(d.legacy, (LEGACY_SKILLS as readonly string[]).includes(id), `${id}: legacy flag`);
+  }
+});
+
+test('starters, legacy ids and group colours', () => {
+  assert.deepEqual([...STARTER_SKILLS], ['rocket', 'jump', 'shield']);
+  assert.deepEqual([...LEGACY_SKILLS], ['rocket', 'jump', 'oil', 'shock', 'anvil', 'aero', 'freeze', 'ghost']);
+  assert.deepEqual(GROUP_COLORS, { movement: '#38bdf8', offence: '#ef4444', defence: '#22c55e', utility: '#f59e0b' });
+});
+
+test('skillDef: a known id gives its def; anything else gives null', () => {
+  assert.equal(skillDef('ram')?.name, 'Battering Ram');
+  assert.equal(skillDef('nope'), null);
+  assert.equal(skillDef(''), null);
+  assert.equal(skillDef('toString'), null, 'not fooled by object prototype keys');
+});
+
+test('skillsInGroup: catalogue order', () => {
+  assert.deepEqual(skillsInGroup('utility').map((d) => d.id), ['ram', 'drill']);
+  assert.deepEqual(skillsInGroup('defence').map((d) => d.id), ['shield', 'repair', 'anvil', 'ghost', 'decoy', 'reflect', 'charm']);
+  assert.equal(skillsInGroup('movement').length + skillsInGroup('offence').length + skillsInGroup('defence').length + skillsInGroup('utility').length, 24);
+});
+
+test('unlockedSkills: everything at or below the level, catalogue order', () => {
+  assert.deepEqual(unlockedSkills(1), ['rocket', 'jump', 'shield']);
+  assert.deepEqual(unlockedSkills(4), ['rocket', 'jump', 'shield', 'oil', 'ram', 'repair']);
+  assert.equal(unlockedSkills(30).length, 24);
+  assert.equal(unlockedSkills(21).length, 22, 'drill (22) and charm (25) still locked');
+  assert.deepEqual(unlockedSkills(0), []);
+});
+
+test('newUnlocks: the skills a level-up from one level to another unlocks (from exclusive, to inclusive)', () => {
+  assert.deepEqual(newUnlocks(1, 3), ['oil', 'ram']);
+  assert.deepEqual(newUnlocks(20, 22), ['drill']);
+  assert.deepEqual(newUnlocks(5, 5), []);
+  assert.deepEqual(newUnlocks(22, 24), []);
+});
+
+test('nextUnlock: the next skill to unlock above this level, or null when all are unlocked', () => {
+  assert.deepEqual(nextUnlock(1), { id: 'oil', level: 2 });
+  assert.deepEqual(nextUnlock(20), { id: 'drill', level: 22 });
+  assert.deepEqual(nextUnlock(22), { id: 'charm', level: 25 });
+  assert.equal(nextUnlock(25), null);
+});
+
+test('allowedOnline: starters always; anything else needs the campaign finished AND the level', () => {
+  assert.equal(allowedOnline('shield', 1, false), true);
+  assert.equal(allowedOnline('oil', 30, false), false, 'campaign not finished');
+  assert.equal(allowedOnline('oil', 2, true), true);
+  assert.equal(allowedOnline('charm', 24, true), false, 'level too low');
+  assert.equal(allowedOnline('nope', 30, true), false);
+});
+
+test('sanitizeSkillList: known ids only, no repeats, first come first kept, at most `max`', () => {
+  assert.deepEqual(sanitizeSkillList(['ram', 'nope', 'ram', 'oil', 3, null, 'shield']), ['ram', 'oil', 'shield']);
+  assert.deepEqual(sanitizeSkillList('ram'), []);
+  assert.deepEqual(sanitizeSkillList(null), []);
+  assert.equal(sanitizeSkillList([...SKILL_IDS]).length, 8, 'default max is 8');
+  assert.deepEqual(sanitizeSkillList(['ram', 'oil', 'bolt'], 2), ['ram', 'oil']);
+});
+
+----- tests/progression.test.ts (BRAVO) -----
+// P2-09 (#115) battle tests, job BRAVO: the pure progression rules in src/game/progression.ts.
+// Standalone: imports only the module under test.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  MAX_LEVEL, XP, AWARDED_KEEP,
+  xpToNext, totalXpForLevel, levelForXp, raceXp, chapterXp, newProgress, awardXp, migrateAccount, onlineSkillGate,
+} from '../src/game/progression';
+
+test('constants match the design', () => {
+  assert.equal(MAX_LEVEL, 30);
+  assert.deepEqual(XP, { finish: 50, perPlace: 10, perPeg: 2, perKo: 50, personalBest: 25, chapterFirst: 300, bonusObjective: 100 });
+  assert.equal(AWARDED_KEEP, 200);
+});
+
+test('xpToNext: round(100 × level^1.4); 0 once at the top level', () => {
+  assert.deepEqual([1, 2, 3, 10, 29].map(xpToNext), [100, 264, 466, 2512, 11152]);
+  assert.equal(xpToNext(30), 0);
+  assert.equal(xpToNext(31), 0);
+});
+
+test('totalXpForLevel: the XP it takes to reach a level from level 1', () => {
+  assert.equal(totalXpForLevel(1), 0);
+  assert.equal(totalXpForLevel(2), 100);
+  assert.equal(totalXpForLevel(3), 364);
+  assert.equal(totalXpForLevel(5), 1526);
+  assert.equal(totalXpForLevel(30), 140372);
+});
+
+test('levelForXp: level, XP into it, and XP the level needs; capped at 30', () => {
+  assert.deepEqual(levelForXp(0), { level: 1, into: 0, toNext: 100 });
+  assert.deepEqual(levelForXp(99), { level: 1, into: 99, toNext: 100 });
+  assert.deepEqual(levelForXp(100), { level: 2, into: 0, toNext: 264 });
+  assert.deepEqual(levelForXp(400), { level: 3, into: 36, toNext: 466 });
+  assert.deepEqual(levelForXp(10_000_000), { level: 30, into: 10_000_000 - 140372, toNext: 0 });
+  assert.deepEqual(levelForXp(-5), { level: 1, into: 0, toNext: 100 }, 'negative XP reads as none');
+});
+
+test('raceXp: finish + places above last + pegs + KOs + personal best; a DNF keeps only pegs and KOs', () => {
+  assert.equal(raceXp({ finished: true, rank: 1, pegs: 0, kos: 0, beatBest: false }), 50 + 100);
+  assert.equal(raceXp({ finished: true, rank: 10, pegs: 3, kos: 1, beatBest: true }), 50 + 10 + 6 + 50 + 25);
+  assert.equal(raceXp({ finished: true, rank: 15, pegs: 0, kos: 0, beatBest: false }), 50 + 10, 'rank clamped to 1..10');
+  assert.equal(raceXp({ finished: false, rank: 4, pegs: 5, kos: 2, beatBest: true }), 10 + 100);
+});
+
+test('chapterXp: 300 the first time, plus 100 per bonus objective', () => {
+  assert.equal(chapterXp(true, 0), 300);
+  assert.equal(chapterXp(true, 2), 500);
+  assert.equal(chapterXp(false, 2), 200);
+});
+
+test('newProgress: level 1, nothing earned', () => {
+  assert.deepEqual(newProgress(), { xp: 0, level: 1, talentPoints: 0, awarded: [] });
+});
+
+test('awardXp: adds XP, levels up, one talent point per level gained; never mutates the input', () => {
+  const p = newProgress();
+  const r = awardXp(p, 'race-1', 400);
+  assert.deepEqual(r.state, { xp: 400, level: 3, talentPoints: 2, awarded: ['race-1'] });
+  assert.deepEqual(r.levelsGained, [2, 3]);
+  assert.deepEqual(p, newProgress(), 'input untouched');
+});
+
+test('awardXp: the same race id pays once', () => {
+  const once = awardXp(newProgress(), 'race-1', 150).state;
+  const twice = awardXp(once, 'race-1', 150);
+  assert.deepEqual(twice.state, once);
+  assert.deepEqual(twice.levelsGained, []);
+});
+
+test('awardXp: remembers only the last AWARDED_KEEP race ids', () => {
+  let s = newProgress();
+  for (let i = 0; i < AWARDED_KEEP + 5; i++) s = awardXp(s, `r${i}`, 1).state;
+  assert.equal(s.awarded.length, AWARDED_KEEP);
+  assert.equal(s.awarded[0], 'r5');
+  assert.equal(s.xp, AWARDED_KEEP + 5);
+});
+
+test('awardXp: no talent points beyond the top level', () => {
+  const r = awardXp(newProgress(), 'big', 10_000_000);
+  assert.equal(r.state.level, 30);
+  assert.equal(r.state.talentPoints, 29);
+  assert.equal(r.levelsGained.length, 29);
+});
+
+test('migrateAccount: old players get 50 XP per finish, the matching level and talent points', () => {
+  assert.deepEqual(migrateAccount(0), { xp: 0, level: 1, talentPoints: 0, awarded: [] });
+  assert.deepEqual(migrateAccount(8), { xp: 400, level: 3, talentPoints: 2, awarded: [] });
+  assert.deepEqual(migrateAccount(-3), { xp: 0, level: 1, talentPoints: 0, awarded: [] });
+});
+
+test('onlineSkillGate: starters only until the campaign is finished', () => {
+  assert.equal(onlineSkillGate(false), 'starters');
+  assert.equal(onlineSkillGate(true), 'unlocked');
+});
+
+======================================================================
+PROJECT SETUP FOR YOUR SANDBOX (both)
+======================================================================
+Plain Node 22+ TypeScript: devDependencies "typescript" and "tsx"; tsconfig "strict": true, "noUnusedLocals": true, "noUnusedParameters": true, "module": "ESNext", "moduleResolution": "Bundler", "target": "ES2022", "noEmit": true.
+ALPHA runs: npx tsc --noEmit -p .  and  node --import tsx --test tests/skill-catalog.test.ts
+BRAVO runs: npx tsc --noEmit -p .  and  node --import tsx --test tests/progression.test.ts
+
+Reply with ONLY: Context received.
