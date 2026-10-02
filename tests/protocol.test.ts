@@ -530,6 +530,16 @@ test('MP-02 validation: results cannot put one marble in two places', () => {
   assert.equal(check({ ...results, pegs: [] })?.code, 'malformed', 'a peg count per seat');
   // An unclassified race still has an order: the grid, as the host saw it.
   assert.equal(check({ ...results, order: [] }), null);
+
+  // P2-19: a health race adds the DNF flags and the KO counts — whole or not at all.
+  const dnf = new Array(MARBLE_COUNT).fill(false);
+  const kos = new Array(MARBLE_COUNT).fill(0);
+  assert.equal(check({ ...results, dnf, kos }), null);
+  assert.equal(check({ ...results, dnf: dnf.slice(0, 9) })?.code, 'malformed', 'one DNF flag per seat');
+  assert.equal(check({ ...results, dnf: dnf.map(() => 'yes') })?.code, 'malformed', 'a DNF flag is a flag');
+  assert.equal(check({ ...results, kos: kos.slice(0, 9) })?.code, 'malformed', 'one KO count per seat');
+  assert.equal(check({ ...results, kos: kos.map(() => -1) })?.code, 'malformed', 'a KO count is not negative');
+  assert.equal(check({ ...results, kos: kos.map(() => 1.5) })?.code, 'malformed', 'a KO count is whole');
 });
 
 test('RK-03 validation: the rated wire, and every way it can lie', () => {

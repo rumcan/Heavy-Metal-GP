@@ -72,7 +72,7 @@ export const FRAME_CAP_BYTES = 16 * 1024;
 
 /**
  * Bytes one `state` frame may cost (ticket acceptance: ten marbles under
- * 4 KiB). A packed ten-marble frame is ~280 base64 characters — the budget is
+ * 4 KiB). A packed ten-marble frame is ~308 base64 characters — the budget is
  * four times what the format needs, so a future extra field does not have to
  * re-open the size question, and a frame that somehow grows past it is refused
  * instead of silently eating the 20 Hz stream's headroom.
@@ -97,7 +97,7 @@ export const FLOATS_PER_MARBLE = 5;
  */
 export const BYTES_PER_MARBLE = FLOATS_PER_MARBLE * 4 + 3;
 
-/** Characters of one packed frame's base64 (ten marbles → 280, no padding). */
+/** Characters of one packed frame's base64 (ten marbles → 308, no padding). */
 export function packedStateLength(count: number = MARBLE_COUNT): number {
   return Math.ceil((count * BYTES_PER_MARBLE) / 3) * 4;
 }
@@ -874,6 +874,14 @@ export interface ResultsMsg {
   times: (number | null)[];
   /** seat → orange pegs popped. */
   pegs: number[];
+  /**
+   * P2-19: seat → out of the race (0 HP). Present on a race WITH health — the purse pays KO bounties
+   * from `kos` and treats a DNF as a non-finisher — and absent on a classic race, whose rows keep
+   * exactly the shape they always had (the client's settlement branches on that difference).
+   */
+  dnf?: boolean[];
+  /** P2-19: seat → rivals this seat knocked out. Present with `dnf`. */
+  kos?: number[];
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1942,6 +1950,16 @@ function validateResults(msg: ResultsMsg): ProtocolError | null {
   if (!Array.isArray(msg.pegs) || msg.pegs.length !== MARBLE_COUNT) return bad('Result pegs are not one per seat.');
   for (const pegs of msg.pegs) {
     if (!isInt(pegs, 0, 100_000)) return bad('Result peg count is not a count.');
+  }
+  // P2-19: a health race's rows carry the DNF flags and the KO counts; both are optional (a classic
+  // race omits them) but neither may be half-sent or out of range.
+  if (msg.dnf !== undefined) {
+    if (!Array.isArray(msg.dnf) || msg.dnf.length !== MARBLE_COUNT) return bad('Result DNF flags are not one per seat.');
+    for (const dnf of msg.dnf) if (typeof dnf !== 'boolean') return bad('Result DNF flag is not a flag.');
+  }
+  if (msg.kos !== undefined) {
+    if (!Array.isArray(msg.kos) || msg.kos.length !== MARBLE_COUNT) return bad('Result KO counts are not one per seat.');
+    for (const kos of msg.kos) if (!isInt(kos, 0, 100_000)) return bad('Result KO count is not a count.');
   }
   return null;
 }

@@ -195,7 +195,9 @@ export function settleRace(
  * the other half of this rule.
  */
 export function settleOnlineRace(account: RacerAccount, raceId: string, result: HeatResult): { account: RacerAccount; payout: RacePayout } {
-  return settleRace(account, raceId, result, ONLINE_PAYOUT_SCALE);
+  // P2-19: online is its own purse mode. The stakes are the same 0.6 scale, but the Shaman does not
+  // charge a knocked-out driver on the wire — an online DNF costs the race, not the wallet.
+  return settleRace(account, raceId, result, ONLINE_PAYOUT_SCALE, 'online');
 }
 
 /**
@@ -204,7 +206,8 @@ export function settleOnlineRace(account: RacerAccount, raceId: string, result: 
  */
 export function settleCustomRace(account: RacerAccount, raceId: string, result: HeatResult, isOnline = false): { account: RacerAccount; payout: RacePayout } {
   const scale = isOnline ? CUSTOM_PAYOUT_SCALE * ONLINE_PAYOUT_SCALE : CUSTOM_PAYOUT_SCALE;
-  return settleRace(account, raceId, result, scale);
+  // P2-19: an online custom heat pays KO bounties too, and still owes the Shaman nothing.
+  return settleRace(account, raceId, result, scale, isOnline ? 'online-custom' : 'championship');
 }
 
 /** Display note for results screens: why a custom purse is reduced. */

@@ -615,6 +615,17 @@ export class RaceHost {
       times[entry.marble.info.id] = entry.time === null ? null : Math.round(entry.time);
       pegs[entry.marble.info.id] = entry.marble.pegs;
     }
-    return { type: 'results', order: ranking.map((entry) => entry.marble.info.id), times, pegs };
+    const msg: ResultsMsg = { type: 'results', order: ranking.map((entry) => entry.marble.info.id), times, pegs };
+    // P2-19: a race with health publishes who was knocked out and who did the knocking — the purse
+    // needs both to pay a bounty. A classic race's results keep exactly the shape they always had.
+    if (this.game.healthOn) {
+      msg.dnf = new Array(MARBLE_COUNT).fill(false);
+      msg.kos = new Array(MARBLE_COUNT).fill(0);
+      for (const m of this.game.marbles) {
+        msg.dnf[m.info.id] = !!m.dnf;
+        msg.kos[m.info.id] = m.kos ?? 0;
+      }
+    }
+    return msg;
   }
 }

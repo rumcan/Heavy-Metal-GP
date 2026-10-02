@@ -107,6 +107,10 @@ export interface SessionResult {
   rank: number;
   time: number | null;
   pegs: number;
+  /** P2-19: out of the race. Set by a health race's `results` frame, absent on a classic one. */
+  dnf?: boolean;
+  /** P2-19: rivals this seat knocked out. Set alongside `dnf`. */
+  kos?: number;
 }
 
 /**
@@ -418,12 +422,18 @@ export interface NetStats {
 
 /** A `results` frame, as the rows the results screen reads. */
 export function resultsToRows(msg: ResultsMsg): SessionResult[] {
-  return msg.order.map((id, index) => ({
-    id,
-    rank: index + 1,
-    time: id >= 0 && id < msg.times.length ? msg.times[id] : null,
-    pegs: id >= 0 && id < msg.pegs.length ? msg.pegs[id] : 0,
-  }));
+  return msg.order.map((id, index) => {
+    const row: SessionResult = {
+      id,
+      rank: index + 1,
+      time: id >= 0 && id < msg.times.length ? msg.times[id] : null,
+      pegs: id >= 0 && id < msg.pegs.length ? msg.pegs[id] : 0,
+    };
+    // P2-19: a health race's rows carry the DNF flag and the KO count; a classic race's do not.
+    if (msg.dnf) row.dnf = msg.dnf[id] === true;
+    if (msg.kos) row.kos = id >= 0 && id < msg.kos.length ? msg.kos[id] : 0;
+    return row;
+  });
 }
 
 /** One seat's place in the classification, or null when it did not finish. */

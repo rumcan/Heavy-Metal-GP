@@ -592,8 +592,18 @@ export default function App() {
     const raceId = onlineRaceId(room?.roomCode ?? 'race', online.countdownAt);
     const isCustom = !!(online.settings as unknown as { customCode?: string })?.customCode;
     const paid = isCustom ? settleCustomRace(accountRef.current, raceId, mine, true) : settleOnlineRace(accountRef.current, raceId, mine);
+    // P2-19: XP for an online race, once, off the same race id as the purse — KO XP included.
+    let next = paid.account;
+    if (!paid.payout.alreadyPaid) {
+      const finished = mine.time !== null && !mine.dnf;
+      const xp = Math.round(raceXp({ finished, rank: mine.rank, pegs: mine.pegs, kos: mine.kos ?? 0, beatBest: false }) * (1 + (talentEffects(next.talents ?? {}).xpPct ?? 0) / 100));
+      const before = progressOf(next).level;
+      const r = awardRaceXp(next, raceId, xp);
+      next = r.account;
+      if (r.levelsGained.length) setLevelUp({ from: before, to: progressOf(next).level, xp });
+    }
     // What you came home with is what you have: spent is spent, picked is kept.
-    publishAccount(kit ? { ...paid.account, inventory: normalizeInventory(kit) } : paid.account);
+    publishAccount(kit ? { ...next, inventory: normalizeInventory(kit) } : next);
     setPayout(paid.payout);
   }, [online, publishAccount, room, claimRanked]);
 
