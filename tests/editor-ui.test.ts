@@ -302,13 +302,10 @@ test('Workshop is a shell: it never steps the simulation, and it rebakes the sta
   assert.ok(read('src/game/render.ts').includes('export function clearStaticChunks('), 'render.ts no longer offers the cache hook');
 });
 
-test('Workshop is reachable from the garage header, not the garage bottom bar', () => {
+test('Workshop is a home tab that opens the editor, not a garage pane', () => {
   const setup = read('src/components/SetupScreen.tsx');
-  assert.ok(/<button onClick=\{onWorkshop\}>Workshop<\/button>/.test(setup), 'the Workshop is not in the garage header nav');
+  assert.ok(/tab === 'workshop' && <WorkshopTab/.test(setup) && /onOpenEditor={onWorkshop/.test(setup), 'the Workshop home tab does not open the editor');
   // The bottom bar is the phone's pane switcher (Circuit / Driver / Grid) — MP-06 and ST-08 own what goes in it.
-  const panes = /const PANES = \[([\s\S]*?)\] as const;/.exec(setup);
-  assert.ok(panes, 'the garage no longer declares its panes');
-  assert.ok(!panes[1].includes('Workshop'), 'the Workshop must not become a garage pane tab');
   // And the app routes to it with the circuit the garage is showing.
   const app = read('src/App.tsx');
   assert.ok(app.includes("import TrackEditor from './components/TrackEditor'"), 'App does not import the Workshop');

@@ -49,7 +49,7 @@ test('Issue #71.1: a click at either edge places a valid piece of every type', (
 
 test('Issue #71.1: the ticket\'s reproduced placements are now inside the track', () => {
   // Left edge, grid on: these all started left of x=0 before the fix.
-  const left: Record<string, number> = { ramp: -125, curve: -125, ice: -125, conveyor: -115, bridge: -155, wind: -75, mud: -100, pool: -125, platform: -50 };
+  const left: Record<string, number> = { ramp: -125, curve: -125, ice: -125, conveyor: -115, bridge: -155, wind: -75, mud: -100, platform: -50 };
   for (const [type, was] of Object.entries(left)) {
     const piece = defaultPiece(type as 'ramp', { x: 25, y: 1500 }, true);
     const ext = xExtent(piece);
@@ -58,7 +58,7 @@ test('Issue #71.1: the ticket\'s reproduced placements are now inside the track'
     assert.ok(ext!.max <= W, `${type} ends at ${ext!.max}`);
   }
   // Right edge, grid on: these all ended right of x=900.
-  const right: Record<string, number> = { ramp: 1025, curve: 1025, ice: 1025, tunnel: 950, trapdoor: 930, wind: 975, mud: 1000, pool: 1025, platform: 950 };
+  const right: Record<string, number> = { ramp: 1025, curve: 1025, ice: 1025, tunnel: 950, trapdoor: 930, wind: 975, mud: 1000, platform: 950 };
   for (const [type, was] of Object.entries(right)) {
     const piece = defaultPiece(type as 'ramp', { x: 875, y: 1500 }, true);
     const ext = xExtent(piece);

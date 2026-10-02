@@ -21,6 +21,8 @@ import assert from 'node:assert/strict';
 import { Game } from '../src/game/engine';
 import { PHYSICS_STEP } from '../src/game/physics';
 import { generateTrack, meta } from '../src/game/track';
+import { buildTrackFromDef } from '../src/game/trackdef';
+import { officialTrack } from '../src/game/official-tracks';
 import { AI_COLORS, AI_NAMES, emptyInventory, mulberry32, randomStats } from '../src/game/types';
 import { RaceHost, COUNTDOWN_MS, LIGHT_INTERVAL_MS, NUDGE_RATE_PER_SECOND, STATE_INTERVAL_MS } from '../src/net/host';
 import type { RaceHostOptions } from '../src/net/host';
@@ -36,6 +38,8 @@ import {
 import type { MarbleState, RaceEvent, RaceProtocol, RaceSnapshot, Seat } from '../src/net/protocol';
 
 const SEED = 20240517;
+/** The circuit a real race loads: the shipped archive for round 0, as the host and every guest build it. */
+const raceTrack = () => buildTrackFromDef(officialTrack(0)!);
 const FRAME_MS = 1000 / 60;
 const CLOCK_START = 1_700_000_000_000;
 
@@ -143,7 +147,8 @@ function start(h: Harness, countdown = COUNTDOWN_MS): void {
 }
 
 /** Run a host until it publishes results (or the safety net runs out). */
-function raceOut(h: Harness, limitMs = 400_000): void {
+// The heat itself is capped at HEAT_TIME_LIMIT (540 s), so the harness waits longer than that.
+function raceOut(h: Harness, limitMs = 600_000): void {
   const started = h.now();
   while (!h.host.results && h.now() - started < limitMs) h.tick();
 }
@@ -557,7 +562,7 @@ test('MP-04 host: a snapshot carries the whole world and reassembles', () => {
 });
 
 test('MP-04 host: a full race completes, and a guest replaying the stream classifies it identically', () => {
-  const h = harness();
+  const h = harness({ track: raceTrack() });
   h.host.scheduleStart(h.now() + COUNTDOWN_MS);
   raceOut(h);
   const results = h.host.results;
@@ -570,7 +575,7 @@ test('MP-04 host: a full race completes, and a guest replaying the stream classi
   // tell a scoring peg from a dud by the body index the host sent. Everything
   // below is derived from the frames alone — which is what "identical on both
   // screens" has to mean when only one screen simulates.
-  const track = generateTrack(SEED);
+  const track = raceTrack();
   const times: (number | null)[] = new Array(MARBLE_COUNT).fill(null);
   const pegs: number[] = new Array(MARBLE_COUNT).fill(0);
   const order: number[] = [];

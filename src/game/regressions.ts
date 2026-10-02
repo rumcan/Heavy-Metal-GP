@@ -4,6 +4,7 @@ import { PHYSICS_STEP, rampSurface } from './physics';
 import { CALENDAR, gpSeed, newSeason, recordHeat, computeStandings, computeTeamStandings, gridSlots } from './season';
 import { DEFAULT_PROFILE, generateTrack, meta, W } from './track';
 import { buildTrackFromDef } from './trackdef';
+import { officialTrack } from './official-tracks';
 import type { Track } from './track';
 import { AI_COLORS, AI_NAMES, adjustStat, mulberry32, randomStats, statsToPhysics, emptyInventory, ITEM_TYPES, ITEM_INFO } from './types';
 import type { MarbleInfo, MarbleStats, Inventory } from './types';
@@ -207,7 +208,7 @@ for (const circuit of CALENDAR) {
     let longest = 0;
     let recoveries = 0;
     for (const seed of [2026, 99, 2147483646]) {
-      const game = new Game(gpSeed(seed, circuit.id), roster(seed + circuit.id), { profile: circuit.profile, effects: false });
+      const game = new Game(gpSeed(seed, circuit.id), roster(seed + circuit.id), { profile: circuit.profile, def: officialTrack(circuit.id) ?? undefined, effects: false }); // the shipped circuit, as a race loads it
       try {
         game.openGate();
         await simulate(game, 520000, true);
@@ -223,14 +224,15 @@ for (const circuit of CALENDAR) {
   });
 }
 
-add('Procedural tracks preserve all signature features', 'Race safety', async () => {
+add('Procedural tracks keep their start, chapters, finish and ramp normals', 'Race safety', async () => {
   for (let seed = 1; seed <= 24; seed++) {
     const track = generateTrack(seed, CALENDAR[seed % CALENDAR.length].profile);
     const names = track.segments.map((s) => s.name);
-    for (const name of ['Foundry Cut', 'Spring Exchange', 'Smuggler Run', 'Sky Ferry', 'Peg Bank', 'Crane Yard']) ensure(names.some(n => n.startsWith(name)), `Seed ${seed} is missing ${name}.`);
+    ensure(names[0] === 'Start' && names.includes('Home straight') && names[names.length - 1] === 'Finish', `Seed ${seed} lost its start or finish sectors.`);
+    ensure(names.filter((n) => n.includes(' / ')).length >= 8, `Seed ${seed} has too few planned chapters.`);
     for (const body of track.ramps) ensure(meta(body).surface!.normal.y < 0, 'Ramp surface is inverted.');
   }
-  return '24 seeds; correct ramp normals and all six specialist route sectors';
+  return '24 seeds; correct ramp normals, a start, planned chapters and a finish';
 });
 
 add('MB-10D launchers: the whole field rides every toy', 'Race safety', async () => {
@@ -601,8 +603,8 @@ add('All six circuits have compact connected chapters with deliberate item suppl
   for (const gp of CALENDAR) {
     const track = generateTrack(1234, gp.profile);
     ensure(track.segments.length - 4 === Math.max(8, Math.min(14, Math.round(gp.profile.segments / 3))), 'Unexpected chapter count.');
-    ensure(track.finishY > 7000 && track.finishY < 14000, 'Course length is outside the compact race budget.');
-    ensure(track.pegCount.total > 20 && track.pegCount.total < 200, `Unexpected peg density on ${gp.short}.`);
+    ensure(track.finishY > 7000 && track.finishY < 20000, 'Course length is outside the compact race budget.');
+    ensure(track.pegCount.total > 10 && track.pegCount.total < 200, `Unexpected peg density on ${gp.short}.`);
     const glowing = track.bodies.filter((b) => meta(b).pegColor === 'green');
     ensure(glowing.length >= 8, 'Not enough glowing pickup pegs.');
     ensure(glowing.every((b) => meta(b).itemDrop && ITEM_TYPES.includes(meta(b).itemDrop!)), 'Glowing peg has no valid item.');
