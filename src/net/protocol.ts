@@ -575,6 +575,55 @@ export interface CueEvent {
   seat?: number;
 }
 
+/**
+ * P2-19: a marble was knocked out (0 HP) — out of the race for good. The state frame carries the
+ * DNF bit; this event carries the CREDIT, which no frame can express: `by` is the seat that lands
+ * the KO (and its bounty), or -1 when a hazard, a wall or the track did it.
+ *
+ * Mirrors `freeze`: `seat` is the victim, `by` the other marble.
+ */
+export interface KoEvent {
+  kind: 'ko';
+  /** The victim's seat. */
+  seat: number;
+  /** The seat credited with the knock-out, or -1 for nobody. */
+  by: number;
+}
+
+/**
+ * P2-19: the new-skill effects a guest cannot derive, because it does not simulate them.
+ *
+ *   bolt     a homing projectile in flight (spawn position)
+ *   bomb     a sticky bomb riding a marble (target seat, position, fuse)
+ *   spikes   a spike patch on the track (its left edge and y)
+ *   decoy    a decoy ball (its position)
+ *   shield   a Bubble Shield around a marble (target)
+ *   reflect  a Mirror Plate around a marble (target)
+ *   emp      an EMP aura on a marble (target)
+ */
+export type SkillFxKind = 'bolt' | 'bomb' | 'spikes' | 'decoy' | 'shield' | 'reflect' | 'emp';
+
+/**
+ * P2-19: one of the sixteen new skills hit the world. Host-authoritative, DRAW-ONLY on a guest: it
+ * fills `game.projectiles` / `game.bombs` / `game.spikes` / `game.decoys` / `marble.fx` at the
+ * position given, and never collides anything.
+ *
+ *   fx      what it is
+ *   seat    the owner — the marble that spent the charge
+ *   target  the marble it is aimed at or landed on, or -1 when it has none
+ *   x, y    where it lives, in world units (the position the guest draws it at)
+ *   until   host clock (ms) when it is gone
+ */
+export interface SkillFxEvent {
+  kind: 'skillfx';
+  fx: SkillFxKind;
+  seat: number;
+  target: number;
+  x: number;
+  y: number;
+  until: number;
+}
+
 /** MB-10A. A track-switch plate flipped to a route (`side`: 0 = left, 1 = right). */
 export interface SwitchEvent {
   kind: 'switch';
@@ -667,6 +716,8 @@ export type RaceEvent =
   | ItemEvent
   | FinishEvent
   | CueEvent
+  | KoEvent
+  | SkillFxEvent
   | SwitchEvent
   | TrapdoorEvent
   | HoldEvent
@@ -678,7 +729,10 @@ export type RaceEvent =
   | TargetsEvent;
 
 /** Every event kind, in wire order. `validateMessage` rejects anything else. */
-export const RACE_EVENT_KINDS = ['peg', 'crate', 'box', 'oil', 'freeze', 'shock', 'item', 'finish', 'sound', 'switch', 'trapdoor', 'hold', 'seesaw', 'bridge', 'flipper', 'sling', 'turnstile', 'targets'] as const;
+export const RACE_EVENT_KINDS = ['peg', 'crate', 'box', 'oil', 'freeze', 'shock', 'item', 'finish', 'sound', 'ko', 'skillfx', 'switch', 'trapdoor', 'hold', 'seesaw', 'bridge', 'flipper', 'sling', 'turnstile', 'targets'] as const;
+
+/** Every `skillfx` kind, in wire order. `readEvent` rejects anything else. */
+export const SKILL_FX_KINDS = ['bolt', 'bomb', 'spikes', 'decoy', 'shield', 'reflect', 'emp'] as const;
 
 /**
  * host → server → everyone. What happened since the last frame.
@@ -1693,6 +1747,21 @@ function validateEvent(value: unknown): ProtocolError | null {
       if (!isSoundEvent(e.cue)) return forged(`Sound cue "${e.cue}" is not one of: ${SOUND_EVENTS.join(', ')}.`);
       if (e.seat !== undefined) return seat(e.seat);
       return null;
+    }
+    case 'ko': {
+      // -1 is the wire's word for "nobody gets the bounty" (a hazard, a wall): any other value
+      // must be a seat on the grid.
+      if (!isInt(e.by, -1, MARBLE_COUNT - 1)) return forged(`KO credit ${String(e.by)} is not a seat.`);
+      return seat(e.seat);
+    }
+    case 'skillfx': {
+      if (typeof e.fx !== 'string' || !(SKILL_FX_KINDS as readonly string[]).includes(e.fx)) {
+        return forged(`Skill effect "${String(e.fx)}" is not one this build draws.`);
+      }
+      if (!isNumber(e.x) || !isNumber(e.y)) return bad('Skill effect has no position.');
+      if (!isNumber(e.until) || e.until < 0) return bad('Skill effect has no expiry.');
+      if (!isInt(e.target, -1, MARBLE_COUNT - 1)) return forged(`Skill effect target ${String(e.target)} is not a seat.`);
+      return seat(e.seat);
     }
     case 'switch': {
       if (e.side !== 0 && e.side !== 1) return bad('Switch event has no side.');

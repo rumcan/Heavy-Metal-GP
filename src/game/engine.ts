@@ -1248,6 +1248,9 @@ export class Game {
     const credit = m.health ? koCredit(m.health, this.time) : null;
     const killer = credit !== null ? this.byIdOrNull(credit) : null;
     if (killer && killer !== m) killer.kos = (killer.kos ?? 0) + 1;
+    // P2-19: the frame's DNF bit says a marble is out; the event says WHO gets the bounty (-1 for a
+    // hazard), which is the one thing a guest cannot derive from the state frame.
+    this.emit({ kind: 'ko', seat: m.info.id, by: killer && killer !== m ? killer.info.id : -1 });
     this.effects.push({ type: 'ring', x: m.body.position.x, y: m.body.position.y, ttl: 30, maxTtl: 30, color: '#ef4444' });
     this.effects.push({ type: 'debris', x: m.body.position.x, y: m.body.position.y, ttl: 40, maxTtl: 40, color: '#9ca3af', particles: this.makeParticles(m.body.position.x, m.body.position.y, 16, 5) });
     this.sfx('smash', m, m.body.position.x, m.body.position.y);

@@ -144,6 +144,16 @@ const EVENTS: EventsMsg = {
     { kind: 'finish', seat: 0, time: 48250, rank: 1 },
     { kind: 'sound', cue: 'peg', seat: 0 },
     { kind: 'sound', cue: 'gate' },
+    // P2-19: a KO with credit, a hazard KO with none, and one of every new-skill effect.
+    { kind: 'ko', seat: 3, by: 1 },
+    { kind: 'ko', seat: 6, by: -1 },
+    { kind: 'skillfx', fx: 'bolt', seat: 0, target: 2, x: 300, y: 900, until: 21000 },
+    { kind: 'skillfx', fx: 'bomb', seat: 1, target: 4, x: 120.5, y: 400.25, until: 22500 },
+    { kind: 'skillfx', fx: 'spikes', seat: 2, target: -1, x: 800, y: 1200, until: 24000 },
+    { kind: 'skillfx', fx: 'decoy', seat: 3, target: -1, x: 810, y: 1210, until: 24500 },
+    { kind: 'skillfx', fx: 'shield', seat: 4, target: 4, x: 100, y: 200, until: 26000 },
+    { kind: 'skillfx', fx: 'reflect', seat: 5, target: 5, x: 110, y: 210, until: 26500 },
+    { kind: 'skillfx', fx: 'emp', seat: 6, target: 7, x: 120, y: 220, until: 27000 },
   ],
 };
 
@@ -491,6 +501,13 @@ test('MP-02 validation: events are checked against what the track and grid can h
     ['a finish with no time', { kind: 'finish', seat: 1, time: -4, rank: 1 }, 'malformed'],
     ['a finish place off the podium and off the grid', { kind: 'finish', seat: 1, time: 4, rank: 11 }, 'forged'],
     ['a sound cue this build cannot name', { kind: 'sound', cue: 'explosion' }, 'forged'],
+    // P2-19: a KO credit that is not a seat, and a skill effect this build cannot draw.
+    ['a KO credited to nobody in particular', { kind: 'ko', seat: 1, by: MARBLE_COUNT }, 'forged'],
+    ['a KO of a seat that is not on the grid', { kind: 'ko', seat: MARBLE_COUNT, by: 1 }, 'forged'],
+    ['a skill effect this build does not know', { kind: 'skillfx', fx: 'nuke', seat: 0, target: -1, x: 1, y: 2, until: 3 } as unknown as RaceEvent, 'forged'],
+    ['a skill effect with no position', { kind: 'skillfx', fx: 'bolt', seat: 0, target: -1, x: Number.NaN, y: 2, until: 3 }, 'malformed'],
+    ['a skill effect with no expiry', { kind: 'skillfx', fx: 'bomb', seat: 0, target: 1, x: 1, y: 2, until: -1 }, 'malformed'],
+    ['a skill effect aimed at nobody that is not -1', { kind: 'skillfx', fx: 'decoy', seat: 0, target: MARBLE_COUNT, x: 1, y: 2, until: 3 }, 'forged'],
     ['an event kind from another game', { kind: 'cross' } as unknown as RaceEvent, 'malformed'],
     ['an event that is not an object', null as unknown as RaceEvent, 'malformed'],
   ];

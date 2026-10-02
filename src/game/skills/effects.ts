@@ -119,7 +119,13 @@ export function apply(game: Game, m: Marble, item: ItemType): void {
   const fx = fxOf(m), t = game.time, p = m.body.position;
   const dur = Math.round(((SKILLS as Record<string, { durationMs: number }>)[item]?.durationMs ?? 0) * (1 + tfx(m, 'skillDurationPct') / 100));
   switch (item) {
-    case 'shield': fx.shieldUntil = t + dur; fx.shieldHp = 40; pop(game, m, '#60a5fa'); break;
+    case 'shield': {
+      fx.shieldUntil = t + dur;
+      fx.shieldHp = 40;
+      pop(game, m, '#60a5fa');
+      game.emit({ kind: 'skillfx', fx: 'shield', seat: m.info.id, target: m.info.id, x: p.x, y: p.y, until: fx.shieldUntil });
+      break;
+    }
     case 'repair': {
       if (m.health) m.health = { ...m.health, hp: Math.min(100, m.health.hp + 40) };
       game.effects.push({ type: 'text', x: p.x, y: p.y - 26, ttl: 40, maxTtl: 40, color: '#4ade80', text: '+40' });
@@ -135,8 +141,19 @@ export function apply(game: Game, m: Marble, item: ItemType): void {
       break;
     }
     case 'overdrive': fx.overdriveUntil = t + dur; if (m.engine) m.engine = { ...m.engine, heat: 0, lockedUntil: 0 }; pop(game, m, '#ef4444'); break;
-    case 'spikes': game.spikes.push({ x: p.x - 40, y: p.y + MARBLE_RADIUS, w: 80, owner: m.info.id, until: t + dur, lane: lanePlatformer(game, m) }); break;
-    case 'decoy': game.decoys.push({ x: p.x, y: p.y, owner: m.info.id, until: t + dur, lane: lanePlatformer(game, m), color: m.info.color }); pop(game, m, '#fbbf24'); break;
+    case 'spikes': {
+      const patch: SpikePatch = { x: p.x - 40, y: p.y + MARBLE_RADIUS, w: 80, owner: m.info.id, until: t + dur, lane: lanePlatformer(game, m) };
+      game.spikes.push(patch);
+      game.emit({ kind: 'skillfx', fx: 'spikes', seat: m.info.id, target: -1, x: patch.x, y: patch.y, until: patch.until });
+      break;
+    }
+    case 'decoy': {
+      const decoy: Decoy = { x: p.x, y: p.y, owner: m.info.id, until: t + dur, lane: lanePlatformer(game, m), color: m.info.color };
+      game.decoys.push(decoy);
+      pop(game, m, '#fbbf24');
+      game.emit({ kind: 'skillfx', fx: 'decoy', seat: m.info.id, target: -1, x: decoy.x, y: decoy.y, until: decoy.until });
+      break;
+    }
     case 'grapple': {
       const a = grappleAnchor(game, m);
       if (a) fx.grappleTo = { x: a.x, y: a.y, until: t + 700 };
@@ -144,10 +161,19 @@ export function apply(game: Game, m: Marble, item: ItemType): void {
     }
     case 'bomb': {
       const target = nearestAny(game, m, 250);
-      if (target) game.bombs.push({ target: target.info.id, owner: m.info.id, explodeAt: t + dur });
+      if (target) {
+        const bomb: Bomb = { target: target.info.id, owner: m.info.id, explodeAt: t + dur };
+        game.bombs.push(bomb);
+        game.emit({ kind: 'skillfx', fx: 'bomb', seat: m.info.id, target: target.info.id, x: target.body.position.x, y: target.body.position.y, until: bomb.explodeAt });
+      }
       break;
     }
-    case 'reflect': fx.reflectUntil = t + dur; pop(game, m, '#e0f2fe'); break;
+    case 'reflect': {
+      fx.reflectUntil = t + dur;
+      pop(game, m, '#e0f2fe');
+      game.emit({ kind: 'skillfx', fx: 'reflect', seat: m.info.id, target: m.info.id, x: p.x, y: p.y, until: fx.reflectUntil });
+      break;
+    }
     case 'blink': {
       const d = blinkDestination(game, m);
       if (d) { pop(game, m, '#a78bfa'); Body.setPosition(m.body, d); pop(game, m, '#a78bfa'); }
@@ -158,6 +184,8 @@ export function apply(game: Game, m: Marble, item: ItemType): void {
         if (o === m || Math.hypot(o.body.position.x - p.x, o.body.position.y - p.y) > 300) continue;
         fxOf(o).empUntil = t + dur;
         pop(game, o, '#38bdf8');
+        // One event per caught marble: the guest only has to hang the aura on the right ball.
+        game.emit({ kind: 'skillfx', fx: 'emp', seat: m.info.id, target: o.info.id, x: o.body.position.x, y: o.body.position.y, until: fxOf(o).empUntil! });
       }
       game.effects.push({ type: 'ring', x: p.x, y: p.y, ttl: 30, maxTtl: 30, color: '#38bdf8' });
       break;
@@ -183,7 +211,10 @@ export function apply(game: Game, m: Marble, item: ItemType): void {
     case 'bolt': {
       const target = decoyFor(game, m) ? null : nearestAhead(game, m, 600);
       const speed = SPEED_BOLT * (1 + tfx(m, 'projectileSpeedPct') / 100);
-      game.projectiles.push({ id: game.nextProjectileId++, owner: m.info.id, target: target ? target.info.id : -1, x: p.x, y: p.y - 6, vx: speed, vy: -2, speed, until: t + 3500, lane: lanePlatformer(game, m) });
+      const bolt: Projectile = { id: game.nextProjectileId++, owner: m.info.id, target: target ? target.info.id : -1, x: p.x, y: p.y - 6, vx: speed, vy: -2, speed, until: t + 3500, lane: lanePlatformer(game, m) };
+      game.projectiles.push(bolt);
+      // The guest draws the bolt from here; its flight is cosmetic on that side.
+      game.emit({ kind: 'skillfx', fx: 'bolt', seat: m.info.id, target: bolt.target, x: bolt.x, y: bolt.y, until: bolt.until });
       break;
     }
   }
@@ -249,7 +280,13 @@ export function step(game: Game, dt: number): void {
         if (target) {
           game.projectiles.splice(i, 1);
           const from = owner ?? target;
-          if ((fxOf(target).reflectUntil ?? 0) > t) { pop(game, target, '#e0f2fe'); game.projectiles.push({ ...pr, id: game.nextProjectileId++, owner: target.info.id, target: from.info.id, vx: -pr.vx, vy: -pr.vy, until: t + 3000 }); continue; }
+          if ((fxOf(target).reflectUntil ?? 0) > t) {
+            pop(game, target, '#e0f2fe');
+            const sent = { ...pr, id: game.nextProjectileId++, owner: target.info.id, target: from.info.id, vx: -pr.vx, vy: -pr.vy, until: t + 3000 };
+            game.projectiles.push(sent);
+            game.emit({ kind: 'skillfx', fx: 'bolt', seat: sent.owner, target: sent.target, x: sent.x, y: sent.y, until: sent.until });
+            continue;
+          }
           if (absorb(game, target, from, 'bolt')) continue;
           knock(target, pr.x, pr.y, 5);
           game.damage(target, offence(owner, 25), pr.owner, 'bolt');

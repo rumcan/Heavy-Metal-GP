@@ -409,6 +409,28 @@ test('MP-05 guest: the host\'s events change what the guest draws', () => {
   assert.ok(guest.game.marbles[finisher].body.isSensor, 'and it is off the track');
   assert.deepEqual(guest.game.finishOrder.map((m) => m.info.id), [finisher]);
   assert.ok(guest.game.effects.length > 0, 'and it drew the ring');
+
+  // P2-19: a KO hides the victim and credits the killer — the guest never simulates the damage.
+  const victim = 6;
+  const killer = 7;
+  play([{ kind: 'ko', seat: victim, by: killer }]);
+  assert.equal(guest.game.marbles[victim].dnf, true, 'the victim is out');
+  assert.equal(guest.game.marbles[victim].body.position.x, -5000, 'and parked off the track');
+  assert.equal(guest.game.marbles[killer].kos, 1, 'the killer is credited');
+
+  // P2-19: a skillfx hangs the drawn effect on the world — bolt, patch, decoy, bomb and auras.
+  play([{ kind: 'skillfx', fx: 'bolt', seat: 0, target: 2, x: 500, y: 600, until: 60_000 }]);
+  assert.equal(guest.game.projectiles.length, 1, 'the bolt is drawn');
+  play([{ kind: 'skillfx', fx: 'spikes', seat: 0, target: -1, x: 500, y: 600, until: 60_000 }]);
+  assert.equal(guest.game.spikes.length, 1, 'the spike patch is drawn');
+  play([{ kind: 'skillfx', fx: 'decoy', seat: 0, target: -1, x: 500, y: 600, until: 60_000 }]);
+  assert.equal(guest.game.decoys.length, 1, 'the decoy is drawn');
+  play([{ kind: 'skillfx', fx: 'bomb', seat: 0, target: 2, x: 500, y: 600, until: 60_000 }]);
+  assert.equal(guest.game.bombs.length, 1, 'the bomb is drawn on its target');
+  play([{ kind: 'skillfx', fx: 'shield', seat: 2, target: 2, x: 500, y: 600, until: 60_000 }]);
+  assert.ok((guest.game.marbles[2].fx?.shieldUntil ?? 0) > 0, 'the shield aura is drawn');
+  play([{ kind: 'skillfx', fx: 'emp', seat: 2, target: 3, x: 500, y: 600, until: 60_000 }]);
+  assert.ok((guest.game.marbles[3].fx?.empUntil ?? 0) > 0, 'the EMP aura is drawn');
 });
 
 test('MP-05 guest: an events frame the network eats is said again', () => {
