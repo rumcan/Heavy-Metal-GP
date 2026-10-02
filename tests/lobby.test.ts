@@ -80,6 +80,12 @@ test('MP-06 lobby: a guest files its garage, and only its own', () => {
   const aiId = grid.find((s) => s.isAI)!;
   assert.equal(aiId.playerId, '');
   assert.deepEqual(fileGarage(grid, 'player-1', garage('x')).filter((s) => s.isAI), grid.filter((s) => s.isAI));
+
+  // P2-19: the talent build files with the garage, so the seat the race is built from carries it.
+  const talented = fileGarage(grid, 'player-1', { ...garage('Sprocket'), talents: { turbo: 2, coolant: 1 } });
+  assert.deepEqual(talented[1].talents, { turbo: 2, coolant: 1 });
+  // A plain ready toggle leaves the filed build alone.
+  assert.deepEqual(fileGarage(talented, 'player-1', garage('Sprocket'))[1].talents, { turbo: 2, coolant: 1 });
 });
 
 test('MP-06 lobby: ready is per seat, and the machines are always ready', () => {

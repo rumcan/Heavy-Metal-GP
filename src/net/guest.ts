@@ -24,6 +24,7 @@ import type { Track } from '../game/track';
 import { meta } from '../game/track';
 import { elementBodies } from '../game/elements';
 import { updateProgress } from '../game/engine/platformer';
+import { newHealth } from '../game/health';
 import type { MarbleInfo } from '../game/types';
 import type { SoundEvent } from '../game/cues';
 import {
@@ -45,7 +46,7 @@ import type {
   StateMsg,
 } from './protocol';
 
-const { Body } = Matter;
+const { Body, Composite } = Matter;
 
 /**
  * How far behind the newest frame the guest renders. One frame is 50 ms at
@@ -418,6 +419,7 @@ export class RaceGuest {
       }
     }
     this.game.ageEffects(dt);
+    this.ageSkillFx(dt);
 
     // Retire the frames the picture has drawn PAST, but keep `a`: it is still
     // the base of the next interpolation until the playout clock reaches `b`.
@@ -478,7 +480,15 @@ export class RaceGuest {
       const m = marbles[i];
       const ma = a.marbles[i];
       const mb = b.marbles[i];
-      if (!ma || !mb || m.finishedAt !== null) continue; // parked at the finish
+      if (!ma || !mb) continue;
+      // P2-19: health off the frame, for the HUD's HP meter. The DNF bit is a LATCH — a marble
+      // that is out never comes back, even if an older frame in the buffer still says it is racing.
+      if (this.game.healthOn) this.applyHealth(m, mb);
+      if (mb.dnf && !m.dnf) {
+        m.dnf = true;
+        this.hideDnf(m);
+      }
+      if (m.finishedAt !== null || m.dnf) continue; // parked at the finish, or out of the race
       Body.setPosition(m.body, { x: lerp(ma.x, mb.x, alpha), y: lerp(ma.y, mb.y, alpha) });
       Body.setAngle(m.body, lerp(ma.a, mb.a, alpha));
       Body.setVelocity(m.body, { x: lerp(ma.vx, mb.vx, alpha), y: lerp(ma.vy, mb.vy, alpha) });
@@ -541,6 +551,15 @@ export class RaceGuest {
       m.ghostUntil = state.ghost ? snap.t + 1000 : 0;
       m.anvilUntil = state.anvil ? snap.t + 1000 : 0;
       if (this.game.track.platformer) { m.lane = m.laneFrom = state.lane ?? 1; m.laneAt = undefined; m.progress = undefined; }
+      // P2-19: a joiner gets the health, the DNF latch and the KO count the frames would have told it.
+      if (this.game.healthOn) {
+        this.applyHealth(m, state);
+        m.kos = state.kos ?? 0;
+      }
+      if (state.dnf) {
+        m.dnf = true;
+        this.hideDnf(m);
+      }
       m.finishedAt = snap.times[i] ?? null;
       m.pegs = snap.pegs[i] ?? 0;
       if (snap.inventories[i]) m.inventory = { ...snap.inventories[i] };
@@ -655,6 +674,56 @@ export class RaceGuest {
       case 'sound':
         this.cues.push(event.cue);
         break;
+      // P2-19: a marble is out of the race. The state frame carries the DNF bit; the event is the
+      // credit line (who gets the KO bounty) and the debris, the moment it happens.
+      case 'ko': {
+        const victim = marbles[event.seat];
+        if (!victim) break;
+        const { x, y } = victim.body.position;
+        this.game.effects.push({ type: 'ring', x, y, ttl: 30, maxTtl: 30, color: '#ef4444' });
+        this.debris(x, y, 16, 5, '#9ca3af');
+        victim.dnf = true;
+        this.hideDnf(victim);
+        const killer = event.by >= 0 ? marbles[event.by] : undefined;
+        if (killer && killer !== victim) killer.kos = (killer.kos ?? 0) + 1;
+        break;
+      }
+      // P2-19: one of the sixteen new skills was used. DRAW ONLY — the guest hangs the projectile,
+      // patch, decoy or aura on the world where the host said, and never collides anything.
+      case 'skillfx': {
+        const owner = marbles[event.seat];
+        const target = event.target >= 0 ? marbles[event.target] : undefined;
+        const lane = this.game.track.platformer ? (owner?.lane ?? target?.lane ?? 1) : 0;
+        switch (event.fx) {
+          case 'bolt': {
+            // Aim the drawn bolt at what it is chasing (or straight ahead); the flight is cosmetic.
+            const dx = (target?.body.position.x ?? event.x + 1) - event.x;
+            const dy = (target?.body.position.y ?? event.y) - event.y;
+            const d = Math.hypot(dx, dy) || 1;
+            this.game.projectiles.push({ id: this.game.nextProjectileId++, owner: event.seat, target: event.target, x: event.x, y: event.y, vx: (dx / d) * 11, vy: (dy / d) * 11, speed: 11, until: event.until, lane });
+            break;
+          }
+          case 'bomb':
+            if (event.target >= 0) this.game.bombs.push({ target: event.target, owner: event.seat, explodeAt: event.until });
+            break;
+          case 'spikes':
+            this.game.spikes.push({ x: event.x, y: event.y, w: 80, owner: event.seat, until: event.until, lane });
+            break;
+          case 'decoy':
+            this.game.decoys.push({ x: event.x, y: event.y, owner: event.seat, until: event.until, lane, color: owner?.info.color ?? '#fbbf24' });
+            break;
+          case 'shield':
+            if (target) target.fx = { ...(target.fx ?? {}), shieldUntil: event.until, shieldHp: 40 };
+            break;
+          case 'reflect':
+            if (target) target.fx = { ...(target.fx ?? {}), reflectUntil: event.until };
+            break;
+          case 'emp':
+            if (target) target.fx = { ...(target.fx ?? {}), empUntil: event.until };
+            break;
+        }
+        break;
+      }
       // MB-10A: stateful element flips — set the state the host decided; the shared easing in
       // `Game.ageEffects` swings the plate / door on this end exactly as it does on the host.
       case 'switch': {
@@ -750,6 +819,64 @@ export class RaceGuest {
     // (or a forged frame) hands us numbers past the end of the array.
     if (!Number.isInteger(index) || index < 0 || index >= this.game.track.bodies.length) return undefined;
     return this.game.track.bodies[index];
+  }
+
+  /**
+   * P2-19: a marble's health, as the frame reports it. The wire carries a 0..1 fraction of the
+   * host's max HP, so the guest keeps a plain 100-point bar (the ratio is what the HUD draws);
+   * `dnf` rides along so `game.player.dnf` is true here exactly when it is on the host.
+   */
+  private applyHealth(m: Marble, state: MarbleState): void {
+    // The guest's own Game seeds `health` at full HP (health is on for a platformer), but the bar's
+    // scale is the guest's: 100 points, with the wire's 0..1 fraction mapped onto it.
+    const maxHp = (m.maxHp ??= 100);
+    if (!m.health) m.health = newHealth();
+    m.health.hp = Math.max(0, Math.min(1, state.hp ?? 1)) * maxHp;
+    m.health.dnf = state.dnf === true;
+  }
+
+  /**
+   * P2-19: a knocked-out marble leaves the guest's world exactly as it leaves the host's — body out
+   * of the world, parked far away — so the renderers that walk `game.marbles` never draw it.
+   */
+  private hideDnf(m: Marble): void {
+    if (m.body.isSensor) return;
+    Composite.remove(this.game.world, m.body);
+    m.body.isSensor = true;
+    Body.setPosition(m.body, { x: -5000, y: -5000 });
+    Body.setVelocity(m.body, { x: 0, y: 0 });
+  }
+
+  /**
+   * P2-19: retire the drawn skill effects the host clock says are over, and let a drawn bolt drift
+   * toward the marble it is chasing. DRAWING, not simulation: nothing here hits, damages or knocks
+   * anything — the host's own `skillfx`/`ko` events are the only truth.
+   */
+  private ageSkillFx(dt: number): void {
+    const t = this.game.time;
+    for (let i = this.game.projectiles.length - 1; i >= 0; i--) {
+      const pr = this.game.projectiles[i];
+      if (pr.until < t) {
+        this.game.projectiles.splice(i, 1);
+        continue;
+      }
+      const target = pr.target >= 0 ? this.game.marbles[pr.target] : undefined;
+      if (target && target.finishedAt === null && !target.dnf) {
+        const dx = target.body.position.x - pr.x, dy = target.body.position.y - pr.y, d = Math.hypot(dx, dy) || 1;
+        const k = Math.min(1, 0.12 * (dt / 16.7));
+        pr.vx += ((dx / d) * pr.speed - pr.vx) * k;
+        pr.vy += ((dy / d) * pr.speed - pr.vy) * k;
+      }
+      pr.x += pr.vx * (dt / 16.7);
+      pr.y += pr.vy * (dt / 16.7);
+    }
+    for (let i = this.game.spikes.length - 1; i >= 0; i--) if (this.game.spikes[i].until < t) this.game.spikes.splice(i, 1);
+    for (let i = this.game.decoys.length - 1; i >= 0; i--) if (this.game.decoys[i].until < t) this.game.decoys.splice(i, 1);
+    // A bomb rides its target: when the target is gone, so is the bomb.
+    for (let i = this.game.bombs.length - 1; i >= 0; i--) {
+      const target = this.game.marbles[this.game.bombs[i].target];
+      if (!target || target.dnf || target.finishedAt !== null) this.game.bombs.splice(i, 1);
+    }
   }
 
   private removeBody(index: number): void {

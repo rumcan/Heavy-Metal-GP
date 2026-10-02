@@ -21,7 +21,7 @@ import assert from 'node:assert/strict';
 import { Game } from '../src/game/engine';
 import { PHYSICS_STEP } from '../src/game/physics';
 import { generateTrack, meta } from '../src/game/track';
-import { AI_COLORS, AI_NAMES, mulberry32, randomStats } from '../src/game/types';
+import { AI_COLORS, AI_NAMES, emptyInventory, mulberry32, randomStats } from '../src/game/types';
 import { RaceHost, COUNTDOWN_MS, LIGHT_INTERVAL_MS, NUDGE_RATE_PER_SECOND, STATE_INTERVAL_MS } from '../src/net/host';
 import type { RaceHostOptions } from '../src/net/host';
 import {
@@ -306,6 +306,60 @@ test('MP-04 host: nudges are limited to 30 a second', () => {
   h.host.applyIntent(1, { type: 'intent', kind: 'nudge', v: -1 });
   assert.equal(h.host.game.humanInput.get(1)?.nudge, -1, 'the bucket refills');
   assert.ok(guest().finishedAt === null || true);
+});
+
+test('P2-19 host: a knock-out and a skill effect ride the wire', async () => {
+  const { buildPlatformerTrack } = await import('../src/game/platformer/build');
+  const { TRACK_THEMES } = await import('../src/game/types');
+  // A platformer track: that is where health is on, so a KO is a real state and the new skills fire.
+  const h = harness({ track: buildPlatformerTrack(SEED, TRACK_THEMES.forest, 'rolling-hills') });
+  start(h);
+
+  // Seat 0 knocks seat 1 out: the frame carries the DNF bit, the event carries the credit.
+  const shooter = h.host.game.marbles[0];
+  const victim = h.host.game.marbles[1];
+  h.host.game.damage(victim, 500, shooter.info.id, 'bomb');
+  for (let i = 0; i < 4; i++) h.tick();
+  assert.equal(victim.dnf, true, 'the host knocked it out');
+  const ko = h.events().find((e) => e.kind === 'ko');
+  assert.ok(ko && ko.kind === 'ko', 'a ko event was published');
+  assert.equal(ko.seat, 1);
+  assert.equal(ko.by, 0, 'the shooter is credited');
+  assert.ok(unpackState(h.states().at(-1)!.marbles)![1].dnf, 'and the state frame says the marble is out');
+
+  // Seat 0 lays spike strips: the effect rides out for the guests to draw.
+  h.frames.length = 0;
+  shooter.inventory.spikes = 1;
+  assert.ok(h.host.game.useItem(shooter, 'spikes'), 'the skill fires');
+  for (let i = 0; i < 4; i++) h.tick();
+  const fx = h.events().find((e) => e.kind === 'skillfx');
+  assert.ok(fx && fx.kind === 'skillfx', 'a skillfx event was published');
+  assert.equal(fx.fx, 'spikes');
+  assert.equal(fx.seat, 0);
+  assert.ok(fx.until > 0, 'and it says when it is gone');
+});
+
+test('P2-19 host: a filed talent build is applied to the seat that bought it', async () => {
+  const { buildPlatformerTrack } = await import('../src/game/platformer/build');
+  const { TRACK_THEMES } = await import('../src/game/types');
+  const track = buildPlatformerTrack(SEED, TRACK_THEMES.forest, 'rolling-hills');
+  // A legal 14-point build: Plating raises the HP ceiling, Stockpile adds a charge to the seat's
+  // first OFFENCE skill (bolt is one — rocket is movement).
+  const talents = { plating: 3, 'patch-up': 3, padding: 1, sharpened: 3, 'quick-fuse': 3, stockpile: 1 };
+  const seats = grid().map((seat) => (seat.slot === 1 ? { ...seat, inventory: { ...emptyInventory(), bolt: 1 }, talents } : seat));
+
+  const h = harness({ seats, track });
+  const guestMarble = h.host.game.marbles[1];
+  assert.equal(guestMarble.maxHp, 130, 'Plating raised the ceiling');
+  assert.equal(guestMarble.health?.hp, 130, 'and the marble starts full');
+  assert.equal(guestMarble.inventory.bolt, 2, 'Stockpile added a charge to the seat’s offence skill');
+  const hostMarble = h.host.game.marbles[0];
+  assert.equal(hostMarble.maxHp ?? 100, 100, 'a seat with no build races stock');
+
+  // P2-19: a ranked lobby turns the whole grid's builds off, whatever the seats filed.
+  const off = harness({ seats, track, settings: { circuit: 0, talents: false } });
+  assert.equal(off.host.game.marbles[1].maxHp ?? 100, 100, 'talents off: the build is ignored');
+  assert.equal(off.host.game.marbles[1].inventory.bolt, 1, 'and no charge was handed out');
 });
 
 test('MP-08 host: three seconds without a driver and the AI has the marble', () => {

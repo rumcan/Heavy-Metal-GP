@@ -33,6 +33,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(here, '..');
 
 import { ITEM_TYPES, MAX_ITEM_STACK } from '../src/game/types';
+import { pointsSpent } from '../src/game/talents';
 import {
   BYTES_PER_MARBLE,
   FRAME_CAP_BYTES,
@@ -65,7 +66,10 @@ import {
   readRankBoard,
   readRankedOrder,
   readRankWire,
+  readRaceSettings,
+  readTalents,
   rejectionFor,
+  validateGarage,
   unpackState,
   validateMessage,
   isRaceSnapshot,
@@ -118,6 +122,10 @@ function marble(i: number): MarbleState {
     ghost: i === 5,
     anvil: i === 6,
     loop: i % (MAX_LOOP_STAGE + 1),
+    // P2-19: health rides every frame on a platformer race — a knocked-out marble carries dnf.
+    hp: i === 3 ? 0.5 : 1,
+    dnf: i === 7,
+    kos: i % 3,
   };
 }
 
@@ -140,6 +148,16 @@ const EVENTS: EventsMsg = {
     { kind: 'finish', seat: 0, time: 48250, rank: 1 },
     { kind: 'sound', cue: 'peg', seat: 0 },
     { kind: 'sound', cue: 'gate' },
+    // P2-19: a KO with credit, a hazard KO with none, and one of every new-skill effect.
+    { kind: 'ko', seat: 3, by: 1 },
+    { kind: 'ko', seat: 6, by: -1 },
+    { kind: 'skillfx', fx: 'bolt', seat: 0, target: 2, x: 300, y: 900, until: 21000 },
+    { kind: 'skillfx', fx: 'bomb', seat: 1, target: 4, x: 120.5, y: 400.25, until: 22500 },
+    { kind: 'skillfx', fx: 'spikes', seat: 2, target: -1, x: 800, y: 1200, until: 24000 },
+    { kind: 'skillfx', fx: 'decoy', seat: 3, target: -1, x: 810, y: 1210, until: 24500 },
+    { kind: 'skillfx', fx: 'shield', seat: 4, target: 4, x: 100, y: 200, until: 26000 },
+    { kind: 'skillfx', fx: 'reflect', seat: 5, target: 5, x: 110, y: 210, until: 26500 },
+    { kind: 'skillfx', fx: 'emp', seat: 6, target: 7, x: 120, y: 220, until: 27000 },
   ],
 };
 
@@ -239,18 +257,18 @@ const check = (msg: unknown, opts?: ValidateOptions) => validateMessage(msg, opt
 test('MP-02 size: ten marbles pack into one frame far under the 4 KiB budget', () => {
   // The ticket's acceptance: `state` for ten marbles stays under 4 KiB.
   const bytes = frameBytes(STATE);
-  assert.equal(packedStateLength(), 296);
+  assert.equal(packedStateLength(), 308);
   assert.ok(bytes < STATE_BUDGET_BYTES, `state frame is ${bytes} bytes (budget ${STATE_BUDGET_BYTES})`);
   // And the real number, so a future field cannot quietly eat the headroom:
-  // 22 bytes a marble, base64'd, plus the envelope — ~350 bytes of 4096.
-  assert.ok(bytes < 512, `state frame is ${bytes} bytes, expected ~350`);
+  // 23 bytes a marble (P2-19 added the hp byte), base64'd, plus the envelope — ~370 bytes of 4096.
+  assert.ok(bytes < 512, `state frame is ${bytes} bytes, expected ~370`);
   // Twenty of these a second, and the 16 KiB frame is still mostly empty.
   assert.ok(bytes < FRAME_CAP_BYTES / 20, `20 Hz × ${bytes} bytes leaves no headroom in a ${FRAME_CAP_BYTES} byte frame`);
 });
 
 test('MP-02 size: the caps are the ones the gateway enforces', () => {
   assert.equal(FRAME_CAP_BYTES, 16 * 1024);
-  assert.equal(BYTES_PER_MARBLE, 22, 'five float32, one flag byte and one lane byte');
+  assert.equal(BYTES_PER_MARBLE, 23, 'five float32, one flag byte, one lane byte and one hp byte');
   assert.ok(SNAPSHOT_CHUNK_CHARS * 2 <= FRAME_CAP_BYTES, 'two chunks plus their envelopes fit the cap');
   assert.equal(STATE_BUDGET_BYTES, 4096);
   for (const msg of VALID) {
@@ -263,15 +281,23 @@ test('MP-02 size: the caps are the ones the gateway enforces', () => {
 // ══════════════════════════════════════════════════════════════════════════
 
 test('MP-02 pack: the byte layout is pinned, so both ends read the same bytes', () => {
-  // Two marbles, one with every flag set: 44 bytes → 60 base64 characters. The last byte of each is its lane (P2-00).
+  // Two marbles, one with every flag set, the second knocked out: 46 bytes → 64 base64 characters.
+  // Byte 20 is the flags (DNF is bit 5, P2-19), byte 21 the lane + stage, byte 22 the hp byte.
   // Hardcoded on purpose — endianness is stated, not assumed, and a change
   // here is a wire change (bump PROTOCOL_VERSION).
   const pinned = packState([
-    { x: 1, y: 2, vx: -3.5, vy: 4.25, a: 0.5, finished: false, frozen: true, oil: false, ghost: true, anvil: false, loop: 0, lane: 0 },
-    { x: -1000.5, y: 20000, vx: 0, vy: 0, a: -1, finished: true, frozen: false, oil: true, ghost: false, anvil: true, loop: 7, lane: 2 },
+    { x: 1, y: 2, vx: -3.5, vy: 4.25, a: 0.5, finished: false, frozen: true, oil: false, ghost: true, anvil: false, loop: 0, lane: 0, hp: 1, dnf: false },
+    { x: -1000.5, y: 20000, vx: 0, vy: 0, a: -1, finished: true, frozen: false, oil: true, ghost: false, anvil: true, loop: 7, lane: 2, hp: 0.5, dnf: true },
   ]);
-  assert.equal(pinned, 'AACAPwAAAEAAAGDAAACIQAAAAD8KAAAgesQAQJxGAAAAAAAAAAAAAIC/9QI=');
+  assert.equal(pinned, 'AACAPwAAAEAAAGDAAACIQAAAAD8KAP8AIHrEAECcRgAAAAAAAAAAAACAvzUegA==');
   assert.equal(pinned.length, packedStateLength(2));
+  // The two P2-19 fields survive the round trip at wire precision.
+  const back = unpackState(pinned, 2)!;
+  assert.equal(back[0].hp, 1, 'full health is 255/255');
+  assert.equal(back[0].dnf, false);
+  assert.ok(Math.abs(back[1].hp - 0.5) < 1 / 255, 'half health is 128/255');
+  assert.equal(back[1].dnf, true, 'the DNF bit is the flag byte');
+  assert.equal(back[1].loop, 7, 'the stage still rides in the lane byte');
 });
 
 test('MP-02 pack: a state frame round-trips through float32', () => {
@@ -289,7 +315,10 @@ test('MP-02 pack: a state frame round-trips through float32', () => {
     assert.equal(m.oil, want.oil);
     assert.equal(m.ghost, want.ghost);
     assert.equal(m.anvil, want.anvil);
-    assert.equal(m.loop, want.loop, 'the three spare flag bits survive');
+    assert.equal(m.loop, want.loop, 'the loop/stage bits survive');
+    // P2-19: hp is a byte (255 steps), so it survives to a 255th; dnf is a bit and is exact.
+    assert.ok(m.hp !== undefined && Math.abs(m.hp - want.hp!) <= 1 / 255, `hp of marble ${i}`);
+    assert.equal(m.dnf, want.dnf, `dnf of marble ${i}`);
   });
 });
 
@@ -476,6 +505,13 @@ test('MP-02 validation: events are checked against what the track and grid can h
     ['a finish with no time', { kind: 'finish', seat: 1, time: -4, rank: 1 }, 'malformed'],
     ['a finish place off the podium and off the grid', { kind: 'finish', seat: 1, time: 4, rank: 11 }, 'forged'],
     ['a sound cue this build cannot name', { kind: 'sound', cue: 'explosion' }, 'forged'],
+    // P2-19: a KO credit that is not a seat, and a skill effect this build cannot draw.
+    ['a KO credited to nobody in particular', { kind: 'ko', seat: 1, by: MARBLE_COUNT }, 'forged'],
+    ['a KO of a seat that is not on the grid', { kind: 'ko', seat: MARBLE_COUNT, by: 1 }, 'forged'],
+    ['a skill effect this build does not know', { kind: 'skillfx', fx: 'nuke', seat: 0, target: -1, x: 1, y: 2, until: 3 } as unknown as RaceEvent, 'forged'],
+    ['a skill effect with no position', { kind: 'skillfx', fx: 'bolt', seat: 0, target: -1, x: Number.NaN, y: 2, until: 3 }, 'malformed'],
+    ['a skill effect with no expiry', { kind: 'skillfx', fx: 'bomb', seat: 0, target: 1, x: 1, y: 2, until: -1 }, 'malformed'],
+    ['a skill effect aimed at nobody that is not -1', { kind: 'skillfx', fx: 'decoy', seat: 0, target: MARBLE_COUNT, x: 1, y: 2, until: 3 }, 'forged'],
     ['an event kind from another game', { kind: 'cross' } as unknown as RaceEvent, 'malformed'],
     ['an event that is not an object', null as unknown as RaceEvent, 'malformed'],
   ];
@@ -498,6 +534,51 @@ test('MP-02 validation: results cannot put one marble in two places', () => {
   assert.equal(check({ ...results, pegs: [] })?.code, 'malformed', 'a peg count per seat');
   // An unclassified race still has an order: the grid, as the host saw it.
   assert.equal(check({ ...results, order: [] }), null);
+
+  // P2-19: a health race adds the DNF flags and the KO counts — whole or not at all.
+  const dnf = new Array(MARBLE_COUNT).fill(false);
+  const kos = new Array(MARBLE_COUNT).fill(0);
+  assert.equal(check({ ...results, dnf, kos }), null);
+  assert.equal(check({ ...results, dnf: dnf.slice(0, 9) })?.code, 'malformed', 'one DNF flag per seat');
+  assert.equal(check({ ...results, dnf: dnf.map(() => 'yes') })?.code, 'malformed', 'a DNF flag is a flag');
+  assert.equal(check({ ...results, kos: kos.slice(0, 9) })?.code, 'malformed', 'one KO count per seat');
+  assert.equal(check({ ...results, kos: kos.map(() => -1) })?.code, 'malformed', 'a KO count is not negative');
+  assert.equal(check({ ...results, kos: kos.map(() => 1.5) })?.code, 'malformed', 'a KO count is whole');
+});
+
+test('P2-19 validation: a wire talent build is checked against the real tree, then trimmed', () => {
+  // A build a driver could really have: whole ranks on real talents, in tier order.
+  assert.deepEqual(readTalents({ coolant: 3, 'heat-sink': 2 }), { coolant: 3, 'heat-sink': 2 });
+  assert.deepEqual(readTalents({}), {}, 'an unspent driver files an empty build');
+  assert.deepEqual(readTalents({ coolant: 0 }), {}, 'a rank of zero is no rank');
+  // Shape lies are refused, not filed away.
+  assert.equal(readTalents({ 'not-a-talent': 1 }), null, 'an unknown talent is not a build');
+  assert.equal(readTalents({ coolant: 1.5 }), null, 'a rank is a whole number');
+  assert.equal(readTalents({ coolant: 4 }), null, 'a rank above the talent’s ceiling');
+  assert.equal(readTalents({ coolant: -1 }), null);
+  assert.equal(readTalents('talented'), null);
+  assert.equal(readTalents([1, 2]), null);
+  // A build nobody could have bought arrives trimmed to one somebody could.
+  const greedy = {
+    'heat-sink': 3, coolant: 3, turbo: 3, streamline: 3, 'big-tank': 2, nitro: 2, afterburner: 1,
+    plating: 3, 'patch-up': 3, padding: 3, mender: 3, bulwark: 2, 'thick-skin': 2, 'iron-belly': 1,
+    sharpened: 3, 'quick-fuse': 3, stockpile: 1, 'heavy-hitter': 3, 'long-range': 2, demolition: 2, 'bounty-hunter': 1,
+  };
+  const trimmed = readTalents(greedy)!;
+  assert.ok(trimmed, 'the shape was fine');
+  assert.ok(pointsSpent(trimmed) <= 30, `trimmed to a maxed driver's 30 points, got ${pointsSpent(trimmed)}`);
+  assert.ok(pointsSpent(trimmed) > 0, 'and it kept what it could');
+  // A tier nobody had opened yet is not a tier the host accepts entries from.
+  assert.deepEqual(readTalents({ 'iron-belly': 1 }), {}, 'a tier-4 talent with no points below it');
+
+  // The garage carries the build, and the wire refuses one it cannot read.
+  const g = { name: 'Sprocket', color: '#22d3ee', stats: { weight: 7, speed: 4, bounce: 4 }, portrait: 3 };
+  assert.equal(validateGarage({ ...g, talents: { coolant: 2 } }), null);
+  assert.equal(validateGarage({ ...g, talents: { coolant: 'lots' } })?.code, 'forged');
+  assert.equal(check({ type: 'lobby', seats: SEATS, settings: { circuit: 0, talents: false } }), null);
+  assert.equal(check({ type: 'lobby', seats: SEATS, settings: { circuit: 0, talents: 'off' } })?.code, 'malformed');
+  assert.equal(readRaceSettings({ circuit: 0, talents: false })?.talents, false);
+  assert.equal(readRaceSettings({ circuit: 0 })?.talents, undefined, 'absent reads as on where it is used');
 });
 
 test('RK-03 validation: the rated wire, and every way it can lie', () => {
@@ -818,14 +899,16 @@ test('MP-02 purity: the protocol imports nothing the room bundle may not have', 
   // the room bundle cannot grow by accident. RK-03 added `./rating`: the
   // arithmetic (RK-01) is pure, SDK-free and DOM-free by construction, which is
   // the same reason the wire can name its `RaceEntry` / `RankWire` shapes
-  // instead of re-declaring them and drifting.
-  assert.deepEqual([...new Set(imports)].sort(), ['../game/cues', '../game/types', './rating']);
+  // instead of re-declaring them and drifting. P2-19 added `../game/talents`
+  // (pure, no imports): the wire validates a filed build against the real
+  // talent table rather than a second copy of it that could drift.
+  assert.deepEqual([...new Set(imports)].sort(), ['../game/cues', '../game/talents', '../game/types', './rating']);
 });
 
-test('MP-02 purity: the two game modules the protocol imports are pure too', () => {
+test('MP-02 purity: the game modules the protocol imports are pure too', () => {
   // Enforced where it matters (the room bundle), checked here so a future edit
-  // to `types.ts` or `audio.ts` fails in the suite rather than in a worker.
-  for (const file of ['src/game/types.ts', 'src/game/cues.ts']) {
+  // to `types.ts`, `cues.ts` or `talents.ts` fails in the suite rather than in a worker.
+  for (const file of ['src/game/types.ts', 'src/game/cues.ts', 'src/game/talents.ts']) {
     const source = readFileSync(join(ROOT, file), 'utf8');
     assert.equal(/from '[^']+'/.test(source), false, `${file} must have no imports of its own`);
   }

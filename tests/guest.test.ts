@@ -409,6 +409,66 @@ test('MP-05 guest: the host\'s events change what the guest draws', () => {
   assert.ok(guest.game.marbles[finisher].body.isSensor, 'and it is off the track');
   assert.deepEqual(guest.game.finishOrder.map((m) => m.info.id), [finisher]);
   assert.ok(guest.game.effects.length > 0, 'and it drew the ring');
+
+  // P2-19: a KO hides the victim and credits the killer — the guest never simulates the damage.
+  const victim = 6;
+  const killer = 7;
+  play([{ kind: 'ko', seat: victim, by: killer }]);
+  assert.equal(guest.game.marbles[victim].dnf, true, 'the victim is out');
+  assert.equal(guest.game.marbles[victim].body.position.x, -5000, 'and parked off the track');
+  assert.equal(guest.game.marbles[killer].kos, 1, 'the killer is credited');
+
+  // P2-19: a skillfx hangs the drawn effect on the world — bolt, patch, decoy, bomb and auras.
+  play([{ kind: 'skillfx', fx: 'bolt', seat: 0, target: 2, x: 500, y: 600, until: 60_000 }]);
+  assert.equal(guest.game.projectiles.length, 1, 'the bolt is drawn');
+  play([{ kind: 'skillfx', fx: 'spikes', seat: 0, target: -1, x: 500, y: 600, until: 60_000 }]);
+  assert.equal(guest.game.spikes.length, 1, 'the spike patch is drawn');
+  play([{ kind: 'skillfx', fx: 'decoy', seat: 0, target: -1, x: 500, y: 600, until: 60_000 }]);
+  assert.equal(guest.game.decoys.length, 1, 'the decoy is drawn');
+  play([{ kind: 'skillfx', fx: 'bomb', seat: 0, target: 2, x: 500, y: 600, until: 60_000 }]);
+  assert.equal(guest.game.bombs.length, 1, 'the bomb is drawn on its target');
+  play([{ kind: 'skillfx', fx: 'shield', seat: 2, target: 2, x: 500, y: 600, until: 60_000 }]);
+  assert.ok((guest.game.marbles[2].fx?.shieldUntil ?? 0) > 0, 'the shield aura is drawn');
+  play([{ kind: 'skillfx', fx: 'emp', seat: 2, target: 3, x: 500, y: 600, until: 60_000 }]);
+  assert.ok((guest.game.marbles[3].fx?.empUntil ?? 0) > 0, 'the EMP aura is drawn');
+});
+
+test('P2-19 guest: HP and the DNF latch come off the frames, and a knock-out hides the marble', async () => {
+  const { buildPlatformerTrack } = await import('../src/game/platformer/build');
+  const { TRACK_THEMES } = await import('../src/game/types');
+  const guest = new RaceGuest({
+    seed: SEED,
+    seats: grid(),
+    track: buildPlatformerTrack(SEED, TRACK_THEMES.forest, 'rolling-hills'),
+    localSeat: 1,
+    now: () => 0,
+    send: () => {},
+  });
+  let clock = 1000;
+  let seq = 0;
+  /** One state frame (patched) and enough drawing to reach it. */
+  const play = (patch: (m: MarbleState, seat: number) => MarbleState) => {
+    seq++;
+    guest.acceptState({ type: 'state', seq, t: seq * 50, marbles: packState(guest.game.marbleStates().map(patch)) }, clock);
+    for (let i = 0; i < 10; i++) {
+      clock += FRAME_MS;
+      guest.update(clock);
+    }
+  };
+
+  assert.equal(guest.game.healthOn, true, 'a guest on a platformer course knows health is in play');
+  play((m) => ({ ...m, hp: 0.5 }));
+  assert.ok(Math.abs(guest.game.marbles[1].health!.hp - 50) < 0.5, `half the bar is 50 HP, got ${guest.game.marbles[1].health!.hp}`);
+  assert.equal(guest.game.marbles[1].maxHp, 100, 'the guest draws a 100-point bar');
+
+  play((m) => ({ ...m, hp: 0, dnf: true }));
+  assert.equal(guest.game.marbles[1].dnf, true, 'the DNF bit is latched');
+  assert.equal(guest.game.marbles[1].health!.dnf, true, 'and health knows');
+  assert.equal(Math.round(guest.game.marbles[1].body.position.x), -5000, 'the marble left the world');
+  assert.equal(guest.game.marbles[1].body.isSensor, true, 'and cannot be drawn as racing');
+
+  play((m) => ({ ...m, hp: 1, dnf: false })); // a frame from before the knock-out
+  assert.equal(guest.game.marbles[1].dnf, true, 'a stale frame cannot resurrect it');
 });
 
 test('MP-05 guest: an events frame the network eats is said again', () => {

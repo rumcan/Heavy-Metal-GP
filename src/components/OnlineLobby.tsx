@@ -110,13 +110,15 @@ interface Props {
 
 
 /** The host's full rules, with defaults left out so an untouched lobby sends what it always did. */
-function buildSettings(circuit: number, items: Partial<Record<ItemType, number>> | null, benched: readonly number[], aiItems: boolean, platformer: string | null = null): RaceSettings {
+function buildSettings(circuit: number, items: Partial<Record<ItemType, number>> | null, benched: readonly number[], aiItems: boolean, platformer: string | null = null, talents = true): RaceSettings {
   return {
     circuit,
     ...(platformer ? { platformer } : {}),
     ...(items ? { items } : {}),
     ...(benched.length ? { benched: [...benched] } : {}),
     ...(aiItems ? {} : { aiItems: false }),
+    // P2-19: talents are on unless the host turned them off (absent reads as on).
+    ...(talents ? {} : { talents: false }),
   };
 }
 
@@ -143,6 +145,8 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
   /** Host only: AI seats taken off the grid, and whether AI may use power-ups. */
   const [benched, setBenched] = useState<number[]>([]);
   const [aiItems, setAiItems] = useState(true);
+  /** Host only (P2-19): whether the grid races with talent builds. Ranked lobbies always turn this off. */
+  const [talents, setTalents] = useState(true);
   /** Host only: whether new drivers may still join. */
   const [open, setOpen] = useState(true);
   /** Guests: the host's open flag, from the last `lobby`. */
@@ -225,12 +229,14 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
   const filed = useRef(new Map<string, SeatGarage>());
   const readies = useRef(new Map<string, boolean>());
   // Everything the message handler needs, without re-subscribing on every render.
-  const latest = useRef({ welcome, grid, lobbySeats, isHost, circuit: circuitIndex, items, open, benched, aiItems, hostRated, platformer });
-  latest.current = { welcome, grid, lobbySeats, isHost, circuit: circuitIndex, items, open, benched, aiItems, hostRated, platformer };
+  const latest = useRef({ welcome, grid, lobbySeats, isHost, circuit: circuitIndex, items, open, benched, aiItems, hostRated, platformer, talents, autoStart });
+  latest.current = { welcome, grid, lobbySeats, isHost, circuit: circuitIndex, items, open, benched, aiItems, hostRated, platformer, talents, autoStart };
   /** The host's full rules for a circuit: the circuit plus any power-up house rules. */
   const hostSettings = (circuitId: number): RaceSettings => {
     const l = latest.current;
-    const base = buildSettings(circuitId, l.items, l.benched, l.aiItems, l.platformer);
+    // P2-19: a rated race never runs talent builds — the ladder pays for driving, not for winning an
+    // arms race in the talent tree. The switch is forced off rather than merely defaulted off.
+    const base = buildSettings(circuitId, l.items, l.benched, l.aiItems, l.platformer, !l.autoStart && l.talents);
     if (customCode) (base as unknown as { customCode: string }).customCode = customCode;
     return base;
   };
@@ -269,6 +275,13 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
     if (!isHost) return;
     setAiItems(next);
     latest.current.aiItems = next;
+    publish(latest.current.grid ?? seats, circuitIndex);
+  };
+  /** Host only (P2-19): the grid races with talent builds, or everyone races stock. */
+  const changeTalents = (next: boolean) => {
+    if (!isHost || autoStart) return;
+    setTalents(next);
+    latest.current.talents = next;
     publish(latest.current.grid ?? seats, circuitIndex);
   };
 
@@ -665,6 +678,15 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
             <button className={settings.aiItems === false ? 'selected' : ''} aria-pressed={settings.aiItems === false} disabled={!isHost} onClick={() => changeAiItems(false)}>Off</button>
           </div>
         </div>
+        {/* P2-19: talent builds. A rated lobby locks this off — see `hostSettings`. */}
+        <div className="lobby-ai-items">
+          <span>Driver talents</span>
+          <div className="mode-switch" role="group" aria-label="Driver talents">
+            <button className={settings.talents !== false ? 'selected' : ''} aria-pressed={settings.talents !== false} disabled={!isHost || autoStart} onClick={() => changeTalents(true)}>On</button>
+            <button className={settings.talents === false ? 'selected' : ''} aria-pressed={settings.talents === false} disabled={!isHost || autoStart} onClick={() => changeTalents(false)}>Off</button>
+          </div>
+        </div>
+        {autoStart && <p className="lobby-note">A rated race runs without talents.</p>}
       </section>
 
       <section className="fit-pane lobby-grid-pane" aria-labelledby="lobby-grid-title">

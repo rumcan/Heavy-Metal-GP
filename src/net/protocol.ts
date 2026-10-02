@@ -38,6 +38,8 @@
 import { ITEM_TYPES, LEGACY_ITEMS, MAX_ITEM_STACK, STAT_MAX, STAT_MIN } from '../game/types';
 import type { Inventory, ItemType, MarbleStats, TrackProfile, TrackTheme } from '../game/types';
 import { SOUND_EVENTS, isSoundEvent } from '../game/cues';
+import { talentDef, validateBuild } from '../game/talents';
+import type { Build } from '../game/talents';
 import type { SoundEvent } from '../game/cues';
 export type { SoundEvent };
 // RK-01's shapes, by TYPE only: `rating.ts` is pure (no SDK, no DOM, no clock),
@@ -59,7 +61,7 @@ export type { RaceEntry, RankWire };
  * lobby/ready/start, 20 Hz packed `state`, `events`, chunked `snapshot`,
  * `intent`, `resync`, `results`, presence and the hard refusal on mismatch.
  */
-export const PROTOCOL_VERSION = 7; // 7: P2-08 24-skill inventories; 6: P2-00 depth lane byte per marble; 5: P2-01 engine flag + jump intent; // 3: the rated wire (rating board, result claim, the room's result);
+export const PROTOCOL_VERSION = 8; // 8: P2-19 hp byte + DNF flag per marble, ko/skillfx events, dnf/kos result rows, talents; 7: P2-08 24-skill inventories; 6: P2-00 depth lane byte per marble; 5: P2-01 engine flag + jump intent; // 3: the rated wire (rating board, result claim, the room's result);
 // 4: MB-10 launchers (cannon/catapult/scoop holds, flipper firedAt, sling flash) and the movers' dynamic state
 
 /**
@@ -72,7 +74,7 @@ export const FRAME_CAP_BYTES = 16 * 1024;
 
 /**
  * Bytes one `state` frame may cost (ticket acceptance: ten marbles under
- * 4 KiB). A packed ten-marble frame is ~280 base64 characters — the budget is
+ * 4 KiB). A packed ten-marble frame is ~308 base64 characters — the budget is
  * four times what the format needs, so a future extra field does not have to
  * re-open the size question, and a frame that somehow grows past it is refused
  * instead of silently eating the 20 Hz stream's headroom.
@@ -91,23 +93,42 @@ export const MARBLE_COUNT = 10;
 /** Floats per marble on the wire: x, y, vx, vy, angle. */
 export const FLOATS_PER_MARBLE = 5;
 
-/** Bytes per marble: five float32, one flag byte and one lane byte (P2-00: depth lane in bits 0-1). */
-export const BYTES_PER_MARBLE = FLOATS_PER_MARBLE * 4 + 2;
+/**
+ * Bytes per marble: five float32, one flag byte, one lane byte (P2-00: depth lane in bits 0-1,
+ * P2-19: the start-light stage in bits 2-4) and one hp byte (P2-19).
+ */
+export const BYTES_PER_MARBLE = FLOATS_PER_MARBLE * 4 + 3;
 
-/** Characters of one packed frame's base64 (ten marbles → 280, no padding). */
+/** Characters of one packed frame's base64 (ten marbles → 308, no padding). */
 export function packedStateLength(count: number = MARBLE_COUNT): number {
   return Math.ceil((count * BYTES_PER_MARBLE) / 3) * 4;
 }
 
-/** Flag-byte layout. Three bits are left for a loop/staging counter. */
+/**
+ * Flag-byte layout (byte 20 of every marble). Five effect bits, the DNF bit, and two spare:
+ *
+ *   bit 0 finished · bit 1 frozen · bit 2 oil · bit 3 ghost · bit 4 anvil · bit 5 DNF · bits 6-7 spare
+ *
+ * The start-light stage used to live in bits 5-7; P2-19's DNF bit took bit 5 and the stage moved to
+ * the lane byte (bits 2-4), which keeps every value 0..7 expressible and leaves room for the future.
+ */
 export const FLAG_FINISHED = 1 << 0;
 export const FLAG_FROZEN = 1 << 1;
 export const FLAG_OIL = 1 << 2;
 export const FLAG_GHOST = 1 << 3;
 export const FLAG_ANVIL = 1 << 4;
-export const FLAG_LOOP_MASK = 0b1110_0000;
+/** P2-19: the marble is out of the race (0 HP). A DNF marble is hidden, not drawn. */
+export const FLAG_DNF = 1 << 5;
+/**
+ * Lane-byte layout (byte 21): the depth lane in bits 0-1 (P2-00) and the loop/staging counter in
+ * bits 2-4. `lane | (loop << 2)` — so a peer that only reads bits 0-1 still reads the lane.
+ */
+export const LANE_STAGE_SHIFT = 2;
+export const LANE_STAGE_MASK = 0b0001_1100;
 /** The loop counter is three bits: 0..7. */
 export const MAX_LOOP_STAGE = 7;
+/** The hp byte (byte 22) is 0..255; 255 is full health. */
+export const HP_FULL = 255;
 
 /**
  * Characters of snapshot JSON per chunk frame: 8 KiB against the 16 KiB cap,
@@ -195,6 +216,12 @@ export interface Seat {
   /** Lobby ready flag (MP-06). Absent reads as not ready. */
   ready?: boolean;
   /**
+   * P2-19: this driver's talent build, filed with the garage like the kit. Absent reads as untalented.
+   * The HOST applies it to this seat's marble (`Game.applyTalents`), so talents are part of the world
+   * the host simulates and not a local opinion each client may hold.
+   */
+  talents?: Build;
+  /**
    * What this driver is CARRYING (MP-09). Absent reads as empty.
    *
    * An online race spends each driver's own kit, not the host's: a guest files
@@ -245,6 +272,12 @@ export interface RaceSettings {
   aiItems?: boolean;
   /** AI seats the host took off the grid: they do not race. Human seats are never benched. */
   benched?: number[];
+  /**
+   * P2-19: whether the race is run with talent builds. Absent reads as true (every seat races the
+   * build it filed); false turns every build off, which is what a RANKED lobby does — a ladder that
+   * pays rating does not pay it for a talent tree.
+   */
+  talents?: boolean;
 }
 
 /** An item the host set to "unlimited". */
@@ -331,6 +364,12 @@ export interface SeatGarage {
   portrait: number;
   /** MP-09: this driver's own items, filed against their seat. */
   inventory?: Inventory;
+  /**
+   * P2-19: this driver's talent build, sent with the garage. The host reads it with `readTalents`
+   * — shape-checked against the talent table and trimmed to a maxed driver's budget — and applies
+   * it to the seat's marble when the lobby has talents on.
+   */
+  talents?: Build;
 }
 
 /**
@@ -439,10 +478,19 @@ export interface MarbleState {
   oil: boolean;
   ghost: boolean;
   anvil: boolean;
-  /** 0..7 loop/staging counter — three spare bits in the flag byte. */
+  /** 0..7 loop/staging counter, carried in the lane byte's bits 2-4. */
   loop: number;
   /** P2-00: depth lane on a platformer course (0 back, 1 middle, 2 front). Absent = middle. */
   lane?: number;
+  /**
+   * P2-19: health as a fraction of the marble's max HP, 0..1 (the frame scales it to a byte;
+   * a snapshot carries it as a float). Absent on a race with no health — reads as full.
+   */
+  hp?: number;
+  /** P2-19: out of the race (0 HP). Absent reads as false. Mirrors `Health.dnf`. */
+  dnf?: boolean;
+  /** P2-19: rivals this marble knocked out (the HUD and the purse read it). Absent reads as 0. */
+  kos?: number;
 }
 
 /**
@@ -547,6 +595,55 @@ export interface CueEvent {
   seat?: number;
 }
 
+/**
+ * P2-19: a marble was knocked out (0 HP) — out of the race for good. The state frame carries the
+ * DNF bit; this event carries the CREDIT, which no frame can express: `by` is the seat that lands
+ * the KO (and its bounty), or -1 when a hazard, a wall or the track did it.
+ *
+ * Mirrors `freeze`: `seat` is the victim, `by` the other marble.
+ */
+export interface KoEvent {
+  kind: 'ko';
+  /** The victim's seat. */
+  seat: number;
+  /** The seat credited with the knock-out, or -1 for nobody. */
+  by: number;
+}
+
+/**
+ * P2-19: the new-skill effects a guest cannot derive, because it does not simulate them.
+ *
+ *   bolt     a homing projectile in flight (spawn position)
+ *   bomb     a sticky bomb riding a marble (target seat, position, fuse)
+ *   spikes   a spike patch on the track (its left edge and y)
+ *   decoy    a decoy ball (its position)
+ *   shield   a Bubble Shield around a marble (target)
+ *   reflect  a Mirror Plate around a marble (target)
+ *   emp      an EMP aura on a marble (target)
+ */
+export type SkillFxKind = 'bolt' | 'bomb' | 'spikes' | 'decoy' | 'shield' | 'reflect' | 'emp';
+
+/**
+ * P2-19: one of the sixteen new skills hit the world. Host-authoritative, DRAW-ONLY on a guest: it
+ * fills `game.projectiles` / `game.bombs` / `game.spikes` / `game.decoys` / `marble.fx` at the
+ * position given, and never collides anything.
+ *
+ *   fx      what it is
+ *   seat    the owner — the marble that spent the charge
+ *   target  the marble it is aimed at or landed on, or -1 when it has none
+ *   x, y    where it lives, in world units (the position the guest draws it at)
+ *   until   host clock (ms) when it is gone
+ */
+export interface SkillFxEvent {
+  kind: 'skillfx';
+  fx: SkillFxKind;
+  seat: number;
+  target: number;
+  x: number;
+  y: number;
+  until: number;
+}
+
 /** MB-10A. A track-switch plate flipped to a route (`side`: 0 = left, 1 = right). */
 export interface SwitchEvent {
   kind: 'switch';
@@ -639,6 +736,8 @@ export type RaceEvent =
   | ItemEvent
   | FinishEvent
   | CueEvent
+  | KoEvent
+  | SkillFxEvent
   | SwitchEvent
   | TrapdoorEvent
   | HoldEvent
@@ -650,7 +749,10 @@ export type RaceEvent =
   | TargetsEvent;
 
 /** Every event kind, in wire order. `validateMessage` rejects anything else. */
-export const RACE_EVENT_KINDS = ['peg', 'crate', 'box', 'oil', 'freeze', 'shock', 'item', 'finish', 'sound', 'switch', 'trapdoor', 'hold', 'seesaw', 'bridge', 'flipper', 'sling', 'turnstile', 'targets'] as const;
+export const RACE_EVENT_KINDS = ['peg', 'crate', 'box', 'oil', 'freeze', 'shock', 'item', 'finish', 'sound', 'ko', 'skillfx', 'switch', 'trapdoor', 'hold', 'seesaw', 'bridge', 'flipper', 'sling', 'turnstile', 'targets'] as const;
+
+/** Every `skillfx` kind, in wire order. `readEvent` rejects anything else. */
+export const SKILL_FX_KINDS = ['bolt', 'bomb', 'spikes', 'decoy', 'shield', 'reflect', 'emp'] as const;
 
 /**
  * host → server → everyone. What happened since the last frame.
@@ -792,6 +894,14 @@ export interface ResultsMsg {
   times: (number | null)[];
   /** seat → orange pegs popped. */
   pegs: number[];
+  /**
+   * P2-19: seat → out of the race (0 HP). Present on a race WITH health — the purse pays KO bounties
+   * from `kos` and treats a DNF as a non-finisher — and absent on a classic race, whose rows keep
+   * exactly the shape they always had (the client's settlement branches on that difference).
+   */
+  dnf?: boolean[];
+  /** P2-19: seat → rivals this seat knocked out. Present with `dnf`. */
+  kos?: number[];
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1116,26 +1226,38 @@ function finite(value: number): number {
 }
 
 function packFlags(m: MarbleState): number {
-  const loop = Number.isFinite(m.loop) ? Math.max(0, Math.min(MAX_LOOP_STAGE, Math.floor(m.loop))) : 0;
   return (
     (m.finished ? FLAG_FINISHED : 0) |
     (m.frozen ? FLAG_FROZEN : 0) |
     (m.oil ? FLAG_OIL : 0) |
     (m.ghost ? FLAG_GHOST : 0) |
     (m.anvil ? FLAG_ANVIL : 0) |
-    (loop << 5)
+    (m.dnf ? FLAG_DNF : 0)
   );
 }
 
-function unpackFlags(byte: number): Pick<MarbleState, 'finished' | 'frozen' | 'oil' | 'ghost' | 'anvil' | 'loop'> {
+function unpackFlags(byte: number): Pick<MarbleState, 'finished' | 'frozen' | 'oil' | 'ghost' | 'anvil' | 'dnf'> {
   return {
     finished: (byte & FLAG_FINISHED) !== 0,
     frozen: (byte & FLAG_FROZEN) !== 0,
     oil: (byte & FLAG_OIL) !== 0,
     ghost: (byte & FLAG_GHOST) !== 0,
     anvil: (byte & FLAG_ANVIL) !== 0,
-    loop: (byte & FLAG_LOOP_MASK) >>> 5,
+    dnf: (byte & FLAG_DNF) !== 0,
   };
+}
+
+/** The lane byte: depth lane in bits 0-1, the loop/staging counter in bits 2-4. */
+function packLane(m: MarbleState): number {
+  const loop = Number.isFinite(m.loop) ? Math.max(0, Math.min(MAX_LOOP_STAGE, Math.floor(m.loop))) : 0;
+  const lane = Number.isInteger(m.lane) && m.lane! >= 0 && m.lane! <= 2 ? m.lane! : 1;
+  return lane | (loop << LANE_STAGE_SHIFT);
+}
+
+/** The hp byte: `round(hp / maxHp * 255)`. Absent hp is full health. */
+function packHp(m: MarbleState): number {
+  const hp = Number.isFinite(m.hp) ? Math.max(0, Math.min(1, m.hp!)) : 1;
+  return Math.round(hp * HP_FULL);
 }
 
 /** Pack marble states into the base64 a `state` frame carries. */
@@ -1150,7 +1272,8 @@ export function packState(marbles: readonly MarbleState[]): string {
     view.setFloat32(at + 12, finite(m.vy), true);
     view.setFloat32(at + 16, finite(m.a), true);
     view.setUint8(at + 20, packFlags(m));
-    view.setUint8(at + 21, Number.isInteger(m.lane) && m.lane! >= 0 && m.lane! <= 2 ? m.lane! : 1);
+    view.setUint8(at + 21, packLane(m));
+    view.setUint8(at + 22, packHp(m));
   });
   return encodeBase64(bytes);
 }
@@ -1176,6 +1299,8 @@ export function unpackState(data: string, count: number = MARBLE_COUNT): MarbleS
       a: view.getFloat32(at + 16, true),
       ...unpackFlags(view.getUint8(at + 20)),
       lane: Math.min(2, view.getUint8(at + 21) & 0b11),
+      loop: (view.getUint8(at + 21) & LANE_STAGE_MASK) >>> LANE_STAGE_SHIFT,
+      hp: view.getUint8(at + 22) / HP_FULL,
     });
   }
   return out;
@@ -1463,6 +1588,7 @@ export function readRaceSettings(value: unknown): RaceSettings | null {
     if (!/^[A-Za-z0-9_-]+$/.test(s.customCode.slice(2))) return null;
   }
   if (s.aiItems !== undefined && typeof s.aiItems !== 'boolean') return null;
+  if (s.talents !== undefined && typeof s.talents !== 'boolean') return null; // P2-19
   if (s.platformer !== undefined && (typeof s.platformer !== 'string' || !/^[a-z0-9-]{1,32}$/.test(s.platformer))) return null;
   let benched: number[] | undefined;
   if (s.benched !== undefined) {
@@ -1476,6 +1602,7 @@ export function readRaceSettings(value: unknown): RaceSettings | null {
     ...(items ? { items } : {}),
     ...(typeof s.customCode === 'string' ? { customCode: s.customCode } : {}),
     ...(s.aiItems !== undefined ? { aiItems: s.aiItems as boolean } : {}),
+    ...(s.talents !== undefined ? { talents: s.talents as boolean } : {}),
     ...(benched ? { benched } : {}),
     ...(typeof s.platformer === 'string' ? { platformer: s.platformer } : {}),
   };
@@ -1493,6 +1620,29 @@ function validateFrom(msg: { from?: unknown }): ProtocolError | null {
  * `STAT_BUDGET` — same call as `validateSeat`: the budget is a garage rule for
  * building a marble, and refusing a whole room over it would strand everyone.
  */
+/** P2-19: a wire talent build is checked against a maxed driver — level 30, 30 talent points. */
+export const MAX_WIRE_TALENT_LEVEL = 30;
+export const MAX_WIRE_TALENT_POINTS = 30;
+
+/**
+ * P2-19: a talent build, as `ready` and `seat` frames carry it.
+ *
+ * Shape-checked against the real talent table — an unknown id or an out-of-range rank is refused,
+ * not quietly filed away — and then run through `validateBuild` at a maxed driver's level and
+ * budget. The host cannot know how many points the sender actually earned, so a build nobody could
+ * have bought arrives trimmed to one somebody could, rather than being trusted.
+ */
+export function readTalents(raw: unknown): Build | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const build: Build = {};
+  for (const [id, rank] of Object.entries(raw as Record<string, unknown>)) {
+    const def = talentDef(id);
+    if (!def || !isInt(rank, 0, def.maxRank)) return null;
+    if ((rank as number) > 0) build[id] = rank as number;
+  }
+  return validateBuild(build, MAX_WIRE_TALENT_LEVEL, MAX_WIRE_TALENT_POINTS);
+}
+
 export function validateGarage(value: unknown): ProtocolError | null {
   if (!value || typeof value !== 'object') return bad('Garage is not an object.');
   const g = value as Record<string, unknown>;
@@ -1507,6 +1657,7 @@ export function validateGarage(value: unknown): ProtocolError | null {
   // A kit is counts, and counts have a ceiling: an inventory is not a wallet a
   // client may top up on the way through the wire.
   if (g.inventory !== undefined && readInventory(g.inventory) === null) return forged('Garage inventory is not an inventory.');
+  if (g.talents !== undefined && readTalents(g.talents) === null) return forged('Garage talents are not a talent build.');
   return null;
 }
 
@@ -1531,6 +1682,7 @@ export function validateSeat(value: unknown): ProtocolError | null {
   if (typeof s.isAI !== 'boolean') return bad('Seat isAI flag is not a boolean.');
   if (s.ready !== undefined && typeof s.ready !== 'boolean') return bad('Seat ready flag is not a boolean.');
   if (s.inventory !== undefined && readInventory(s.inventory) === null) return forged('Seat inventory is not an inventory.');
+  if (s.talents !== undefined && readTalents(s.talents) === null) return forged('Seat talents are not a talent build.');
   if (s.isAI && s.playerId !== '') return forged('An AI seat must not claim a player id.');
   if (!s.isAI && s.playerId === '') return forged('A human seat must carry its player id.');
   return null;
@@ -1650,6 +1802,21 @@ function validateEvent(value: unknown): ProtocolError | null {
       if (!isSoundEvent(e.cue)) return forged(`Sound cue "${e.cue}" is not one of: ${SOUND_EVENTS.join(', ')}.`);
       if (e.seat !== undefined) return seat(e.seat);
       return null;
+    }
+    case 'ko': {
+      // -1 is the wire's word for "nobody gets the bounty" (a hazard, a wall): any other value
+      // must be a seat on the grid.
+      if (!isInt(e.by, -1, MARBLE_COUNT - 1)) return forged(`KO credit ${String(e.by)} is not a seat.`);
+      return seat(e.seat);
+    }
+    case 'skillfx': {
+      if (typeof e.fx !== 'string' || !(SKILL_FX_KINDS as readonly string[]).includes(e.fx)) {
+        return forged(`Skill effect "${String(e.fx)}" is not one this build draws.`);
+      }
+      if (!isNumber(e.x) || !isNumber(e.y)) return bad('Skill effect has no position.');
+      if (!isNumber(e.until) || e.until < 0) return bad('Skill effect has no expiry.');
+      if (!isInt(e.target, -1, MARBLE_COUNT - 1)) return forged(`Skill effect target ${String(e.target)} is not a seat.`);
+      return seat(e.seat);
     }
     case 'switch': {
       if (e.side !== 0 && e.side !== 1) return bad('Switch event has no side.');
@@ -1782,6 +1949,11 @@ export function isRaceSnapshot(value: unknown): value is RaceSnapshot {
     }
     if (!isInt(marble.loop, 0, MAX_LOOP_STAGE)) return false;
     if (marble.lane !== undefined && !isInt(marble.lane, 0, 2)) return false;
+    // P2-19: hp and dnf per marble. Optional (a classic race has no health) — but when they are
+    // present they must be readable: a fraction 0..1, a flag, and a KO count.
+    if (marble.hp !== undefined && (!isNumber(marble.hp) || marble.hp < 0 || marble.hp > 1)) return false;
+    if (marble.dnf !== undefined && typeof marble.dnf !== 'boolean') return false;
+    if (marble.kos !== undefined && !isInt(marble.kos, 0, 100_000)) return false;
   }
   if (!Array.isArray(s.destroyed)) return false;
   for (const i of s.destroyed) if (!isInt(i, 0, MAX_BODY_INDEX)) return false;
@@ -1825,6 +1997,16 @@ function validateResults(msg: ResultsMsg): ProtocolError | null {
   if (!Array.isArray(msg.pegs) || msg.pegs.length !== MARBLE_COUNT) return bad('Result pegs are not one per seat.');
   for (const pegs of msg.pegs) {
     if (!isInt(pegs, 0, 100_000)) return bad('Result peg count is not a count.');
+  }
+  // P2-19: a health race's rows carry the DNF flags and the KO counts; both are optional (a classic
+  // race omits them) but neither may be half-sent or out of range.
+  if (msg.dnf !== undefined) {
+    if (!Array.isArray(msg.dnf) || msg.dnf.length !== MARBLE_COUNT) return bad('Result DNF flags are not one per seat.');
+    for (const dnf of msg.dnf) if (typeof dnf !== 'boolean') return bad('Result DNF flag is not a flag.');
+  }
+  if (msg.kos !== undefined) {
+    if (!Array.isArray(msg.kos) || msg.kos.length !== MARBLE_COUNT) return bad('Result KO counts are not one per seat.');
+    for (const kos of msg.kos) if (!isInt(kos, 0, 100_000)) return bad('Result KO count is not a count.');
   }
   return null;
 }

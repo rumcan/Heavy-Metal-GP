@@ -39,6 +39,7 @@ import {
   chunkSnapshot,
   nextSeq,
   packState,
+  readTalents,
   SEQ_START,
   UNLIMITED_ITEM,
 } from './protocol';
@@ -219,9 +220,31 @@ export class RaceHost {
       gridOrder: opts.gridOrder ?? seats.map((s) => s.slot),
     });
     this.game.start();
+    this.applySeatTalents();
     // The kit as the grid was built — the baseline a change is measured from.
     this.kitAt = this.kitNow();
     this.lastPublishAt = this.clock();
+  }
+
+  /**
+   * P2-19: every seat races the build it filed.
+   *
+   * A guest's build travelled with its garage in `ready`, was shape-checked and trimmed to a maxed
+   * driver's budget on the wire, and is applied HERE — on the host's marble — so a talent is part of
+   * the world the host simulates, not a number each client keeps its own opinion of. Absent setting
+   * means on; `talents: false` (a ranked lobby) turns the whole grid's builds off.
+   */
+  private applySeatTalents(): void {
+    if (this.settings?.talents === false) return;
+    for (const seat of this.seats) {
+      const build = readTalents(seat.talents);
+      if (!build || Object.keys(build).length === 0) continue;
+      const marble = this.game.marbles.find((m) => m.info.id === seat.slot);
+      // The seat's kit, in table order: `applyTalents` gives Stockpile's extra charge to the first
+      // OFFENCE skill a seat carries, which is the closest online gets to the loadout screen's slots.
+      const slots: ItemType[] = ITEM_TYPES.filter((item) => (seat.inventory?.[item] ?? 0) > 0);
+      if (marble) this.game.applyTalents(marble, build, slots);
+    }
   }
 
   /** True once the gate has dropped. */
@@ -495,6 +518,8 @@ export class RaceHost {
       marbles: this.game.marbleStates().map((m) => ({
         x: r2(m.x), y: r2(m.y), vx: r2(m.vx), vy: r2(m.vy), a: r2(m.a),
         finished: m.finished, frozen: m.frozen, oil: m.oil, ghost: m.ghost, anvil: m.anvil, loop: m.loop,
+        // P2-19: a joiner gets the health it missed: hp as a fraction of max HP, DNF, KO count.
+        ...(m.hp !== undefined ? { hp: r2(m.hp), dnf: !!m.dnf, kos: m.kos ?? 0 } : {}),
       })),
       destroyed: this.game.destroyedIndices(),
       boxes: this.game.boxStates(),
@@ -613,6 +638,17 @@ export class RaceHost {
       times[entry.marble.info.id] = entry.time === null ? null : Math.round(entry.time);
       pegs[entry.marble.info.id] = entry.marble.pegs;
     }
-    return { type: 'results', order: ranking.map((entry) => entry.marble.info.id), times, pegs };
+    const msg: ResultsMsg = { type: 'results', order: ranking.map((entry) => entry.marble.info.id), times, pegs };
+    // P2-19: a race with health publishes who was knocked out and who did the knocking — the purse
+    // needs both to pay a bounty. A classic race's results keep exactly the shape they always had.
+    if (this.game.healthOn) {
+      msg.dnf = new Array(MARBLE_COUNT).fill(false);
+      msg.kos = new Array(MARBLE_COUNT).fill(0);
+      for (const m of this.game.marbles) {
+        msg.dnf[m.info.id] = !!m.dnf;
+        msg.kos[m.info.id] = m.kos ?? 0;
+      }
+    }
+    return msg;
   }
 }
