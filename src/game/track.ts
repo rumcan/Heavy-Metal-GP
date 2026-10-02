@@ -1,7 +1,7 @@
 import Matter from 'matter-js';
 import { buildCourse } from './course-builder'; import { buildExperimentalCourse } from './course-builder-experimental';
 import { buildPlatformerTrack } from './platformer/build';
-import { massForWeight, mulberry32, TrackProfile, TrackTheme, ITEM_TYPES, CIRCUIT_LENGTH_MULTIPLIER, TRACK_THEMES } from './types';
+import { massForWeight, mulberry32, TrackProfile, TrackTheme, LEGACY_ITEMS, CIRCUIT_LENGTH_MULTIPLIER, TRACK_THEMES } from './types';
 import type { ItemType } from './types';
 import { rampSurface } from './physics';
 import type { RampSurface } from './physics';
@@ -426,7 +426,7 @@ export class Builder {
 
   /** The icon a glowing peg drops. A method so a def recorder can capture the rolled value and replay it. */
   rollItem(): ItemType {
-    return ITEM_TYPES[Math.floor(this.rng() * ITEM_TYPES.length)];
+    return LEGACY_ITEMS[Math.floor(this.rng() * LEGACY_ITEMS.length)]; // classic tracks keep the original eight
   }
 
   /** Start angle of a swing for a wrecking ball; captured by defs for the same reason as `rollItem`. */

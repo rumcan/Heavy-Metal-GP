@@ -8,12 +8,17 @@ export const STAT_BUDGET = 15;
 export const STAT_MIN = 1;
 export const STAT_MAX = 10;
 
-export const ITEM_TYPES = ['rocket', 'jump', 'oil', 'shock', 'anvil', 'aero', 'freeze', 'ghost'] as const;
+/** The eight original items first (their order is part of old saves and tests), then the sixteen P2-08 skills. */
+export const LEGACY_ITEMS = ['rocket', 'jump', 'oil', 'shock', 'anvil', 'aero', 'freeze', 'ghost'] as const;
+const NEW_SKILLS = ['shield', 'ram', 'repair', 'brake', 'bolt', 'overdrive', 'spikes', 'decoy', 'grapple', 'bomb', 'reflect', 'blink', 'emp', 'lightning', 'drill', 'charm'] as const;
+export const ITEM_TYPES = [...LEGACY_ITEMS, ...NEW_SKILLS] as const;
 export type ItemType = typeof ITEM_TYPES[number];
 export type Inventory = Record<ItemType, number>;
 export const MAX_ITEM_STACK = 9;
 
-export const ITEM_INFO: Record<ItemType, { name: string; short: string; desc: string; color: string; price: number; duration: number; category: 'Performance' | 'Disruption'; effect: string }> = {
+type ItemInfo = { name: string; short: string; desc: string; color: string; price: number; duration: number; category: 'Performance' | 'Disruption'; effect: string };
+
+const LEGACY_INFO: Record<typeof LEGACY_ITEMS[number], ItemInfo> = {
   rocket: { name: 'Speed boost', short: 'BOOST', desc: 'Fire a forward thruster and raise your top speed for 3 seconds.', color: '#d63e2e', price: 90, duration: 3000, category: 'Performance', effect: 'Extra thrust / 3s' },
   jump: { name: 'Jump', short: 'JUMP', desc: 'Launch upward instantly. Keep your sideways momentum to clear a lip or dodge the pack.', color: '#b6a0ff', price: 65, duration: 1000, category: 'Performance', effect: 'Instant lift' },
   oil: { name: 'Oil slick', short: 'OIL', desc: 'Leave a slick behind you for 9 seconds. Rivals slow down; you keep your grip.', color: '#c084fc', price: 55, duration: 0, category: 'Disruption', effect: 'Trail hazard / 9s' },
@@ -24,8 +29,31 @@ export const ITEM_INFO: Record<ItemType, { name: string; short: string; desc: st
   ghost: { name: 'Ghost mode', short: 'GHOST', desc: 'Phase through other marbles for 3 seconds. Track walls still apply.', color: '#e2e8f0', price: 85, duration: 3000, category: 'Performance', effect: 'Phase through rivals / 3s' },
 };
 
+/** The sixteen P2-08 skills. These numbers mirror src/game/skills/catalog.ts (a test keeps the two in step); the
+ *  protocol imports this file, so it cannot import the catalogue. */
+const NEW_INFO: Record<typeof NEW_SKILLS[number], ItemInfo> = {
+  shield: { name: 'Bubble Shield', short: 'SHIELD', desc: 'A bubble that absorbs the next 40 damage or lasts 4 seconds.', color: '#60a5fa', price: 80, duration: 4000, category: 'Performance', effect: 'Absorbs 40 damage / 4s' },
+  ram: { name: 'Battering Ram', short: 'RAM', desc: 'A 2.5 second charge that smashes breakable walls and barricades.', color: '#b45309', price: 95, duration: 2500, category: 'Performance', effect: 'Wall buster / 2.5s' },
+  repair: { name: 'Repair Kit', short: 'REPAIR', desc: 'Heal 40 HP instantly.', color: '#4ade80', price: 70, duration: 0, category: 'Performance', effect: '+40 HP' },
+  brake: { name: 'Air Brake', short: 'BRAKE', desc: 'Kill most of your speed and hover for a second to line up a jump.', color: '#94a3b8', price: 60, duration: 1000, category: 'Performance', effect: 'Hover / 1s' },
+  bolt: { name: 'Homing Bolt', short: 'BOLT', desc: 'Seeks the nearest rival ahead for 25 damage and a knock.', color: '#f97316', price: 105, duration: 0, category: 'Disruption', effect: '25 damage' },
+  overdrive: { name: 'Overdrive', short: 'OVERDRIVE', desc: 'The Magic Engine never overheats for 5 seconds and pushes harder.', color: '#ef4444', price: 90, duration: 5000, category: 'Performance', effect: 'No overheat / 5s' },
+  spikes: { name: 'Caltrops', short: 'SPIKES', desc: 'Drop spikes behind you for 6 seconds. Rivals take damage and lose grip.', color: '#a8a29e', price: 70, duration: 6000, category: 'Disruption', effect: 'Spike patch / 6s' },
+  decoy: { name: 'Decoy', short: 'DECOY', desc: 'A fake marble that homing skills chase for 5 seconds.', color: '#fbbf24', price: 65, duration: 5000, category: 'Performance', effect: 'Fake marble / 5s' },
+  grapple: { name: 'Grapple Hook', short: 'GRAPPLE', desc: 'Yanks you to the nearest ledge ahead.', color: '#a16207', price: 85, duration: 0, category: 'Performance', effect: 'Pull to ledge' },
+  bomb: { name: 'Sticky Bomb', short: 'BOMB', desc: 'Sticks to a rival and explodes after 2 seconds for 35 damage.', color: '#dc2626', price: 115, duration: 2000, category: 'Disruption', effect: '35 damage / 2s' },
+  reflect: { name: 'Mirror Plate', short: 'MIRROR', desc: 'Bounces freeze, bolts and bombs back at the sender for 3 seconds.', color: '#e0f2fe', price: 95, duration: 3000, category: 'Performance', effect: 'Reflect / 3s' },
+  blink: { name: 'Blink', short: 'BLINK', desc: 'Teleport 140 px forward if the landing spot is clear.', color: '#a78bfa', price: 100, duration: 0, category: 'Performance', effect: 'Teleport 140 px' },
+  emp: { name: 'EMP', short: 'EMP', desc: 'Nearby rivals cannot use skills for 4 seconds.', color: '#38bdf8', price: 120, duration: 4000, category: 'Disruption', effect: 'Skills off / 4s' },
+  lightning: { name: 'Lightning Strike', short: 'STRIKE', desc: 'Strikes the race leader for 30 damage and a 1 second stun.', color: '#fde047', price: 130, duration: 1000, category: 'Disruption', effect: '30 damage + stun' },
+  drill: { name: 'Drill', short: 'DRILL', desc: 'Drop straight through the next floor below you.', color: '#78716c', price: 110, duration: 1000, category: 'Performance', effect: 'Pass floors / 1s' },
+  charm: { name: "Shaman's Charm", short: 'CHARM', desc: 'The next killing hit leaves you on 1 HP instead, for 8 seconds.', color: '#34d399', price: 150, duration: 8000, category: 'Performance', effect: 'Survive a KO / 8s' },
+};
+
+export const ITEM_INFO = Object.fromEntries(ITEM_TYPES.map((id) => [id, (LEGACY_INFO as Record<string, ItemInfo>)[id] ?? (NEW_INFO as Record<string, ItemInfo>)[id]])) as Record<ItemType, ItemInfo>;
+
 export function emptyInventory(): Inventory {
-  return { rocket: 0, jump: 0, oil: 0, shock: 0, anvil: 0, aero: 0, freeze: 0, ghost: 0 };
+  return Object.fromEntries(ITEM_TYPES.map((id) => [id, 0])) as Inventory;
 }
 
 export function normalizeInventory(value: unknown): Inventory {

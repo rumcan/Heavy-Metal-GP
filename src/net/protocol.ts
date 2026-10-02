@@ -35,7 +35,7 @@
 // randomness come from the seeded RNG (`mulberry32`); this file only moves the
 // numbers both sides already agree on.
 // ══════════════════════════════════════════════════════════════════════════
-import { ITEM_TYPES, MAX_ITEM_STACK, STAT_MAX, STAT_MIN } from '../game/types';
+import { ITEM_TYPES, LEGACY_ITEMS, MAX_ITEM_STACK, STAT_MAX, STAT_MIN } from '../game/types';
 import type { Inventory, ItemType, MarbleStats, TrackProfile, TrackTheme } from '../game/types';
 import { SOUND_EVENTS, isSoundEvent } from '../game/cues';
 import type { SoundEvent } from '../game/cues';
@@ -59,7 +59,7 @@ export type { RaceEntry, RankWire };
  * lobby/ready/start, 20 Hz packed `state`, `events`, chunked `snapshot`,
  * `intent`, `resync`, `results`, presence and the hard refusal on mismatch.
  */
-export const PROTOCOL_VERSION = 6; // 6: P2-00 depth lane byte per marble; 5: P2-01 engine flag + jump intent; // 3: the rated wire (rating board, result claim, the room's result);
+export const PROTOCOL_VERSION = 7; // 7: P2-08 24-skill inventories; 6: P2-00 depth lane byte per marble; 5: P2-01 engine flag + jump intent; // 3: the rated wire (rating board, result claim, the room's result);
 // 4: MB-10 launchers (cannon/catapult/scoop holds, flipper firedAt, sling flash) and the movers' dynamic state
 
 /**
@@ -1749,7 +1749,9 @@ function readInventory(value: unknown): Inventory | null {
   const raw = value as Record<string, unknown>;
   const out = {} as Inventory;
   for (const item of ITEM_TYPES) {
-    const count = raw[item];
+    // The original eight must all be present (a partial kit is somebody else's save file); a sender that has
+    // never heard of a P2-08 skill simply holds none of it.
+    const count = (LEGACY_ITEMS as readonly string[]).includes(item) ? raw[item] : raw[item] ?? 0;
     if (!isInt(count, 0, MAX_ITEM_STACK)) return null;
     out[item] = count as number;
   }

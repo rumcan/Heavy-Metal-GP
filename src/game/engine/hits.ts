@@ -4,11 +4,13 @@ import Matter from 'matter-js';
 import { meta } from '../track';
 import { pendulumOmega, slideDir, rollAt, pathAt, beltDir } from '../elements';
 
-import { MAX_ITEM_STACK } from '../types';
+import { MAX_ITEM_STACK, LEGACY_ITEMS } from '../types';
+import type { ItemType } from '../types';
 
 
 import { BASE_TICK } from '../physics';
 import { DAMAGE, recordBump } from '../health';
+import { ramHit } from '../skills/effects';
 
 
 
@@ -31,6 +33,9 @@ export function onCollisionStart(game: Game, e: Matter.IEventCollision<Matter.En
     }
     else if (ma && mb) {
       if (ma.hold || mb.hold) continue; // a hidden marble clacks with nobody
+      // P2-08: a ramming marble hurts and shoves what it hits
+      ramHit(game, ma, mb);
+      ramHit(game, mb, ma);
       // P2-07: a hard enough bump is remembered, so a rival who knocks you into a hazard gets the KO
       if (game.healthOn && ma.health && mb.health && Math.hypot(ma.body.velocity.x - mb.body.velocity.x, ma.body.velocity.y - mb.body.velocity.y) > 4) {
         ma.health = recordBump(ma.health, mb.info.id, game.time);
@@ -140,7 +145,8 @@ export function marbleHits(game: Game, m: Marble, other: Matter.Body) {
     }
     case 'breakable': {
       const speed = Body.getSpeed(m.body);
-      const dmg = m.body.mass * speed;
+      const rammed = game.time < (m.fx?.ramUntil ?? 0); // P2-08: a Battering Ram shatters any wall
+      const dmg = rammed ? (md.hp ?? 0) + 1 : m.body.mass * speed;
       md.hp = (md.hp ?? 0) - dmg;
       if (md.hp > 0 && dmg > 0.5) game.sfx('crack', m, other.position.x, other.position.y);
       game.emit({ kind: 'crate', i: game.indexOf(other), hp: Math.max(0, md.hp), broken: md.hp <= 0 });
@@ -182,7 +188,7 @@ export function marbleHits(game: Game, m: Marble, other: Matter.Body) {
     // ---- MB-10A: shortcuts and secrets ----
     case 'barricade': {
       // A NO ENTRY barricade: damage is weight × speed like a SMASH crate; Heavy metal one-hits it.
-      const anvil = game.time < m.anvilUntil;
+      const anvil = game.time < m.anvilUntil || game.time < (m.fx?.ramUntil ?? 0);
       const speed = Body.getSpeed(m.body);
       const dmg = anvil ? (md.hp ?? 1) + 1 : m.body.mass * speed;
       md.hp = (md.hp ?? 0) - dmg;
@@ -218,7 +224,7 @@ export function marbleHits(game: Game, m: Marble, other: Matter.Body) {
       // A crumbling wall: cumulative pack damage, permanent for the race; Heavy metal counts triple.
       const anvil = game.time < m.anvilUntil;
       const speed = Body.getSpeed(m.body);
-      const dmg = m.body.mass * speed * (anvil ? 3 : 1);
+      const dmg = game.time < (m.fx?.ramUntil ?? 0) ? (md.hp ?? 0) + 1 : m.body.mass * speed * (anvil ? 3 : 1); // P2-08: the ram shatters it
       md.hp = (md.hp ?? 0) - dmg;
       if (md.hp > 0 && dmg > 0.5) game.sfx('crack', m, other.position.x, other.position.y);
       game.emit({ kind: 'crate', i: game.indexOf(other), hp: Math.max(0, md.hp), broken: md.hp <= 0 });
@@ -552,7 +558,8 @@ export function marbleHits(game: Game, m: Marble, other: Matter.Body) {
     }
     case 'itembox': {
       if (!md.active) break;
-      const available = ITEM_POOL.filter((item) => m.inventory[item] < MAX_ITEM_STACK);
+      const pool = game.dropPool ?? (game.track.platformer ? ITEM_POOL : LEGACY_ITEMS); // classic drops keep the original eight
+      const available = pool.filter((item) => m.inventory[item] < MAX_ITEM_STACK);
       if (!available.length) break;
       md.active = false;
       md.respawnAt = game.time + 7000;
@@ -583,7 +590,8 @@ export function marbleHits(game: Game, m: Marble, other: Matter.Body) {
         Body.setVelocity(m.body, { x: v.x + (v.x / sp) * 1.5, y: v.y + (v.y / sp) * 1.5 + 0.5 });
         game.effects.push({ type: 'text', x: other.position.x, y: other.position.y - 20, ttl: 40, maxTtl: 40, color: '#fdba74', text: '+1 PEG' });
       } else if (col === 'green') {
-        game.grantItem(m, md.itemDrop ?? ITEM_POOL[Math.floor(game.rng() * ITEM_POOL.length)]);
+        const drops: readonly ItemType[] = game.dropPool ?? LEGACY_ITEMS;
+        game.grantItem(m, md.itemDrop && drops.includes(md.itemDrop) ? md.itemDrop : drops[Math.floor(game.rng() * drops.length)]);
         game.effects.push({ type: 'text', x: other.position.x, y: other.position.y - 20, ttl: 40, maxTtl: 40, color: '#86efac', text: 'POWER!' });
       }
       break;

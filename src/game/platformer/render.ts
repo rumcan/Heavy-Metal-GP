@@ -6,6 +6,7 @@ import type { Game, Marble } from '../engine';
 import { meta } from '../track';
 import { laneFocus, laneView, visibleLanes, LANE_SWITCH_MS, LANE_MIDDLE } from '../lanes';
 import { drawMarble } from '../render';
+import { drawSkillWorld } from '../skills/draw';
 import { SPRING_W, floorAt } from './course';
 import type { CoursePlan, Floor, Lane, LaneGate } from './course';
 import { drawCoasterLane } from './coaster';
@@ -385,6 +386,7 @@ function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, 
     for (const s of info.plan.springs ?? []) if (s.lane === lane && s.x + SPRING_W > left && s.x < right) drawSpring(ctx, s.x, s.y, fired(s.x));
   }
   drawCannons(ctx, game, lane, t);
+  drawSkillWorld(ctx, game, lane, t); // P2-08
   const player = game.player;
   for (const g of info.plan.gates) {
     if (g.lane !== lane || g.x + g.w < left || g.x > right) continue;

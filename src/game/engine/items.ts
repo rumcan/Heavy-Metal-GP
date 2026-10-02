@@ -13,6 +13,7 @@ import { ItemType, MARBLE_RADIUS, ITEM_TYPES, ITEM_INFO, MAX_ITEM_STACK } from '
 
 
 import { Game, Body, Marble } from '../engine';
+import * as skills from '../skills/effects';
 
 
 export function grantItem(game: Game, m: Marble, item: ItemType): boolean  {
@@ -31,8 +32,12 @@ export function grantItem(game: Game, m: Marble, item: ItemType): boolean  {
 }
 
 export function itemRemaining(game: Game, m: Marble, item: ItemType): number  {
-  const end = { rocket: m.rocketUntil, jump: m.jumpUntil, aero: m.aeroUntil, anvil: m.anvilUntil, ghost: m.ghostUntil, oil: 0, shock: 0, freeze: 0 }[item];
-  return Math.max(0, end - game.time);
+  const fx = m.fx ?? {};
+  const timers: Partial<Record<ItemType, number>> = {
+    rocket: m.rocketUntil, jump: m.jumpUntil, aero: m.aeroUntil, anvil: m.anvilUntil, ghost: m.ghostUntil,
+    shield: fx.shieldUntil, ram: fx.ramUntil, brake: fx.hoverUntil, overdrive: fx.overdriveUntil, reflect: fx.reflectUntil, charm: fx.charmUntil, drill: fx.drillUntil,
+  };
+  return Math.max(0, (timers[item] ?? 0) - game.time);
 }
 
 export function availableItem(game: Game, m: Marble = game.player): ItemType | undefined  {
@@ -40,7 +45,8 @@ export function availableItem(game: Game, m: Marble = game.player): ItemType | u
 }
 
 export function canUseItem(game: Game, m: Marble, item: ItemType): boolean  {
-  return game.gateOpen && !m.frozen && m.finishedAt === null && m.inventory[item] > 0 && game.time >= m.itemCooldownUntil && game.itemRemaining(m, item) === 0;
+  // P2-08: an EMP shuts skills off for a few seconds
+  return game.gateOpen && !m.frozen && m.finishedAt === null && !m.dnf && m.inventory[item] > 0 && game.time >= m.itemCooldownUntil && game.itemRemaining(m, item) === 0 && game.time >= (m.fx?.empUntil ?? 0);
 }
 
 export function speedLimit(game: Game, m: Marble): number  {
@@ -64,6 +70,13 @@ export function useItem(game: Game, m: Marble, item = game.availableItem(m)): bo
       .sort((a, b) => Math.hypot(a.body.position.x - p.x, a.body.position.y - p.y) - Math.hypot(b.body.position.x - p.x, b.body.position.y - p.y))[0];
   if (item === 'freeze' && !freezeTarget) {
     if (m.info.isPlayer) game.onEvent?.('No rival in range / freeze charge kept', '#7dd3fc');
+    else m.aiUseAt = game.time + 1500;
+    return false;
+  }
+  // P2-08: the new skills check they can work (a target, a clear spot, health on) before a charge is spent
+  const refusal = skills.preflight(game, m, item);
+  if (refusal) {
+    if (m.info.isPlayer) game.onEvent?.(`${refusal} / charge kept`, '#a4b7c8');
     else m.aiUseAt = game.time + 1500;
     return false;
   }
@@ -149,10 +162,11 @@ export function useItem(game: Game, m: Marble, item = game.availableItem(m)): bo
       game.applyMask(m);
       break;
     }
+    default: skills.apply(game, m, item); // P2-08: the sixteen new skills
   }
   if (m.info.isPlayer) {
     game.onInventoryChange?.({ ...m.inventory });
-    if (item !== 'freeze') game.onEvent?.(`${ITEM_INFO[item].name} deployed`, ITEM_INFO[item].color);
+    if (item !== 'freeze' && item !== 'lightning') game.onEvent?.(`${ITEM_INFO[item].name} deployed`, ITEM_INFO[item].color);
   }
   return true;
 }

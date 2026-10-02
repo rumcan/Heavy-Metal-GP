@@ -29,9 +29,11 @@ export function steer(game: Game, m: Marble, v: Matter.Vector, s: number): Matte
   const grounded = m.grounded < 5;
   if (hands.nudge !== 0) v = { x: steerVelocity(v.x, hands.nudge, grounded, s), y: v.y };
 
+  // P2-08: Overdrive: the engine never overheats and pushes half as hard again
+  const overdrive = (m.fx?.overdriveUntil ?? 0) > game.time;
   const engine = engineStep(m.engine ?? newEngine(), hands.engine, game.time, s * TICK);
-  m.engine = engine.state;
-  const push = engineThrust(v.x, v.y, engine.firing, s);
+  m.engine = overdrive ? { heat: 0, lockedUntil: 0 } : engine.state;
+  const push = engineThrust(v.x, v.y, engine.firing || (overdrive && hands.engine), s * (overdrive ? 1.5 : 1));
   v = { x: v.x + push.x, y: v.y + push.y };
 
   // P2-00: on a platformer, a jump press inside a lane door goes through the door instead.

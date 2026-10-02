@@ -3,6 +3,7 @@ import { Game, Marble } from './engine';
 import { hingeTimerState, hingeIsOpen, trapdoorWarn, pistonState, beltDir } from './elements';
 import { meta, W, cannonAim } from './track';
 import { MARBLE_RADIUS, ITEM_INFO, skinFor, themeIdFor } from './types';
+import { drawAura, drawSkillWorld } from './skills/draw';
 import { ballFor, bodyFrame, contentBox, currentSkin, drawRail, drawSprite, drawStrip, setSkin, sprite } from './sprites';
 import { WIND_FAN_ART, windFanAnchor, windDustPose } from './wind-art';
 import { CATAPULT_ARM, CATAPULT_BASE, CATAPULT_ARM_AXIS, CATAPULT_ARM_LENGTH, CATAPULT_ARM_DRAW, catapultArtAngle, flipperArtAngle, flipperArtRect, warDrumArtRect, warDrumArtAngle } from './launcher-art';
@@ -249,6 +250,7 @@ function shade(hex: string, amt: number): string {
 }
 
 export function drawMarble(ctx: CanvasRenderingContext2D, game: Game, m: Marble, t: number) {
+  drawAura(ctx, game, m, t); // P2-08: shield, ram, mirror, charm...
   const b = m.body;
   const { x, y } = b.position;
   const r = MARBLE_RADIUS;
@@ -622,7 +624,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.font = 'bold 10px system-ui';
-          const mark = md.itemDrop ? { rocket: '>>', jump: '^', oil: 'O', shock: 'S', anvil: 'W', aero: 'A', freeze: 'F', ghost: 'G' }[md.itemDrop] : '?';
+          const mark = md.itemDrop ? ({ rocket: '>>', jump: '^', oil: 'O', shock: 'S', anvil: 'W', aero: 'A', freeze: 'F', ghost: 'G' } as Record<string, string>)[md.itemDrop] ?? ITEM_INFO[md.itemDrop].short.slice(0, 1) : '?';
           ctx.strokeStyle = '#102019bb';
           ctx.lineWidth = 2;
           ctx.strokeText(mark, b.position.x, b.position.y + 1);
@@ -1002,6 +1004,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
     }
   }
 
+  drawSkillWorld(ctx, game, null, t); // P2-08: bolts, bombs, spikes, decoys
   // marbles (player drawn last)
   const sorted = [...game.marbles].sort((a, b) => Number(a.info.isPlayer) - Number(b.info.isPlayer));
   for (const m of sorted) {
