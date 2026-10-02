@@ -12,7 +12,9 @@ import { CAT_WALL, CAT_SENSOR, CAT_FRAGILE, CAT_DANGER, meta } from '../track';
 import { CONTROL_TUNING, steerVelocity } from '../controls';
 import { SAMPLE_STEP, decide } from '../ai-brain';
 import type { Difficulty, Sense } from '../ai-brain';
-import { MARBLE_RADIUS } from '../types';
+import { MARBLE_RADIUS, ITEM_TYPES } from '../types';
+import type { ItemType } from '../types';
+import { SKILLS } from '../skills/catalog';
 
 const { Body } = Matter;
 
@@ -251,6 +253,11 @@ function betterLane(g: { x: number; to: number }): boolean {
   return g.to === LANE_MIDDLE || ((g.x / 10) | 0) % 2 === 0;
 }
 
+/** The skills a computer is holding, in a fixed order (the brain picks by index into this list). */
+function heldSkills(m: Marble): ItemType[] {
+  return ITEM_TYPES.filter((id) => m.inventory[id] > 0);
+}
+
 /** What a computer driver senses this step (src/game/ai-brain.ts decides from it). */
 function sense(game: Game, m: Marble, vx: number, grounded: boolean): Sense {
   const plan = game.track.platformer!.plan;
@@ -288,8 +295,9 @@ function sense(game: Game, m: Marble, vx: number, grounded: boolean): Sense {
   };
   return {
     time: game.time, difficulty: difficultyOf(m), grounded, vx, ahead, crateAt, wallAt: null, dangerAt,
-    heat: m.engine?.heat ?? 0, overheated: (m.engine?.lockedUntil ?? 0) > game.time, hp: 100,
-    rivalAhead, rivalBehind, slots: [], lastSkillAt: -Infinity, door: gate('door'), ramp: gate('ramp'), rng: () => game.rng(),
+    heat: m.engine?.heat ?? 0, overheated: (m.engine?.lockedUntil ?? 0) > game.time, hp: m.health?.hp ?? 100,
+    rivalAhead, rivalBehind, slots: heldSkills(m).map((id) => ({ charges: m.inventory[id], hint: SKILLS[id].aiHint })), lastSkillAt: m.aiSkillAt ?? -Infinity,
+    door: gate('door'), ramp: gate('ramp'), rng: () => game.rng(),
   };
 }
 
@@ -308,6 +316,12 @@ export function aiDrive(game: Game, m: Marble, v: Matter.Vector, s: number): Mat
       m.aiJumpAt = game.time + CONTROL_TUNING.jumpCooldownMs;
       v = { x: v.x, y: Math.min(v.y, -CONTROL_TUNING.jumpSpeed) };
     }
+  }
+  // Skills: the brain says which held skill fits the moment; a refused one (no target, health off) is just tried later.
+  if (d.slot !== null) {
+    const id = heldSkills(m)[d.slot];
+    m.aiSkillAt = game.time;
+    if (id) game.useItem(m, id);
   }
   const door = doorAt(game, m);
   if (door && d.takeDoor && m.doorSeen !== door.x) {
