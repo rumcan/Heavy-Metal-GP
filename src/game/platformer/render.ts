@@ -17,10 +17,12 @@ import doorUrl from '../../assets/game/platformer/door.webp';
 import farUrl from '../../assets/game/platformer/far.webp';
 import treesUrl from '../../assets/game/platformer/trees.webp';
 import signUrl from '../../assets/game/platformer/sign.webp';
+import skyIslandsUrl from '../../assets/game/platformer/sky-islands.webp';
+import skyCloudsUrl from '../../assets/game/platformer/sky-clouds.webp';
 
 // Generated art (P2-00): a skin over the vector bodies. Every draw falls back to flat shapes until it loads.
 const load = (src: string) => (typeof Image !== 'undefined' ? Object.assign(new Image(), { src }) : null);
-const ART = { earth: load(earthUrl), grass: load(grassUrl), crate: load(crateUrl), door: load(doorUrl), far: load(farUrl), trees: load(treesUrl), sign: load(signUrl) };
+const ART = { earth: load(earthUrl), grass: load(grassUrl), crate: load(crateUrl), door: load(doorUrl), far: load(farUrl), trees: load(treesUrl), sign: load(signUrl), skyIslands: load(skyIslandsUrl), skyClouds: load(skyCloudsUrl) };
 const ready = (img: HTMLImageElement | null): img is HTMLImageElement => !!img && img.complete && img.naturalWidth > 0;
 const patterns = new WeakMap<CanvasRenderingContext2D, CanvasPattern>();
 function earthPattern(ctx: CanvasRenderingContext2D): CanvasPattern | null {
@@ -54,7 +56,10 @@ const PALETTE = [
   { top: '#7cc142', grass: '#5b9e2c', face: '#7a5c3c', dark: '#3d2c1c', line: 'rgba(0,0,0,0.25)' },
   { top: '#86cf3c', grass: '#62a92a', face: '#80613f', dark: '#3a2a1a', line: 'rgba(0,0,0,0.28)' },
 ];
-const HAZE = '180,196,204';
+/** Lanes behind you fade into this: the backdrop's own mist. */
+const HAZE = '214,228,248';
+/** Screen px the backdrop rises per world px the course descends. */
+const BACKDROP_DESCENT = 0.12;
 const TILE = 32;
 
 let offscreen: HTMLCanvasElement | null = null;
@@ -68,13 +73,39 @@ function scratch(w: number, h: number): CanvasRenderingContext2D | null {
   return c;
 }
 
-function sky(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch: number) {
+function sky(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch: number, startY: number) {
   const g = ctx.createLinearGradient(0, 0, 0, ch);
   g.addColorStop(0, '#5d8fb8');
   g.addColorStop(0.55, '#a9c3cf');
   g.addColorStop(1, '#c9d6d2');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, cw, ch);
+  // The owner's painted backdrop: the sunny islands band on top, then the cloud-islands band repeating below it
+  // for as far down as the course goes. It drifts slowly sideways and rises as you descend, so a race sinks from
+  // the sky into the clouds. A band of mist covers each join between two bands.
+  if (ready(ART.skyIslands) && ready(ART.skyClouds)) {
+    const h = ch * 1.12;
+    const top = -Math.max(0, cam.y - startY) * BACKDROP_DESCENT;
+    const first = Math.max(0, Math.floor(-top / h));
+    for (let row = first; top + row * h < ch; row++) {
+      const img = row === 0 ? ART.skyIslands : ART.skyClouds;
+      const y = top + row * h;
+      const w = (img.naturalWidth / img.naturalHeight) * h;
+      let x = -(((cam.x * 0.03) + row * w * 0.37) % w);
+      if (x > 0) x -= w;
+      for (; x < cw; x += w) ctx.drawImage(img, x, y, w + 1, h + 1);
+    }
+    for (let row = Math.max(1, first); top + row * h - h * 0.1 < ch; row++) {
+      const y = top + row * h;
+      const mist = ctx.createLinearGradient(0, y - h * 0.1, 0, y + h * 0.1);
+      mist.addColorStop(0, 'rgba(222,233,252,0)');
+      mist.addColorStop(0.5, 'rgba(222,233,252,0.9)');
+      mist.addColorStop(1, 'rgba(222,233,252,0)');
+      ctx.fillStyle = mist;
+      ctx.fillRect(0, y - h * 0.1, cw, h * 0.2);
+    }
+    return;
+  }
   // Far mountains and the tree line: scenery, not a lane. They scroll very slowly and never change with depth.
   if (ready(ART.far) && ready(ART.trees)) {
     const strip = (img: HTMLImageElement, parallax: number, h: number, bottom: number) => {
@@ -453,7 +484,7 @@ function drawFlowGround(ctx: CanvasRenderingContext2D, plan: CoursePlan, lane: n
 export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam: PlatformCamera, cw: number, ch: number, t: number, followed: Marble = game.player) {
   ctx.setTransform(ctx.getTransform().a, 0, 0, ctx.getTransform().d, 0, 0);
   const dpr = ctx.getTransform().a;
-  sky(ctx, cam, cw, ch);
+  sky(ctx, cam, cw, ch, game.track.platformer!.plan.startY);
   const lanes = visibleLanes(cam.focus);
   const depths = game.marbles.filter((m) => !m.hold).map((m) => ({ m, z: marbleDepth(game, m) }));
 
