@@ -209,3 +209,35 @@ test('map pieces on flow courses: power-up boxes get picked up, wrecking balls s
   assert.ok(picked > 0, 'someone picked up a power-up box');
   assert.ok(game.allFinished(), `everyone finished (${game.finishOrder.length}/10)`);
 });
+
+test('cannon start: everyone starts in their own cannon (nobody stacked); people aim and fire, or are fired anyway', async () => {
+  const { CANNON_AUTOFIRE_MS, CANNON_MIN, CANNON_MAX } = await import('../src/game/engine/platformer');
+  const people = roster().map((m, i) => (i === 0 ? { ...m, isPlayer: true } : m));
+  const game = new Game(4, people, { track: buildPlatformerTrack(4, TRACK_THEMES.forest, 'rolling-hills') });
+  const spots = game.marbles.map((m) => `${m.cannon!.lane}:${Math.round(m.cannon!.x)}`);
+  assert.equal(new Set(spots).size, 10, 'ten different cannons');
+  game.start();
+  // aiming on the grid: left lifts the barrel, right flattens it, within the limits
+  game.nudge = -1;
+  for (let i = 0; i < 400; i++) game.step(PHYSICS_STEP);
+  assert.equal(game.player.cannon!.angle, CANNON_MAX);
+  game.nudge = 1;
+  for (let i = 0; i < 400; i++) game.step(PHYSICS_STEP);
+  assert.equal(game.player.cannon!.angle, CANNON_MIN);
+  game.nudge = 0;
+  assert.ok(game.marbles.every((m) => !m.cannon!.fired), 'nobody fires before lights out');
+  game.openGate();
+  for (let i = 0; i < 120; i++) game.step(PHYSICS_STEP);
+  assert.ok(game.marbles.filter((m) => !m.info.isPlayer).every((m) => m.cannon!.fired), 'the AI fires within a second');
+  assert.equal(game.player.cannon!.fired, false, 'a person fires when they choose');
+  game.jumpPressed = true;
+  game.step(PHYSICS_STEP);
+  assert.ok(game.player.cannon!.fired, 'jump fires it');
+  assert.ok(game.player.body.velocity.x > 10, 'out of the barrel at speed');
+  // someone who never fires is fired anyway
+  const idle = new Game(4, people, { track: buildPlatformerTrack(4, TRACK_THEMES.forest, 'rolling-hills') });
+  idle.start();
+  idle.openGate();
+  for (let t = 0; t < CANNON_AUTOFIRE_MS + 100; t += PHYSICS_STEP) idle.step(PHYSICS_STEP);
+  assert.ok(idle.player.cannon!.fired);
+});

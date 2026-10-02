@@ -17,10 +17,10 @@ export const LANE_STEP = 0.78;
 /** Each lane behind you sits this many world px higher (before zoom). */
 export const LANE_LIFT = 38;
 /** Fog added per lane behind you, capped at FOG_MAX. */
-export const LANE_FOG = 0.42;
-export const FOG_MAX = 0.75;
+export const LANE_FOG = 0.55;
+export const FOG_MAX = 0.85;
 /** Blur (screen px) per lane behind you. */
-export const LANE_BLUR = 2.2;
+export const LANE_BLUR = 0; // the owner wants distant tracks sharp: depth is size, height and blue haze
 /** How fast a lane in front of the camera fades out (alpha lost per lane of depth). */
 export const FRONT_FADE = 1.5;
 /** A lane in front of the camera swells past it: extra scale per lane of depth (sells the dolly). */
