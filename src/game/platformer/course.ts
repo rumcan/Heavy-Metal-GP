@@ -60,6 +60,12 @@ export interface Spring { lane: Lane; x: number; y: number }
 /** A one-way ledge: jump up through it from below, land and roll on top (`y` is its top). */
 export interface Ledge { lane: Lane; x: number; w: number; y: number }
 export const SPRING_W = 60;
+/** A power-up box hovering over the track (centre `x`, `y`): roll through it for an item (respawns, see the engine). */
+export interface ItemBoxSpot { lane: Lane; x: number; y: number }
+/** A wrecking ball swinging on a chain from a gantry over the track. */
+export interface WreckerSpot { lane: Lane; x: number; pivotY: number; chain: number; amp: number; speed: number; phase: number }
+/** A boost pad on the track (`x`..`x + w`): rolling over it pushes you along the slope. */
+export interface BoostSpot { lane: Lane; x: number; w: number }
 
 export interface CoursePlan {
   seed: number;
@@ -79,6 +85,10 @@ export interface CoursePlan {
   finishY: number;
   /** Spring pads and one-way ledges (absent = none). */
   springs?: Spring[];
+  /** The classic map pieces on a platformer course (absent = none). */
+  itemBoxes?: ItemBoxSpot[];
+  wreckers?: WreckerSpot[];
+  boosts?: BoostSpot[];
   ledges?: Ledge[];
   /** P2-00: 'flow' = rolling slopes (src/game/platformer/flow.ts); absent = the block style. */
   style?: 'blocks' | 'flow';

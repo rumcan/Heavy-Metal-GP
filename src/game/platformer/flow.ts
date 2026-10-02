@@ -2,7 +2,7 @@
 // Alto's Adventure; the art is our own), chasms to jump, crates to hop, and three parallel depth ridges.
 // Pure data (a CoursePlan), deterministic from the seed. Floors are short straight pieces along a smooth curve.
 import { mulberry32 } from '../types';
-import type { Bump, CoursePlan, Floor, Lane, LaneGate, Ledge, Spring } from './course';
+import type { BoostSpot, Bump, CoursePlan, Floor, ItemBoxSpot, Lane, LaneGate, Ledge, Spring, WreckerSpot } from './course';
 
 export interface FlowTuning {
   length: number;
@@ -133,10 +133,47 @@ export function planFlow(seed: number, t: FlowTuning = FLOW_TUNING): CoursePlan 
     if (busy(g.lane, g.x, g.x + g.w) || busy(g.to, g.x, g.x + g.w)) gates.splice(i, 1);
   }
 
+  // The classic map pieces: power-up boxes, wrecking balls and boost pads. Their own random stream, so adding
+  // them never moved a hill, a chasm or a gate. Each keeps clear of chasms, crates, gates, springs and ledges.
+  const pick = mulberry32(seed ^ 0x17e3b0c5);
+  const between = (a: number, b: number) => a + pick() * (b - a);
+  const clearTrack = (lane: Lane, x0: number, x1: number) =>
+    clearAt(lane, x0, x1) && !busy(lane, x0, x1) && !gates.some((g) => (g.lane === lane || g.to === lane) && x1 > g.x - 60 && x0 < g.x + g.w + 60);
+  const itemBoxes: ItemBoxSpot[] = [];
+  const wreckers: WreckerSpot[] = [];
+  const boosts: BoostSpot[] = [];
+  const taken = (lane: Lane, x0: number, x1: number) =>
+    itemBoxes.some((b) => b.lane === lane && x1 > b.x - 120 && x0 < b.x + 120) ||
+    wreckers.some((w) => w.lane === lane && x1 > w.x - w.chain - 120 && x0 < w.x + w.chain + 120) ||
+    boosts.some((b) => b.lane === lane && x1 > b.x - 100 && x0 < b.x + b.w + 100);
+  for (const lane of LANES) {
+    for (let bx = START_FLAT + 600; bx < end - 600; bx += 1000) {
+      const r = pick();
+      const x = Math.round(bx + between(100, 800));
+      if (r < 0.32) {
+        // a row of power-up boxes over the track
+        const n = 1 + Math.floor(pick() * 3);
+        if (!clearTrack(lane, x - 40, x + n * 80) || taken(lane, x - 40, x + n * 80)) continue;
+        for (let i = 0; i < n; i++) itemBoxes.push({ lane, x: x + i * 80, y: Math.round(heightAt(lane, x + i * 80) - 46) });
+      } else if (r < 0.52) {
+        // a wrecking ball across the track: the gantry stands over it, the ball swings through the line
+        const chain = Math.round(between(120, 160));
+        if (!clearTrack(lane, x - chain, x + chain) || taken(lane, x - chain, x + chain)) continue;
+        wreckers.push({ lane, x, pivotY: Math.round(heightAt(lane, x) - chain - 38), chain, amp: between(0.75, 1.05), speed: between(0.0018, 0.0026), phase: between(0, Math.PI * 2) });
+      } else if (r < 0.7) {
+        // a boost pad on a downhill stretch
+        const w = 160;
+        if (heightAt(lane, x + w) - heightAt(lane, x) < 10) continue;
+        if (!clearTrack(lane, x, x + w) || taken(lane, x, x + w)) continue;
+        boosts.push({ lane, x, w });
+      }
+    }
+  }
+
   const path: { x: number; y: number }[] = [];
   for (let x = 0; x <= t.length; x += 200) path.push({ x, y: heightAt(1, x) - 30 });
   const finishX = end + 360;
   const finishY = heightAt(1, finishX);
   const height = Math.max(...floors.map((f) => Math.max(f.y0, f.y1))) + 900;
-  return { seed, style: 'flow' as const, width: t.length, height, floors, bumps: rocks, gates, path, springs, ledges, startX: 520, startY: t.startY, finishX, finishY };
+  return { seed, style: 'flow' as const, width: t.length, height, floors, bumps: rocks, gates, path, springs, ledges, itemBoxes, wreckers, boosts, startX: 520, startY: t.startY, finishX, finishY };
 }
