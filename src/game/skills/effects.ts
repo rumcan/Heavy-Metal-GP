@@ -15,10 +15,15 @@ export interface SkillFx {
   shieldUntil?: number; shieldHp?: number; ramUntil?: number; hoverUntil?: number; overdriveUntil?: number;
   reflectUntil?: number; charmUntil?: number; empUntil?: number; drillUntil?: number;
   grappleTo?: { x: number; y: number; until: number };
+  ironUsed?: number;
 }
 export const fxOf = (m: Marble): SkillFx => (m.fx ??= {});
 
-export interface Projectile { id: number; owner: number; target: number; x: number; y: number; vx: number; vy: number; until: number; lane: number }
+/** P2-17: this marble's talent total for a stat (0 for computers). */
+export const tfx = (m: Marble | null | undefined, stat: string): number => m?.tfx?.[stat] ?? 0;
+const offence = (owner: Marble | null | undefined, base: number): number => Math.round(base * (1 + tfx(owner, 'offenceDamagePct') / 100));
+
+export interface Projectile { speed: number; id: number; owner: number; target: number; x: number; y: number; vx: number; vy: number; until: number; lane: number }
 export interface Bomb { target: number; owner: number; explodeAt: number }
 export interface SpikePatch { x: number; y: number; w: number; owner: number; until: number; lane: number }
 export interface Decoy { x: number; y: number; owner: number; until: number; lane: number; color: string }
@@ -112,7 +117,7 @@ function pop(game: Game, m: Marble, color: string) {
 /** Run a new skill's effect (the charge is already spent). */
 export function apply(game: Game, m: Marble, item: ItemType): void {
   const fx = fxOf(m), t = game.time, p = m.body.position;
-  const dur = (SKILLS as Record<string, { durationMs: number }>)[item]?.durationMs ?? 0;
+  const dur = Math.round(((SKILLS as Record<string, { durationMs: number }>)[item]?.durationMs ?? 0) * (1 + tfx(m, 'skillDurationPct') / 100));
   switch (item) {
     case 'shield': fx.shieldUntil = t + dur; fx.shieldHp = 40; pop(game, m, '#60a5fa'); break;
     case 'repair': {
@@ -162,7 +167,7 @@ export function apply(game: Game, m: Marble, item: ItemType): void {
       if (!target) break;
       game.effects.push({ type: 'beam', x: target.body.position.x, y: target.body.position.y - 700, x2: target.body.position.x, y2: target.body.position.y, ttl: 14, maxTtl: 14, color: '#fde047' });
       if (absorb(game, target, m, 'lightning')) break;
-      game.damage(target, 30, m.info.id, 'lightning');
+      game.damage(target, offence(m, 30), m.info.id, 'lightning');
       if (!target.dnf) { target.frozenUntil = t + 1000; game.setFrozen(target, true); }
       break;
     }
@@ -177,7 +182,8 @@ export function apply(game: Game, m: Marble, item: ItemType): void {
     case 'charm': fx.charmUntil = t + dur; pop(game, m, '#34d399'); break;
     case 'bolt': {
       const target = decoyFor(game, m) ? null : nearestAhead(game, m, 600);
-      game.projectiles.push({ id: game.nextProjectileId++, owner: m.info.id, target: target ? target.info.id : -1, x: p.x, y: p.y - 6, vx: SPEED_BOLT, vy: -2, until: t + 3500, lane: lanePlatformer(game, m) });
+      const speed = SPEED_BOLT * (1 + tfx(m, 'projectileSpeedPct') / 100);
+      game.projectiles.push({ id: game.nextProjectileId++, owner: m.info.id, target: target ? target.info.id : -1, x: p.x, y: p.y - 6, vx: speed, vy: -2, speed, until: t + 3500, lane: lanePlatformer(game, m) });
       break;
     }
   }
@@ -236,8 +242,8 @@ export function step(game: Game, dt: number): void {
     if (tx !== null && ty !== null) {
       const dx = tx - pr.x, dy = ty - pr.y, d = Math.hypot(dx, dy) || 1;
       const k = Math.min(1, 0.12 * (dt / 16.7));
-      pr.vx += ((dx / d) * SPEED_BOLT - pr.vx) * k;
-      pr.vy += ((dy / d) * SPEED_BOLT - pr.vy) * k;
+      pr.vx += ((dx / d) * pr.speed - pr.vx) * k;
+      pr.vy += ((dy / d) * pr.speed - pr.vy) * k;
       if (d < 22) {
         if (decoy) { game.decoys.splice(game.decoys.indexOf(decoy), 1); pop(game, { body: { position: { x: tx, y: ty } } } as unknown as Marble, '#fbbf24'); game.projectiles.splice(i, 1); continue; }
         if (target) {
@@ -246,7 +252,7 @@ export function step(game: Game, dt: number): void {
           if ((fxOf(target).reflectUntil ?? 0) > t) { pop(game, target, '#e0f2fe'); game.projectiles.push({ ...pr, id: game.nextProjectileId++, owner: target.info.id, target: from.info.id, vx: -pr.vx, vy: -pr.vy, until: t + 3000 }); continue; }
           if (absorb(game, target, from, 'bolt')) continue;
           knock(target, pr.x, pr.y, 5);
-          game.damage(target, 25, pr.owner, 'bolt');
+          game.damage(target, offence(owner, 25), pr.owner, 'bolt');
           game.effects.push({ type: 'flash', x: pr.x, y: pr.y, ttl: 12, maxTtl: 12, color: '#f97316' });
           game.sfx('bump', target, pr.x, pr.y);
           continue;
@@ -275,7 +281,7 @@ export function step(game: Game, dt: number): void {
     }
     const from = game.byIdOrNull(b.owner) ?? target;
     if ((fxOf(target).reflectUntil ?? 0) > t) { pop(game, target, '#e0f2fe'); continue; }
-    game.damage(target, 35, b.owner, 'bomb');
+    game.damage(target, offence(game.byIdOrNull(b.owner), 35), b.owner, 'bomb');
     void from;
   }
   // spikes: rolling over them hurts and costs grip
@@ -288,7 +294,7 @@ export function step(game: Game, dt: number): void {
       if (p.x < s.x || p.x > s.x + s.w || Math.abs(p.y - s.y) > MARBLE_RADIUS + 14) continue;
       const v = Body.getVelocity(o.body);
       Body.setVelocity(o.body, { x: v.x * (1 - 0.03 * (dt / 16.7)), y: v.y });
-      if (t - (o.spikedAt ?? -1000) > 1000) { o.spikedAt = t; game.damage(o, 8, s.owner, 'spikes'); }
+      if (t - (o.spikedAt ?? -1000) > 1000) { o.spikedAt = t; game.damage(o, offence(game.byIdOrNull(s.owner), 8), s.owner, 'spikes'); }
     }
   }
   for (let i = game.decoys.length - 1; i >= 0; i--) if (game.decoys[i].until < t) game.decoys.splice(i, 1);
@@ -311,6 +317,6 @@ export function ramHit(game: Game, ram: Marble, other: Marble): void {
   if ((fx.ramUntil ?? 0) <= t || (ram.ramHitAt ?? -1000) + 500 > t) return;
   ram.ramHitAt = t;
   knock(other, ram.body.position.x, ram.body.position.y, 9);
-  game.damage(other, 10, ram.info.id, 'ram');
+  game.damage(other, offence(ram, 10), ram.info.id, 'ram');
   game.sfx('smash', other, other.body.position.x, other.body.position.y);
 }

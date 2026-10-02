@@ -2,7 +2,7 @@ import Matter from 'matter-js';
 import { generateTrack, meta, Track, CAT_MARBLE, CAT_WALL, CAT_SENSOR, CAT_LOOP_UP, CAT_LOOP_CLOSE, CAT_FRAGILE, CAT_DANGER, W, bridgePlankPose, cannonAim, catapultAngle } from './track';
 import { elementBodies, updateElements, hingeTimerState } from './elements';
 import { TrackDefError, buildTrackFromDef } from './trackdef';
-import { ItemType, MarbleInfo, MARBLE_RADIUS, statsToPhysics, mulberry32, TrackProfile, normalizeInventory, ITEM_TYPES } from './types';
+import { ItemType, MarbleInfo, MARBLE_RADIUS, statsToPhysics, mulberry32, TrackProfile, normalizeInventory, ITEM_TYPES, MAX_ITEM_STACK } from './types';
 import type { Inventory } from './types';
 import { gridSlots } from './grid';
 import { assistRolling, createMarble } from './physics';
@@ -36,6 +36,9 @@ export interface GameOptions {
   story?: StoryHooks;
   /** P2-10: the skills an item box may drop for this race (the local driver's loadout). Unset: the old pools. */
   dropPool?: ItemType[];
+  /** P2-17: the local driver's talent build, and their eight slots (for the extra first-offence charge). */
+  talents?: Record<string, number>;
+  slots?: (ItemType | null)[];
   /**
    * MP-04: marble ids (seat slots) driven by a human on ANOTHER machine. The
    * host seats them and drives them from their intents; the AI never touches
@@ -175,6 +178,9 @@ export interface Marble {
   springAt?: number;
   /** P2-00 platformer: the start cannon this marble is loaded in (fired = out on the course). */
   cannon?: platformer.Cannon;
+  /** P2-17: this driver's talent effects (stat -> total), and max HP. Computers have none. */
+  tfx?: Record<string, number>;
+  maxHp?: number;
   /** P2-08: skill timers and state (shield, ram, hover, charm, EMP...), and two debounce clocks. */
   fx?: SkillFx;
   spikedAt?: number;
@@ -247,7 +253,9 @@ import * as input from './engine/input';
 import type { EngineState, JumpState } from './controls';
 import * as ai from './engine/ai';
 import * as platformer from './engine/platformer';
-import { applyDamage, newHealth, regen, koCredit, KO_BOUNTY } from './health';
+import { applyDamage, newHealth, regen, koCredit, KO_BOUNTY, REGEN_PER_SEC, REGEN_DELAY_MS } from './health';
+import { talentEffects } from './talents';
+import { SKILLS } from './skills/catalog';
 import type { DamageKind, Health } from './health';
 import * as skillfx from './skills/effects';
 import type { SkillFx, Projectile, Bomb, SpikePatch, Decoy } from './skills/effects';
@@ -453,6 +461,7 @@ export class Game {
       this.marbles.map((m) => m.body),
     );
     this.player = this.marbles.find((m) => m.info.isPlayer) ?? this.marbles[0];
+    if (opts.talents && Object.keys(opts.talents).length) this.applyTalents(this.player, opts.talents, opts.slots ?? []);
     for (const id of opts.benched ?? []) {
       const m = this.byIdOrNull(id);
       if (!m || m === this.player) continue;
@@ -959,7 +968,7 @@ export class Game {
       const b = m.body;
       m.grounded += s;
       if (m.finishedAt !== null || m.dnf) continue;
-      if (m.health) m.health = regen(m.health, this.time, dt);
+      if (m.health) m.health = this.regenOf(m, dt);
 
       // MB-10: a marble hidden inside an element glides from capture to exit — hidden from every
       // screen (draw + minimap skip it), but the wire positions stay continuous so nobody watches
@@ -1178,6 +1187,12 @@ export class Game {
   damage(m: Marble, amount: number, by: number | null, kind: DamageKind): boolean {
     if (!this.healthOn || !m.health || m.dnf || m.finishedAt !== null) return false;
     const before = m.health.hp;
+    const tfx = m.tfx;
+    if (tfx) {
+      // P2-17: Iron Belly: your first hazard hit each race does nothing; Chassis talents take a share off every hit
+      if (by === null && tfx.ironBelly && !m.fx?.ironUsed) { (m.fx ??= {}).ironUsed = 1; this.effects.push({ type: 'text', x: m.body.position.x, y: m.body.position.y - 26, ttl: 40, maxTtl: 40, color: '#e5e7eb', text: 'IRON BELLY' }); return false; }
+      amount = Math.round(amount * Math.max(0, 1 + (tfx.damageTakenPct ?? 0) / 100));
+    }
     // P2-08: a Bubble Shield soaks damage first (up to what is left of its 40)
     const fx = m.fx;
     if (fx && (fx.shieldUntil ?? 0) > this.time && (fx.shieldHp ?? 0) > 0) {
@@ -1198,6 +1213,26 @@ export class Game {
     this.effects.push({ type: 'text', x: m.body.position.x, y: m.body.position.y - 26, ttl: 40, maxTtl: 40, color: '#f87171', text: `-${Math.round(before - m.health.hp)}` });
     if (r.died) this.knockOut(m, kind);
     return r.died;
+  }
+
+  /** P2-17: give a marble its talent build. Only effects the engine reads from `m.tfx`. */
+  applyTalents(m: Marble, build: Record<string, number>, slots: (ItemType | null)[]) {
+    const fx = talentEffects(build);
+    m.tfx = fx;
+    if (this.healthOn && m.health && fx.maxHp) { m.maxHp = 100 + fx.maxHp; m.health = { ...m.health, hp: m.maxHp }; }
+    if (fx.firstOffenceCharge) {
+      const first = slots.find((s) => s && SKILLS[s]?.group === 'offence');
+      if (first) m.inventory[first] = Math.min(MAX_ITEM_STACK, m.inventory[first] + fx.firstOffenceCharge);
+    }
+  }
+
+  /** Regen with this marble's talents: a longer or shorter wait, a faster rate, a higher cap. */
+  private regenOf(m: Marble, dt: number) {
+    const h = m.health!;
+    const fx = m.tfx;
+    if (!fx || (!fx.regenPct && !fx.regenDelayMs && !fx.maxHp)) return regen(h, this.time, dt);
+    if (h.dnf || this.time - h.lastHitAt < REGEN_DELAY_MS + (fx.regenDelayMs ?? 0)) return h;
+    return { ...h, hp: Math.min(m.maxHp ?? 100, h.hp + REGEN_PER_SEC * (1 + (fx.regenPct ?? 0) / 100) * dt / 1000) };
   }
 
   private knockOut(m: Marble, kind: DamageKind) {

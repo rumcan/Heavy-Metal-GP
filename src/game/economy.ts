@@ -4,9 +4,35 @@ import type { HeatResult, Inventory, ItemType } from './types';
 import { settle } from './settlement';
 import { awardXp, migrateAccount, newProgress } from './progression';
 import type { ProgressState } from './progression';
+import { talentEffects, validateBuild, pointsSpent, respecCost } from './talents';
+import type { Build } from './talents';
 import type { PurseMode } from './settlement';
 
 const NO_TALENTS = { prizePct: 0, pegBonusPct: 0, koBountyPct: 0, shamanFeePct: 0 };
+
+/** P2-17: the purse bonuses this account's talent build gives. */
+export function purseTalents(account: RacerAccount) {
+  const fx = talentEffects(account.talents ?? {});
+  return { prizePct: fx.prizePct, pegBonusPct: fx.pegBonusPct, koBountyPct: fx.koBountyPct, shamanFeePct: fx.shamanFeePct };
+}
+
+/** P2-17: talent points not yet spent. */
+export function freeTalentPoints(account: RacerAccount): number {
+  return Math.max(0, progressOf(account).talentPoints - pointsSpent(account.talents ?? {}));
+}
+
+/** P2-17: spend a point (the caller has checked it with `canRankUp`). */
+export function setTalents(account: RacerAccount, build: Build): RacerAccount {
+  const p = progressOf(account);
+  return { ...account, talents: validateBuild(build, p.level, p.talentPoints) };
+}
+
+/** P2-17: take every point back. The first respec is free, later ones cost 500 credits; false when it cannot be paid. */
+export function respec(account: RacerAccount): { account: RacerAccount; ok: boolean; cost: number } {
+  const cost = respecCost(account.respecs ?? 0);
+  if (cost > account.credits) return { account, ok: false, cost };
+  return { account: { ...account, talents: {}, credits: account.credits - cost, respecs: (account.respecs ?? 0) + 1 }, ok: true, cost };
+}
 
 export const ACCOUNT_KEY = 'mrr-account-v1';
 export const STARTER_CREDITS = 400;
@@ -28,6 +54,9 @@ export interface RacerAccount {
   progress?: ProgressState;
   /** P2-09: the campaign has been finished (unlocks every skill online). */
   campaignComplete?: boolean;
+  /** P2-17: the talent build (talent id -> rank) and how many respecs have been used (the first is free). */
+  talents?: Build;
+  respecs?: number;
 }
 
 export interface RacePayout {
@@ -135,7 +164,7 @@ export function settleRace(
   // P2-07: a race with health (result.dnf is set) is paid by the purse rules: KO bounties, and the Shaman's fee for a DNF.
   if (result.dnf !== undefined) {
     const o = { finished: result.time !== null && !result.dnf, rank: result.rank, pegs: result.pegs, kos: result.kos ?? 0, dnf: result.dnf };
-    const s = settle(o, mode, account.credits, NO_TALENTS);
+    const s = settle(o, mode, account.credits, account.talents ? purseTalents(account) : NO_TALENTS);
     const amount = (kind: string) => s.lines.find((l) => l.kind === kind)?.amount ?? 0;
     const paid: RacePayout = { raceId, placement: amount('placement'), pegBonus: amount('pegs'), koBounty: amount('kos'), shamanFee: Math.abs(amount('shaman')), total: s.total, balance: account.credits, alreadyPaid };
     if (alreadyPaid) return { account, payout: paid };
@@ -231,6 +260,8 @@ export function parseAccount(raw: string | null): RacerAccount {
       paidRaces: raceIds(account.paidRaces),
       totalWinnings: safeNumber(account.totalWinnings), finishes: safeNumber(account.finishes),
       ...(readProgress(account.progress) ? { progress: readProgress(account.progress) } : {}), ...(account.campaignComplete === true ? { campaignComplete: true } : {}),
+      ...(readProgress(account.progress) && account.talents ? { talents: validateBuild(account.talents, readProgress(account.progress)!.level, readProgress(account.progress)!.talentPoints) } : {}),
+      ...(typeof account.respecs === 'number' && account.respecs > 0 ? { respecs: Math.floor(account.respecs) } : {}),
     };
   } catch { return createAccount(); }
 }

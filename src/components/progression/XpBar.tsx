@@ -10,6 +10,7 @@ export default function XpBar({ progress }: { progress: ProgressState }) {
   return <div className="xp-bar" aria-label={`Level ${level}, ${into} of ${toNext} XP`}>
     <span className="xp-level">LV {level}</span>
     <div className="xp-track"><i style={{ width: `${pct}%` }} /></div>
+    <button className="text-button xp-talents" onClick={() => window.dispatchEvent(new Event('hmgp:talents'))}>Talents{progress.talentPoints > 0 ? ` (${progress.talentPoints})` : ''}</button>
     <small>{toNext === 0 ? 'MAX LEVEL' : `${into} / ${toNext} XP`}{progress.talentPoints > 0 ? ` · ${progress.talentPoints} talent pts` : ''}{next ? ` · next: ${SKILLS[next.id].name} at level ${next.level}` : ''}</small>
   </div>;
 }

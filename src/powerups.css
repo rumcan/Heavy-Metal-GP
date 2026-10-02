@@ -377,3 +377,30 @@
   .loadout-slots { grid-template-columns: repeat(4, 1fr); }
   .loadout-groups { grid-template-columns: 1fr; max-height: 34vh; }
 }
+
+/* P2-17: the talents screen. */
+.talents-dialog { width: min(760px, 100%); }
+.talents-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.talents-head h2 { margin: 0; }
+.talents-points { font: 600 11px var(--mono); color: #d5e7ae; }
+.talents-points b { font-size: 16px; color: #facc15; }
+.talents-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin: 8px 0; }
+.talents-tabs button { flex: 1 1 0; min-width: 0; padding: 7px 4px; font: 700 10px var(--mono); letter-spacing: .5px; text-transform: uppercase; background: #101b27; border: 1px solid #243344; color: #9fb2c4; cursor: pointer; }
+.talents-tabs button.selected { color: #fff; border-color: var(--tree); background: color-mix(in srgb, var(--tree) 18%, #101b27); }
+.talents-tabs small { margin-left: 5px; color: var(--tree); }
+.talents-tiers { display: grid; gap: 8px; max-height: 46vh; overflow: auto; }
+.talents-tier h3 { display: flex; justify-content: space-between; margin: 0 0 4px; font: 700 10px var(--mono); letter-spacing: 1px; text-transform: uppercase; color: #9fb2c4; }
+.talents-tier h3 small { color: #6f8398; }
+.talents-tier.is-locked { opacity: .55; }
+.talents-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; }
+.talent { display: grid; gap: 3px; text-align: left; padding: 8px 10px; background: #101b27; border: 1px solid #243344; color: #dbe6ef; cursor: pointer; }
+.talent b { font-size: 12px; }
+.talent small { font-size: 10px; color: #8aa0b5; }
+.talent em { font: 9px var(--mono); font-style: normal; color: #f59e0b; }
+.talent:disabled { cursor: default; }
+.talent.has-rank { border-color: var(--tree); }
+.talent.can:hover { background: color-mix(in srgb, var(--tree) 14%, #101b27); }
+.talent-ranks { display: flex; gap: 3px; }
+.talent-ranks i { width: 14px; height: 5px; background: #243344; }
+.talent-ranks i.on { background: var(--tree); }
+.xp-talents { grid-column: 1 / -1; justify-self: start; font-size: 10px; padding: 2px 0; }

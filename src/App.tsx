@@ -45,7 +45,9 @@ import { MarbleInfo, AI_COLORS, randomStats, mulberry32, HeatResult, HEATS_PER_G
 import { SeasonState, newSeason, recordHeat, gridOrder, gpSeed, CALENDAR, saveSeason, loadSeason, roundTrack, roundName, setRoundTrack } from './game/season';
 import { officialTrack } from './game/official-tracks';
 import LevelUpCard from './components/progression/LevelUpCard';
+import TalentsScreen from './components/talents/TalentsScreen';
 import { raceXp } from './game/progression';
+import { talentEffects } from './game/talents';
 import { isPlatformerPick, platformerCourse } from './game/platformer/course';
 import { TRACK_THEMES } from './game/types';
 import { loadAccount, saveAccount, purchaseItem, onlineRaceId, settleOnlineRace, settleRace, settleCustomRace, progressOf, awardRaceXp } from './game/economy';
@@ -113,6 +115,13 @@ export default function App() {
   const [shopOpen, setShopOpen] = useState(false);
   const [raceId, setRaceId] = useState('');
   const [payout, setPayout] = useState<RacePayout | null>(null);
+  /** P2-17: the Talents screen (opened from the garage's XP bar). */
+  const [talentsOpen, setTalentsOpen] = useState(false);
+  useEffect(() => {
+    const open = () => setTalentsOpen(true);
+    window.addEventListener('hmgp:talents', open);
+    return () => window.removeEventListener('hmgp:talents', open);
+  }, []);
   /** P2-09: a level-up to show (the old and new level). */
   const [levelUp, setLevelUp] = useState<{ from: number; to: number; xp: number } | null>(null);
 
@@ -597,7 +606,7 @@ export default function App() {
     let next = paid.account;
     if (!paid.payout.alreadyPaid) {
       const finished = result.time !== null && !result.dnf;
-      const xp = raceXp({ finished, rank: result.rank, pegs: result.pegs, kos: result.kos ?? 0, beatBest: false });
+      const xp = Math.round(raceXp({ finished, rank: result.rank, pegs: result.pegs, kos: result.kos ?? 0, beatBest: false }) * (1 + (talentEffects(next.talents ?? {}).xpPct ?? 0) / 100));
       const before = progressOf(next).level;
       const r = awardRaceXp(next, raceId, xp);
       next = r.account;
@@ -610,6 +619,7 @@ export default function App() {
   const withShop = (screen: ReactNode) => (
     <>
       {screen}
+      {talentsOpen && <TalentsScreen account={account} onChange={publishAccount} onClose={() => setTalentsOpen(false)} />}
       {levelUp && <LevelUpCard from={levelUp.from} to={levelUp.to} xp={levelUp.xp} onClose={() => setLevelUp(null)} />}
       {/* MP-08: a drop is not a phase's business — the strip rides over the
           lobby and the race alike. */}
