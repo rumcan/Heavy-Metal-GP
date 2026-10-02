@@ -18,11 +18,14 @@ import farUrl from '../../assets/game/platformer/far.webp';
 import treesUrl from '../../assets/game/platformer/trees.webp';
 import signUrl from '../../assets/game/platformer/sign.webp';
 import skyIslandsUrl from '../../assets/game/platformer/sky-islands.webp';
+import cannonUrl from '../../assets/game/cannon.png';
+import treesFrontUrl from '../../assets/game/platformer/trees-front.webp';
+import { CANNON_LEN, CANNON_SPEED, muzzle } from '../engine/platformer';
 import skyCloudsUrl from '../../assets/game/platformer/sky-clouds.webp';
 
 // Generated art (P2-00): a skin over the vector bodies. Every draw falls back to flat shapes until it loads.
 const load = (src: string) => (typeof Image !== 'undefined' ? Object.assign(new Image(), { src }) : null);
-const ART = { earth: load(earthUrl), grass: load(grassUrl), crate: load(crateUrl), door: load(doorUrl), far: load(farUrl), trees: load(treesUrl), sign: load(signUrl), skyIslands: load(skyIslandsUrl), skyClouds: load(skyCloudsUrl) };
+const ART = { earth: load(earthUrl), grass: load(grassUrl), crate: load(crateUrl), door: load(doorUrl), far: load(farUrl), trees: load(treesUrl), sign: load(signUrl), skyIslands: load(skyIslandsUrl), cannon: load(cannonUrl), treesFront: load(treesFrontUrl), skyClouds: load(skyCloudsUrl) };
 const ready = (img: HTMLImageElement | null): img is HTMLImageElement => !!img && img.complete && img.naturalWidth > 0;
 const patterns = new WeakMap<CanvasRenderingContext2D, CanvasPattern>();
 function earthPattern(ctx: CanvasRenderingContext2D): CanvasPattern | null {
@@ -57,7 +60,7 @@ const PALETTE = [
   { top: '#86cf3c', grass: '#62a92a', face: '#80613f', dark: '#3a2a1a', line: 'rgba(0,0,0,0.28)' },
 ];
 /** Lanes behind you fade into this: the backdrop's own mist. */
-const HAZE = '214,228,248';
+const HAZE = '150,188,238';
 /** Screen px the backdrop rises per world px the course descends. */
 const BACKDROP_DESCENT = 0.12;
 const TILE = 32;
@@ -381,12 +384,55 @@ function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, 
     for (const l of info.plan.ledges ?? []) if (l.lane === lane && l.x + l.w > left && l.x < right) drawLedge(ctx, l.x, l.y, l.w, (px) => floorAt(info.plan, l.lane, px));
     for (const s of info.plan.springs ?? []) if (s.lane === lane && s.x + SPRING_W > left && s.x < right) drawSpring(ctx, s.x, s.y, fired(s.x));
   }
+  drawCannons(ctx, game, lane, t);
   const player = game.player;
   for (const g of info.plan.gates) {
     if (g.lane !== lane || g.x + g.w < left || g.x > right) continue;
     drawGate(ctx, g, t, Math.abs(player.body.position.x - (g.x + g.w / 2)) < 260);
   }
   if (info.plan.finishX > left && info.plan.finishX < right) drawFinish(ctx, info.plan.finishX, info.plan.finishY);
+}
+
+/**
+ * The start cannons in this lane: every racer's own, barrel at its aim. Your own still-loaded cannon shows where
+ * the shot will go (a dotted arc).
+ */
+function drawCannons(ctx: CanvasRenderingContext2D, game: Game, lane: number, t: number) {
+  for (const m of game.marbles) {
+    const c = m.cannon;
+    if (!c || c.lane !== lane) continue;
+    if (!c.fired && m === game.player && m.info.isPlayer) {
+      // the aim: the first part of the flight, dot by dot (gravity per 60 Hz tick, as Matter applies it)
+      let p = muzzle(c), vx = Math.cos(c.angle) * CANNON_SPEED, vy = -Math.sin(c.angle) * CANNON_SPEED;
+      ctx.fillStyle = 'rgba(255,236,170,0.9)';
+      for (let i = 0; i < 36; i++) {
+        p = { x: p.x + vx, y: p.y + vy };
+        vy += 0.278;
+        if (i % 3 === 2) { ctx.beginPath(); ctx.arc(p.x, p.y, 3.2 - i * 0.05, 0, Math.PI * 2); ctx.fill(); }
+      }
+    }
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    // the carriage stays on the ground; only the barrel art tilts with the aim
+    ctx.fillStyle = '#3a2a1c';
+    ctx.beginPath(); ctx.moveTo(-20, 22); ctx.lineTo(0, -4); ctx.lineTo(20, 22); ctx.closePath(); ctx.fill();
+    ctx.rotate(-c.angle);
+    if (ready(ART.cannon)) {
+      // the painted barrel sits between x 43 and 150 of the 192 px image: land it from breech to muzzle
+      const img = ART.cannon;
+      const sx = img.naturalWidth * (43 / 192), sw = img.naturalWidth * (107 / 192);
+      ctx.drawImage(img, sx, 0, sw, img.naturalHeight, -16, -16, CANNON_LEN + 22, 32);
+    } else {
+      ctx.fillStyle = '#4b4b52';
+      ctx.fillRect(-12, -11, CANNON_LEN + 14, 22);
+    }
+    ctx.restore();
+    if (!c.fired) {
+      const pulse = 0.5 + 0.5 * Math.sin(t / 140);
+      ctx.fillStyle = `rgba(255,190,80,${(0.25 + 0.3 * pulse).toFixed(2)})`;
+      ctx.beginPath(); ctx.arc(c.x, c.y, 9, 0, Math.PI * 2); ctx.fill();
+    }
+  }
 }
 
 /** Each lane's floors joined into runs (the stretches between chasms) — one polygon per run. */
@@ -521,7 +567,7 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
     if (v.fog > 0.01) {
       ctx.save();
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.fillStyle = `rgba(${HAZE},${(v.fog * 0.6).toFixed(3)})`;
+      ctx.fillStyle = `rgba(${HAZE},${(v.fog * 0.72).toFixed(3)})`;
       ctx.fillRect(0, 0, cw, ch);
       ctx.restore();
     }
@@ -553,6 +599,22 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
     ctx.restore();
   }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  foreground(ctx, cam, cw, ch);
+}
+
+/**
+ * The owner's blurred foreground pines: in front of everything along the bottom of the screen, scrolling faster
+ * than the track (they are nearer than it). Kept low: their tops stop well below the middle, where your ball is.
+ */
+function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch: number) {
+  const img = ART.treesFront;
+  if (!ready(img)) return;
+  const h = ch * 0.46;
+  const w = (img.naturalWidth / img.naturalHeight) * h;
+  let x = -((cam.x * cam.scale * 1.35) % w);
+  if (x > 0) x -= w;
+  const y = ch - h * 0.82;
+  for (; x < cw; x += w) ctx.drawImage(img, x, y, w + 1, h);
 }
 
 function drawBall(ctx: CanvasRenderingContext2D, game: Game, m: Marble, t: number) {

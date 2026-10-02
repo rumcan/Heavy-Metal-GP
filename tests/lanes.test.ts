@@ -34,10 +34,10 @@ test('laneView: the lane you are on is full size, sharp, clear, solid — whiche
 
 test('laneView: lanes behind you are smaller, higher, hazed and blurred, one step per lane', () => {
   const one = laneView(1, 2);
-  assert.ok(near(one.scale, LANE_STEP) && near(one.lift, -LANE_LIFT) && near(one.fog, 0.42) && near(one.blur, 2.2));
+  assert.ok(near(one.scale, LANE_STEP) && near(one.lift, -LANE_LIFT) && near(one.fog, 0.55) && near(one.blur, 0), 'hazed, not blurred');
   assert.equal(one.alpha, 1);
   const two = laneView(0, 2);
-  assert.ok(near(two.scale, LANE_STEP * LANE_STEP) && near(two.fog, 0.75), 'fog capped');
+  assert.ok(near(two.scale, LANE_STEP * LANE_STEP) && near(two.fog, 0.85), 'fog capped');
 });
 
 test('laneView: a lane in front of the camera fades out fast (only seen while you dive away from it)', () => {

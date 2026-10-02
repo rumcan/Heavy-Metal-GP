@@ -16,14 +16,81 @@ const { Body } = Matter;
 
 /** Grid lanes by slot: spread the field over the three lanes so nobody starts boxed in. */
 const GRID_LANES: Lane[] = [1, 0, 2, 1, 0, 2, 1, 0, 2, 1];
-const GRID_GAP = 64;
+/** Cannons in one lane stand this far apart (pole furthest forward). */
+const CANNON_GAP = 150;
 
-/** Where a slot (1 = pole) lines up on a platformer grid, and in which lane. */
+// ---- The cannon start: every racer starts loaded in a cannon of their own, aims during the countdown and
+// fires once the lights are out (a person presses jump; the AI fires straight away; nobody stays in forever).
+/** Barrel length from the pivot to the muzzle, where the loaded ball sits. */
+export const CANNON_LEN = 44;
+/** Launch speed out of the muzzle. */
+export const CANNON_SPEED = 13;
+/** Aim limits, radians above the horizon (aimed forward, to the right). */
+export const CANNON_MIN = 0.12;
+export const CANNON_MAX = 1.25;
+/** A person who has not fired this long after lights out is fired anyway. */
+export const CANNON_AUTOFIRE_MS = 2500;
+
+export interface Cannon { x: number; y: number; lane: Lane; angle: number; fired: boolean; fireAt: number }
+
+/** Where a slot's cannon stands (1 = pole) and in which lane. */
 export function gridSpot(game: Game, slot: number): { x: number; y: number; lane: Lane } {
   const plan = game.track.platformer!.plan;
   const lane = GRID_LANES[(slot - 1) % GRID_LANES.length];
   const row = Math.floor((slot - 1) / 3);
-  return { x: plan.startX - 40 - row * GRID_GAP - (slot % 2) * 14, y: plan.startY - MARBLE_RADIUS - 2, lane };
+  return { x: plan.startX - 60 - row * CANNON_GAP, y: plan.startY - 20, lane };
+}
+
+/** The muzzle of a cannon aimed at `angle`. */
+export function muzzle(c: Cannon): Matter.Vector {
+  return { x: c.x + Math.cos(c.angle) * CANNON_LEN, y: c.y - Math.sin(c.angle) * CANNON_LEN };
+}
+
+/** Load a marble into its cannon at the grid. The AI's aim is rolled from the race seed. */
+export function loadCannon(game: Game, m: Marble, spot: { x: number; y: number }): void {
+  const angle = game.isHuman(m) ? 0.6 : 0.3 + game.rng() * 0.55;
+  m.cannon = { x: spot.x, y: spot.y, lane: (m.lane ?? LANE_MIDDLE) as Lane, angle, fired: false, fireAt: Infinity };
+  holdInCannon(m);
+}
+
+function holdInCannon(m: Marble): void {
+  const c = m.cannon!;
+  Body.setPosition(m.body, muzzle(c));
+  Body.setVelocity(m.body, { x: 0, y: 0 });
+  Body.setAngularVelocity(m.body, 0);
+  m.body.collisionFilter.mask = 0; // nothing touches a ball inside a barrel
+}
+
+/** Lights out: everyone gets a fuse. People have CANNON_AUTOFIRE_MS to fire; the AI goes within half a second. */
+export function armCannons(game: Game): void {
+  for (const m of game.marbles) {
+    if (!m.cannon || m.cannon.fired) continue;
+    m.cannon.fireAt = game.time + (game.isHuman(m) ? CANNON_AUTOFIRE_MS : 120 + game.rng() * 480);
+  }
+}
+
+/** A step for a marble still in its cannon: aim (people steer it with left/right), hold the ball, fire. */
+export function cannonStep(game: Game, m: Marble, s: number): void {
+  const c = m.cannon!;
+  const guest = game.humanInput.get(m.info.id);
+  const local = m === game.player && m.info.isPlayer;
+  const nudge = guest ? guest.nudge : local ? game.nudge : 0;
+  // Jump is the trigger. A press during the countdown is used up, so it cannot fire the instant the lights go.
+  let pull = false;
+  if (guest) { pull = guest.jump === true; guest.jump = false; }
+  else if (local) { pull = game.jumpPressed; game.jumpPressed = false; }
+  // Right flattens the shot (further, lower), left lifts it (higher, shorter).
+  if (nudge !== 0) c.angle = Math.max(CANNON_MIN, Math.min(CANNON_MAX, c.angle - nudge * 0.022 * s));
+  holdInCannon(m);
+  if (!game.gateOpen || !(pull || game.time >= c.fireAt)) return;
+  c.fired = true;
+  applyLaneMask(game, m);
+  Body.setVelocity(m.body, { x: Math.cos(c.angle) * CANNON_SPEED, y: -Math.sin(c.angle) * CANNON_SPEED });
+  m.motionAt = game.time;
+  const p = muzzle(c);
+  game.sfx('bang', m, p.x, p.y);
+  game.effects.push({ type: 'ring', x: p.x, y: p.y, ttl: 18, maxTtl: 18, color: 'rgba(255,220,160,0.9)' });
+  game.effects.push({ type: 'debris', x: p.x, y: p.y, ttl: 22, maxTtl: 22, color: '#9ca3af', particles: game.makeParticles(p.x, p.y, 8, 2.2) });
 }
 
 /** The collision filter for a marble in its lane: it meets its own lane's floors and rivals, and shared walls. */

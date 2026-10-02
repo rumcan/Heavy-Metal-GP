@@ -162,15 +162,23 @@ function trestle(ctx: CanvasRenderingContext2D, run: Pt[], x0: number, x1: numbe
     for (let i = 0; i < supports.length - 1; i++) {
       const a = supports[i], b = supports[i + 1];
       const ya = a.top + (a.foot - a.top) * 0.45, yb = b.top + (b.foot - b.top) * 0.45;
-      stripAlong(ctx, plank, [{ x: a.x, y: ya }, { x: b.x, y: yb }], 9, 18);
+      stripAlong(ctx, plank, [{ x: a.x, y: ya }, { x: b.x, y: yb }], 5, 9);
     }
   }
-  for (const sp of supports) {
-    const h = sp.foot - sp.top;
-    if (h < 20) continue;
-    const w = Math.min((sp.img.naturalWidth / sp.img.naturalHeight) * h, 210);
-    ctx.drawImage(sp.img, sp.x - w / 2, sp.top, w, h);
-  }
+  for (const sp of supports) stackSupport(ctx, sp.img, sp.x, sp.top, sp.foot, SUPPORT_MODULE, 105);
+}
+
+/** One support piece in this many world px of height: half the old single stretched piece. */
+const SUPPORT_MODULE = 105;
+
+/** A support drawn as a stack of modules (like real scaffolding) from `top` down to `foot`. */
+function stackSupport(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, top: number, foot: number, module: number, maxW: number) {
+  const h = foot - top;
+  if (h < 20) return;
+  const n = Math.max(1, Math.round(h / module));
+  const mh = h / n;
+  const w = Math.min((img.naturalWidth / img.naturalHeight) * mh, maxW);
+  for (let k = 0; k < n; k++) ctx.drawImage(img, x - w / 2, top + k * mh, w, mh + 1);
 }
 
 /**
@@ -245,8 +253,7 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
       const img = POSTS[Math.floor(hash(Math.round(px), 29) * POSTS.length)];
       const top = l.y + LEDGE_H - 6, foot = yOn(under, px) - RAIL_UP + 4;
       if (!ready(img) || foot - top < 30) continue;
-      const w = Math.min((img.naturalWidth / img.naturalHeight) * (foot - top), 120);
-      ctx.drawImage(img, px - w / 2, top, w, foot - top);
+      stackSupport(ctx, img, px, top, foot, SUPPORT_MODULE, 60);
     }
     const flat = [{ x: l.x, y: l.y }, { x: l.x + l.w, y: l.y }];
     stripAlong(ctx, middle(ART.wood!), flat, 2, LEDGE_H + 8);

@@ -171,6 +171,8 @@ export interface Marble {
   aiJumpAt?: number;
   /** P2-00 platformer: the last spring launch (one launch per landing). */
   springAt?: number;
+  /** P2-00 platformer: the start cannon this marble is loaded in (fired = out on the course). */
+  cannon?: platformer.Cannon;
 }
 
 export interface OilSlick {
@@ -347,6 +349,7 @@ export class Game {
 
     const order = opts.gridOrder && opts.gridOrder.length === roster.length ? opts.gridOrder : roster.map((r) => r.id);
     const slots = gridSlots(order);
+    const cannonSpots = new Map<Marble, { x: number; y: number }>();
     roster.forEach((info) => {
       const ph = statsToPhysics(info.stats);
       const slot = slots.find((s) => s.id === info.id)!;
@@ -402,6 +405,8 @@ export class Game {
         m.progress = m.bestProgress = 0;
         platformer.applyLaneMask(this, m);
       }
+      // P2-00: platformer races start from a cannon each (loaded once every seat is known as human or AI).
+      if (spot) cannonSpots.set(m, spot);
       this.marbles.push(m);
       this.byId.set(info.id, m);
     });
@@ -409,6 +414,7 @@ export class Game {
     // Guest seats are human from the moment they are seated, not from their
     // first intent: an idle guest must not be driven by the AI.
     for (const id of opts.humanSeats ?? []) if (!this.humanInput.has(id)) this.humanInput.set(id, { nudge: 0 });
+    for (const [m, spot] of cannonSpots) platformer.loadCannon(this, m, spot);
     Composite.add(
       this.world,
       this.marbles.map((m) => m.body),
@@ -583,8 +589,12 @@ export class Game {
     this.emit({ kind: 'sound', cue: 'gate' });
     // trapdoor opens: marbles start from rest and let gravity do the work
     this.removeTrackBody(this.track.gate);
+    if (this.track.platformer) {
+      platformer.armCannons(this);
+      if (this.player.cannon && !this.player.cannon.fired) this.onEvent?.('FIRE! Space or ↑ (aim with ← →)', '#facc15');
+    }
     this.marbles.forEach((m) => {
-      Body.setVelocity(m.body, { x: 0, y: 0 });
+      if (!m.cannon || m.cannon.fired) Body.setVelocity(m.body, { x: 0, y: 0 });
       m.motionAt = m.depthAt = this.time;
       m.motionAnchor = { ...m.body.position };
       m.deepestY = m.body.position.y;
@@ -850,7 +860,11 @@ export class Game {
   step(dt: number) {
     const s = dt / TICK; // fraction of a 60fps tick
     this.time += dt;
-    if (!this.gateOpen) return;
+    if (!this.gateOpen) {
+      // P2-00: on the grid, the start cannons can already be aimed (they only fire once the lights are out).
+      if (this.track.platformer) for (const m of this.marbles) if (m.cannon && !m.cannon.fired) platformer.cannonStep(this, m, s);
+      return;
+    }
     this.syncTrack();
     this.elementState(dt); // MB-10: host-authoritative stateful elements
 
@@ -987,6 +1001,11 @@ export class Game {
         }
       }
 
+      // P2-00: a marble still in its start cannon aims and waits to be fired; nothing else moves it.
+      if (m.cannon && !m.cannon.fired) {
+        platformer.cannonStep(this, m, s);
+        continue;
+      }
       if (!this.gateOpen) continue;
 
       let v = Body.getVelocity(b);
