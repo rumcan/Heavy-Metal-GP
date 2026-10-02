@@ -2,7 +2,7 @@
 // Alto's Adventure; the art is our own), chasms to jump, crates to hop, and three parallel depth ridges.
 // Pure data (a CoursePlan), deterministic from the seed. Floors are short straight pieces along a smooth curve.
 import { mulberry32 } from '../types';
-import type { Bump, CoursePlan, Floor, Lane, LaneGate } from './course';
+import type { Bump, CoursePlan, Floor, Lane, LaneGate, Ledge, Spring } from './course';
 
 export interface FlowTuning {
   length: number;
@@ -80,6 +80,23 @@ export function planFlow(seed: number, t: FlowTuning = FLOW_TUNING): CoursePlan 
   }
   const inChasm = (lane: Lane, x: number) => chasms.get(lane)!.some(([a, b]) => x > a && x < b);
 
+  // Shortcuts: before some chasms a spring, and a ledge high over the chasm that carries you past it.
+  const springs: Spring[] = [];
+  const ledges: Ledge[] = [];
+  for (const lane of LANES) {
+    for (const [a, b] of chasms.get(lane)!) {
+      if (rng() > 0.55) continue;
+      const sx = Math.round(a - 300);
+      const lx0 = Math.round(a - 120), lx1 = Math.round(b + roll(480, 760));
+      let low = Infinity;
+      for (let x = lx0; x <= lx1; x += 20) if (!inChasm(lane, x)) low = Math.min(low, heightAt(lane, x));
+      const blocked = rocks.some((r) => r.lane === lane && r.x + r.w > sx - 40 && r.x < lx1 + 40) || inChasm(lane, sx) || inChasm(lane, sx + 60);
+      if (blocked || !Number.isFinite(low)) continue;
+      springs.push({ lane, x: sx, y: heightAt(lane, sx + 30) });
+      ledges.push({ lane, x: lx0, w: lx1 - lx0, y: Math.round(low - roll(170, 220)) });
+    }
+  }
+
   // Floors: straight pieces of `step` along each lane's curve, cut at the chasms.
   const floors: Floor[] = [];
   for (const lane of LANES) {
@@ -108,10 +125,18 @@ export function planFlow(seed: number, t: FlowTuning = FLOW_TUNING): CoursePlan 
     if (clearAt(lane, x, x + 170) && clearAt(to, x, x + 170)) gates.push({ kind, lane, to, x, w: 170, y: heightAt(lane, x + 85) });
   }
 
+  // A lane gate never shares its stretch with a spring or sits under a ledge (in either of its lanes).
+  const busy = (lane: Lane, x0: number, x1: number) =>
+    springs.some((s) => s.lane === lane && x1 > s.x - 80 && x0 < s.x + 140) || ledges.some((l) => l.lane === lane && x1 > l.x - 40 && x0 < l.x + l.w + 40);
+  for (let i = gates.length - 1; i >= 0; i--) {
+    const g = gates[i];
+    if (busy(g.lane, g.x, g.x + g.w) || busy(g.to, g.x, g.x + g.w)) gates.splice(i, 1);
+  }
+
   const path: { x: number; y: number }[] = [];
   for (let x = 0; x <= t.length; x += 200) path.push({ x, y: heightAt(1, x) - 30 });
   const finishX = end + 360;
   const finishY = heightAt(1, finishX);
   const height = Math.max(...floors.map((f) => Math.max(f.y0, f.y1))) + 900;
-  return { seed, style: 'flow' as const, width: t.length, height, floors, bumps: rocks, gates, path, startX: 520, startY: t.startY, finishX, finishY };
+  return { seed, style: 'flow' as const, width: t.length, height, floors, bumps: rocks, gates, path, springs, ledges, startX: 520, startY: t.startY, finishX, finishY };
 }

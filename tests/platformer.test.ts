@@ -59,7 +59,7 @@ test('buildPlatformerTrack: floors collide only with their own lane; shared wall
   assert.ok(track.platformer);
   for (const body of track.bodies) {
     const md = meta(body);
-    if (md.kind === 'floor') assert.equal(body.collisionFilter.mask, laneCategory(md.lane!));
+    if (md.kind === 'floor' || md.kind === 'ledge') assert.equal(body.collisionFilter.mask, laneCategory(md.lane!));
     else assert.equal(body.collisionFilter.mask, ALL_LANES, md.kind);
   }
   assert.equal(meta(track.gate).kind, 'gate');
@@ -158,4 +158,32 @@ test('flow courses: smooth, descending, and the back ridge always stands above t
     const back = floorAt(plan, 0, x), middle = floorAt(plan, 1, x);
     if (back !== null && middle !== null) assert.ok(back < middle, `back ridge above the middle at ${x}`);
   }
+});
+
+test('springs and one-way ledges: a ball passes up through a ledge, lands on it, and a spring launches it', async () => {
+  const { planFlow } = await import('../src/game/platformer/flow');
+  const plan = planFlow(11);
+  assert.ok((plan.springs?.length ?? 0) > 0 && plan.springs!.length === plan.ledges!.length, 'a ledge for every spring');
+  for (const l of plan.ledges!) {
+    const under = floorAt(plan, l.lane, l.x + 10);
+    if (under !== null) assert.ok(l.y < under - 150, 'a ledge stands well above the ground');
+  }
+  // In a race: count how many balls ever stood on a ledge and were launched by a spring.
+  const game = new Game(5, roster(), { track: buildPlatformerTrack(5, TRACK_THEMES.forest, 'rolling-hills') });
+  game.start();
+  game.openGate();
+  let launched = 0, onLedge = 0;
+  const seen = new Set<number>();
+  for (let i = 0; i < 9000 && !game.allFinished(); i++) {
+    game.step(PHYSICS_STEP);
+    for (const m of game.marbles) {
+      if (m.springAt === game.time) launched++;
+      const lane = m.lane ?? 1;
+      const p = m.body.position;
+      if (!seen.has(m.info.id) && game.track.platformer!.plan.ledges!.some((l) => l.lane === lane && p.x > l.x && p.x < l.x + l.w && Math.abs(p.y + 14 - l.y) < 4 && m.grounded < 3)) { seen.add(m.info.id); onLedge++; }
+    }
+  }
+  assert.ok(launched > 0, 'springs launched someone');
+  assert.ok(onLedge > 0, 'someone rode a ledge');
+  assert.ok(game.allFinished(), 'and everyone still finished');
 });

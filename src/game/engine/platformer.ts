@@ -5,7 +5,8 @@ import Matter from 'matter-js';
 import type { Game, Marble } from '../engine';
 import { laneCategory, LANE_SWITCH_MS, LANE_MIDDLE } from '../lanes';
 import { progressAlong, pointAt } from '../course-path';
-import { floorAt } from '../platformer/course';
+import { floorAt, SPRING_W } from '../platformer/course';
+import { CAT_ONEWAY } from '../platformer/build';
 import type { Lane, LaneGate } from '../platformer/course';
 import { CAT_WALL, CAT_SENSOR, CAT_FRAGILE, CAT_DANGER } from '../track';
 import { CONTROL_TUNING, steerVelocity } from '../controls';
@@ -30,7 +31,45 @@ export function applyLaneMask(game: Game, m: Marble): void {
   const lane = m.lane ?? LANE_MIDDLE;
   const ghost = m.ghostUntil > game.time;
   m.body.collisionFilter.category = laneCategory(lane);
-  m.body.collisionFilter.mask = CAT_WALL | CAT_SENSOR | (ghost ? 0 : laneCategory(lane) | CAT_FRAGILE | CAT_DANGER);
+  m.body.collisionFilter.mask = CAT_WALL | CAT_SENSOR | (ghost ? 0 : laneCategory(lane) | CAT_FRAGILE | CAT_DANGER) | (onLedgeSide(game, m) ? CAT_ONEWAY : 0);
+}
+
+/**
+ * One-way ledges: a ball meets a ledge only when it is coming down onto it from above (its bottom at or above
+ * the ledge top, not rising). From below, or jumping up through it, it passes straight through.
+ */
+function onLedgeSide(game: Game, m: Marble): boolean {
+  const ledges = game.track.platformer?.plan.ledges;
+  if (!ledges?.length) return false;
+  const lane = m.lane ?? LANE_MIDDLE;
+  const p = m.body.position;
+  const v = m.body.velocity;
+  for (const l of ledges) {
+    if (l.lane !== lane || p.x < l.x - MARBLE_RADIUS || p.x > l.x + l.w + MARBLE_RADIUS) continue;
+    if (p.y + MARBLE_RADIUS <= l.y + 6 && v.y > -0.5) return true;
+  }
+  return false;
+}
+
+/** Spring launch speed (upward). Higher than a jump: a spring is how you reach a ledge. */
+export const SPRING_SPEED = 13;
+
+/** Every step: the one-way mask, and springs under a grounded ball. */
+export function laneStep(game: Game, m: Marble): void {
+  applyLaneMask(game, m);
+  const springs = game.track.platformer!.plan.springs;
+  if (!springs?.length || game.time < (m.springAt ?? -Infinity) + 400) return;
+  const lane = m.lane ?? LANE_MIDDLE;
+  const p = m.body.position;
+  for (const s of springs) {
+    if (s.lane !== lane || p.x < s.x || p.x > s.x + SPRING_W) continue;
+    if (Math.abs(p.y + MARBLE_RADIUS - s.y) > 14) continue;
+    m.springAt = game.time;
+    const v = Body.getVelocity(m.body);
+    Body.setVelocity(m.body, { x: Math.max(v.x, 6), y: -SPRING_SPEED });
+    game.sfx('spring', m, p.x, p.y);
+    return;
+  }
 }
 
 /** Move a marble to another lane: a small hop, and the camera/skin dolly runs off `laneAt`. */
