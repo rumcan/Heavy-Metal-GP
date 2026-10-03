@@ -47,7 +47,7 @@ import { officialTrack } from './game/official-tracks';
 import LevelUpCard from './components/progression/LevelUpCard';
 import TalentsScreen from './components/talents/TalentsScreen';
 import { validateBuild } from './game/talents';
-import { isPlatformerPick, platformerCourse, registerCustomCourse } from './game/platformer/course';
+import { PLATFORMER_PREFIX, isPlatformerPick, platformerCourse, registerCustomCourse } from './game/platformer/course';
 import { isPlatformerDef, planFromTrackDef, settle } from './game/platformer/def';
 import { TRACK_THEMES } from './game/types';
 import { loadAccount, saveAccount, purchaseItem, onlineRaceId, settleOnlineRace, settleRace, settleCustomRace, progressOf, awardResultXp } from './game/economy';
@@ -508,6 +508,8 @@ export default function App() {
       try {
         const { decodeShareCode } = await import('./game/sharecode');
         const def = await decodeShareCode(code);
+        // P2-22: a platformer course in the room's code is raced as a platformer course (the same plan on every machine).
+        if (isPlatformerDef(def)) registerCustomCourse('my-room', def.name, planFromTrackDef(settle(def)));
         setOnlineCustomDef(def);
       } catch (err) {
         console.warn('Custom track decode failed', err);
@@ -911,7 +913,7 @@ export default function App() {
     const gp = isCustomOnline && onlineCustomDef ? { name: onlineCustomDef.name, profile: CALENDAR[0].profile } as unknown as typeof CALENDAR[0] : CALENDAR[circuitIndexOf(online.settings)] ?? CALENDAR[0];
     const drivers = online.seats.filter((s) => !s.isAI).length;
     // P2-00: a platformer course is generated from its id (no def), the same on every machine.
-    const onlinePlatformer = online.settings.platformer ? platformerCourse(online.settings.platformer) : null;
+    const onlinePlatformer = isCustomOnline && onlineCustomDef && isPlatformerDef(onlineCustomDef) ? platformerCourse(PLATFORMER_PREFIX + 'my-room') : online.settings.platformer ? platformerCourse(online.settings.platformer) : null;
     return withShop(
       <RaceScreen
         key={raceKey}

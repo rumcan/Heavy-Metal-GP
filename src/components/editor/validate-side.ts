@@ -52,7 +52,7 @@ function headless(def: TrackDef): { report: HeadlessReport; issues: ValidationIs
     const issues: ValidationIssue[] = [];
     const where = clustered[0] ?? { x: plan.finishX - 300, y: plan.finishY - 100 };
     if (report.finishRate < 0.9) issues.push({ severity: 'error', message: `Only ${finished.length}/10 finished: at least 9 must get home.`, pos: where });
-    if (report.timeLimitHits > 0) issues.push({ severity: 'error', message: `${report.timeLimitHits} marble(s) were still on the course after ${Math.round(HEAT_LIMIT_MS / 1000)} s.`, pos: where });
+    if (report.timeLimitHits > 0) issues.push({ severity: report.finishRate < 0.9 ? 'error' : 'warning', message: `${report.timeLimitHits} marble(s) were still on the course after ${Math.round(HEAT_LIMIT_MS / 1000)} s.`, pos: where });
     if (clustered.length > 0) {
       const hard = total > 12 || clustered.length >= 5;
       for (const p of clustered.slice(0, 4)) issues.push({ severity: hard ? 'error' : 'warning', message: `${hard ? 'Trap' : 'Stuck spot'} near x ${p.x}: the marshal had to lift a marble out.`, pos: p });
@@ -75,7 +75,7 @@ export function validatePlatformer(def: TrackDef): ValidationResult {
     ? { report: { finishRate: 0, medianTime: null, stuckSpots: [], timeLimitHits: 10, finishTimes: Array(10).fill(null), totalRecoveries: 0, averageRecoveries: 0 } as HeadlessReport, issues: [] as ValidationIssue[] }
     : headless(check.ok ? check.def : def);
   const issues = [...staticIssues, ...headlessIssues];
-  const canShare = !issues.some((i) => i.severity === 'error') && report.finishRate >= 0.9 && report.timeLimitHits === 0;
+  const canShare = !issues.some((i) => i.severity === 'error') && report.finishRate >= 0.9;
   const errors = issues.filter((i) => i.severity === 'error').length;
   const summary = canShare
     ? `PASS: ${Math.round(report.finishRate * 10)}/10 finished, median ${((report.medianTime ?? 0) / 1000).toFixed(0)} s`
