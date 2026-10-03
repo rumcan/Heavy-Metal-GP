@@ -354,6 +354,10 @@ body { min-width: 0; }
 .circuit-tabs { display: flex; gap: 6px; padding: 2px; background: #0e151d; border: 1px solid var(--line); border-radius: 6px; align-self: flex-start; }
 .circuit-tabs button { padding: 6px 12px; font-size: 11px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; border: 1px solid transparent; border-radius: 4px; background: none; color: var(--muted); cursor: pointer; }
 .circuit-tabs button.selected { background: #d63e2e; color: #fff; border-color: #ff6b5a; }
+/* P2-11: four circuit sources (Calendar, My tracks, Community, Platformer) share one row on a 375 px phone. */
+.lobby-circuit > .circuit-tabs { align-self: stretch; max-width: 100%; }
+.lobby-circuit > .circuit-tabs button { flex: 1 1 0; min-width: 0; padding: 6px 4px; }
+.lobby-community { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
 .custom-circuit-pane { display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow: hidden; }
 .custom-selected { display: flex; flex-direction: column; gap: 8px; padding: 8px; border: 1px solid #2a3a4a; border-radius: 6px; background: #0c1219; }
 .custom-preview { display: flex; gap: 12px; align-items: flex-start; }
