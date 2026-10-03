@@ -1377,9 +1377,9 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
             >
               <Users size={13} /> AI rivals
             </button>}
-            <label className="editor-toggle editor-check" title="Watch AI: 10 AI marbles race the map on their own (your garage marble too). Tab cycles who the camera follows.">
+            {!side && <label className="editor-toggle editor-check" title="Watch AI: 10 AI marbles race the map on their own (your garage marble too). Tab cycles who the camera follows.">
               <input type="checkbox" checked={watchAi} onChange={(e) => setWatchAi(e.target.checked)} /> Watch AI
-            </label>
+            </label>}
             {!side && <button
               type="button"
               className={`editor-toggle ${pickSpawn ? 'on' : ''} ${spawnAt ? 'has-spawn' : ''}`}
