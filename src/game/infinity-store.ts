@@ -19,10 +19,12 @@ export interface InfinityRecords {
   /** Which seed the Roll button uses, and the text of "My seed". */
   choice: SeedChoice;
   mySeed: string;
+  /** P2-25: fewer particles and no drifting motion, for players who prefer a stiller screen. */
+  reduceMotion: boolean;
 }
 
 export function emptyRecords(): InfinityRecords {
-  return { bestKm: 0, totalKm: 0, runs: 0, lastSeed: '', choice: 'daily', mySeed: '' };
+  return { bestKm: 0, totalKm: 0, runs: 0, lastSeed: '', choice: 'daily', mySeed: '', reduceMotion: false };
 }
 
 const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0);
@@ -38,6 +40,7 @@ export function normalizeRecords(value: unknown): InfinityRecords {
   if (typeof r.lastSeed === 'string') out.lastSeed = r.lastSeed.slice(0, 40);
   if (r.choice === 'daily' || r.choice === 'mine') out.choice = r.choice;
   if (typeof r.mySeed === 'string') out.mySeed = r.mySeed.slice(0, 40);
+  out.reduceMotion = r.reduceMotion === true;
   return out;
 }
 
@@ -52,6 +55,14 @@ export function loadRecords(): InfinityRecords {
 
 export function saveRecords(records: InfinityRecords): void {
   storage.setItem(INFINITY_KEY, JSON.stringify(records));
+}
+
+/** P2-25: remember the Reduce motion choice. */
+export function setReduceMotion(on: boolean): InfinityRecords {
+  const r = loadRecords();
+  r.reduceMotion = on;
+  saveRecords(r);
+  return r;
 }
 
 /** A run is starting on this seed. */
