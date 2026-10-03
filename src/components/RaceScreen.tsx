@@ -37,6 +37,7 @@ import type { RaceAction } from './RaceResults';
 import type { RankedRaceView } from '../game/rank-view';
 import StoryRaceOverlay from './story/StoryRace';
 import type { StoryRaceProps } from './story/StoryRace';
+import type { TutorialBridge } from './story/TutorialOverlay';
 export type { RaceAction } from './RaceResults';
 
 interface Props {
@@ -79,6 +80,12 @@ interface Props {
    * a rated one, which is itself worth printing.
    */
   rating?: RankedRaceView | null;
+  /**
+   * P2-13: a tutorial race. When set, the screen reports input and frames into the bridge
+   * (the overlay owns the lessons), the learner takes no damage, and rivals keep their
+   * items holstered. Absent everywhere except the Training Grounds tutorial.
+   */
+  tutorial?: TutorialBridge;
 }
 
 /** What an online race needs that an offline one does not. */
@@ -115,13 +122,16 @@ interface Hud {
   viewTop: number; viewBottom: number;
 }
 
-export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef, title, subtitle, onExit, onFinished, actions, championship = false, inventory, credits, onInventoryChange, payout, onShop, isCustom = false, story, loadoutMode, online, rating = null }: Props) {
+export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef, title, subtitle, onExit, onFinished, actions, championship = false, inventory, credits, onInventoryChange, payout, onShop, isCustom = false, story, loadoutMode, online, rating = null, tutorial }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef<Game | null>(null);
   /** MP-06: the online session, when there is one. The host's simulation or the guest's picture. */
   const sessionRef = useRef<RaceSession | null>(null);
   const onlineRef = useRef(online);
   onlineRef.current = online;
+  /** P2-13: the tutorial overlay's bridge, read by the input handlers and the HUD tick. */
+  const tutorialRef = useRef(tutorial);
+  tutorialRef.current = tutorial;
   /** Which marble is mine — the seat, online; the player, offline. */
   const playerId = roster.find((m) => m.isPlayer)?.id ?? 0;
   const controls = useRef({ left: false, right: false, touch: 0, engine: false });
@@ -194,12 +204,16 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
     const session = sessionRef.current;
     if (session) session.useItem(item);
     else gameRef.current?.usePlayerItem(item);
+    // P2-13: the skills lesson wants to know the learner fired one.
+    tutorialRef.current?.onSkill(item);
   }, []);
   /** P2-01: one press of the core jump. */
   const pressJump = useCallback(() => {
     const session = sessionRef.current;
     if (session) session.jump();
     else if (gameRef.current) gameRef.current.jumpPressed = true;
+    // P2-13: keyboard, touch button and any other path all land here.
+    tutorialRef.current?.onJump();
   }, []);
 
   /**
@@ -310,7 +324,9 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
         })
       : null;
     sessionRef.current = session;
-    const game = session ? session.game : new Game(seed, roster, { profile, gridOrder, inventory: initialInventory.current, story: story?.hooks, def: trackDef ?? undefined, dropPool: slotSkills(slotsRef.current), talents: loadAccount().talents, slots: slotsRef.current });
+    const game = session ? session.game : new Game(seed, roster, { profile, gridOrder, inventory: initialInventory.current, story: story?.hooks, def: trackDef ?? undefined, dropPool: slotSkills(slotsRef.current), talents: loadAccount().talents, slots: slotsRef.current, ...(tutorialRef.current ? { aiItems: false } : {}) });
+    // P2-13: a learner cannot be hurt — health off for the whole tutorial ride.
+    if (tutorialRef.current) game.healthOn = false;
     // Online, this screen does not own the wallet: the race inventory is the
     // host's book until MP-09 puts each driver's own items on the grid, and a
     // pickup here must not empty the account it was bought with.
@@ -427,8 +443,12 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       const action = actionForKey(event.code);
       if (!action) return;
       event.preventDefault();
-      if (action.kind === 'steer') { if (action.dir < 0) controls.current.left = down; else controls.current.right = down; return; }
-      if (action.kind === 'engine') { controls.current.engine = down; return; }
+      if (action.kind === 'steer') {
+        if (action.dir < 0) controls.current.left = down; else controls.current.right = down;
+        if (down && !event.repeat) tutorialRef.current?.onSteer(action.dir); // P2-13
+        return;
+      }
+      if (action.kind === 'engine') { controls.current.engine = down; tutorialRef.current?.onEngine(down); return; }
       if (action.kind === 'jump') { if (down && !event.repeat) pressJump(); return; }
       if (down && !event.repeat) {
         const item = slotsRef.current[action.slot];
@@ -589,6 +609,12 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
           following: following.info.isPlayer ? 'You' : following.info.name,
           viewTop: camera.y - height / 2 / camera.scale, viewBottom: camera.y + height / 2 / camera.scale,
         });
+        // P2-13: the tutorial overlay reads the learner's position, heat and flags here.
+        tutorialRef.current?.onFrame({
+          x: game.player.body.position.x, y: game.player.body.position.y,
+          heat: game.player.engine?.heat ?? 0, gateOpen: game.gateOpen,
+          finished: game.player.finishedAt !== null, paused: pausedRef.current,
+        });
       }
       raf = requestAnimationFrame(loop);
     };
@@ -649,7 +675,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
     useItem(item);
   };
   const nudgeButton = (direction: number) => ({
-    onPointerDown: (event: React.PointerEvent<HTMLButtonElement>) => { event.currentTarget.setPointerCapture(event.pointerId); if (!pausedRef.current) controls.current.touch = direction; },
+    onPointerDown: (event: React.PointerEvent<HTMLButtonElement>) => { event.currentTarget.setPointerCapture(event.pointerId); if (!pausedRef.current) controls.current.touch = direction; tutorialRef.current?.onSteer(direction as -1 | 1); },
     onPointerUp: () => { controls.current.touch = 0; },
     onPointerCancel: () => { controls.current.touch = 0; },
     onLostPointerCapture: () => { controls.current.touch = 0; },
@@ -714,7 +740,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       <div className="speed-readout"><div className="readout-caption"><Gauge size={13} /><span>SPEED</span></div><div><strong>{Math.round(hud.speed)}</strong><span>cm/s</span></div><div className="speed-meter"><span style={{ width: `${Math.min(100, hud.speed / hud.cap * 100)}%` }} /></div></div>{hud.healthOn && <div className={`hp-meter ${hud.hp / hud.maxHp < 0.4 ? 'low' : ''}`} title="Health: 0 and you are out of the race"><span>HP {Math.ceil(hud.hp)}</span><i style={{ width: `${Math.max(0, Math.min(100, hud.hp / hud.maxHp * 100))}%` }} /></div>}<div className={`engine-heat ${hud.overheated ? 'overheated' : ''}`} title="Magic Engine heat: hold ↓ to fire, let go to cool"><span>{hud.overheated ? 'OVERHEAT' : 'ENGINE ↓'}</span><i style={{ width: `${Math.round(hud.heat * 100)}%` }} /></div>
       <div className={`marble-state ${hud.frozen ? 'is-frozen' : ''}`}><span className="readout-caption">MARBLE STATUS</span><strong>{hud.frozen && <Snowflake size={14} />}{hud.state}</strong><span className="peg-readout"><i className="orange-peg" />{hud.pegs} orange pegs</span></div>
       <div className="race-wallet"><Coins size={16} /><strong>{credits.toLocaleString()}</strong><span>CR</span></div>
-      <div className="race-controls"><div className="nudge-controls"><span>FIND YOUR LINE</span><div><button className="nudge-button" aria-label="Nudge left" {...nudgeButton(-1)} disabled={hud.finished || preStart || paused}><ArrowLeft size={18} /><kbd>←</kbd></button><button className="nudge-button" aria-label="Nudge right" {...nudgeButton(1)} disabled={hud.finished || preStart || paused}><ArrowRight size={18} /><kbd>→</kbd></button></div></div><div className="thumb-controls"><button className="nudge-button jump-button" aria-label="Jump" onPointerDown={(e) => { e.preventDefault(); pressJump(); }} disabled={hud.finished || preStart || paused}>JUMP<kbd>↑</kbd></button><button className="nudge-button engine-button" aria-label="Magic Engine (hold)" onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); controls.current.engine = true; }} onPointerUp={() => { controls.current.engine = false; }} onPointerCancel={() => { controls.current.engine = false; }} onLostPointerCapture={() => { controls.current.engine = false; }} disabled={hud.finished || preStart || paused}>ENGINE<kbd>↓</kbd></button></div></div>
+      <div className="race-controls"><div className="nudge-controls"><span>FIND YOUR LINE</span><div><button className="nudge-button" aria-label="Nudge left" {...nudgeButton(-1)} disabled={hud.finished || preStart || paused}><ArrowLeft size={18} /><kbd>←</kbd></button><button className="nudge-button" aria-label="Nudge right" {...nudgeButton(1)} disabled={hud.finished || preStart || paused}><ArrowRight size={18} /><kbd>→</kbd></button></div></div><div className="thumb-controls"><button className="nudge-button jump-button" aria-label="Jump" onPointerDown={(e) => { e.preventDefault(); pressJump(); }} disabled={hud.finished || preStart || paused}>JUMP<kbd>↑</kbd></button><button className="nudge-button engine-button" aria-label="Magic Engine (hold)" onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); controls.current.engine = true; tutorialRef.current?.onEngine(true); }} onPointerUp={() => { controls.current.engine = false; tutorialRef.current?.onEngine(false); }} onPointerCancel={() => { controls.current.engine = false; tutorialRef.current?.onEngine(false); }} onLostPointerCapture={() => { controls.current.engine = false; tutorialRef.current?.onEngine(false); }} disabled={hud.finished || preStart || paused}>ENGINE<kbd>↓</kbd></button></div></div>
       </div><InventoryToolbar slots={slotsRef.current} unlimited={online?.settings.items} inventory={hud.inventory} remaining={hud.remaining} selected={selected} blocked={paused || hud.finished || preStart || hud.frozen || !!results} coolingDown={hud.coolingDown} onUse={deploy} />
     </footer>
     {paused && !results && <Dialog titleId="pause-title" onClose={() => { setConfirmExit(false); setPause(false); }} className="pause-dialog"><span className="eyebrow"><Timer size={15} /> {confirmExit ? 'RACE CONTROL' : 'TIME OUT'}</span><h2 id="pause-title">{confirmExit ? 'Leaving the grid?' : 'A quick pit stop.'}</h2><p className="dialog-intro">{confirmExit ? 'This heat will not be scored or paid. Used items stay spent; unused items and pickups stay in your inventory. Previous results are safe.' : 'The clock, every marble, and all item timers are paused. Your next move can wait.'}</p><div className="pause-actions"><button className="button-primary" onClick={() => { setConfirmExit(false); setPause(false); }}><Play size={17} />Back to the race</button><button className="button-secondary" onClick={confirmExit ? onExit : () => setConfirmExit(true)}>{confirmExit ? 'Leave heat' : 'Return to paddock'}<ChevronRight size={16} /></button></div></Dialog>}
