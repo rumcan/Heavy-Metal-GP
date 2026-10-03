@@ -1,7 +1,7 @@
 import Matter from 'matter-js';
 import { Game, Marble } from './engine';
 import { hingeTimerState, hingeIsOpen, trapdoorWarn, pistonState, beltDir } from './elements';
-import { meta, W, cannonAim } from './track';
+import { meta, W, T, cannonAim } from './track';
 import { MARBLE_RADIUS, ITEM_INFO, skinFor, themeIdFor } from './types';
 import { drawAura, drawSkillWorld } from './skills/draw';
 import { bodyFrame, contentBox, currentSkin, drawRail, drawSprite, drawStrip, setSkin, sprite } from './sprites';
@@ -239,6 +239,52 @@ function drawPipe(ctx: CanvasRenderingContext2D, body: Matter.Body, fill: string
   ctx.stroke();
 }
 
+/**
+ * The scaffold skin (`PieceBase.skin`): a rail slab drawn as wooden scaffolding: two planks with butt joints, a
+ * lattice brace across the slab and a bolt at each end. Vector only; the collision body underneath is unchanged.
+ */
+function drawScaffold(ctx: CanvasRenderingContext2D, body: Matter.Body, length: number) {
+  const th = T, len = length;
+  ctx.save();
+  ctx.translate(body.position.x, body.position.y);
+  ctx.rotate(body.angle);
+  ctx.fillStyle = '#4d3017';
+  ctx.beginPath();
+  ctx.roundRect(-len / 2, -th / 2, len, th, 3);
+  ctx.fill();
+  // two planks, their butt joints staggered by where the slab sits so a run of them reads as separate boards
+  const seed = Math.abs(Math.floor(body.position.x * 7 + body.position.y * 13)) % 7;
+  for (const [row, y0] of [[0, -th / 2 + 1.5], [1, 1]] as const) {
+    ctx.fillStyle = row ? '#9c6c37' : '#b48447';
+    ctx.fillRect(-len / 2 + 1, y0, len - 2, th / 2 - 2.5);
+    ctx.fillStyle = 'rgba(255,230,170,0.22)';
+    ctx.fillRect(-len / 2 + 1, y0, len - 2, 1.5);
+    ctx.fillStyle = 'rgba(40,22,8,0.45)';
+    ctx.fillRect(-len / 2 + 1, y0 + th / 2 - 3.5, len - 2, 1);
+    const seam = -len / 2 + len * ((seed + row * 3) % 7 + 1) / 8.5;
+    ctx.fillRect(seam, y0, 1.2, th / 2 - 2.5);
+  }
+  // the lattice brace
+  if (len >= 12) {
+    ctx.strokeStyle = '#5e3c1b';
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(-len / 2 + 2, -th / 2 + 2);
+    ctx.lineTo(len / 2 - 2, th / 2 - 2);
+    ctx.moveTo(-len / 2 + 2, th / 2 - 2);
+    ctx.lineTo(len / 2 - 2, -th / 2 + 2);
+    ctx.stroke();
+  }
+  // bolts
+  for (const bx of [-len / 2 + 4.5, len / 2 - 4.5]) for (const by of [-th / 4 + 0.5, th / 4 - 0.5]) {
+    ctx.fillStyle = '#2a2018';
+    ctx.beginPath(); ctx.arc(bx, by, 1.9, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.beginPath(); ctx.arc(bx - 0.5, by - 0.5, 0.6, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
 function shade(hex: string, amt: number): string {
   const n = parseInt(hex.replace('#', ''), 16);
   let r = (n >> 16) & 255;
@@ -456,6 +502,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
     if (md?.xf) applyXf(ctx, md.xf);
     switch (md?.kind) {
       case 'ramp':
+        if (md.skin === 'scaffold' && md.surface) { drawScaffold(ctx, b, md.surface.length + 4); break; }
         if (!drawRail(ctx, b, 'rail-wood', md.caps, 1.3, true) && !drawStrip(ctx, b, 'strip-wood')) drawPipe(ctx, b, theme.pipe, theme.pipeEdge);
         break;
       case 'hoop': {
@@ -2077,6 +2124,7 @@ function paintStatic(ctx: CanvasRenderingContext2D, game: Game, top: number, bot
     if (md?.xf) applyXf(ctx, md.xf);
     switch (md.kind) {
       case 'ramp':
+        if (md.skin === 'scaffold' && md.surface) { drawScaffold(ctx, b, md.surface.length + 4); break; }
         if (!drawRail(ctx, b, 'rail-wood', md.caps, 1.3, true) && !drawStrip(ctx, b, 'strip-wood')) drawPipe(ctx, b, theme.pipe, theme.pipeEdge);
         break;
       case 'ice':

@@ -28,6 +28,7 @@ import type { Point } from './camera';
 import { SNAP } from './camera';
 import { fitGroupTranslation, translatePiece } from './translation';
 import { chosenPegArt, pegArtById, PEG_ART_R } from '../../game/peg-art';
+import { chosenScaffoldKit, scaffoldKitById, SCAFFOLD_MARGIN } from '../../game/scaffold-kits';
 
 /** One primitive of the ghost outline, in world units. */
 export type GhostPart =
@@ -81,6 +82,16 @@ export function placementPieces(armed: string, at: Point, snap: boolean, templat
     const local: Piece[] = art.dots.map((d) => ({ t: 'ppeg', x: d.x, y: d.y, color: d.color, r: PEG_ART_R, grp: 1 }));
     const dx = fitGroupTranslation(local, cx);
     return dx === null ? null : local.map((p) => translatePiece(p, dx, cy));
+  }
+
+  if (tile.id === 'scaffold') {
+    // A premade scaffold tunnel: its rails, stamped as a group centred on the pointer. Null when it is wider than the track.
+    const kit = scaffoldKitById(chosenScaffoldKit());
+    const cx = snap ? Math.round(at.x / SNAP) * SNAP : at.x, cy = snap ? Math.round(at.y / SNAP) * SNAP : at.y;
+    // The kit's drawn width (slabs included) must stay inside the walls: slide it in, or refuse one that is too wide.
+    if (kit.width > W - SCAFFOLD_MARGIN * 2) return null;
+    const x = Math.max(kit.width / 2 + SCAFFOLD_MARGIN, Math.min(W - kit.width / 2 - SCAFFOLD_MARGIN, cx));
+    return kit.pieces.map((p) => translatePiece({ ...p }, x, cy));
   }
 
   return [{ ...defaultPiece(tile.t, at, snap), ...tile.preset } as Piece];

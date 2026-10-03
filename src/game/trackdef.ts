@@ -38,6 +38,10 @@ export const MAX_NAME = 48;
 
 export type Vec = [number, number];
 
+/** A look a piece can wear over its unchanged physics (the Workshop's premade kits). */
+export const PIECE_SKINS = ['scaffold'] as const;
+export type PieceSkin = typeof PIECE_SKINS[number];
+
 /** `flip` mirrors a piece about the track's centre line, exactly like `Builder.flip`. Unset = world coordinates. */
 export interface PieceBase {
   flip?: boolean;
@@ -47,6 +51,8 @@ export interface PieceBase {
   sc?: number;
   /** Workshop group id: pieces sharing it select, move, rotate and scale together. */
   grp?: number;
+  /** Optional look drawn over the piece (collision is unchanged). Kept through share codes. */
+  skin?: PieceSkin;
 }
 
 export interface RampPiece extends PieceBase { t: 'ramp'; a: Vec; b: Vec }
@@ -595,6 +601,7 @@ export function replayPiece(b: Builder, piece: Piece) {
       case 'platform': b.platform(piece.ax, piece.ay, piece.bx, piece.by, piece.w, piece.travel, piece.pause, piece.phase); break;
     }
     tagTransform(b.bodies.slice(first), piece);
+    if (piece.skin) for (const body of b.bodies.slice(first)) meta(body).skin = piece.skin;
   } finally {
     b.flip = false;
   }
@@ -862,7 +869,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
     return null;
   }
   const mirror = flip(raw.flip, `${at}.flip`, problems);
-  const body: { flip?: true; rot?: number; sc?: number; grp?: number } = mirror ? { flip: true } : {};
+  const body: { flip?: true; rot?: number; sc?: number; grp?: number; skin?: PieceSkin } = mirror ? { flip: true } : {};
   if (raw.rot !== undefined) {
     const r = number(raw.rot, `${at}.rot`, -3600, 3600, problems);
     const norm = ((Math.round(r) % 360) + 360) % 360;
@@ -875,6 +882,10 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
   if (raw.grp !== undefined) {
     const g = number(raw.grp, `${at}.grp`, 1, 1e9, problems);
     if (Number.isInteger(g)) body.grp = g;
+  }
+  if (raw.skin !== undefined) {
+    if ((PIECE_SKINS as readonly unknown[]).includes(raw.skin)) body.skin = raw.skin as PieceSkin;
+    else problems.add(`${at}.skin must be one of: ${PIECE_SKINS.join(', ')}.`);
   }
   switch (raw.t) {
     case 'ramp':
