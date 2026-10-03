@@ -201,6 +201,8 @@ export type PegColor = 'blue' | 'orange' | 'green';
 
 export interface Meta {
   kind: Kind;
+  /** Workshop skin (`PieceBase.skin`): draw this body in a premade look. Collision is unchanged. */
+  skin?: 'scaffold';
   /** Workshop transform: draw this body turned `rot` radians and scaled `sc` about the piece pivot (cx, cy). */
   xf?: { cx: number; cy: number; rot: number; sc: number };
   dir?: { x: number; y: number };
