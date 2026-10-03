@@ -151,7 +151,7 @@ test('P2-19 events: ko and skillfx are accepted, and a lie is not', () => {
   assert.equal(err({ kind: 'skillfx', fx: 'bolt', seat: 0, target: -1, x: 1, y: 2, until: -1 } as RaceEvent)?.code, 'malformed', 'no expiry');
   assert.equal(err({ kind: 'skillfx', fx: 'bomb', seat: 0, target: 99, x: 1, y: 2, until: 3 } as RaceEvent)?.code, 'forged', 'a target that is not a seat');
   assert.equal(err({ kind: 'skillfx', fx: 'decoy', seat: 99, target: -1, x: 1, y: 2, until: 3 } as RaceEvent)?.code, 'forged', 'an owner that is not a seat');
-  assert.equal(PROTOCOL_VERSION, 8, 'P2-19 is a wire change: version 8');
+  assert.ok(PROTOCOL_VERSION >= 8, 'P2-19 was a wire change: version 8 or later');
 });
 
 interface Pair {
