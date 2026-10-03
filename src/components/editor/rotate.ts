@@ -219,6 +219,9 @@ export function rotatePiece(piece: Piece, rad: number, c: Point): Piece {
       const [x, y] = at(piece.x, piece.y);
       return { ...piece, x, y };
     }
+    case 'gate':
+    case 'ledge':
+      return piece; // floors-level pieces stay level
     case 'wind': {
       const dir = (((piece.dir + (rad * 180) / Math.PI) % 360) + 360) % 360;
       return { ...piece, a: turn(piece.a, c, cos, sin), b: turn(piece.b, c, cos, sin), dir };

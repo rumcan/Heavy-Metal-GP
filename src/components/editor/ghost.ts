@@ -265,6 +265,10 @@ export function ghostParts(piece: Piece): GhostPart[] {
       return [ring(pt(piece.x, piece.y), piece.r)];
     case 'sign':
       return [box(pt(piece.x, piece.y), piece.w, piece.w * 0.42)];
+    case 'gate':
+      return [box(pt(piece.x + piece.w / 2, piece.y), piece.w, 20), path([pt(piece.x, piece.y), pt(piece.x + piece.w, piece.y)], 4)];
+    case 'ledge':
+      return [box(pt(piece.x + piece.w / 2, piece.y + 5), piece.w, 10)];
     case 'ring':
       return [ring(pt(piece.x, piece.y), piece.r + piece.thick / 2), ring(pt(piece.x, piece.y), Math.max(4, piece.r - piece.thick / 2))];
     case 'ppeg':

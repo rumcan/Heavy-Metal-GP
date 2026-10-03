@@ -399,6 +399,14 @@ function baseHandles(piece: Piece): Handle[] {
         { id: 'w', x: piece.x + piece.w / 2, y: piece.y, cursor: 'ew-resize', label: 'Width' },
       ];
     }
+    case 'gate':
+    case 'ledge': {
+      // Anchored at its left end; the handle on the right end sets the width.
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
+        { id: 'w', x: piece.x + piece.w, y: piece.y, cursor: 'ew-resize', label: 'Width' },
+      ];
+    }
     case 'ring': {
       // Radius on the right of the plank's middle line; thickness on the plank's outer edge at the top.
       return [
@@ -879,6 +887,15 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       if (handleId === 'w') return { ...piece, w: clampNum(Math.round(Math.abs(withSnap(to.x, sx) - piece.x) * 2), 60, 600) };
       return piece;
     }
+    case 'gate':
+    case 'ledge': {
+      if (handleId === 'move') return { ...piece, x: withSnap(to.x, sx), y: withSnap(to.y, sx) };
+      if (handleId === 'w') {
+        const [lo, hi] = piece.t === 'gate' ? [100, 400] : [60, 4000];
+        return { ...piece, w: clampNum(Math.round(withSnap(to.x, sx) - piece.x), lo, hi) };
+      }
+      return piece;
+    }
     case 'ring': {
       if (handleId === 'move') return { ...piece, x: withSnap(to.x, sx), y: withSnap(to.y, sx) };
       const d = Math.hypot(to.x - piece.x, to.y - piece.y);
@@ -1056,6 +1073,9 @@ export function mirrorPiece(piece: Piece): Piece {
     case 'ring':
     case 'sign':
       return { ...piece, x: mx(piece.x) };
+    case 'gate':
+    case 'ledge':
+      return piece; // a platformer course is never mirrored
     case 'itembox':
       return { ...piece, x: mx(piece.x) };
     // ---- MB-10C ----
