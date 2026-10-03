@@ -1,0 +1,1472 @@
+[
+  {
+    "id": "c1-intro-yard-0",
+    "speaker": "sprocket",
+    "text": "[cheerful] My name is Sprocket, and I have lived in this scrapyard my whole life."
+  },
+  {
+    "id": "c1-intro-yard-1",
+    "speaker": "sprocket",
+    "text": "[cheerful] Every year, the goblins hold a marble racing season called the Heavy Metal GP."
+  },
+  {
+    "id": "c1-intro-yard-2",
+    "speaker": "sprocket",
+    "text": "[smug] Ten goblin drivers each steer a marble down a giant track full of traps."
+  },
+  {
+    "id": "c1-intro-yard-3",
+    "speaker": "sprocket",
+    "text": "[cheerful] The season visits six different tracks, and the best driver overall is champion."
+  },
+  {
+    "id": "c1-intro-yard-4",
+    "speaker": "sprocket",
+    "text": "[smug] I built my own racing marble out of an old ball bearing and a bolt."
+  },
+  {
+    "id": "c1-intro-yard-5",
+    "speaker": "sprocket",
+    "text": "[cheerful] All I need now is a racing team that will let me drive it."
+  },
+  {
+    "id": "c1-intro-yard-6",
+    "speaker": "zapp-gutwrench",
+    "text": "[surprised] Hey! You are the kid who keeps climbing over my fence to watch the races."
+  },
+  {
+    "id": "c1-intro-yard-7",
+    "speaker": "zapp-gutwrench",
+    "text": "[cheerful] I am Zapp Gutwrench, the mechanic for Apex Racing, the team next door."
+  },
+  {
+    "id": "c1-intro-yard-8",
+    "speaker": "sprocket",
+    "text": "[gasps] Apex Racing? Is it true that your best driver disappeared last season?"
+  },
+  {
+    "id": "c1-intro-yard-9",
+    "speaker": "zapp-gutwrench",
+    "text": "[angry] It is true. They missed the last race, and nobody has heard from them since."
+  },
+  {
+    "id": "c1-intro-yard-10",
+    "speaker": "zapp-gutwrench",
+    "text": "[sighs] Now Apex has an empty seat, no money, and a new season starting this week."
+  },
+  {
+    "id": "c1-intro-yard-11",
+    "speaker": "sprocket",
+    "text": "[smug] Then give that seat to me. I work cheap, and my marble really does roll."
+  },
+  {
+    "id": "c1-intro-tryout-0",
+    "speaker": "zapp-gutwrench",
+    "text": "[smug] All right, kid, I will give you one chance. Listen carefully."
+  },
+  {
+    "id": "c1-intro-tryout-1",
+    "speaker": "zapp-gutwrench",
+    "text": "[cheerful] Each track in the season hosts three races in a row, and you drive in all three."
+  },
+  {
+    "id": "c1-intro-tryout-2",
+    "speaker": "zapp-gutwrench",
+    "text": "[cheerful] If you finish all three races at the first track, the Apex seat is yours."
+  },
+  {
+    "id": "c1-intro-tryout-3",
+    "speaker": "sprocket",
+    "text": "[cheerful] Where is the first track, and what is it like?"
+  },
+  {
+    "id": "c1-intro-tryout-4",
+    "speaker": "zapp-gutwrench",
+    "text": "[cheerful] It is called Marblehurst, and it is the track where every season begins."
+  },
+  {
+    "id": "c1-intro-tryout-5",
+    "speaker": "zapp-gutwrench",
+    "text": "[cheerful] It has a little bit of everything, so it is a fair test for a new driver."
+  },
+  {
+    "id": "c1-intro-tryout-6",
+    "speaker": "zapp-gutwrench",
+    "text": "[angry] Steer left and right to choose your path, and try not to bounce off the walls."
+  },
+  {
+    "id": "c1-intro-tryout-7",
+    "speaker": "zapp-gutwrench",
+    "text": "[smug] Grab the item crates on the way down, because items can win you a race."
+  },
+  {
+    "id": "c1-intro-tryout-8",
+    "speaker": "sprocket",
+    "text": "[smug] Steer, grab crates, and do not hit walls. That sounds easy enough to me."
+  },
+  {
+    "id": "c1-intro-tryout-9",
+    "speaker": "zapp-gutwrench",
+    "text": "[smug] Every new driver says that before Marblehurst. Very few say it afterwards."
+  },
+  {
+    "id": "c1-pre-grid-0",
+    "speaker": "ace-spadegrin",
+    "text": "[smug] Did Apex Racing really hire a goblin who smells like a rusty bucket?"
+  },
+  {
+    "id": "c1-pre-grid-1",
+    "speaker": "zapp-gutwrench",
+    "text": "[angry] Ignore him, kid. That is Ace Spadegrin, the champion from last season."
+  },
+  {
+    "id": "c1-pre-grid-2",
+    "speaker": "ace-spadegrin",
+    "text": "[smug] I have won the championship twice, and you are driving a bolt with ideas."
+  },
+  {
+    "id": "c1-pre-grid-3",
+    "speaker": "duchess-vex",
+    "text": "[smug] Be nice, Ace. Every champion was a nobody once, even you."
+  },
+  {
+    "id": "c1-pre-grid-4",
+    "speaker": "sprocket",
+    "text": "[gasps] Zapp, who is the lady in the fancy hat?"
+  },
+  {
+    "id": "c1-pre-grid-5",
+    "speaker": "zapp-gutwrench",
+    "text": "[sighs] That is Duchess Vex. She owns a rival team and lends money to half the drivers."
+  },
+  {
+    "id": "c1-pre-grid-6",
+    "speaker": "duchess-vex",
+    "text": "[cheerful] I always notice new drivers, Sprocket. They are so easy to put a price on."
+  },
+  {
+    "id": "c1-pre-grid-7",
+    "speaker": "ace-spadegrin",
+    "text": "[angry] Enjoy the start line, rookie, because you will not see me again after it."
+  },
+  {
+    "id": "c1-mid-ace-0",
+    "speaker": "ace-spadegrin",
+    "text": "[angry] Get out of my way, scrapyard goblin, this is my racing line!"
+  },
+  {
+    "id": "c1-mid-grubba-0",
+    "speaker": "big-grubba",
+    "text": "[cheerful] I am Big Grubba, and I always squash the new drivers!"
+  },
+  {
+    "id": "c1-post-win-0",
+    "speaker": "ace-spadegrin",
+    "text": "[gasps] A marble made from a ball bearing and a bolt just beat me at Marblehurst?"
+  },
+  {
+    "id": "c1-post-win-1",
+    "speaker": "duchess-vex",
+    "text": "[surprised] How interesting. The little scrapyard goblin can actually race."
+  },
+  {
+    "id": "c1-post-win-2",
+    "speaker": "zapp-gutwrench",
+    "text": "[cheerful] You finished all three races and came out on top, kid. The Apex seat is yours."
+  },
+  {
+    "id": "c1-post-win-3",
+    "speaker": "ace-spadegrin",
+    "text": "[angry] Enjoy it while it lasts, rookie. The next track is full of walls."
+  },
+  {
+    "id": "c1-post-podium-0",
+    "speaker": "sprocket",
+    "text": "[cheerful] I finished in the top three at my very first track!"
+  },
+  {
+    "id": "c1-post-podium-1",
+    "speaker": "ace-spadegrin",
+    "text": "[smug] Third place is where scrap belongs, so do not get too excited."
+  },
+  {
+    "id": "c1-post-podium-2",
+    "speaker": "zapp-gutwrench",
+    "text": "[cheerful] A top three finish on your first try is great. The Apex seat is yours."
+  },
+  {
+    "id": "c1-post-podium-3",
+    "speaker": "duchess-vex",
+    "text": "[cheerful] People with money will start asking about you now, Sprocket."
+  },
+  {
+    "id": "c1-post-loss-0",
+    "speaker": "sprocket",
+    "text": "[sighs] I think I bounced off every single wall in Marblehurst."
+  },
+  {
+    "id": "c1-post-loss-1",
+    "speaker": "red-morrigan",
+    "text": "[surprised] I am Red Morrigan, rookie. Everybody has a bad first race. Mine caught fire."
+  },
+  {
+    "id": "c1-post-loss-2",
+    "speaker": "zapp-gutwrench",
+    "text": "[sighs] You still finished all three races, and that was our deal. The seat is yours."
+  },
+  {
+    "id": "c1-post-loss-3",
+    "speaker": "ace-spadegrin",
+    "text": "[smug] Keep that seat warm, rookie, until Apex finds a real driver."
+  },
+  {
+    "id": "c1-outro-yard-0",
+    "speaker": "zapp-gutwrench",
+    "text": "[cheerful] Our next track is Monte Pipo, which runs through the streets of a harbour town."
+  },
+  {
+    "id": "c1-outro-yard-1",
+    "speaker": "zapp-gutwrench",
+    "text": "[angry] The streets are narrow and the corners are tight, so passing people is hard."
+  },
+  {
+    "id": "c1-outro-yard-2",
+    "speaker": "sprocket",
+    "text": "[smug] Then I will get in front at the start and stay there the whole way."
+  },
+  {
+    "id": "c1-outro-yard-3",
+    "speaker": "zapp-gutwrench",
+    "text": "[surprised] You need a proper teacher, kid, and I know an old goblin who can help."
+  },
+  {
+    "id": "c2-intro-shack-0",
+    "speaker": "sprocket",
+    "text": "[gasps] Zapp, there is an old goblin asleep in the shed behind our garage."
+  },
+  {
+    "id": "c2-intro-shack-1",
+    "speaker": "old-smokey",
+    "text": "[angry] I am not asleep. I am thinking with my eyes closed, which is different."
+  },
+  {
+    "id": "c2-intro-shack-2",
+    "speaker": "zapp-gutwrench",
+    "text": "[cheerful] Sprocket, this is Old Smokey. He raced in the very first Heavy Metal GP."
+  },
+  {
+    "id": "c2-intro-shack-3",
+    "speaker": "old-smokey",
+    "text": "[sighs] I raced in it and I lost it. I have fixed marbles in this shed ever since."
+  },
+  {
+    "id": "c2-intro-shack-4",
+    "speaker": "sprocket",
+    "text": "[cheerful] Will you teach me how to race? I have never driven on a street track before."
+  },
+  {
+    "id": "c2-intro-shack-5",
+    "speaker": "old-smokey",
+    "text": "[smug] Here is your first lesson. Do you see the orange pegs sticking out of the track?"
+  },
+  {
+    "id": "c2-intro-shack-6",
+    "speaker": "old-smokey",
+    "text": "[cheerful] Every orange peg you hit gives you credits, and credits buy you items."
+  },
+  {
+    "id": "c2-intro-shack-7",
+    "speaker": "old-smokey",
+    "text": "[smug] Most new drivers ignore the pegs. Good drivers bounce off as many as they can."
+  },
+  {
+    "id": "c2-intro-shack-8",
+    "speaker": "old-smokey",
+    "text": "[cheerful] Hit ten orange pegs in a single race at Monte Pipo, and I will teach you more."
+  },
+  {
+    "id": "c2-pre-street-0",
+    "speaker": "red-morrigan",
+    "text": "[angry] A narrow street track and a rookie with a bent marble. This will be fun to watch."
+  },
+  {
+    "id": "c2-pre-street-1",
+    "speaker": "sprocket",
+    "text": "[cheerful] I do not think we have met. Who are you?"
+  },
+  {
+    "id": "c2-pre-street-2",
+    "speaker": "red-morrigan",
+    "text": "[cheerful] I am Red Morrigan. Remember my braid, because you will watch it pass you."
+  },
+  {
+    "id": "c2-pre-street-3",
+    "speaker": "duchess-vex",
+    "text": "[smug] Hello again, Sprocket. I started keeping a file on you, but it is very thin."
+  },
+  {
+    "id": "c2-pre-street-4",
+    "speaker": "sprocket",
+    "text": "[smug] It is thin because I only just started racing."
+  },
+  {
+    "id": "c2-pre-street-5",
+    "speaker": "duchess-vex",
+    "text": "[cheerful] No, darling. It is thin because nobody has bought you yet."
+  },
+  {
+    "id": "c2-pre-ace-wary-0",
+    "speaker": "ace-spadegrin",
+    "text": "[angry] You only beat me at Marblehurst because my marble had a loose bolt."
+  },
+  {
+    "id": "c2-pre-ace-wary-1",
+    "speaker": "sprocket",
+    "text": "[smug] Of course it did, champion. I am sure that is exactly what happened."
+  },
+  {
+    "id": "c2-pre-ace-wary-2",
+    "speaker": "ace-spadegrin",
+    "text": "[smug] Say that again at the finish line, if you somehow get there before me."
+  },
+  {
+    "id": "c2-mid-hood-0",
+    "speaker": "the-hood",
+    "text": "[firmly] You will not reach the finish line ahead of me, rookie."
+  },
+  {
+    "id": "c2-mid-hood-1",
+    "speaker": "sprocket",
+    "text": "[gasps] Who is that driver in the hood? I never saw their face at the start."
+  },
+  {
+    "id": "c2-mid-smokey-0",
+    "speaker": "old-smokey",
+    "text": "[angry] Hit the orange pegs, kid! Every single one of them is worth credits!"
+  },
+  {
+    "id": "c2-post-win-0",
+    "speaker": "old-smokey",
+    "text": "[smug] You won at Monte Pipo. Your steering was messy, but you went after the pegs."
+  },
+  {
+    "id": "c2-post-win-1",
+    "speaker": "sprocket",
+    "text": "[smug] Were you actually counting how many pegs I hit?"
+  },
+  {
+    "id": "c2-post-win-2",
+    "speaker": "old-smokey",
+    "text": "[cheerful] I have counted pegs in every race since my first season. It is an old habit."
+  },
+  {
+    "id": "c2-post-win-3",
+    "speaker": "ace-spadegrin",
+    "text": "[angry] Who taught that scrapyard goblin how to race like that?"
+  },
+  {
+    "id": "c2-post-podium-0",
+    "speaker": "old-smokey",
+    "text": "[cheerful] A top three finish at Monte Pipo. Most new drivers leave that town in pieces."
+  },
+  {
+    "id": "c2-post-podium-1",
+    "speaker": "sprocket",
+    "text": "[cheerful] Does that mean I passed your lesson?"
+  },
+  {
+    "id": "c2-post-podium-2",
+    "speaker": "old-smokey",
+    "text": "[smug] It means you are close. In my shed, being close is worth a lot."
+  },
+  {
+    "id": "c2-post-loss-0",
+    "speaker": "sprocket",
+    "text": "[sighs] The walls at Monte Pipo do not move. I checked many times, with my marble."
+  },
+  {
+    "id": "c2-post-loss-1",
+    "speaker": "old-smokey",
+    "text": "[angry] Good. Now you know where those walls are. Most drivers take a year to learn that."
+  },
+  {
+    "id": "c2-post-loss-2",
+    "speaker": "old-smokey",
+    "text": "[sighs] I hit that same corner in my first season. I still remember the sound it made."
+  },
+  {
+    "id": "c2-outro-hood-0",
+    "speaker": "sprocket",
+    "text": "[cheerful] The pit lane is so quiet at night, once all the races are over."
+  },
+  {
+    "id": "c2-outro-hood-1",
+    "speaker": "the-hood",
+    "text": "[firmly] You steer your marble just like someone I used to know."
+  },
+  {
+    "id": "c2-outro-hood-2",
+    "speaker": "sprocket",
+    "text": "[gasps] You are the driver in the hood from today. Who are you?"
+  },
+  {
+    "id": "c2-outro-hood-3",
+    "speaker": "the-hood",
+    "text": "[smug] Nobody you need to worry about yet. Keep an eye on your bolts, rookie."
+  },
+  {
+    "id": "c2-outro-hood-4",
+    "speaker": "sprocket",
+    "text": "[sighs] Wait! Who do I drive like? Please tell me."
+  },
+  {
+    "id": "c2-outro-hood-5",
+    "speaker": "the-hood",
+    "text": "[frustrated] Ask Old Smokey why he never talks about the old mine under the last track."
+  },
+  {
+    "id": "c3-intro-shack-0",
+    "speaker": "old-smokey",
+    "text": "[cheerful] Our third track is Silverpeg, and it is the best place in the season to train."
+  },
+  {
+    "id": "c3-intro-shack-1",
+    "speaker": "sprocket",
+    "text": "[cheerful] Why is Silverpeg so good for training?"
+  },
+  {
+    "id": "c3-intro-shack-2",
+    "speaker": "old-smokey",
+    "text": "[smug] It is packed with the three things that beat new drivers: walls, loops and hoops."
+  },
+  {
+    "id": "c3-intro-shack-3",
+    "speaker": "old-smokey",
+    "text": "[cheerful] Some walls have cracks in them, and a hard enough hit smashes a shortcut open."
+  },
+  {
+    "id": "c3-intro-shack-4",
+    "speaker": "old-smokey",
+    "text": "[cheerful] The loops spin your marble in a full circle, if you are fast enough."
+  },
+  {
+    "id": "c3-intro-shack-5",
+    "speaker": "old-smokey",
+    "text": "[cheerful] The fire hoops launch you through the air, if you aim for the middle."
+  },
+  {
+    "id": "c3-intro-shack-6",
+    "speaker": "old-smokey",
+    "text": "[angry] Smash one wall, finish one loop, and fly through three hoops in a single race."
+  },
+  {
+    "id": "c3-intro-shack-7",
+    "speaker": "old-smokey",
+    "text": "[smug] Do all of that, and you will have learned what took me ten years."
+  },
+  {
+    "id": "c3-intro-alone-0",
+    "speaker": "zapp-gutwrench",
+    "text": "[surprised] You have nobody to teach you? Fine, then I will teach you, but I am not good at it."
+  },
+  {
+    "id": "c3-intro-alone-1",
+    "speaker": "zapp-gutwrench",
+    "text": "[smug] Our next track is Silverpeg. Smash the cracked walls, finish the loops, hit the hoops."
+  },
+  {
+    "id": "c3-lesson-crate-0",
+    "speaker": "old-smokey",
+    "text": "[angry] Wall lesson. A cracked wall is a door, but only a hard hit will open it."
+  },
+  {
+    "id": "c3-lesson-crate-1",
+    "speaker": "sprocket",
+    "text": "[gasps] My marble is tiny and light. How am I supposed to hit anything hard?"
+  },
+  {
+    "id": "c3-lesson-crate-2",
+    "speaker": "old-smokey",
+    "text": "[smug] If you cannot be heavy, then be fast. Speed hits just as hard as weight."
+  },
+  {
+    "id": "c3-lesson-loop-0",
+    "speaker": "old-smokey",
+    "text": "[cheerful] Loop lesson. You win or lose a loop before you even reach it."
+  },
+  {
+    "id": "c3-lesson-loop-1",
+    "speaker": "sprocket",
+    "text": "[cheerful] So I need to build up my speed on the way into the loop?"
+  },
+  {
+    "id": "c3-lesson-loop-2",
+    "speaker": "old-smokey",
+    "text": "[angry] Exactly. Arrive slow and you will just rock back and forth at the bottom."
+  },
+  {
+    "id": "c3-lesson-hoops-0",
+    "speaker": "old-smokey",
+    "text": "[smug] Hoop lesson. A fire hoop throws you forward, so steer for the middle of it."
+  },
+  {
+    "id": "c3-lesson-hoops-1",
+    "speaker": "sprocket",
+    "text": "[smug] And I need to get through three of them in one race."
+  },
+  {
+    "id": "c3-lesson-hoops-2",
+    "speaker": "old-smokey",
+    "text": "[cheerful] Three in one race. Miss the middle and you will come out a little toasted."
+  },
+  {
+    "id": "c3-pre-smart-0",
+    "speaker": "old-smokey",
+    "text": "[smug] You hit ten pegs at Monte Pipo, which means you listen. That is rarer than talent."
+  },
+  {
+    "id": "c3-pre-smart-1",
+    "speaker": "knuckles-blau",
+    "text": "[angry] I am Knuckles Blau, old goblin, and your rookie keeps driving into my way!"
+  },
+  {
+    "id": "c3-mid-smokey-0",
+    "speaker": "old-smokey",
+    "text": "[angry] A cracked wall is coming up, kid! Hit it as fast as you can!"
+  },
+  {
+    "id": "c3-mid-hoops-0",
+    "speaker": "old-smokey",
+    "text": "[cheerful] Steer for the middle of the hoop, not the fire around it!"
+  },
+  {
+    "id": "c3-post-win-0",
+    "speaker": "old-smokey",
+    "text": "[gasps] You won at Silverpeg and passed all three lessons, all in one visit."
+  },
+  {
+    "id": "c3-post-win-1",
+    "speaker": "sprocket",
+    "text": "[smug] That is because you are a good teacher."
+  },
+  {
+    "id": "c3-post-win-2",
+    "speaker": "old-smokey",
+    "text": "[sighs] I taught one other goblin this way once. They won everything, and then they left."
+  },
+  {
+    "id": "c3-post-win-3",
+    "speaker": "sprocket",
+    "text": "[gasps] Where did they go?"
+  },
+  {
+    "id": "c3-post-win-4",
+    "speaker": "old-smokey",
+    "text": "[angry] Never mind that. We race at Spa next, and you must not sign anything there."
+  },
+  {
+    "id": "c3-post-podium-0",
+    "speaker": "old-smokey",
+    "text": "[cheerful] A top three finish and a smashed wall. That was skill, kid, not luck."
+  },
+  {
+    "id": "c3-post-podium-1",
+    "speaker": "sprocket",
+    "text": "[cheerful] Spa is next, and everyone says it is the fastest track of the season."
+  },
+  {
+    "id": "c3-post-podium-2",
+    "speaker": "old-smokey",
+    "text": "[angry] It is fast, and so are the people who work there. Do not sign anything at Spa."
+  },
+  {
+    "id": "c3-post-loss-0",
+    "speaker": "sprocket",
+    "text": "[sighs] I came into the loop too slowly and just rocked back and forth at the bottom."
+  },
+  {
+    "id": "c3-post-loss-1",
+    "speaker": "old-smokey",
+    "text": "[cheerful] At least you know why it happened now, and that is real progress."
+  },
+  {
+    "id": "c3-post-loss-2",
+    "speaker": "old-smokey",
+    "text": "[angry] Spa is next. Bring all the speed you have, and do not sign anything there."
+  },
+  {
+    "id": "c3-outro-shack-0",
+    "speaker": "zapp-gutwrench",
+    "text": "[surprised] Kid, Duchess Vex wants to meet you in her private office at Spa."
+  },
+  {
+    "id": "c3-outro-shack-1",
+    "speaker": "old-smokey",
+    "text": "[angry] Of course it is Vex. It is always Vex."
+  },
+  {
+    "id": "c3-outro-shack-2",
+    "speaker": "sprocket",
+    "text": "[cheerful] What would a rich duchess want with a goblin from a scrapyard?"
+  },
+  {
+    "id": "c3-outro-shack-3",
+    "speaker": "old-smokey",
+    "text": "[sighs] She wants to own you, kid. Owning drivers is how she wins races."
+  },
+  {
+    "id": "c4-intro-office-0",
+    "speaker": "duchess-vex",
+    "text": "[smug] Sit down, Sprocket. That chair cost more than your whole scrapyard."
+  },
+  {
+    "id": "c4-intro-office-1",
+    "speaker": "sprocket",
+    "text": "[gasps] It is the softest chair I have ever sat in."
+  },
+  {
+    "id": "c4-intro-office-2",
+    "speaker": "duchess-vex",
+    "text": "[cheerful] Join my team, and I will give you a new marble and the best mechanics money buys."
+  },
+  {
+    "id": "c4-intro-office-3",
+    "speaker": "sprocket",
+    "text": "[cheerful] That sounds amazing. What do I have to give you in return?"
+  },
+  {
+    "id": "c4-intro-office-4",
+    "speaker": "duchess-vex",
+    "text": "[smug] Twice a season, I tell you where to finish a race, and you finish exactly there."
+  },
+  {
+    "id": "c4-intro-office-5",
+    "speaker": "sprocket",
+    "text": "[gasps] You want me to lose races on purpose?"
+  },
+  {
+    "id": "c4-intro-office-6",
+    "speaker": "duchess-vex",
+    "text": "[angry] Apex Racing is broke, child. They cannot pay your race fees for much longer."
+  },
+  {
+    "id": "c4-intro-office-7",
+    "speaker": "duchess-vex",
+    "text": "[smug] Somebody always ends up paying for a driver. It might as well be me."
+  },
+  {
+    "id": "c4-pre-grid-0",
+    "speaker": "scorch",
+    "text": "[cheerful] I am Scorch, and welcome to Spa, the fastest track of the whole season!"
+  },
+  {
+    "id": "c4-pre-grid-1",
+    "speaker": "scorch",
+    "text": "[cheerful] It is full of slippery ice slides and boost pads, so somebody always crashes."
+  },
+  {
+    "id": "c4-pre-grid-2",
+    "speaker": "sprocket",
+    "text": "[smug] From what I hear, the one who crashes is usually you."
+  },
+  {
+    "id": "c4-pre-grid-3",
+    "speaker": "ace-spadegrin",
+    "text": "[angry] Rookie, I saw you leave Vex's office. Whatever she offered, it was not a gift."
+  },
+  {
+    "id": "c4-pre-grid-4",
+    "speaker": "the-hood",
+    "text": "[firmly] Nothing that woman offers is ever free."
+  },
+  {
+    "id": "c4-pre-grid-5",
+    "speaker": "sprocket",
+    "text": "[gasps] The driver in the hood again. Do you race for Vex?"
+  },
+  {
+    "id": "c4-pre-trained-0",
+    "speaker": "old-smokey",
+    "text": "[cheerful] You passed the wall, the loop and the hoops at Silverpeg. I am proud of you, kid."
+  },
+  {
+    "id": "c4-pre-trained-1",
+    "speaker": "old-smokey",
+    "text": "[angry] Spa is long and fast. If anything on your marble feels loose, trust that feeling."
+  },
+  {
+    "id": "c4-mid-sabotage-0",
+    "speaker": "sprocket",
+    "text": "[gasps] My item just broke when I tried to use it! Something on my marble is loose!"
+  },
+  {
+    "id": "c4-mid-sabotage-1",
+    "speaker": "zapp-gutwrench",
+    "text": "[surprised] I cannot fix it from here, kid! Just keep steering and stay on the track!"
+  },
+  {
+    "id": "c4-post-win-deal-0",
+    "speaker": "duchess-vex",
+    "text": "[cheerful] A win for my team already. You see? We are a perfect match, you and I."
+  },
+  {
+    "id": "c4-post-win-deal-1",
+    "speaker": "sprocket",
+    "text": "[smug] All I see is a contract and a very soft chair."
+  },
+  {
+    "id": "c4-post-win-deal-2",
+    "speaker": "duchess-vex",
+    "text": "[smug] Remember our deal. Twice this season, you will finish where I tell you."
+  },
+  {
+    "id": "c4-post-win-free-0",
+    "speaker": "ace-spadegrin",
+    "text": "[gasps] You said no to Vex and still won at Spa. That was either brave or very stupid."
+  },
+  {
+    "id": "c4-post-win-free-1",
+    "speaker": "sprocket",
+    "text": "[smug] It was probably both. Scrapyard goblins are like that."
+  },
+  {
+    "id": "c4-post-win-free-2",
+    "speaker": "duchess-vex",
+    "text": "[angry] Enjoy your trophy, Sprocket. Nobody says no to me twice."
+  },
+  {
+    "id": "c4-post-podium-deal-0",
+    "speaker": "duchess-vex",
+    "text": "[smug] Second or third place. Both of those positions are very useful to me."
+  },
+  {
+    "id": "c4-post-podium-deal-1",
+    "speaker": "sprocket",
+    "text": "[sighs] Is that what I sold you when I signed? My finishing positions?"
+  },
+  {
+    "id": "c4-post-podium-deal-2",
+    "speaker": "duchess-vex",
+    "text": "[cheerful] You sold me nothing, darling. I bought you a future, and you pay for it in races."
+  },
+  {
+    "id": "c4-post-podium-free-0",
+    "speaker": "old-smokey",
+    "text": "[cheerful] A top three finish at Spa, on a marble nobody paid for. That one is truly yours."
+  },
+  {
+    "id": "c4-post-podium-free-1",
+    "speaker": "sprocket",
+    "text": "[cheerful] And I do not owe anybody a single race for it."
+  },
+  {
+    "id": "c4-post-podium-free-2",
+    "speaker": "duchess-vex",
+    "text": "[angry] Not yet, child. Not yet."
+  },
+  {
+    "id": "c4-post-loss-deal-0",
+    "speaker": "duchess-vex",
+    "text": "[angry] You crashed while driving for my team. Do you know how much that costs me?"
+  },
+  {
+    "id": "c4-post-loss-deal-1",
+    "speaker": "sprocket",
+    "text": "[sighs] It cost me my marble, mostly."
+  },
+  {
+    "id": "c4-post-loss-deal-2",
+    "speaker": "duchess-vex",
+    "text": "[smug] Then get it fixed quickly. I need you racing at the next track, Suzuka."
+  },
+  {
+    "id": "c4-post-loss-free-0",
+    "speaker": "sprocket",
+    "text": "[sighs] Something on my marble broke halfway down the track, and then I hit the wall."
+  },
+  {
+    "id": "c4-post-loss-free-1",
+    "speaker": "ace-spadegrin",
+    "text": "[surprised] You say no to Vex, and then your marble falls apart. That is very convenient."
+  },
+  {
+    "id": "c4-post-loss-free-2",
+    "speaker": "sprocket",
+    "text": "[gasps] Convenient for who? Are you saying somebody did this to me on purpose?"
+  },
+  {
+    "id": "c4-outro-pitlane-0",
+    "speaker": "sprocket",
+    "text": "[sighs] After the last race, my marble crashed and broke into three pieces."
+  },
+  {
+    "id": "c4-outro-pitlane-1",
+    "speaker": "old-smokey",
+    "text": "[angry] Look at this bolt. It did not wear out. Somebody cut it with a saw."
+  },
+  {
+    "id": "c4-outro-pitlane-2",
+    "speaker": "old-smokey",
+    "text": "[sighs] I ran onto the track to pull you out of the wreck, kid. I think my arm is broken."
+  },
+  {
+    "id": "c4-outro-pitlane-3",
+    "speaker": "zapp-gutwrench",
+    "text": "[gasps] I checked that bolt myself before the race, kid! I swear I checked it!"
+  },
+  {
+    "id": "c4-outro-pitlane-4",
+    "speaker": "sprocket",
+    "text": "[sighs] Smokey is lying on the ground hurt, and you are the one holding a wrench."
+  },
+  {
+    "id": "c4-outro-sabotage-0",
+    "speaker": "old-smokey",
+    "text": "[angry] Your item launcher is burnt from the inside. Somebody tampered with it."
+  },
+  {
+    "id": "c4-outro-sabotage-1",
+    "speaker": "sprocket",
+    "text": "[gasps] Somebody would really cheat like that, in the middle of a race?"
+  },
+  {
+    "id": "c4-outro-sabotage-2",
+    "speaker": "old-smokey",
+    "text": "[sighs] In this sport, yes, they would. Now you know what racing really looks like."
+  },
+  {
+    "id": "c4-outro-zapp-trust-0",
+    "speaker": "zapp-gutwrench",
+    "text": "[cheerful] You believe me? Nobody ever believes the mechanic."
+  },
+  {
+    "id": "c4-outro-zapp-trust-1",
+    "speaker": "sprocket",
+    "text": "[smug] You talk far too much to keep a secret like that."
+  },
+  {
+    "id": "c4-outro-zapp-trust-2",
+    "speaker": "zapp-gutwrench",
+    "text": "[angry] Then it was somebody quiet, somebody who plans ahead. I will find out who."
+  },
+  {
+    "id": "c4-outro-zapp-blame-0",
+    "speaker": "zapp-gutwrench",
+    "text": "[sighs] You really think I would wreck a marble from my own garage?"
+  },
+  {
+    "id": "c4-outro-zapp-blame-1",
+    "speaker": "sprocket",
+    "text": "[sighs] You were the one standing there holding the wrench."
+  },
+  {
+    "id": "c4-outro-zapp-blame-2",
+    "speaker": "zapp-gutwrench",
+    "text": "[angry] Every goblin in this sport owns a wrench, kid! That proves nothing!"
+  },
+  {
+    "id": "c5-intro-mine-known-0",
+    "speaker": "sprocket",
+    "text": "[gasps] I found the old mine, like you told me to. I came to ask Smokey's secret myself."
+  },
+  {
+    "id": "c5-intro-mine-known-1",
+    "speaker": "the-hood",
+    "text": "[frustrated] You actually came down here. That was not supposed to happen."
+  },
+  {
+    "id": "c5-intro-mine-0",
+    "speaker": "duchess-vex",
+    "text": "[smug] Welcome to my mine, under the next track. This is where I plan my races."
+  },
+  {
+    "id": "c5-intro-mine-1",
+    "speaker": "the-hood",
+    "text": "[firmly] I did not ask for anybody to come down here and watch."
+  },
+  {
+    "id": "c5-intro-mine-2",
+    "speaker": "sprocket",
+    "text": "[gasps] Wait, I know your face. You are in the old team photo in the Apex garage. You are—"
+  },
+  {
+    "id": "c5-intro-mine-3",
+    "speaker": "the-hood",
+    "text": "[quietly] I am the Apex Racing driver who disappeared last season. Yes, it is me."
+  },
+  {
+    "id": "c5-intro-mine-4",
+    "speaker": "sprocket",
+    "text": "[gasps] You are The Hood? You have been racing for Vex this whole time?"
+  },
+  {
+    "id": "c5-intro-mine-5",
+    "speaker": "the-hood",
+    "text": "[angry] I owed Vex a lot of money. Racing for her in secret is how I pay it back."
+  },
+  {
+    "id": "c5-intro-mine-6",
+    "speaker": "duchess-vex",
+    "text": "[cheerful] Two Apex drivers in one room, and one very old contract. How lovely."
+  },
+  {
+    "id": "c5-intro-mine-7",
+    "speaker": "old-smokey",
+    "text": "[sighs] I trained that driver too, years ago, in the same shed where I trained you."
+  },
+  {
+    "id": "c5-pre-crash-0",
+    "speaker": "zapp-gutwrench",
+    "text": "[surprised] I rebuilt your marble with a new bolt and new parts. This time it will hold."
+  },
+  {
+    "id": "c5-pre-crash-1",
+    "speaker": "sprocket",
+    "text": "[smug] It had better, because somebody cut through the last bolt with a saw."
+  },
+  {
+    "id": "c5-pre-ally-0",
+    "speaker": "ace-spadegrin",
+    "text": "[surprised] Vex has paid off the race officials. All of them. Try not to look so surprised."
+  },
+  {
+    "id": "c5-pre-ally-1",
+    "speaker": "sprocket",
+    "text": "[smug] You once told me she keeps a file on every driver in the sport."
+  },
+  {
+    "id": "c5-pre-ally-2",
+    "speaker": "ace-spadegrin",
+    "text": "[angry] She has a file on me too. Now she wants to control the whole championship."
+  },
+  {
+    "id": "c5-pre-ally-3",
+    "speaker": "ace-spadegrin",
+    "text": "[cheerful] Our next track is Suzuka Spiral, which is full of spinning traps and splitters."
+  },
+  {
+    "id": "c5-pre-ally-4",
+    "speaker": "ace-spadegrin",
+    "text": "[smug] If we work together there, we can beat her drivers. Alone, we both lose."
+  },
+  {
+    "id": "c5-pre-grid-0",
+    "speaker": "red-morrigan",
+    "text": "[angry] Suzuka is full of spinners, so somebody is going to get flung off the track."
+  },
+  {
+    "id": "c5-pre-grid-1",
+    "speaker": "the-hood",
+    "text": "[determined] I have always raced wherever Vex told me to. Today I race against her instead."
+  },
+  {
+    "id": "c5-pre-grid-2",
+    "speaker": "sprocket",
+    "text": "[cheerful] Then today, we race against her together."
+  },
+  {
+    "id": "c5-mid-mine-0",
+    "speaker": "duchess-vex",
+    "text": "[angry] Drivers, stop the Apex marbles before the next section. That is an order."
+  },
+  {
+    "id": "c5-mid-ally-0",
+    "speaker": "ace-spadegrin",
+    "text": "[surprised] Take the left side, rookie! I will block the spinner on the right!"
+  },
+  {
+    "id": "c5-post-win-0",
+    "speaker": "ace-spadegrin",
+    "text": "[gasps] You won at Suzuka, using the racing line I showed you. Do not tell my sponsors."
+  },
+  {
+    "id": "c5-post-win-1",
+    "speaker": "the-hood",
+    "text": "[relieved] Vex watched the whole race from her control room in the mine. She saw you win."
+  },
+  {
+    "id": "c5-post-win-2",
+    "speaker": "sprocket",
+    "text": "[smug] Good. I hope she looked at the scoreboard for a very long time."
+  },
+  {
+    "id": "c5-post-podium-0",
+    "speaker": "old-smokey",
+    "text": "[cheerful] A top three finish, even with Vex working against you. That will annoy her."
+  },
+  {
+    "id": "c5-post-podium-1",
+    "speaker": "the-hood",
+    "text": "[quietly] Vex ordered me to take that place away from you. I could not do it."
+  },
+  {
+    "id": "c5-post-podium-2",
+    "speaker": "sprocket",
+    "text": "[smug] Refusing her orders is the bravest thing I have seen anyone do today."
+  },
+  {
+    "id": "c5-post-loss-0",
+    "speaker": "sprocket",
+    "text": "[sighs] One spinning trap hit me, and I lost three places just like that."
+  },
+  {
+    "id": "c5-post-loss-1",
+    "speaker": "ace-spadegrin",
+    "text": "[angry] Vex's crew changed the race timing. You were never racing a fair clock."
+  },
+  {
+    "id": "c5-post-loss-2",
+    "speaker": "the-hood",
+    "text": "[determined] The final race is down in the mine. Bring everything you have left."
+  },
+  {
+    "id": "c5-outro-plan-0",
+    "speaker": "the-hood",
+    "text": "[angry] These are Vex's plans. She controls every camera, light and explosive down here."
+  },
+  {
+    "id": "c5-outro-plan-1",
+    "speaker": "duchess-vex",
+    "text": "[smug] The final track is Yas Marble, a night race, and part of it runs through my mine."
+  },
+  {
+    "id": "c5-outro-plan-2",
+    "speaker": "sprocket",
+    "text": "[gasps] You put dynamite on a race track? People could get hurt!"
+  },
+  {
+    "id": "c5-outro-plan-3",
+    "speaker": "duchess-vex",
+    "text": "[cheerful] It is building work, darling. Scheduled building work, and perfectly legal."
+  },
+  {
+    "id": "c5-outro-plan-4",
+    "speaker": "the-hood",
+    "text": "[determined] Her plan is to blow up the race if she is losing. We cannot let that happen."
+  },
+  {
+    "id": "c5-outro-plan-5",
+    "speaker": "old-smokey",
+    "text": "[angry] Then we make sure every driver gets to the finish line safely. Down we go."
+  },
+  {
+    "id": "c6-intro-mine-0",
+    "speaker": "zapp-gutwrench",
+    "text": "[surprised] I found explosives in two places on the track: section ten and section twenty-six."
+  },
+  {
+    "id": "c6-intro-mine-1",
+    "speaker": "sprocket",
+    "text": "[gasps] You went down into the mine by yourself to look?"
+  },
+  {
+    "id": "c6-intro-mine-2",
+    "speaker": "zapp-gutwrench",
+    "text": "[angry] I am a mechanic, kid. Following wires is part of my job."
+  },
+  {
+    "id": "c6-intro-mine-3",
+    "speaker": "old-smokey",
+    "text": "[sighs] It is a night race on the longest track of the season, and Vex controls the lights."
+  },
+  {
+    "id": "c6-intro-blind-0",
+    "speaker": "old-smokey",
+    "text": "[angry] Nobody knows what Vex has hidden on this track, and that is the worst kind of danger."
+  },
+  {
+    "id": "c6-intro-blind-1",
+    "speaker": "sprocket",
+    "text": "[smug] Then I will find out what she has hidden while I am racing past it."
+  },
+  {
+    "id": "c6-intro-zapp-0",
+    "speaker": "zapp-gutwrench",
+    "text": "[cheerful] You believed me after the crash at Spa, so look what I found for you."
+  },
+  {
+    "id": "c6-intro-zapp-1",
+    "speaker": "zapp-gutwrench",
+    "text": "[angry] This receipt shows Vex's crew bought the exact bolt that broke on your marble."
+  },
+  {
+    "id": "c6-intro-zapp-2",
+    "speaker": "sprocket",
+    "text": "[smug] So it was Vex all along. Now we have proof."
+  },
+  {
+    "id": "c6-pre-podium-0",
+    "speaker": "ace-spadegrin",
+    "text": "[smug] This is the final track of the season, rookie. Try not to dent the trophy."
+  },
+  {
+    "id": "c6-pre-podium-1",
+    "speaker": "duchess-vex",
+    "text": "[cheerful] Welcome to Yas Marble, everyone. Everything you can see here belongs to me."
+  },
+  {
+    "id": "c6-pre-podium-2",
+    "speaker": "sprocket",
+    "text": "[smug] Everything except the race. You cannot own who wins."
+  },
+  {
+    "id": "c6-pre-podium-3",
+    "speaker": "old-smokey",
+    "text": "[angry] Watch out at sections ten and twenty-six, kid. Whatever happens, keep rolling."
+  },
+  {
+    "id": "c6-pre-ally-0",
+    "speaker": "ace-spadegrin",
+    "text": "[surprised] Here is the plan. I block Vex's drivers, and you race for the win."
+  },
+  {
+    "id": "c6-pre-ally-1",
+    "speaker": "sprocket",
+    "text": "[cheerful] The champion is protecting the scrapyard goblin. I never thought I would see it."
+  },
+  {
+    "id": "c6-pre-ally-2",
+    "speaker": "ace-spadegrin",
+    "text": "[angry] Say that one more time, and I will start blocking you instead."
+  },
+  {
+    "id": "c6-pre-alone-0",
+    "speaker": "zapp-gutwrench",
+    "text": "[sighs] So you are racing alone. Ten marbles, one rookie, and a mine full of dynamite."
+  },
+  {
+    "id": "c6-pre-alone-1",
+    "speaker": "sprocket",
+    "text": "[smug] Doing things alone is how we have always done it in the scrapyard."
+  },
+  {
+    "id": "c6-mid-crew-0",
+    "speaker": "duchess-vex",
+    "text": "[angry] Crew, the rookie is coming. Get ready to stop that marble!"
+  },
+  {
+    "id": "c6-mid-blast-0",
+    "speaker": "zapp-gutwrench",
+    "text": "[gasps] The explosives are just ahead! Stay on the left and keep rolling!"
+  },
+  {
+    "id": "c6-post-win-0",
+    "speaker": "ace-spadegrin",
+    "text": "[gasps] You won the final race, through a mine full of traps, on my racing line."
+  },
+  {
+    "id": "c6-post-win-1",
+    "speaker": "duchess-vex",
+    "text": "[angry] The race officials are asking about my explosives. Who told them?"
+  },
+  {
+    "id": "c6-post-win-2",
+    "speaker": "sprocket",
+    "text": "[smug] Everyone told them. That is the problem with making so many enemies."
+  },
+  {
+    "id": "c6-post-podium-0",
+    "speaker": "old-smokey",
+    "text": "[cheerful] A top three finish in the final race. Whatever the scoreboard says, that is real."
+  },
+  {
+    "id": "c6-post-podium-1",
+    "speaker": "the-hood",
+    "text": "[relieved] Vex did not get the result she paid for. That is a win for all of us."
+  },
+  {
+    "id": "c6-post-podium-2",
+    "speaker": "sprocket",
+    "text": "[sighs] She still got most of what she wanted, though."
+  },
+  {
+    "id": "c6-post-loss-0",
+    "speaker": "sprocket",
+    "text": "[sighs] The explosion at section twenty-six threw me off the track, and that was it."
+  },
+  {
+    "id": "c6-post-loss-1",
+    "speaker": "zapp-gutwrench",
+    "text": "[angry] Vex's crew was waiting right there on the left side with the explosives."
+  },
+  {
+    "id": "c6-post-loss-2",
+    "speaker": "old-smokey",
+    "text": "[sighs] But every driver reached the finish line safely, and that was our real plan."
+  },
+  {
+    "id": "c6-outro-hood-0",
+    "speaker": "the-hood",
+    "text": "[determined] I tore up my contract with Vex. I have paid her back with every race I lost."
+  },
+  {
+    "id": "c6-outro-hood-1",
+    "speaker": "duchess-vex",
+    "text": "[angry] Without my team, you are nothing. Nobody will hire you."
+  },
+  {
+    "id": "c6-outro-hood-2",
+    "speaker": "the-hood",
+    "text": "[relieved] I am a driver who can show my face again. That is worth more than your team."
+  },
+  {
+    "id": "c6-outro-hood-3",
+    "speaker": "sprocket",
+    "text": "[cheerful] Apex Racing still has your old seat. It has been waiting for you all season."
+  },
+  {
+    "id": "c6-end-champion-0",
+    "speaker": "zapp-gutwrench",
+    "text": "[gasps] They are calling your name, kid! The scrapyard goblin is the new champion!"
+  },
+  {
+    "id": "c6-end-champion-1",
+    "speaker": "sprocket",
+    "text": "[cheerful] An iron trophy, a dented marble, and one bolt that finally held on."
+  },
+  {
+    "id": "c6-end-champion-2",
+    "speaker": "duchess-vex",
+    "text": "[angry] A marble made from scrap, standing on top of my podium. This is a disgrace."
+  },
+  {
+    "id": "c6-end-champion-3",
+    "speaker": "old-smokey",
+    "text": "[cheerful] I lost the first championship ever raced. Today I get to watch my student win one."
+  },
+  {
+    "id": "c6-end-champion-4",
+    "speaker": "sprocket",
+    "text": "[smug] We went all the way down into that mine, and we came back up as winners."
+  },
+  {
+    "id": "c6-end-champion-5",
+    "speaker": "zapp-gutwrench",
+    "text": "[surprised] And look, kid, two drivers already want to join Apex Racing next season."
+  },
+  {
+    "id": "c6-end-champion-ace-0",
+    "speaker": "ace-spadegrin",
+    "text": "[cheerful] I came second in the championship, behind a scrapyard goblin. My sponsors will cry."
+  },
+  {
+    "id": "c6-end-champion-ace-1",
+    "speaker": "sprocket",
+    "text": "[smug] I will make sure to tell them, very loudly, that you helped me."
+  },
+  {
+    "id": "c6-end-champion-ace-2",
+    "speaker": "ace-spadegrin",
+    "text": "[smug] We race again next season, partner, and I will not be this nice twice."
+  },
+  {
+    "id": "c6-end-champion-vex-0",
+    "speaker": "duchess-vex",
+    "text": "[angry] The race officials found my plans for the mine. Somebody talked to them."
+  },
+  {
+    "id": "c6-end-champion-vex-1",
+    "speaker": "duchess-vex",
+    "text": "[smug] Remember, child, my contracts last longer than any championship."
+  },
+  {
+    "id": "c6-end-champion-hood-0",
+    "speaker": "the-hood",
+    "text": "[relieved] My debt to Vex is paid, and I raced that last race for myself, not for her."
+  },
+  {
+    "id": "c6-end-champion-hood-1",
+    "speaker": "sprocket",
+    "text": "[cheerful] Apex Racing still has your old seat, you know. It has been empty all season."
+  },
+  {
+    "id": "c6-end-champion-smokey-hurt-0",
+    "speaker": "old-smokey",
+    "text": "[sighs] My arm is still in a sling, so I watched the whole finale lying on a stretcher."
+  },
+  {
+    "id": "c6-end-champion-smokey-hurt-1",
+    "speaker": "old-smokey",
+    "text": "[cheerful] I lost the very first championship, but I taught the goblin who won this one."
+  },
+  {
+    "id": "c6-end-champion-smokey-0",
+    "speaker": "old-smokey",
+    "text": "[smug] I spent years hiding in that shed, and now my student is the champion."
+  },
+  {
+    "id": "c6-end-champion-smokey-1",
+    "speaker": "sprocket",
+    "text": "[cheerful] Then we should put both of our names on the trophy."
+  },
+  {
+    "id": "c6-end-bittersweet-0",
+    "speaker": "zapp-gutwrench",
+    "text": "[cheerful] Third place in the championship! You won a real trophy you can actually lift!"
+  },
+  {
+    "id": "c6-end-bittersweet-1",
+    "speaker": "sprocket",
+    "text": "[sighs] I was so close to winning. One better race would have done it."
+  },
+  {
+    "id": "c6-end-bittersweet-2",
+    "speaker": "ace-spadegrin",
+    "text": "[smug] Top three is top three, rookie. Ask the drivers who finished at the bottom."
+  },
+  {
+    "id": "c6-end-bittersweet-3",
+    "speaker": "old-smokey",
+    "text": "[cheerful] You came out of that mine with a trophy. Most drivers come out with nothing."
+  },
+  {
+    "id": "c6-end-bittersweet-4",
+    "speaker": "sprocket",
+    "text": "[smug] Next season, I will either win the whole thing or go back to the scrapyard."
+  },
+  {
+    "id": "c6-end-bittersweet-5",
+    "speaker": "zapp-gutwrench",
+    "text": "[surprised] And guess what, kid? Two new drivers already want to join Apex Racing."
+  },
+  {
+    "id": "c6-end-bittersweet-ace-0",
+    "speaker": "ace-spadegrin",
+    "text": "[smug] I won the championship, and you made the top three. Everybody is happy, mostly me."
+  },
+  {
+    "id": "c6-end-bittersweet-ace-1",
+    "speaker": "sprocket",
+    "text": "[smug] I saw you blocking Vex's drivers for me down in the mine."
+  },
+  {
+    "id": "c6-end-bittersweet-ace-2",
+    "speaker": "ace-spadegrin",
+    "text": "[surprised] You saw nothing, rookie. That was just an accident on the track."
+  },
+  {
+    "id": "c6-end-bittersweet-vex-0",
+    "speaker": "duchess-vex",
+    "text": "[cheerful] Third place overall. I can still use a driver like that, and I have a pen ready."
+  },
+  {
+    "id": "c6-end-bittersweet-vex-1",
+    "speaker": "sprocket",
+    "text": "[sighs] I remember your pen. It felt heavier than my marble."
+  },
+  {
+    "id": "c6-end-bittersweet-hood-0",
+    "speaker": "the-hood",
+    "text": "[quietly] Vex ordered me to take points from you this season, and I did it. I am sorry."
+  },
+  {
+    "id": "c6-end-bittersweet-hood-1",
+    "speaker": "the-hood",
+    "text": "[determined] Next season I race for nobody but myself, and for Apex, if they will have me."
+  },
+  {
+    "id": "c6-end-bittersweet-smokey-hurt-0",
+    "speaker": "old-smokey",
+    "text": "[sighs] Third place, a broken arm and rain. My first season ended exactly the same way."
+  },
+  {
+    "id": "c6-end-bittersweet-smokey-hurt-1",
+    "speaker": "sprocket",
+    "text": "[cheerful] Then we will hang our two photos next to each other."
+  },
+  {
+    "id": "c6-end-bittersweet-smokey-0",
+    "speaker": "old-smokey",
+    "text": "[cheerful] Top three in your very first season. I missed out on that by a hair, back then."
+  },
+  {
+    "id": "c6-end-bittersweet-smokey-1",
+    "speaker": "sprocket",
+    "text": "[smug] Next season, I am going to win the whole thing for both of us."
+  },
+  {
+    "id": "c6-end-heartbreak-0",
+    "speaker": "sprocket",
+    "text": "[sighs] No championship points, and my marble is in pieces inside a bag."
+  },
+  {
+    "id": "c6-end-heartbreak-1",
+    "speaker": "zapp-gutwrench",
+    "text": "[sighs] I can build you a new marble, kid. I built my first one out of a washing machine."
+  },
+  {
+    "id": "c6-end-heartbreak-2",
+    "speaker": "old-smokey",
+    "text": "[angry] Vex rigged the final race, and you still drove straight down into that mine."
+  },
+  {
+    "id": "c6-end-heartbreak-3",
+    "speaker": "old-smokey",
+    "text": "[sighs] That bravery is what I will remember, not where you finished."
+  },
+  {
+    "id": "c6-end-heartbreak-4",
+    "speaker": "sprocket",
+    "text": "[cheerful] Then I will come back next season and do it all again."
+  },
+  {
+    "id": "c6-end-heartbreak-5",
+    "speaker": "zapp-gutwrench",
+    "text": "[surprised] Two drivers have already asked to join Apex Racing next season, kid."
+  },
+  {
+    "id": "c6-end-heartbreak-ace-0",
+    "speaker": "ace-spadegrin",
+    "text": "[sighs] I blocked Vex's drivers as long as I could, but it was not enough. I am sorry."
+  },
+  {
+    "id": "c6-end-heartbreak-ace-1",
+    "speaker": "sprocket",
+    "text": "[smug] It was not your fault, Ace. She rigged a whole mine against us."
+  },
+  {
+    "id": "c6-end-heartbreak-vex-0",
+    "speaker": "duchess-vex",
+    "text": "[smug] You finished with no points, so you are of no use to me. How dull."
+  },
+  {
+    "id": "c6-end-heartbreak-vex-1",
+    "speaker": "sprocket",
+    "text": "[gasps] You cheated in the final race, and you still sound bored about it."
+  },
+  {
+    "id": "c6-end-heartbreak-hood-0",
+    "speaker": "the-hood",
+    "text": "[relieved] The race officials took Vex's equipment. You lost the race, but she lost more."
+  },
+  {
+    "id": "c6-end-heartbreak-hood-1",
+    "speaker": "sprocket",
+    "text": "[sighs] It still does not feel the same as winning."
+  },
+  {
+    "id": "c6-end-heartbreak-smokey-hurt-0",
+    "speaker": "old-smokey",
+    "text": "[sighs] No points and a broken arm. My best season ended looking a lot like this."
+  },
+  {
+    "id": "c6-end-heartbreak-smokey-hurt-1",
+    "speaker": "old-smokey",
+    "text": "[cheerful] But I still taught somebody worth teaching. Come back to the shed in spring."
+  },
+  {
+    "id": "c6-end-heartbreak-smokey-0",
+    "speaker": "old-smokey",
+    "text": "[angry] Last place. Good, because now you owe nobody anything."
+  },
+  {
+    "id": "c6-end-heartbreak-smokey-1",
+    "speaker": "sprocket",
+    "text": "[cheerful] Can I come back to your shed and train again in the spring?"
+  },
+  {
+    "id": "c6-end-heartbreak-smokey-2",
+    "speaker": "old-smokey",
+    "text": "[smug] You can, but come earlier this time. We have a lot of work to do."
+  }
+]
