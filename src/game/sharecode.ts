@@ -7,7 +7,7 @@
  * Optional short codes (8 hex) via appStorage keyed by hash — stored as heavy-metal-gp:share:<hash> → long code.
  */
 import { compressDef } from './tracks';
-import { validateTrackDef, MAX_NAME } from './trackdef';
+import { validateTrackDef, MAX_NAME, PIECE_SKINS } from './trackdef';
 import type { Piece, TrackDef, Vec } from './trackdef';
 import { THEME_IDS } from './types';
 import type { ThemeId } from './types';
@@ -151,11 +151,13 @@ function encodeBinary(def: TrackDef): Uint8Array {
     const typeId = PIECE_TO_ID[p.t as PieceTypeName];
     if (typeId === undefined) throw new ShareCodeError(`Unknown piece type ${(p as Piece).t}`);
     writeUVarint(out, typeId);
-    // Flag bits: 1 = flip, 2 = Workshop rotation follows, 4 = Workshop size follows. Old codes only ever hold 0/1.
-    const rotOn = !!p.rot, scOn = p.sc !== undefined && p.sc !== 1;
-    writeUVarint(out, (p.flip ? 1 : 0) | (rotOn ? 2 : 0) | (scOn ? 4 : 0));
+    // Flag bits: 1 = flip, 2 = Workshop rotation follows, 4 = Workshop size follows, 8 = a skin id follows (1-based into
+    // PIECE_SKINS, append-only). Old codes only ever hold 0..7.
+    const rotOn = !!p.rot, scOn = p.sc !== undefined && p.sc !== 1, skinOn = !!p.skin && PIECE_SKINS.includes(p.skin);
+    writeUVarint(out, (p.flip ? 1 : 0) | (rotOn ? 2 : 0) | (scOn ? 4 : 0) | (skinOn ? 8 : 0));
     if (rotOn) writeUVarint(out, Math.round(((p.rot! % 360) + 360) % 360 * 100));
     if (scOn) writeUVarint(out, Math.round(p.sc! * 1000));
+    if (skinOn) writeUVarint(out, PIECE_SKINS.indexOf(p.skin!) + 1);
     switch (p.t) {
       case 'ramp':
       case 'ice': {
@@ -463,6 +465,7 @@ function decodeBinary(bytes: Uint8Array, version = 1): TrackDef {
     const flip = flipFlag & 1 ? true : undefined;
     const xrot = flipFlag & 2 ? readUVarint(bytes, pos) / 100 : undefined;
     const xsc = flipFlag & 4 ? readUVarint(bytes, pos) / 1000 : undefined;
+    const xskin = flipFlag & 8 ? PIECE_SKINS[readUVarint(bytes, pos) - 1] : undefined;
     const t = PIECE_TYPES[typeId];
     if (!t) throw new ShareCodeError(`Unknown piece type id ${typeId}`);
     // #99: retired types are read (their bytes keep the stream aligned) but dropped.
@@ -782,6 +785,7 @@ function decodeBinary(bytes: Uint8Array, version = 1): TrackDef {
     }
     if (p && xrot) p.rot = xrot;
     if (p && xsc) p.sc = xsc;
+    if (p && xskin) p.skin = xskin;
     if (p) pieces.push(p);
   }
   // ensure no trailing bytes (tamper detection)

@@ -260,5 +260,8 @@ let chosen = 'sweeper-left';
 export function chosenScaffoldKit(): string { return chosen; }
 export function chooseScaffoldKit(id: string): void { chosen = id; }
 
+/** A stamped kit keeps this far from each wall. */
+export const SCAFFOLD_MARGIN = 10;
+
 /** A marble is this far across: the tube must always be wider. */
 export const MIN_TUBE_GAP = MARBLE_RADIUS * 2 + 2;

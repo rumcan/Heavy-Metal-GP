@@ -92,3 +92,57 @@ for (const kit of scaffoldKits()) {
     assert.ok(strayed < 1, `left the tube: ${strayed.toFixed(2)} of the way to a rail`);
   });
 }
+
+// ------------------------------------------------------------------ the skin, share codes and the Workshop stamp
+import { encodeShareCode, decodeShareCode } from '../src/game/sharecode';
+import { placementPieces } from '../src/components/editor/ghost';
+import { chooseScaffoldKit } from '../src/game/scaffold-kits';
+import { meta } from '../src/game/track';
+
+test('scaffold skin: only known skins validate, and a piece keeps its skin', () => {
+  const { pieces, height } = placed('s-bend');
+  const ok = validateTrackDef({ ...blankTemplate(), height, pieces });
+  assert.ok(ok.ok);
+  if (ok.ok) assert.ok(ok.def.pieces.every((p) => p.skin === 'scaffold'));
+  const bad = validateTrackDef({ ...blankTemplate(), height, pieces: pieces.map((p, i) => (i === 0 ? { ...p, skin: 'chrome' } : p)) });
+  assert.ok(!bad.ok);
+  if (!bad.ok) assert.match(bad.error, /skin must be one of/);
+});
+
+test('scaffold skin: the built rail bodies carry it, plain rails do not', () => {
+  const { pieces, height } = placed('u-turn');
+  const track = buildTrackFromDef({ ...blankTemplate(), height, pieces: [...pieces, { t: 'ramp', a: [100, 200], b: [300, 260] }] });
+  const ramps = track.bodies.filter((b) => meta(b)?.kind === 'ramp');
+  const skinned = ramps.filter((b) => meta(b).skin === 'scaffold');
+  assert.ok(skinned.length > 40, `${skinned.length} skinned slabs`);
+  assert.equal(ramps.length - skinned.length, ramps.filter((b) => !meta(b).skin).length);
+  assert.ok(ramps.some((b) => !meta(b).skin), 'a plain ramp stays plain');
+});
+
+test('scaffold skin: survives a share code round trip, and old codes without it still decode', async () => {
+  const { pieces, height } = placed('hairpin-stack');
+  const def = { ...blankTemplate(), height, pieces: [...pieces, { t: 'ramp', a: [100, 200], b: [300, 260] } as Piece] };
+  const back = await decodeShareCode(await encodeShareCode(def));
+  const skinned = back.pieces.filter((p) => p.skin === 'scaffold');
+  assert.equal(skinned.length, pieces.length);
+  assert.equal(back.pieces.filter((p) => p.skin === undefined).length, 1);
+  const plain = await decodeShareCode(await encodeShareCode({ ...blankTemplate(), height: 3000, pieces: [{ t: 'ramp', a: [100, 200], b: [300, 260] }] }));
+  assert.equal(plain.pieces[0].skin, undefined);
+});
+
+test('scaffold tunnels: the Workshop tile stamps the whole kit as one group, inside the track', () => {
+  for (const kit of scaffoldKits()) {
+    chooseScaffoldKit(kit.id);
+    // Even clicked hard against the left wall the kit is slid inside the track.
+    for (const x of [30, 450, 880]) {
+      const stamped = placementPieces('scaffold', { x, y: 2000 }, true);
+      assert.ok(stamped, `${kit.name} at x=${x}`);
+      assert.equal(stamped!.length, kit.pieces.length);
+      assert.ok(stamped!.every((p) => p.t === 'curve' && p.skin === 'scaffold' && p.grp === stamped![0].grp), 'one group, all skinned');
+      const xs = stamped!.flatMap((p) => (p.t === 'curve' ? [p.a[0], p.b[0]] : []));
+      assert.ok(Math.min(...xs) > 0 && Math.max(...xs) < W, `${kit.name} at x=${x} pokes out of the track`);
+      assert.ok(validateTrackDef({ ...blankTemplate(), height: 6000, pieces: stamped! }).ok);
+    }
+  }
+  chooseScaffoldKit('sweeper-left');
+});

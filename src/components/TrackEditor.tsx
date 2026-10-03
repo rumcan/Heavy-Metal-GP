@@ -528,7 +528,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
       // player hears about; an empty array is an id that names nothing placeable, which stays silent.
       const toAdd = placementPieces(armed, world, grid);
       if (!toAdd) {
-        setDraftMsg('This template cannot fit inside the track without changing its layout.');
+        setDraftMsg(armed === 'scaffold' ? 'This tunnel is wider than the track. Pick a narrower one.' : 'This template cannot fit inside the track without changing its layout.');
         return;
       }
       if (!toAdd.length) return;

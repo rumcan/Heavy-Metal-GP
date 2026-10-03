@@ -201,7 +201,7 @@ test('Palette: the ticket\'s groups, every piece a def can store, and the race a
   // #99 retired three tiles: the track switch lever (Secrets), the scoop (Launchers) and the
   // skipping pond (Fields). The line below is the one that matters: every type the def format
   // can store is in the palette.
-  assert.deepEqual(PALETTE.map((g) => g.tiles.length), [6, 7, 6, 2, 6, 5, 6, 5, 4, 5]);
+  assert.deepEqual(PALETTE.map((g) => g.tiles.length), [7, 7, 6, 2, 6, 5, 6, 5, 4, 5]);
   const types = [...new Set(TILES.map((tile) => tile.t))].sort();
   // #99: pool, scoop and switch are retired — the palette covers exactly the def format's remaining placeable pieces.
   assert.deepEqual(types, ['barricade', 'blade', 'block', 'boost', 'boulder', 'breakable', 'bridge', 'bucket', 'cannon', 'catapult', 'conveyor', 'crumble', 'crusher', 'curve', 'flipper', 'geyser', 'hoop', 'ice', 'itembox', 'loop', 'mace', 'magnet', 'mud', 'pad', 'peg', 'platform', 'ppeg', 'ramp', 'ring', 'saw', 'screw', 'seesaw', 'sign', 'sling', 'spinner', 'targets', 'trampoline', 'trapdoor', 'tunnel', 'turnstile', 'vortex', 'wall', 'wheel', 'wind', 'wrecker'], 'the palette should cover exactly the def format\'s placeable pieces');

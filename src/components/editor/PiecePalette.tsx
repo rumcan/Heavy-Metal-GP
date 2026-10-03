@@ -3,6 +3,8 @@ import { Weight, Zap, CircleDot } from 'lucide-react';
 import { PALETTE } from './palette';
 import { getTemplates, deleteTemplate } from './templates';
 import { pegArts, pegArtById, chosenPegArt, choosePegArt } from '../../game/peg-art';
+import { scaffoldKits, scaffoldKitById, chosenScaffoldKit, chooseScaffoldKit, SCAFFOLD_MARGIN } from '../../game/scaffold-kits';
+import { W } from '../../game/track';
 
 const art = import.meta.glob<string>('../../assets/game/*.{webp,png}', { eager: true, import: 'default' });
 const artFor = (name: string | null) => (name ? art[`../../assets/game/${name}.webp`] ?? art[`../../assets/game/${name}.png`] ?? null : null);
@@ -38,6 +40,42 @@ function PegArtPicker() {
         ))}
       </svg>
       <small style={{ color: '#8ea2b5', fontSize: 10 }}>{art.dots.length} pegs · placed as one group</small>
+    </div>
+  );
+}
+
+/** The Scaffold tunnel list, with a live preview of the one the next click stamps and a warning when it will not fit. */
+function ScaffoldPicker() {
+  const [id, setId] = useState(chosenScaffoldKit());
+  const kit = scaffoldKitById(id);
+  const size = 150, pad = 10;
+  const k = (size - pad * 2) / Math.max(kit.width, kit.height, 1);
+  const ox = size / 2, oy = size / 2;
+  const railPath = (p: (typeof kit.pieces)[number]) => {
+    const pts: string[] = [];
+    for (let i = 0; i <= 12; i++) {
+      const t = i / 12, u = 1 - t;
+      pts.push(`${(ox + (u * u * p.a[0] + 2 * u * t * p.c[0] + t * t * p.b[0]) * k).toFixed(1)},${(oy + (u * u * p.a[1] + 2 * u * t * p.c[1] + t * t * p.b[1]) * k).toFixed(1)}`);
+    }
+    return pts.join(' ');
+  };
+  const tooWide = kit.width > W - SCAFFOLD_MARGIN * 2;
+  return (
+    <div className="peg-art-picker">
+      <label className="prop-field" style={{ gridTemplateColumns: '1fr' }}>
+        <span>Tunnel</span>
+        <select value={id} onChange={(e) => { chooseScaffoldKit(e.target.value); setId(e.target.value); }} onKeyDown={(e) => e.stopPropagation()}>
+          {scaffoldKits().map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </label>
+      <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} role="img" aria-label={`${kit.name}: ${kit.width} by ${kit.height} pixels`} style={{ alignSelf: 'center', background: '#070b10', borderRadius: 4 }}>
+        {kit.pieces.map((p, i) => <polyline key={i} points={railPath(p)} fill="none" stroke="#b0803f" strokeWidth={Math.max(2, 26 * k)} strokeLinecap="round" strokeLinejoin="round" />)}
+        <polyline points={kit.centre.filter((_, i) => i % 3 === 0).map((c) => `${(ox + c[0] * k).toFixed(1)},${(oy + c[1] * k).toFixed(1)}`).join(' ')} fill="none" stroke="#070b10" strokeWidth={Math.max(1, 34 * k)} strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx={ox + kit.entry[0] * k} cy={oy + kit.entry[1] * k} r="3" fill="#38bdf8" />
+        <circle cx={ox + kit.exit[0] * k} cy={oy + kit.exit[1] * k} r="3" fill="#f97316" />
+      </svg>
+      <small style={{ color: '#8ea2b5', fontSize: 10 }}>{kit.blurb}</small>
+      <small style={{ color: tooWide ? '#f59e0b' : '#8ea2b5', fontSize: 10 }}>{tooWide ? `Too wide: ${kit.width} px against a ${W} px track.` : `${kit.width} × ${kit.height} px · placed as one group · enter at the blue dot`}</small>
     </div>
   );
 }
@@ -137,6 +175,7 @@ export default function PiecePalette({ active, onPick }: Props) {
                 <strong style={{ color: '#e6edf3', fontSize: '12px', letterSpacing: '0.5px' }}>{tile.label}</strong>
                 <p style={{ margin: 0, fontSize: '10px', lineHeight: 1.5, color: '#8ea2b5' }}>{tile.hint}</p>
                 {tile.id === 'pegart' && <PegArtPicker />}
+                {tile.id === 'scaffold' && <ScaffoldPicker />}
                 <StatEffects effects={tile.effects} />
               </div>
             )}

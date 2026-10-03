@@ -50,6 +50,7 @@ export const PALETTE: PaletteGroup[] = [
       { id: 'ramp', t: 'ramp', label: 'Ramp', sprite: 'rail-wood', hint: 'A straight rail. Drag its ends to set the angle.', effects: { speed: 30 } },
       { id: 'curve', t: 'curve', label: 'Curve', sprite: 'rail-wood', hint: 'A bent rail. Drag the middle dot to set the bend.', effects: { speed: 30 } },
       { id: 'ring', t: 'ring', label: 'Ring rail', sprite: 'rail-wood', hint: 'A perfect plank circle. Drag the side dot for its size, the top dot for its thickness.', effects: { speed: 30 } },
+      { id: 'scaffold', t: 'curve', label: 'Scaffold tunnel', sprite: 'rail-wood', hint: 'A premade tube of wooden scaffolding, long and curved. Pick one from the list, then click the canvas to stamp it as one group.', effects: { speed: 30 } },
       { id: 'ice', t: 'ice', label: 'Ice rail', sprite: 'strip-ice', hint: 'Almost frictionless — carry speed, lose control.', effects: { speed: 80 } },
       { id: 'wall', t: 'wall', label: 'Wall', sprite: 'strip-metal', hint: 'A plain barrier. Rails, ledges and catch walls.' },
       { id: 'sign', t: 'sign', label: 'Sign', sprite: null, hint: 'A wooden sign with your own words. Pure decoration: marbles pass through it. Write it in the settings cog.' },
