@@ -1,6 +1,6 @@
 import { useState, useEffect, Fragment } from 'react';
 import { Weight, Zap, CircleDot } from 'lucide-react';
-import { PALETTE } from './palette';
+import { PALETTE, PLATFORMER_PALETTE } from './palette';
 import { getTemplates, deleteTemplate } from './templates';
 import { pegArts, pegArtById, chosenPegArt, choosePegArt } from '../../game/peg-art';
 import { scaffoldKits, scaffoldKitById, chosenScaffoldKit, chooseScaffoldKit, SCAFFOLD_MARGIN } from '../../game/scaffold-kits';
@@ -14,6 +14,8 @@ interface Props {
   active: string | null;
   onPick: (id: string) => void;
   onShowToast?: (msg: string) => void;
+  /** P2-22: the pieces of a platformer course instead of the classic ones. */
+  side?: boolean;
 }
 
 const PEG_COLORS = { blue: '#3b82f6', orange: '#f97316', green: '#22c55e' } as const;
@@ -118,7 +120,8 @@ const StatEffects = ({ effects }: { effects?: { weight?: number, speed?: number,
   );
 };
 
-export default function PiecePalette({ active, onPick }: Props) {
+export default function PiecePalette({ active, onPick, side = false }: Props) {
+  const groups = side ? PLATFORMER_PALETTE : PALETTE;
   const [tab, setTab] = useState<'base' | 'templates'>('base');
   const [templates, setTemplates] = useState(getTemplates());
 
@@ -138,7 +141,7 @@ export default function PiecePalette({ active, onPick }: Props) {
       <button className={`tab-btn ${tab === 'templates' ? 'active' : ''}`} onClick={() => setTab('templates')}>Templates</button>
     </div>
 
-    {tab === 'base' && PALETTE.map((group) => <section key={group.id} className="palette-group" aria-labelledby={`palette-${group.id}`}>
+    {tab === 'base' && groups.map((group) => <section key={group.id} className="palette-group" aria-labelledby={`palette-${group.id}`}>
       <header className="palette-heading"><span className="eyebrow" id={`palette-${group.id}`}>{group.label}</span><small>{group.note}</small></header>
       <div className="palette-tiles">{group.tiles.map((tile) => {
         const src = artFor(tile.sprite);

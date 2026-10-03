@@ -9,6 +9,7 @@
 import { useEffect, useRef } from 'react';
 import { buildTrackFromDef } from '../../game/trackdef';
 import { W } from '../../game/track';
+import { isPlatformerDef, planFromTrackDef } from '../../game/platformer/def';
 import type { TrackDef } from '../../game/trackdef';
 
 const THUMB_W = 96;
@@ -41,6 +42,24 @@ export default function TrackThumbnail({ def, onClick }: { def: TrackDef; onClic
     ctx.fillStyle = '#0e131a';
     ctx.fillRect(0, 0, THUMB_W, THUMB_H);
 
+    // P2-22: a platformer course is drawn sideways: each lane's floors across the thumbnail.
+    if (isPlatformerDef(def)) {
+      const plan = planFromTrackDef(def);
+      let top = Infinity, bottom = -Infinity;
+      for (const f of plan.floors) { top = Math.min(top, f.y0, f.y1); bottom = Math.max(bottom, f.y0, f.y1); }
+      const k = (THUMB_W - 12) / Math.max(1, plan.width), ky = Math.min(k * 3, (THUMB_H - 40) / Math.max(1, bottom - top));
+      const oy = THUMB_H / 2 - ((top + bottom) / 2) * ky;
+      ctx.lineWidth = 1.5;
+      for (const lane of [0, 1, 2] as const) {
+        ctx.strokeStyle = ['#4c6a86', '#d8e0e6', '#e4b86a'][lane];
+        ctx.beginPath();
+        for (const f of plan.floors) if (f.lane === lane) { ctx.moveTo(6 + f.x0 * k, oy + f.y0 * ky); ctx.lineTo(6 + f.x1 * k, oy + f.y1 * ky); }
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#f2f5fa';
+      ctx.fillRect(6 + plan.finishX * k, 8, 1, THUMB_H - 16);
+      return;
+    }
     let track = null;
     try { track = buildTrackFromDef(def); } catch { track = null; }
     if (!track) {

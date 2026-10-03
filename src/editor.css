@@ -360,3 +360,11 @@
 
 .peg-art-picker { display: flex; flex-direction: column; gap: 8px; }
 .peg-art-picker select { width: 100%; }
+
+/* P2-22: a platformer course is built sideways: the course map becomes a strip under the canvas. */
+.editor-main[data-mode='side'] { grid-template-columns: 252px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+.editor-main[data-mode='side'] > .editor-tools { grid-row: 1 / span 2; }
+.editor-main[data-mode='side'] > .editor-map { grid-column: 2; grid-row: 2; flex-direction: column; gap: 4px; padding: 8px 10px; border-left: 0; border-top: 1px solid var(--line); }
+.editor-map-side .editor-map-svg { flex: none; height: 56px; min-height: 56px; cursor: ew-resize; }
+@media (max-width: 1100px) { .editor-main[data-mode='side'] { grid-template-columns: 226px minmax(0, 1fr); } }
+@media (max-width: 760px) { .editor-main[data-mode='side'] { grid-template-columns: minmax(0, 1fr); } .editor-main[data-mode='side'] > .editor-tools { grid-row: auto; } .editor-main[data-mode='side'] > .editor-map { grid-column: 1; } }

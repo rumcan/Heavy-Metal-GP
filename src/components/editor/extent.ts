@@ -12,7 +12,7 @@
  * concern (`bounds.ts`), not a validity one.
  */
 import type { Piece } from '../../game/trackdef';
-import { W } from '../../game/track';
+import { worldWidth } from './world';
 
 /**
  * Every stored x coordinate of `piece`, in the piece's own (stored) space. A flipped piece is drawn
@@ -23,6 +23,9 @@ export function pieceXs(piece: Piece): number[] {
   switch (piece.t) {
     case 'sign':
       return [piece.x - piece.w / 2, piece.x + piece.w / 2];
+    case 'gate':
+    case 'ledge':
+      return [piece.x, piece.x + piece.w];
     case 'ring':
       return [piece.x - piece.r - piece.thick / 2, piece.x + piece.r + piece.thick / 2];
     case 'ramp':
@@ -118,6 +121,7 @@ function extentOf(xs: readonly number[]): XExtent | null {
  */
 export function clampDeltaToExtent(extent: XExtent | null, dx: number): number {
   if (!extent || !Number.isFinite(dx)) return dx;
+  const W = worldWidth();
   if (extent.max - extent.min > W) return dx;
   return Math.max(-extent.min, Math.min(W - extent.max, dx));
 }

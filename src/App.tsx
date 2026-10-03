@@ -47,7 +47,8 @@ import { officialTrack } from './game/official-tracks';
 import LevelUpCard from './components/progression/LevelUpCard';
 import TalentsScreen from './components/talents/TalentsScreen';
 import { validateBuild } from './game/talents';
-import { isPlatformerPick, platformerCourse } from './game/platformer/course';
+import { PLATFORMER_PREFIX, isPlatformerPick, platformerCourse, registerCustomCourse } from './game/platformer/course';
+import { isPlatformerDef, planFromTrackDef, settle } from './game/platformer/def';
 import { TRACK_THEMES } from './game/types';
 import { loadAccount, saveAccount, purchaseItem, onlineRaceId, settleOnlineRace, settleRace, settleCustomRace, progressOf, awardResultXp } from './game/economy';
 import type { RacerAccount, RacePayout } from './game/economy';
@@ -103,6 +104,8 @@ export default function App() {
   const [raceKey, setRaceKey] = useState(0);
   const [circuitIndex, setCircuitIndex] = useState(0);
   const [customTrackId, setCustomTrackId] = useState<string | null>(null);
+  /** P2-22: the platformer course the Workshop is test-driving (raced as a quick race, then back to the Workshop). */
+  const [pfTest, setPfTest] = useState<TrackDef | null>(null);
   const [season, setSeason] = useState<SeasonState | null>(() => loadSeason());
   // P2-04: one garage per mode — { story, championship, quick, online } — each its own stats, livery and portrait.
   // A season that is running owns the championship garage, so it is read back from the season.
@@ -505,6 +508,8 @@ export default function App() {
       try {
         const { decodeShareCode } = await import('./game/sharecode');
         const def = await decodeShareCode(code);
+        // P2-22: a platformer course in the room's code is raced as a platformer course (the same plan on every machine).
+        if (isPlatformerDef(def)) registerCustomCourse('my-room', def.name, planFromTrackDef(settle(def)));
         setOnlineCustomDef(def);
       } catch (err) {
         console.warn('Custom track decode failed', err);
@@ -659,8 +664,8 @@ export default function App() {
     setRaceId(`quick:${crypto.randomUUID()}`);
     setPayout(null);
     setRaceKey((k) => k + 1);
-    if (isPlatformerPick(customTrackId)) {
-      setLoading({ eyebrow: 'QUICK RACE / PLATFORMER', title: platformerCourse(customTrackId).name.toUpperCase(), cta: 'Lights out', banter: preRaceBanter(quickRoster, Math.random), next: 'quick' });
+    if (quickPick) {
+      setLoading({ eyebrow: 'QUICK RACE / PLATFORMER', title: platformerCourse(quickPick).name.toUpperCase(), cta: 'Lights out', banter: preRaceBanter(quickRoster, Math.random), next: 'quick' });
     } else if (customTrackDef) {
       setLoading({ eyebrow: 'QUICK RACE / CUSTOM HEAT', title: customTrackDef.name.toUpperCase(), cta: 'Lights out', banter: preRaceBanter(quickRoster, Math.random), next: 'quick' });
     } else {
@@ -670,6 +675,8 @@ export default function App() {
   };
 
   useEffect(() => saveSeason(season), [season]);
+  // The Workshop's Test drive of a platformer course: the pick is set, now start the heat.
+  useEffect(() => { if (pfTest && phase === 'editor') launchQuickRace(); }, [pfTest]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const rivals = useMemo(() => makeRivals(rivalSeed), [rivalSeed]);
   // Each mode races with its own garage: the grid a quick race and a new championship start from.
@@ -680,6 +687,15 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const customTrack = useMemo(() => (customTrackId ? loadTracksSync().find((t) => t.id === customTrackId) ?? null : null), [customTrackId, phase]);
   const customTrackDef: TrackDef | null = customTrack?.def ?? null;
+  // P2-22: a saved platformer course (or a Workshop test drive) races as a platformer pick, registered under a my-... key.
+  const quickPick = useMemo<string | null>(() => {
+    const def = pfTest ?? customTrackDef;
+    if (def && isPlatformerDef(def)) {
+      const key = pfTest ? 'my-test' : `my-${String(customTrackId).toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 24)}`;
+      return registerCustomCourse(key, def.name, planFromTrackDef(settle(def)));
+    }
+    return isPlatformerPick(customTrackId) ? customTrackId : null;
+  }, [pfTest, customTrackDef, customTrackId]);
   const newSeed = useCallback(() => setSeed(Math.floor(Math.random() * 0xffffffff)), []);
 
   // ---- season helpers ----
@@ -788,6 +804,7 @@ export default function App() {
       driver={quickRoster[0]}
       onExit={() => setPhase('menu')}
       onCommunity={() => setPhase('community')}
+      onTestDrivePlatformer={(def) => setPfTest(def)}
     />;
   }
 
@@ -896,7 +913,7 @@ export default function App() {
     const gp = isCustomOnline && onlineCustomDef ? { name: onlineCustomDef.name, profile: CALENDAR[0].profile } as unknown as typeof CALENDAR[0] : CALENDAR[circuitIndexOf(online.settings)] ?? CALENDAR[0];
     const drivers = online.seats.filter((s) => !s.isAI).length;
     // P2-00: a platformer course is generated from its id (no def), the same on every machine.
-    const onlinePlatformer = online.settings.platformer ? platformerCourse(online.settings.platformer) : null;
+    const onlinePlatformer = isCustomOnline && onlineCustomDef && isPlatformerDef(onlineCustomDef) ? platformerCourse(PLATFORMER_PREFIX + 'my-room') : online.settings.platformer ? platformerCourse(online.settings.platformer) : null;
     return withShop(
       <RaceScreen
         key={raceKey}
@@ -932,13 +949,13 @@ export default function App() {
   // quick race
   const quickActions: RaceAction[] = [
     { label: 'Race again', onClick: launchQuickRace, primary: true },
-    { label: 'Back to garage', onClick: () => setPhase('menu') },
+    pfTest ? { label: 'Back to the Workshop', onClick: () => { setPfTest(null); setPhase('editor'); } } : { label: 'Back to garage', onClick: () => setPhase('menu') },
   ];
   // MB-08: quick race on a custom circuit — title/seed/profile follow the def when present.
   // Calendar circuits race the official archives: no quick-race layout is generated either.
   // P2-00: the platformer preview is a generated course (no def), raced left to right in three depth lanes.
-  const platformerPick = isPlatformerPick(customTrackId);
-  const platformer = platformerCourse(customTrackId);
+  const platformerPick = !!quickPick;
+  const platformer = platformerCourse(quickPick);
   const quickDef = platformerPick ? null : customTrackDef ?? officialTrack(circuitIndex);
   const quickProfile = platformerPick ? { ...CALENDAR[0].profile, generator: 'platformer' as const, course: platformer.id, theme: TRACK_THEMES.forest } : customTrackDef ? CALENDAR[0].profile : CALENDAR[circuitIndex].profile;
   const quickTitle = platformerPick ? platformer.name : customTrackDef ? customTrackDef.name : CALENDAR[circuitIndex].name;
@@ -955,7 +972,7 @@ export default function App() {
       isCustom={!!customTrackDef || platformerPick}
       subtitle={quickSubtitle}
       loadoutMode="quick"
-      onExit={() => setPhase('menu')}
+      onExit={() => { if (pfTest) { setPfTest(null); setPhase('editor'); } else setPhase('menu'); }}
       onFinished={(results) => awardWinnings(results, undefined, 'quick')}
       actions={quickActions}
       inventory={account.inventory}

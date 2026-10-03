@@ -1,5 +1,6 @@
 import type { Piece, Vec } from '../../game/trackdef';
-import { W } from '../../game/track';
+import { W as PIPE } from '../../game/track';
+import { worldWidth } from './world';
 
 /** Map positional coordinates only: never directions, dimensions or exit timing. */
 function mapCoordinates(piece: Piece, point: (x: number, y: number) => Vec): Piece {
@@ -19,7 +20,7 @@ function mapCoordinates(piece: Piece, point: (x: number, y: number) => Vec): Pie
   }
   if (p.t === 'tunnel') p.exit = point(...p.exit);
   // Buckets have no authored x; their horizontal motion is fixed by the builder.
-  if (p.t === 'bucket') p.y = point(W / 2, p.y)[1];
+  if (p.t === 'bucket') p.y = point(PIPE / 2, p.y)[1];
   return p;
 }
 
@@ -35,13 +36,14 @@ const EDGE = 200;
  * Returns null only when the group is wider than the track plus both edge margins; never squashes geometry.
  */
 export function fitGroupTranslation(pieces: readonly Piece[], dx: number, intoWalls = false): number | null {
+  const W = worldWidth();
   let minX = Infinity, maxX = -Infinity;
   // Bend handles only need to stay saveable (within EDGE of the walls), not on the track.
   let handleMin = Infinity, handleMax = -Infinity;
   for (const piece of pieces) {
     if (piece.t === 'bucket') continue;
     const add = (x: number) => {
-      const worldX = piece.flip ? W - x : x;
+      const worldX = piece.flip ? PIPE - x : x;
       minX = Math.min(minX, worldX);
       maxX = Math.max(maxX, worldX);
     };
@@ -52,7 +54,7 @@ export function fitGroupTranslation(pieces: readonly Piece[], dx: number, intoWa
         const t = i / 16, u = 1 - t;
         add(u * u * piece.a[0] + 2 * u * t * piece.c[0] + t * t * piece.b[0]);
       }
-      const hx = piece.flip ? W - piece.c[0] : piece.c[0];
+      const hx = piece.flip ? PIPE - piece.c[0] : piece.c[0];
       handleMin = Math.min(handleMin, hx);
       handleMax = Math.max(handleMax, hx);
       continue;

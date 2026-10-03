@@ -9,6 +9,7 @@
  * A track must pass (≥9/10, no hard errors) to be shared/used online;
  * drafts always save.
  */
+import { validatePlatformer } from './validate-side';
 import { W, START_H, FINISH_H } from '../../game/track';
 import { pieceXs } from './extent';
 
@@ -408,6 +409,7 @@ export function validateHeadless(def: TrackDef): { report: HeadlessReport; issue
 }
 
 export function validateTrack(def: TrackDef): ValidationResult {
+  if (def.mode === 'platformer') return validatePlatformer(def); // P2-22: a sideways course is raced on its own plan
   const staticIssues = staticChecks(def, (() => { try { return buildTrackFromDef(def); } catch { return null; } })());
   const { report: headless, issues: headlessIssues } = headlessCheck(def);
   const issues = [...staticIssues, ...headlessIssues];

@@ -6,6 +6,8 @@ import { generateExperimentalTrackDef } from '../../game/trackdef';
 import type { TrackDef } from '../../game/trackdef';
 import { TEMPLATES, blankTemplate } from '../../game/templates';
 import TrackThumbnail from './TrackThumbnail';
+import { defFromPlan, newPlatformerDef } from '../../game/platformer/def';
+import { PLATFORMER_COURSES, planOfficial } from '../../game/platformer/course';
 
 interface Props {
   onClose: () => void;
@@ -77,6 +79,34 @@ export default function NewTrackDialog({ onClose, onCreate }: Props) {
         <div className="new-track-body" style={{ minHeight: 400 }}>
           {tab === 'start' && (
             <>
+              <section className="new-track-section">
+                <h3><Map size={14} /> Platformer course</h3>
+                <p className="new-track-hint">A side-scrolling course with three lanes, built sideways and down. Races on it work like every other track.</p>
+                <div className="new-track-grid">
+                  <button className="new-track-card" data-testid="new-platformer" onClick={() => use(newPlatformerDef('My platformer course'))}>
+                    <svg viewBox="0 0 160 90" role="img" aria-label="A course running from left to right, sloping down" style={{ width: '100%', height: 90, background: '#0d1520', borderRadius: 4 }}>
+                      <path d="M0 30 H34 L70 44 C86 52 100 52 116 46 L160 60" fill="none" stroke="#9bb2c7" strokeWidth="3" />
+                      <path d="M0 40 H34 L70 54 C86 62 100 62 116 56 L160 70" fill="none" stroke="#4c6a86" strokeWidth="2" opacity="0.7" />
+                      <path d="M0 20 H34 L70 34 C86 42 100 42 116 36 L160 50" fill="none" stroke="#e4b86a" strokeWidth="2" opacity="0.7" />
+                    </svg>
+                    <strong>Blank platformer course</strong>
+                    <span>Just the start platform and the finish line. Build the middle: floors, springs, lanes, loops.</span>
+                    <em className="new-track-cta">Start building <ArrowRight size={12} /></em>
+                  </button>
+                  {PLATFORMER_COURSES.filter((c) => !c.tutorial).map((c) => (
+                    <button key={c.id} className="new-track-card" data-testid={`copy-${c.id}`} onClick={() => use(defFromPlan(planOfficial(c), `${c.name} copy`))}>
+                      <svg viewBox="0 0 160 90" role="img" aria-label={`${c.name}, a platformer course`} style={{ width: '100%', height: 90, background: '#0d1520', borderRadius: 4 }}>
+                        <path d="M0 40 C30 20 50 56 80 40 S130 24 160 46" fill="none" stroke="#9bb2c7" strokeWidth="3" />
+                        <path d="M0 52 C30 32 50 68 80 52 S130 36 160 58" fill="none" stroke="#4c6a86" strokeWidth="2" opacity="0.7" />
+                      </svg>
+                      <strong>{c.name} copy</strong>
+                      <span>An editable copy of this platformer course. The original is not changed.</span>
+                      <em className="new-track-cta">Open the copy <ArrowRight size={12} /></em>
+                    </button>
+                  ))}
+                </div>
+              </section>
+
               <section className="new-track-section">
                 <h3><LayoutGrid size={14} /> Blank canvas</h3>
                 <div className="new-track-grid is-single">

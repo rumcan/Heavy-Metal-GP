@@ -15,6 +15,7 @@
 import { bakeLineRotation } from '../../game/trackdef';
 import type { Piece, Vec } from '../../game/trackdef';
 import { W } from '../../game/track';
+import { worldWidth } from './world';
 import { moveHandle, movePiece } from './handles';
 
 export interface Point { x: number; y: number }
@@ -22,7 +23,7 @@ export interface Point { x: number; y: number }
 /** Snap step for keyboard/button turns and for the rotate handle when the grid is on. */
 export const ROTATE_STEP_DEG = 15;
 
-const clampX = (x: number) => Math.max(0, Math.min(W, x));
+const clampX = (x: number) => Math.max(0, Math.min(worldWidth(), x));
 /** Keep coordinates tidy (0.01 u) so repeated turns don't pile up float noise like 450.00000000000006. */
 const tidy = (v: number) => Math.round(v * 100) / 100;
 
@@ -219,6 +220,9 @@ export function rotatePiece(piece: Piece, rad: number, c: Point): Piece {
       const [x, y] = at(piece.x, piece.y);
       return { ...piece, x, y };
     }
+    case 'gate':
+    case 'ledge':
+      return piece; // floors-level pieces stay level
     case 'wind': {
       const dir = (((piece.dir + (rad * 180) / Math.PI) % 360) + 360) % 360;
       return { ...piece, a: turn(piece.a, c, cos, sin), b: turn(piece.b, c, cos, sin), dir };

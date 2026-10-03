@@ -12,6 +12,7 @@
  */
 import { useEffect, useMemo, useRef } from 'react';
 import { render } from '../../game/render';
+import { renderPlatformer } from '../../game/platformer/render';
 import type { Game } from '../../game/engine';
 import type { Track } from '../../game/track';
 import { clampCamera, clampZoom, rigFit, rigOpen, snapPoint, worldAt, zoomAbout } from './camera';
@@ -19,6 +20,7 @@ import type { CameraRig, EditorCamera, Point } from './camera';
 import { drawCursorMark, drawGrid, drawRuler, viewWindow } from './overlay';
 import type { OverlayView } from './overlay';
 import { hitPieceAt, piecesInBox } from './build';
+import { hitSidePiece } from './build-side';
 import { handlesFor, baseBoxHandles, lockHandlePoint, orderHandlePoints } from './handles';
 import { groupHandles, unionBox } from './group';
 import type { Piece } from '../../game/trackdef';
@@ -212,6 +214,12 @@ interface Props {
   pickingSpawn?: boolean;
   onPickSpawn?: (world: Point) => void;
   validation?: import('./validate').ValidationResult | null;
+  /** P2-22: a platformer course is drawn with the lane renderer and picked by box, not by body. */
+  side?: boolean;
+  /** The lane being edited (0 back, 1 middle, 2 front): the others are drawn behind it. */
+  focus?: number;
+  /** Pieces outside the working lane: not selectable, no padlock. */
+  inactive?: ReadonlySet<number>;
 }
 
 const STATUS_MS = 90;
@@ -241,6 +249,9 @@ export default function EditorCanvas(props: Props) {
   const onHandleRef = useRef(onHandleChange);
   const onSettingsRef = useRef(props.onOpenSettings);
   const lockedRef = useRef(props.locked);
+  const sideRef = useRef(!!props.side);
+  const focusRef = useRef(props.focus ?? 1);
+  const inactiveRef = useRef(props.inactive);
   const onLockRef = useRef(props.onToggleLock);
   const onOrderRef = useRef(props.onReorder);
   const onGroupRef = useRef(props.onGroupHandle);
@@ -268,6 +279,9 @@ export default function EditorCanvas(props: Props) {
   onHandleRef.current = onHandleChange;
   onSettingsRef.current = props.onOpenSettings;
   lockedRef.current = props.locked;
+  sideRef.current = !!props.side;
+  focusRef.current = props.focus ?? 1;
+  inactiveRef.current = props.inactive;
   onLockRef.current = props.onToggleLock;
   onOrderRef.current = props.onReorder;
   onGroupRef.current = props.onGroupHandle;
@@ -297,6 +311,13 @@ export default function EditorCanvas(props: Props) {
     const localPoint = (clientX: number, clientY: number): Point => {
       const rect = canvas.getBoundingClientRect();
       return { x: clientX - rect.left, y: clientY - rect.top };
+    };
+    /** Pieces a click may not pick: locked ones, and (sideways) the ones in another lane. */
+    const blockedSet = (): ReadonlySet<number> | undefined => {
+      const a = lockedRef.current, b = inactiveRef.current;
+      if (!b?.size) return a;
+      if (!a?.size) return b;
+      return new Set([...a, ...b]);
     };
     const trackHeight = () => gameRef.current?.track.height ?? 1e6;
     const camera = () => rig.camera;
@@ -512,9 +533,9 @@ export default function EditorCanvas(props: Props) {
         const b2p = b2pRef.current;
         let hit: number | null = null;
         // While placing, a click always drops a piece, even on top of another one: select mode (E) edits pieces.
-        if (curTrack && b2p.length && !armedRef.current) {
+        if (curTrack && (b2p.length || sideRef.current) && !armedRef.current) {
           // #101: locked pieces are invisible to clicks — the click passes through to what is under them.
-          hit = hitPieceAt(worldRaw, curTrack, b2p, pbRef.current, lockedRef.current);
+          hit = sideRef.current ? hitSidePiece(worldRaw, pbRef.current, blockedSet()) : hitPieceAt(worldRaw, curTrack, b2p, pbRef.current, lockedRef.current);
         }
 
         if (hit !== null) {
@@ -603,8 +624,8 @@ export default function EditorCanvas(props: Props) {
           const iconHit = hitLockIcon(worldRaw);
           if (iconHit !== null) { hoveredLocked = iconHit; onLockIcon = true; }
           const curTrack = trackRef.current;
-          if (hoveredLocked === null && curTrack && b2pRef.current.length) {
-            const hp = hitPieceAt(worldRaw, curTrack, b2pRef.current, pbRef.current);
+          if (hoveredLocked === null && curTrack && (b2pRef.current.length || sideRef.current)) {
+            const hp = sideRef.current ? hitSidePiece(worldRaw, pbRef.current) : hitPieceAt(worldRaw, curTrack, b2pRef.current, pbRef.current);
             if (hp !== null && lockedRef.current.has(hp)) hoveredLocked = hp;
           }
         }
@@ -714,15 +735,15 @@ export default function EditorCanvas(props: Props) {
         // Box select commit
         const curTrack = trackRef.current;
         const b2p = b2pRef.current;
-        if (curTrack && b2p.length) {
+        if (curTrack && (b2p.length || sideRef.current)) {
           const minX = Math.min(wasBox.startWorld.x, wasBox.curWorld.x);
           const maxX = Math.max(wasBox.startWorld.x, wasBox.curWorld.x);
           const minY = Math.min(wasBox.startWorld.y, wasBox.curWorld.y);
           const maxY = Math.max(wasBox.startWorld.y, wasBox.curWorld.y);
           // Small box = click without drag? If box small, treat as clear or no-op.
           if (Math.abs(maxX - minX) > 8 || Math.abs(maxY - minY) > 8) {
-            if (curTrack && b2p.length && pbRef.current.length) {
-              const hitSet = piecesInBox({ minX, minY, maxX, maxY }, curTrack, b2p, pbRef.current, lockedRef.current ?? undefined);
+            if (curTrack && (b2p.length || sideRef.current) && pbRef.current.length) {
+              const hitSet = piecesInBox({ minX, minY, maxX, maxY }, curTrack, b2p, pbRef.current, blockedSet());
               const indices = [...hitSet].sort((a, b) => a - b);
               if (indices.length) {
                 const additive = event.shiftKey;
@@ -760,8 +781,8 @@ export default function EditorCanvas(props: Props) {
         const b2p = b2pRef.current;
         const pb = pbRef.current;
         let hit: number | null = null;
-        if (curTrack && b2p.length && pb.length) {
-          hit = hitPieceAt(worldRaw, curTrack, b2p, pb);
+        if (curTrack && (b2p.length || sideRef.current) && pb.length) {
+          hit = sideRef.current ? hitSidePiece(worldRaw, pb, blockedSet()) : hitPieceAt(worldRaw, curTrack, b2p, pb);
         }
         if (hit === null && !event.shiftKey) {
           // Miss on empty space clears selection (unless shift)
@@ -1315,12 +1336,17 @@ export default function EditorCanvas(props: Props) {
         width,
         height,
         finishY: stage.track.finishY,
+        finishX: stage.track.platformer?.plan.finishX,
         trackHeight: stage.track.height,
         cursor,
       };
       // Preserve def pieces on rig for handle hit testing
       // (TrackEditor writes rig.defPieces each render)
-      render(ctx, stage, rig.camera, width, height, now, { minimap: false, shake: false, workshopPreview: true });
+      if (sideRef.current && stage.track.platformer) {
+        renderPlatformer(ctx, stage, { x: rig.camera.x, y: rig.camera.y, scale: rig.camera.scale, focus: focusRef.current }, width, height, now);
+      } else {
+        render(ctx, stage, rig.camera, width, height, now, { minimap: false, shake: false, workshopPreview: true });
+      }
       if (gridRef.current) drawGrid(ctx, overlayView);
       if (rulerRef.current) drawRuler(ctx, overlayView);
       drawCursorMark(ctx, overlayView);

@@ -11,6 +11,7 @@
  * The checks are the ticket's own reproductions: a handle round-trips at the position it is drawn at,
  * a new handle stays inside the schema's bounds, and a ghost is the piece a click places.
  */
+import { chosenScaffoldKit, scaffoldKitById } from '../src/game/scaffold-kits';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { applyHandle, handlesFor, HANDLE_RANGES, CATAPULT_ARM_SCALE, mirrorPiece, movePiece } from '../src/components/editor/handles';
@@ -188,8 +189,8 @@ test('Every palette tile previews real geometry, not a fallback dot', () => {
     const preview = ghostPreview(tile.id, CURSOR, snap);
     assert.ok(preview, `${tile.id} had no ghost at all`);
     assert.equal(preview!.label, tile.label);
-    // Peg art stamps a whole picture (one peg per dot); every other tile places one piece.
-    const expected = tile.id === 'pegart' ? pegArtById(chosenPegArt()).dots.length : 1;
+    // Peg art stamps a whole picture (one peg per dot) and a scaffold tunnel its rails; every other tile places one piece.
+    const expected = tile.id === 'pegart' ? pegArtById(chosenPegArt()).dots.length : tile.id === 'scaffold' ? scaffoldKitById(chosenScaffoldKit()).pieces.length : 1;
     assert.equal(preview!.pieces.length, expected, `${tile.id} previewed the wrong number of pieces`);
     assert.deepEqual(preview!.pieces.map(g => g.piece), placementPieces(tile.id, CURSOR, snap));
     const ghost = preview!.pieces[0];

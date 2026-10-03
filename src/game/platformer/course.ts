@@ -35,13 +35,24 @@ export const PLATFORMER_COURSES: readonly PlatformerCourse[] = [
   { id: 'training', name: 'Training Grounds', blurb: 'The short tutorial course: one crate, one gap, one ramp, one door, a slope and a climb.', seed: 1, tutorial: true },
 ];
 
+/** Courses built in the Workshop, registered for the session under a key (`my-...`). A race looks them up like the official ones. */
+const CUSTOM_COURSES = new Map<string, { course: PlatformerCourse; plan: CoursePlan }>();
+
+/** Registers a Workshop course's plan and returns the quick-race pick id for it (`platformer:my-...`). */
+export function registerCustomCourse(key: string, name: string, plan: CoursePlan): string {
+  CUSTOM_COURSES.set(key, { course: { id: key, name, blurb: 'A course built in the Workshop.', seed: plan.seed }, plan });
+  return PLATFORMER_PREFIX + key;
+}
+
 export function platformerCourse(id: string | null | undefined): PlatformerCourse {
   const key = id && id.startsWith(PLATFORMER_PREFIX) ? id.slice(PLATFORMER_PREFIX.length) : id;
-  return PLATFORMER_COURSES.find((c) => c.id === key) ?? PLATFORMER_COURSES[0];
+  return CUSTOM_COURSES.get(key ?? '')?.course ?? PLATFORMER_COURSES.find((c) => c.id === key) ?? PLATFORMER_COURSES[0];
 }
 
 /** The plan for an official course. */
 export function planOfficial(course: PlatformerCourse): CoursePlan {
+  const custom = CUSTOM_COURSES.get(course.id);
+  if (custom) return custom.plan;
   if (course.tutorial) return planTutorial();
   if (course.flow) return planFlow(course.seed);
   return planCourse(course.seed, course.length ? { ...COURSE_TUNING, length: course.length } : COURSE_TUNING);
