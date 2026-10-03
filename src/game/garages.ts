@@ -22,12 +22,12 @@ import type { SeasonState } from './season';
 import type { StoryState } from './story/state';
 
 /** The modes that have a goblin. The Workshop has none. */
-export type GarageMode = 'story' | 'championship' | 'quick' | 'online';
-export const GARAGE_MODES: readonly GarageMode[] = ['story', 'championship', 'quick', 'online'];
+export type GarageMode = 'story' | 'championship' | 'quick' | 'online' | 'infinity';
+export const GARAGE_MODES: readonly GarageMode[] = ['story', 'championship', 'quick', 'online', 'infinity'];
 
 /** The home screen's tabs, in the order they are drawn. */
 export type HomeTab = GarageMode | 'workshop';
-export const HOME_TABS: readonly HomeTab[] = ['story', 'championship', 'quick', 'online', 'workshop'];
+export const HOME_TABS: readonly HomeTab[] = ['story', 'championship', 'quick', 'online', 'infinity', 'workshop'];
 /** Where a player who has never picked a tab lands: the live circuit preview and one big button. */
 export const DEFAULT_HOME_TAB: HomeTab = 'quick';
 
@@ -58,7 +58,7 @@ export function cloneGarage(garage: Garage): Garage {
 
 /** The same setup in every mode: how the single setup is migrated. */
 export function uniformGarages(garage: Garage): Garages {
-  return { story: cloneGarage(garage), championship: cloneGarage(garage), quick: cloneGarage(garage), online: cloneGarage(garage) };
+  return { story: cloneGarage(garage), championship: cloneGarage(garage), quick: cloneGarage(garage), online: cloneGarage(garage), infinity: cloneGarage(garage) };
 }
 
 /** `garages` with one mode's garage replaced. The others are the same objects. */

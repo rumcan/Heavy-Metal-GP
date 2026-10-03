@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { BookOpen, Flag, Hammer, Radio, Trophy } from 'lucide-react';
+import { BookOpen, Flag, Hammer, Infinity as InfinityIcon, Radio, Trophy } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { HOME_TABS } from '../../game/garages';
 import type { HomeTab } from '../../game/garages';
@@ -9,6 +9,7 @@ export const TAB_META: Record<HomeTab, { label: string; Icon: LucideIcon; blurb:
   championship: { label: 'Championship', Icon: Trophy, blurb: 'Six Grands Prix of three heats each' },
   quick: { label: 'Quick race', Icon: Flag, blurb: 'One heat on any circuit, calendar or custom' },
   online: { label: 'Online', Icon: Radio, blurb: 'Host, join by code, or queue for a ranked race' },
+  infinity: { label: 'Infinity', Icon: InfinityIcon, blurb: 'An endless, calm roll: no rivals, no timer' },
   workshop: { label: 'Workshop', Icon: Hammer, blurb: 'Build, test and share your own circuits' },
 };
 
@@ -18,7 +19,7 @@ interface Props {
 }
 
 /**
- * The five game modes, as the header's tabs. They are plain buttons in a nav (the same pattern as every other
+ * The game modes, as the header's tabs. They are plain buttons in a nav (the same pattern as every other
  * screen's `main-nav`), the current one marked `aria-current="page"`.
  */
 export default function HomeTabs({ tab, onTab }: Props) {

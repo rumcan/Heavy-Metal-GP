@@ -218,3 +218,44 @@ test('distance never goes backwards, and the best is the farthest it ever got', 
   assert.equal(PX_PER_KM, 10_000);
   run.destroy();
 });
+
+// ------------------------------------------------------------------ records
+import * as storage from '../src/game/storage';
+import {
+  INFINITY_KEY, dailySeedText, emptyRecords, formatKm, loadRecords, normalizeRecords, recordDistance, recordStart, seedFromText, seedTextFor,
+} from '../src/game/infinity-store';
+
+test('records: best and total distance are kept, no credits or XP, and damaged saves are repaired', () => {
+  storage.removeItem(INFINITY_KEY);
+  assert.deepEqual(loadRecords(), emptyRecords());
+  recordStart('day-2026-10-03');
+  recordDistance(2.5);
+  recordDistance(4, 2.5);             // the same run, banked again later: only the new 1.5 km is added
+  let r = loadRecords();
+  assert.equal(r.runs, 1);
+  assert.equal(r.bestKm, 4);
+  assert.equal(r.totalKm, 4);
+  recordDistance(1.2);                // a shorter run does not lower the best
+  r = loadRecords();
+  assert.equal(r.bestKm, 4);
+  assert.ok(Math.abs(r.totalKm - 5.2) < 1e-9);
+  assert.deepEqual(Object.keys(r).sort(), ['bestKm', 'choice', 'lastSeed', 'mySeed', 'runs', 'totalKm'], 'distance and seeds only');
+  assert.deepEqual(normalizeRecords({ bestKm: -3, totalKm: 'x', runs: 2.7, choice: 'weird', mySeed: 5 }), { ...emptyRecords(), runs: 2 });
+  storage.setItem(INFINITY_KEY, '{not json');
+  assert.deepEqual(loadRecords(), emptyRecords());
+  storage.removeItem(INFINITY_KEY);
+});
+
+test('seeds: the same text is the same number for ever, the day seed follows the date, My seed wins when it is chosen', () => {
+  assert.equal(seedFromText('Moss-And-Lanterns'), seedFromText('  moss-and-lanterns '));
+  assert.notEqual(seedFromText('a'), seedFromText('b'));
+  assert.equal(seedFromText('abc'), 0x1A47E90B, 'FNV-1a of "abc" never changes (saved seeds must keep their land)');
+  assert.equal(dailySeedText(new Date(2026, 9, 3)), 'day-2026-10-03');
+  const r = { ...emptyRecords(), mySeed: 'pines' };
+  assert.equal(seedTextFor(r, new Date(2026, 9, 3)), 'day-2026-10-03');
+  assert.equal(seedTextFor({ ...r, choice: 'mine' }, new Date(2026, 9, 3)), 'pines');
+  assert.equal(seedTextFor({ ...emptyRecords(), choice: 'mine' }, new Date(2026, 9, 3)), 'day-2026-10-03', 'an empty My seed falls back to the day');
+  assert.equal(formatKm(0.04), '0.0');
+  assert.equal(formatKm(7.26), '7.3');
+  assert.equal(formatKm(42.4), '42');
+});

@@ -1,0 +1,36 @@
+/* P2-24: Infinity mode. A calm, full-screen roll: the world, one soft distance readout, a few quiet buttons. */
+.infinity-screen { position: fixed; inset: 0; z-index: 30; background: #0c141c; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+.infinity-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.infinity-fade { position: absolute; inset: 0; background: #0c141c; opacity: 0; pointer-events: none; }
+.infinity-reveal { position: absolute; inset: 0; width: 100%; height: 100%; background: transparent; border: 0; cursor: pointer; }
+.infinity-hud { position: absolute; left: max(14px, env(safe-area-inset-left)); top: max(12px, env(safe-area-inset-top)); pointer-events: none; }
+.infinity-km { display: inline-flex; align-items: baseline; gap: 5px; padding: 5px 12px; border-radius: 999px; background: #0c141c66; color: #eef4f8; text-shadow: 0 1px 4px #0008; }
+.infinity-km strong { font: 600 22px/1 var(--display, 'Oswald', system-ui, sans-serif); letter-spacing: .5px; }
+.infinity-km small { font: 600 10px var(--mono, ui-monospace, monospace); letter-spacing: 1px; opacity: .8; }
+.infinity-tools { position: absolute; right: max(12px, env(safe-area-inset-right)); top: max(10px, env(safe-area-inset-top)); display: flex; gap: 8px; }
+.infinity-icon { width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid #ffffff2e; background: #0c141c66; color: #eef4f8; cursor: pointer; }
+.infinity-icon:hover { background: #0c141ca6; }
+.infinity-controls { position: absolute; left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right)); bottom: max(12px, env(safe-area-inset-bottom)); display: flex; justify-content: space-between; align-items: flex-end; pointer-events: none; }
+.infinity-steer, .infinity-thumbs { display: flex; gap: 10px; pointer-events: auto; }
+.infinity-pad { min-width: 64px; height: 64px; padding: 0 16px; display: inline-flex; align-items: center; justify-content: center; border-radius: 18px; border: 1px solid #ffffff33; background: #0c141c59; color: #eef4f8; font: 600 12px var(--mono, ui-monospace, monospace); letter-spacing: 1px; touch-action: none; cursor: pointer; }
+.infinity-pad:active { background: #0c141ca6; }
+.infinity-pad.wide { min-width: 96px; }
+@media (max-height: 420px) { .infinity-pad { min-width: 54px; height: 54px; } .infinity-pad.wide { min-width: 78px; } .infinity-icon { width: 38px; height: 38px; } }
+@media (pointer: fine) { .infinity-controls { opacity: .55; } }
+.infinity-pause .pause-actions { flex-wrap: wrap; }
+
+/* The home tab */
+.infinity-card { display: flex; flex-direction: column; gap: 12px; }
+.infinity-card h2 { margin: 0; }
+.infinity-best { display: flex; align-items: baseline; gap: 8px; }
+.infinity-best strong { font: 600 44px/1 var(--display, 'Oswald', system-ui, sans-serif); }
+.infinity-best span { color: #8ea2b5; font: 600 11px var(--mono, ui-monospace, monospace); letter-spacing: 1px; }
+.infinity-seeds { display: flex; flex-direction: column; gap: 8px; }
+.infinity-seed { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line, #2a3846); border-radius: 8px; background: #0e131a; cursor: pointer; text-align: left; color: inherit; }
+.infinity-seed[aria-pressed='true'] { border-color: var(--accent, #d63e2e); background: #1a1417; }
+.infinity-seed b { display: block; font-size: 13px; }
+.infinity-seed small { color: #8ea2b5; font-size: 11px; }
+.infinity-seed-input { width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--line, #2a3846); background: #0b1016; color: inherit; font: 13px var(--mono, ui-monospace, monospace); }
+.infinity-records { display: grid; grid-template-columns: 1fr auto; gap: 8px 14px; font-size: 13px; }
+.infinity-records dt { color: #8ea2b5; }
+.infinity-records dd { margin: 0; text-align: right; font-weight: 600; }

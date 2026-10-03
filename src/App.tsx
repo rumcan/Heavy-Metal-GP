@@ -62,6 +62,8 @@ import type { Line } from './game/characters';
 import LoadingScreen from './components/LoadingScreen';
 import StoryMode from './components/story/StoryMode';
 import TrackEditor from './components/TrackEditor';
+import InfinityScreen from './components/infinity/InfinityScreen';
+import { loadRecords, saveRecords, seedTextFor } from './game/infinity-store';
 import CommunityScreen from './components/CommunityScreen';
 import { loadGarages, saveGarages, setGarage, withSeasonSetup } from './game/garages';
 import type { Garage, GarageMode, Garages } from './game/garages';
@@ -91,7 +93,7 @@ function makeRivals(seed: number): MarbleInfo[] {
   }));
 }
 
-type Phase = 'menu' | 'retune' | 'hub' | 'race' | 'quick' | 'story' | 'lobby' | 'online' | 'editor' | 'community';
+type Phase = 'menu' | 'retune' | 'hub' | 'race' | 'quick' | 'story' | 'lobby' | 'online' | 'editor' | 'community' | 'infinity';
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>('menu');
@@ -680,6 +682,8 @@ export default function App() {
 
   const rivals = useMemo(() => makeRivals(rivalSeed), [rivalSeed]);
   // Each mode races with its own garage: the grid a quick race and a new championship start from.
+  const [infinitySeed, setInfinitySeed] = useState('');
+  const infinityDriver = useMemo<MarbleInfo>(() => ({ id: 0, name: 'You', color: garages.infinity.color, stats: garages.infinity.stats, isPlayer: true, character: garages.infinity.portrait }), [garages.infinity]);
   const quickRoster = useMemo<MarbleInfo[]>(() => [{ id: 0, name: 'You', color: garages.quick.color, stats: garages.quick.stats, isPlayer: true, character: garages.quick.portrait }, ...rivals], [rivals, garages.quick]);
   const championshipRoster = useMemo<MarbleInfo[]>(() => [{ id: 0, name: 'You', color: garages.championship.color, stats: garages.championship.stats, isPlayer: true, character: garages.championship.portrait }, ...rivals], [rivals, garages.championship]);
   const quickGrid = useMemo(() => quickRoster.map((m) => m.id), [quickRoster]);
@@ -776,6 +780,7 @@ export default function App() {
         account={account}
         onShop={openShop}
         onStartStory={() => setPhase('story')}
+        onStartInfinity={() => { setInfinitySeed(seedTextFor(loadRecords())); setPhase('infinity'); }}
         onWorkshop={() => setPhase('editor')}
         mpBusy={mpBusy}
         mpError={mpError}
@@ -794,6 +799,23 @@ export default function App() {
 
   // The Workshop (MB-02): the track editor, opening on a copy of the circuit the garage is showing
   // (the official archive when there is one, else a generated circuit). Fixes start from the real thing.
+  // P2-24: Infinity, an endless solo roll. Its own goblin, no rivals, no rewards.
+  if (phase === 'infinity') {
+    return <InfinityScreen
+      key={infinitySeed}
+      seedText={infinitySeed}
+      driver={infinityDriver}
+      onLeave={() => setPhase('menu')}
+      onNewSeed={() => {
+        // A fresh random seed becomes "My seed", so the Roll button remembers it.
+        const next = `roll-${Math.floor(Math.random() * 0xfffff).toString(36)}`;
+        const r = loadRecords();
+        saveRecords({ ...r, choice: 'mine', mySeed: next });
+        setInfinitySeed(next);
+      }}
+    />;
+  }
+
   if (phase === 'editor') {
     const gp = CALENDAR[circuitIndex];
     return <TrackEditor
