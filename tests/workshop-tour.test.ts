@@ -14,7 +14,7 @@ test('the tour covers the ticket in order', () => {
 test('every spotlight target exists in the Workshop', () => {
   const editor = read('../src/components/TrackEditor.tsx');
   for (const step of TOUR_STEPS) {
-    if (step.target) assert.ok(editor.includes(`data-coach="${step.target}"`), `${step.id}: no data-coach="${step.target}"`);
+    for (const target of step.target?.split(' ') ?? []) assert.ok(editor.includes(`data-coach="${target}"`), `${step.id}: no data-coach="${target}"`);
   }
 });
 

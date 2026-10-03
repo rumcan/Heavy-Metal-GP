@@ -89,9 +89,8 @@ export default function CoachMarks({ testing, canShare, forceOpen, onClose }: Co
   useLayoutEffect(() => {
     if (!open || !step?.target) { setRect(null); return; }
     const update = () => {
-      const el = document.querySelector(`[data-coach="${step.target}"]`) as HTMLElement | null;
-      const r = el?.getBoundingClientRect();
-      setRect(r && r.width > 0 && r.height > 0 ? r : null);
+      const rects = step.target!.split(' ').map((t) => document.querySelector(`[data-coach="${t}"]`)?.getBoundingClientRect());
+      setRect(rects.find((r) => r && r.width > 0 && r.height > 0) ?? null);
     };
     update();
     window.addEventListener('resize', update);

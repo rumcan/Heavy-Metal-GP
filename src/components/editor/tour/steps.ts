@@ -13,7 +13,7 @@ export interface TourStep {
   title: string;
   /** The spoken line; `[tag]`s are voice directions and never shown. */
   say: string;
-  /** `data-coach` value of the control to spotlight; null for a step with nothing to point at. */
+  /** `data-coach` value(s) of the control to spotlight, space-separated: the first one visible wins (a phone hides the palette in a drawer). Null for a step with nothing to point at. */
   target: string | null;
   advance: TourAdvance;
 }
@@ -24,7 +24,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
     say: "[cheerful] Oi, builder! Zapp here. Every track starts with New track: a blank one, a copy of a championship track, a starter, or one I generate for you.",
   },
   {
-    id: 'palette', title: 'The pieces', target: 'palette', advance: 'next',
+    id: 'palette', title: 'The pieces', target: 'palette palette-toggle', advance: 'next',
     say: 'These are your pieces, sorted into groups. Tap one, then tap the map to drop it. Each picture shows what it does, pegs and all.',
   },
   {

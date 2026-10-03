@@ -1304,7 +1304,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
                 Finish<Flag size={13} />
               </button>
             </div>
-            <button className="editor-toggle editor-palette-toggle mobile-only" aria-expanded={drawer} onClick={() => setDrawer((v) => !v)}>
+            <button className="editor-toggle editor-palette-toggle mobile-only" data-coach="palette-toggle" aria-expanded={drawer} onClick={() => setDrawer((v) => !v)}>
               <LayoutGrid size={13} />Pieces
             </button>
           </div>
