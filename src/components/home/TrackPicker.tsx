@@ -7,7 +7,7 @@ import type { MarbleInfo } from '../../game/types';
 import CircuitPreview from '../CircuitPreview';
 import { CommunityPicker } from '../CommunityScreen';
 import TrackThumbnail from '../editor/TrackThumbnail';
-import { isPlatformerDef } from '../../game/platformer/def';
+import { splitEntries } from '../../game/platformer/lists';
 import { PLATFORMER_COURSES, PLATFORMER_PREFIX, PLATFORMER_TRACK_ID, isPlatformerPick, platformerCourse } from '../../game/platformer/course';
 
 /** Where the quick race's circuit comes from. */
@@ -44,9 +44,9 @@ export default function TrackPicker({ sub, onSub, circuitIndex, onCircuit, seed,
   // Parsing saved tracks checks every one of them: once per visit to the sub-tab or pick, not on every render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const allTracks = useMemo(() => loadTracksSync(), [customTrackId, sub]);
-  // P2-22: a platformer course made in the Workshop lives in My tracks too, but it is raced from the Platformer tab.
-  const myTracks = useMemo(() => allTracks.filter((t) => !isPlatformerDef(t.def)), [allTracks]);
-  const myCourses = useMemo(() => allTracks.filter((t) => isPlatformerDef(t.def)), [allTracks]);
+  // P2-22: a platformer course made in the Workshop lives in My tracks too, but it is raced from the Platformer tab:
+  // the classic list shows circuits only, and the Platformer tab shows the courses only.
+  const { circuits: myTracks, courses: myCourses } = useMemo(() => splitEntries(allTracks), [allTracks]);
   const selectedCustom = myTracks.find((t) => t.id === customTrackId) ?? null;
   const selectedMyCourse = myCourses.find((t) => t.id === customTrackId) ?? null;
 
@@ -103,25 +103,33 @@ export default function TrackPicker({ sub, onSub, circuitIndex, onCircuit, seed,
       {sub === 'platformer' && (() => {
         const course = platformerCourse(customTrackId);
         const pickedName = selectedMyCourse ? selectedMyCourse.def.name : course.name;
+        // A course of the player's own has no official blurb, and none of the official buttons is the pick.
+        const pickedBlurb = selectedMyCourse
+          ? `Your own platformer course: ${selectedMyCourse.def.pieces.length} pieces, ${Math.round((selectedMyCourse.def.width ?? 0) / 100) / 10}k long.`
+          : course.blurb;
+        const officialPicked = !selectedMyCourse;
         return <div className="custom-circuit-pane" aria-label="Platformer courses">
-          <div className="circuit-title-row"><div><h2 id="circuit-title">{course.name.toUpperCase()}</h2><span>PLATFORMER • PREVIEW • three depth lanes • turn your phone sideways</span></div></div>
-          <p className="muted">{course.blurb}</p>
+          <div className="circuit-title-row"><div><h2 id="circuit-title">{pickedName.toUpperCase()}</h2><span>{selectedMyCourse ? 'PLATFORMER • YOUR COURSE' : 'PLATFORMER • PREVIEW'} • three depth lanes • turn your phone sideways</span></div></div>
+          <p className="muted">{pickedBlurb}</p>
+          {selectedMyCourse && <div className="custom-preview"><TrackThumbnail def={selectedMyCourse.def} wide /></div>}
           <p className="muted">Roll right with ← →, jump with ↑ or Space. A ramp takes you to the next lane when you roll through it on the ground (jump over it to stay). In a door, press ↑ to go through.</p>
-          <div className="circuit-selector" aria-label="Select a platformer course">{PLATFORMER_COURSES.map((c, i) => <button key={c.id} className={c.id === course.id ? 'selected' : ''} aria-pressed={c.id === course.id} onClick={() => onSelectCustom(PLATFORMER_PREFIX + c.id)}><span>{String(i + 1).padStart(2, '0')}</span><strong>{c.name}</strong></button>)}</div>
+          <div className="circuit-selector" aria-label="Select a platformer course">{PLATFORMER_COURSES.map((c, i) => <button key={c.id} className={officialPicked && c.id === course.id ? 'selected' : ''} aria-pressed={officialPicked && c.id === course.id} onClick={() => onSelectCustom(PLATFORMER_PREFIX + c.id)}><span>{String(i + 1).padStart(2, '0')}</span><strong>{c.name}</strong></button>)}</div>
           {myCourses.length > 0 && <div className="my-tracks-list" role="listbox" aria-label="My courses">
             <p className="muted">Your own platformer courses:</p>
             {myCourses.map((t) => <button key={t.id} role="option" aria-selected={t.id === customTrackId} className={`my-track-row ${t.id === customTrackId ? 'selected' : ''}`} onClick={() => onSelectCustom(t.id)}>
-              <span className="my-track-meta"><strong>{t.def.name}</strong><span className="muted">{t.def.pieces.length} pieces • {Math.round((t.def.width ?? 0) / 1000)}k long</span></span>
+              <span className="my-track-meta"><strong>{t.def.name}</strong><span className="muted">{t.def.pieces.length} pieces • {Math.round((t.def.width ?? 0) / 100) / 10}k long</span></span>
               <span className="my-track-check" aria-hidden>{t.id === customTrackId ? '●' : ''}</span>
             </button>)}
           </div>}
           {myCourses.length === 0 && <p className="muted">Build your own in the Workshop: New track, then Platformer course.</p>}
           <p className="picker-selected" role="status"><Check size={14} aria-hidden="true" />Selected for the race: <b>{pickedName}</b></p>
+          <h3 className="picker-subhead">Community courses</h3>
+          <CommunityPicker kind="platformer" selectedId={customTrackId} onPick={onSelectCustom} onWorkshop={onWorkshop} />
         </div>;
       })()}
       {sub === 'community' && <>
         {selectedCustom && <p className="picker-selected" role="status"><Check size={14} aria-hidden="true" />Selected for the race: <b>{selectedCustom.def.name}</b></p>}
-        <CommunityPicker selectedId={customTrackId} onPick={onSelectCustom} onWorkshop={onWorkshop} />
+        <CommunityPicker kind="track" selectedId={customTrackId} onPick={onSelectCustom} onWorkshop={onWorkshop} />
       </>}
     </div>
   </section>;

@@ -17,6 +17,8 @@ import { cachedValidation } from './validationCache';
 import { CALENDAR, gpSeed } from '../../game/season';
 import { officialTrack } from '../../game/official-tracks';
 import { generateTrackDef } from '../../game/trackdef';
+import { isPlatformerDef } from '../../game/platformer/def';
+import { kindOfEntry } from '../../game/platformer/lists';
 
 interface Props {
   tracks: SavedTrack[];
@@ -32,6 +34,9 @@ interface Props {
   onNewBlank?: () => void;
   onDevLoadOfficial?: (def: TrackDef) => void;
 }
+
+/** The lists a Workshop entry can belong to: everything, the classic circuits, or the platformer courses. */
+type KindFilter = 'all' | 'track' | 'platformer';
 
 function timeAgo(ms: number): string {
   const s = Math.floor((Date.now() - ms) / 1000);
@@ -58,12 +63,17 @@ export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, on
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [filter, setFilter] = useState('');
+  /** P2-22: circuits and platformer courses share this list; the filter hides one kind or the other. */
+  const [kind, setKind] = useState<KindFilter>('all');
 
   const filtered = useMemo(() => {
+    const byKind = kind === 'all' ? tracks : tracks.filter((t) => kindOfEntry(t) === kind);
     const q = filter.trim().toLowerCase();
-    if (!q) return tracks;
-    return tracks.filter((t) => t.def.name.toLowerCase().includes(q));
-  }, [tracks, filter]);
+    if (!q) return byKind;
+    return byKind.filter((t) => t.def.name.toLowerCase().includes(q));
+  }, [tracks, filter, kind]);
+  const courseCount = useMemo(() => tracks.filter((t) => isPlatformerDef(t.def)).length, [tracks]);
+  const noun = kind === 'platformer' ? 'courses' : kind === 'track' ? 'circuits' : 'tracks';
 
   // In-game confirmations only: RUN.world's frame blocks the browser's confirm()/alert() (confirm() answered "no",
   // so Delete never deleted there).
@@ -81,7 +91,7 @@ export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, on
     <div className="my-tracks-panel">
       <header className="my-tracks-head">
         <span className="eyebrow"><b>04</b> MY TRACKS</span>
-        <span className="my-tracks-count">{tracks.length} saved</span>
+        <span className="my-tracks-count">{tracks.length} saved{courseCount ? ` · ${courseCount} course${courseCount === 1 ? '' : 's'}` : ''}</span>
       </header>
 
       <div className="my-tracks-actions">
@@ -94,16 +104,23 @@ export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, on
           </button>
         )}
         <input className="my-tracks-filter" placeholder="Filter by name…" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Filter tracks" />
+        <div className="my-tracks-filter-row" role="group" aria-label="Show circuits or platformer courses">
+          {([['all', 'All'], ['track', 'Circuits'], ['platformer', 'Courses']] as const).map(([id, label]) => (
+            <button key={id} type="button" className={`my-tracks-toggle ${kind === id ? 'on' : ''}`} aria-pressed={kind === id} onClick={() => setKind(id)}>{label}</button>
+          ))}
+        </div>
       </div>
 
       {tracks.length === 0 ? (
         <p className="prop-empty">No saved tracks yet. Save the current track to keep it here.</p>
       ) : filtered.length === 0 ? (
-        <p className="prop-empty">No tracks match “{filter}”.</p>
+        <p className="prop-empty">{filter.trim()
+          ? `No ${noun} match “${filter}”.`
+          : `You have no saved ${noun} yet.${kind === 'platformer' ? ' Start one from New track, then Platformer course.' : ''}`}</p>
       ) : (
         <div className="my-tracks-list" role="list">
           {filtered.map((t) => (
-            <div key={t.id} role="listitem" className={`my-track-row ${activeId === t.id ? 'is-active' : ''}`}>
+            <div key={t.id} role="listitem" className={`my-track-row ${activeId === t.id ? 'is-active' : ''} ${isPlatformerDef(t.def) ? 'is-platformer' : ''}`}>
               <TrackThumbnail def={t.def} onClick={() => onLoad(t.id)} />
               <div className="my-track-main">
                 {editingId === t.id ? (
@@ -116,12 +133,14 @@ export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, on
                   <button className="my-track-name" onClick={() => onLoad(t.id)} title="Load into editor">{t.def.name}</button>
                 )}
                 <div className="my-track-meta">
-                  <span className="my-track-stat"><Ruler size={10} />{formatUnits(t.def.height)} u</span>
+                  <span className="my-track-stat"><Ruler size={10} />{isPlatformerDef(t.def) ? `${Math.round((t.def.width ?? 0) / 100) / 10}k long` : `${formatUnits(t.def.height)} u`}</span>
                   <span className="my-track-stat"><Clock3 size={10} />{timeAgo(t.updatedAt)}</span>
+                  {isPlatformerDef(t.def) && <span className="my-track-badge is-platformer" title="A platformer course: three lanes, raced left to right">PLATFORMER</span>}
                   <ValidationBadge def={t.def} />
                 </div>
                 <div className="my-track-length">{t.def.pieces.length} pieces · {t.def.theme}</div>
               </div>
+              {isPlatformerDef(t.def) && <div className="my-track-strip"><TrackThumbnail def={t.def} wide onClick={() => onLoad(t.id)} /></div>}
               <div className="my-track-ops">
                 <button className="icon-button" onClick={() => startRename(t)} title="Rename" aria-label={`Rename ${t.def.name}`}><Edit3 size={12} /></button>
                 <button className="icon-button" onClick={() => onDuplicate(t.id)} title="Duplicate" aria-label={`Duplicate ${t.def.name}`}><Copy size={12} /></button>
@@ -138,9 +157,9 @@ export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, on
 
       {/* Current draft preview — helps verify autosave is working */}
       <details className="my-tracks-draft">
-        <summary>Open draft — {currentDef.name} · {formatUnits(currentDef.height)} u · {currentDef.pieces.length} pcs</summary>
+        <summary>Open draft — {currentDef.name} · {isPlatformerDef(currentDef) ? `${Math.round((currentDef.width ?? 0) / 100) / 10}k` : `${formatUnits(currentDef.height)} u`} · {currentDef.pieces.length} pcs</summary>
         <div className="my-tracks-draft-body">
-          <TrackThumbnail def={currentDef} />
+          <TrackThumbnail def={currentDef} wide={isPlatformerDef(currentDef)} />
           <p className="prop-empty">This draft autosaves every 10 s. Reload the page to see it restore. Save it to My tracks to keep it permanently.</p>
         </div>
       </details>

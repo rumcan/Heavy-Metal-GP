@@ -10,6 +10,8 @@ import ConfirmDialog from '../ConfirmDialog';
 import NewTrackDialog from '../editor/NewTrackDialog';
 import TrackThumbnail from '../editor/TrackThumbnail';
 import { draftNeedsSaving } from './trackIdentity';
+import { isPlatformerDef } from '../../game/platformer/def';
+import { splitEntries } from '../../game/platformer/lists';
 
 /** The id of the saved track the editor has open: the key `TrackEditor.tsx` remembers it under. */
 const ACTIVE_TRACK_KEY = 'heavy-metal-gp:workshop-active-track';
@@ -29,6 +31,9 @@ type Pending =
   | { kind: 'new'; def: TrackDef }
   | { kind: 'delete'; track: SavedTrack };
 
+/** P2-22: My tracks holds circuits and platformer courses; this chooses which of the two the list shows. */
+type KindFilter = 'all' | 'track' | 'platformer';
+
 const when = (ms: number) => new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 
 /**
@@ -38,12 +43,16 @@ const when = (ms: number) => new Date(ms).toLocaleDateString(undefined, { day: '
  */
 export default function WorkshopTab({ onOpenEditor, onBrowseCommunity, newTrackOpen, onNewTrackClose }: Props) {
   const [version, setVersion] = useState(0);
+  /** P2-22: circuits and platformer courses are built in the same Workshop, so the list can show either. */
+  const [kind, setKind] = useState<KindFilter>('all');
   // Parsing saved tracks checks every one of them: once per change, not on every render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const tracks = useMemo(() => loadTracksSync(), [version]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const draft = useMemo(() => loadDraftSync(), [version]);
   const [pending, setPending] = useState<Pending | null>(null);
+  const { circuits, courses } = useMemo(() => splitEntries(tracks), [tracks]);
+  const shown = kind === 'track' ? circuits : kind === 'platformer' ? courses : tracks;
 
   /** Write the draft the editor will open on, and the saved track it belongs to, then go. */
   const launch = (def: TrackDef, savedId: string | null) => {
@@ -68,23 +77,36 @@ export default function WorkshopTab({ onOpenEditor, onBrowseCommunity, newTrackO
 
   return <>
     <section className="fit-pane home-event workshop-tracks" data-pane-id="event" aria-labelledby="workshop-tracks-title">
-      <div className="section-topline"><span className="eyebrow" id="workshop-tracks-title"><b>01</b> MY TRACKS</span><span className="eyebrow">{tracks.length} SAVED</span></div>
+      <div className="section-topline"><span className="eyebrow" id="workshop-tracks-title"><b>01</b> MY TRACKS</span><span className="eyebrow">{circuits.length} CIRCUIT{circuits.length === 1 ? '' : 'S'} • {courses.length} COURSE{courses.length === 1 ? '' : 'S'}</span></div>
       {tracks.length === 0
         ? <div className="my-tracks-empty">
           <p>You have no saved tracks yet.</p>
-          <p className="muted">Press New track to start one. Save it inside the Workshop and it is listed here, and under My tracks in Quick race.</p>
+          <p className="muted">Press New track to start one: a classic circuit, or a platformer course built sideways in three lanes. Save it inside the Workshop and it is listed here, and under My tracks in Quick race.</p>
         </div>
-        : <ul className="workshop-list" aria-label="Saved tracks">{tracks.map((t) => <li key={t.id} className="my-track-row workshop-row">
-          <TrackThumbnail def={t.def} />
-          <span className="my-track-meta">
-            <strong>{t.def.name}</strong>
-            <span className="muted">{t.def.pieces.length} pcs • {Math.round(t.def.height).toLocaleString()}px • {t.def.theme} • {when(t.updatedAt)}</span>
-          </span>
-          <span className="workshop-row-actions">
-            <button className="button-secondary" onClick={() => open(t)} aria-label={`Open ${t.def.name} in the Workshop`}><FilePenLine size={14} />Open</button>
-            <button className="icon-button" onClick={() => setPending({ kind: 'delete', track: t })} aria-label={`Delete ${t.def.name}`} title="Delete"><Trash2 size={15} /></button>
-          </span>
-        </li>)}</ul>}
+        : <>
+          <div className="workshop-kind-filter" role="group" aria-label="Show circuits or platformer courses">
+            {([['all', `All ${tracks.length}`], ['track', `Circuits ${circuits.length}`], ['platformer', `Courses ${courses.length}`]] as const).map(([id, label]) => (
+              <button key={id} type="button" className={kind === id ? 'selected' : ''} aria-pressed={kind === id} onClick={() => setKind(id)}>{label}</button>
+            ))}
+          </div>
+          <ul className="workshop-list" aria-label="Saved tracks">{shown.map((t) => <li key={t.id} className="my-track-row workshop-row">
+            <TrackThumbnail def={t.def} />
+            <span className="my-track-meta">
+              <strong>{t.def.name}</strong>
+              <span className="muted">{isPlatformerDef(t.def)
+                ? `${t.def.pieces.length} pcs • ${Math.round((t.def.width ?? 0) / 100) / 10}k long • ${t.def.theme} • ${when(t.updatedAt)}`
+                : `${t.def.pieces.length} pcs • ${Math.round(t.def.height).toLocaleString()}px • ${t.def.theme} • ${when(t.updatedAt)}`}</span>
+              {isPlatformerDef(t.def) && <span className="my-track-badge is-platformer" title="A platformer course: three lanes, raced left to right">PLATFORMER</span>}
+            </span>
+            <span className="workshop-row-actions">
+              <button className="button-secondary" onClick={() => open(t)} aria-label={`Open ${t.def.name} in the Workshop`}><FilePenLine size={14} />Open</button>
+              <button className="icon-button" onClick={() => setPending({ kind: 'delete', track: t })} aria-label={`Delete ${t.def.name}`} title="Delete"><Trash2 size={15} /></button>
+            </span>
+          </li>)}</ul>
+          {shown.length === 0 && <p className="muted workshop-blurb">{kind === 'platformer'
+            ? 'You have no platformer courses yet. Press New track, then Platformer course, to build one.'
+            : 'You have no classic circuits yet. Press New track to start one.'}</p>}
+        </>}
     </section>
 
     <section className="fit-pane home-garage workshop-hero" data-pane-id="garage" aria-labelledby="workshop-title">

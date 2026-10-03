@@ -182,6 +182,17 @@
 .my-track-badge.is-pass { background: #0f2a1a; border: 1px solid #1a5a2e; color: #7ddf90; }
 .my-track-badge.is-fail { background: #2a1414; border: 1px solid #5a1a1a; color: #ffb4ac; }
 .my-track-badge.is-pending { background: #131a23; border: 1px solid #242e3a; color: #8ea2b5; }
+/* P2-22: a platformer course in My tracks — its own badge, and a long, low preview strip under the name, because the
+   course is raced left to right and a tall thumbnail of it reads as nothing. */
+.my-track-badge.is-platformer { background: #101d2e; border: 1px solid #2b4a6b; color: #8ec8ff; }
+.my-tracks-filter-row { display: flex; gap: 5px; }
+.my-tracks-filter-row .my-tracks-toggle { flex: 1; justify-content: center; padding: 4px 6px; background: #131a23; border: 1px solid #2b3644; border-radius: 3px; color: #93a3b3; font: 9px var(--mono); letter-spacing: .3px; }
+.my-tracks-filter-row .my-tracks-toggle:hover { color: #e6edf3; }
+.my-tracks-filter-row .my-tracks-toggle.on { background: #d63e2e1f; border-color: var(--accent); color: #fff; }
+.my-track-row.is-platformer { grid-template-areas: 'thumb main' 'strip strip' 'ops ops'; }
+.my-track-strip { grid-area: strip; }
+.my-track-strip .track-thumb { width: 100% !important; height: auto !important; aspect-ratio: 176 / 54; }
+.track-thumb.is-wide { flex-shrink: 0; }
 .my-tracks-foot { border-top: 1px solid #1e2936; padding-top: 8px; }
 .my-tracks-hint { font: 8px var(--mono); line-height: 1.5; color: #5f6d7c; }
 .my-tracks-draft { border-top: 1px solid #1e2936; padding-top: 8px; font-size: 9px; color: #8ea2b5; }

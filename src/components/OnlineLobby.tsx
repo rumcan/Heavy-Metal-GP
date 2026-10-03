@@ -37,6 +37,7 @@ import type { RaceLink } from '../net/session';
 import type { RaceProtocol, RaceSettings, Seat, SeatGarage, WelcomeMsg } from '../net/protocol';
 import { CALENDAR } from '../game/season';
 import { loadTracksSync } from '../game/tracks';
+import { splitEntries } from '../game/platformer/lists';
 import TrackThumbnail from './editor/TrackThumbnail';
 import { encodeShareCode } from '../game/sharecode';
 import LobbyGrid from './LobbyGrid';
@@ -139,7 +140,8 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
   const [items, setItems] = useState<Partial<Record<ItemType, number>> | null>(null);
   // MB-08: custom track picking for the host — share-code in settings.customCode
   // Parsing saved tracks checks every one of them: once per visit, not on every render.
-  const myTracks = useMemo(() => loadTracksSync(), []);
+  // P2-22: a platformer course is picked on the Platformer tab (it rides in the same code, but as a course).
+  const { circuits: myTracks, courses: myCourses } = useMemo(() => splitEntries(loadTracksSync()), []);
   const [circuitTab, setCircuitTab] = useState<'calendar' | 'custom' | 'platformer'>('calendar');
   /** Host only (P2-00): the platformer course picked, or null for the calendar / a custom track. */
   const [platformer, setPlatformer] = useState<string | null>(null);
@@ -174,6 +176,8 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
   const isHost = welcome ? welcome.hostId === room.playerId : room.isCreator;
   const seats = (isHost ? grid ?? welcome?.seats : lobbySeats ?? welcome?.seats) ?? [];
   const settings: RaceSettings = isHost ? buildSettings(circuitIndex, items, benched, aiItems, platformer, true, loadoutSlots) : lobbySettings ?? welcome?.settings ?? { circuit: circuitIndex };
+  /** P2-22: the host's own course, when the shared code is one — the code itself only says so once it is decoded. */
+  const coursePick = customCode && customName ? myCourses.find((t) => t.def.name === customName) ?? null : null;
   const circuit = isHost ? circuitIndex : circuitIndexOf(settings);
   const gp = CALENDAR[circuit] ?? CALENDAR[0];
   const localSeat = seatOfPlayer(seats, room.playerId) ?? 0;
@@ -340,6 +344,27 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
       link.send({ type: 'lobby', seats: latest.current.grid ?? seats, settings });
     } catch (err) {
       onError(err instanceof Error ? err.message : 'Could not share that track.');
+    }
+  };
+
+  /** Host only (P2-22): share one of the player's own platformer courses. It rides in the room's code, like a custom
+   *  circuit, and every machine decodes it back into the same course. */
+  const pickMyCourse = async (trackId: string) => {
+    if (!isHost) return;
+    const track = myCourses.find((t) => t.id === trackId);
+    if (!track) return;
+    try {
+      const code = await encodeShareCode(track.def);
+      setCustomCode(code);
+      setCustomName(track.def.name);
+      setPlatformer(null);
+      latest.current.platformer = null;
+      setCircuitTab('platformer');
+      const settings: RaceSettings = { circuit: circuitIndex, ...(latest.current.items ? { items: latest.current.items } : {}), customCode: code } as RaceSettings;
+      setGrid((prev) => prev ?? seats);
+      link.send({ type: 'lobby', seats: latest.current.grid ?? seats, settings });
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'Could not share that course.');
     }
   };
 
@@ -598,6 +623,13 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
             <span className="muted">PLATFORMER • PREVIEW • unrated • turn your phone sideways</span>
             <p className="lobby-circuit-desc">{platformerCourse(settings.platformer).blurb}</p>
           </div>
+        ) : coursePick ? (
+          <div>
+            <h2 id="lobby-circuit-title">{(customName ?? 'CUSTOM COURSE').toUpperCase()}</h2>
+            <span className="muted">PLATFORMER • YOUR COURSE • shared with the room</span>
+            <p className="lobby-circuit-desc">A platformer course from your Workshop. It rides in the room's code, so everybody races the layout you built.</p>
+            {isHost && <button className="text-button" onClick={() => pickPlatformer(PLATFORMER_COURSES[0].id)}>Back to the official courses</button>}
+          </div>
         ) : customCode ? (
           <div>
             <h2 id="lobby-circuit-title">{(customName ?? 'CUSTOM CIRCUIT').toUpperCase()}</h2>
@@ -649,9 +681,29 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
             )}
           </div>
         )}
+        {isHost && circuitTab === 'platformer' && myCourses.length > 0 && (
+          <div className="my-tracks-list lobby-custom-list" aria-label="My courses">
+            <p className="lobby-note">Your own platformer courses: pick one and it is shared with the room as a code.</p>
+            {myCourses.map((t) => (
+              <button
+                key={t.id}
+                className={`my-track-row ${coursePick?.id === t.id ? 'selected' : ''}`}
+                onClick={() => void pickMyCourse(t.id)}
+                disabled={!isHost}
+              >
+                <TrackThumbnail def={t.def} />
+                <span className="my-track-meta">
+                  <strong>{t.def.name}</strong>
+                  <span className="muted">{t.def.pieces.length} pcs • {Math.round((t.def.width ?? 0) / 100) / 10}k long</span>
+                </span>
+                <span className="my-track-check" aria-hidden>{coursePick?.id === t.id ? '●' : ''}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <p className="lobby-note">
           {customCode
-            ? 'Custom circuit: everyone races the host’s layout. Payout reduced (see results). Two drivers minimum, six at most.'
+            ? `${coursePick ? 'Platformer course' : 'Custom circuit'}: everyone races the host’s layout. Payout reduced (see results). Two drivers minimum, six at most.`
             : isHost
               ? 'Everybody races the circuit you pick, on the track the room seeded. Two drivers minimum, six at most.'
               : 'The host picks the circuit. You race the same seed, so you are looking at the same track.'}

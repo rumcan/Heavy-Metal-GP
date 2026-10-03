@@ -89,6 +89,12 @@
 .home-picker-panel .circuit-selector button strong { font-size: 11.5px; letter-spacing: .3px; }
 .home-picker-panel .custom-circuit-pane { overflow: visible; }
 .home-picker-panel .my-tracks-list { max-height: none; overflow: visible; padding-right: 0; }
+/* P2-22: the Platformer tab lists official courses, My courses and the community's own courses, each with a heading. */
+.picker-subhead { margin: 14px 0 6px; font: 600 12px var(--display); letter-spacing: 1px; text-transform: uppercase; color: #c3cdd7; }
+/* The Workshop's My tracks holds circuits and platformer courses: this picks which of the two the list shows. */
+.workshop-kind-filter { display: flex; gap: 5px; margin-bottom: 8px; }
+.workshop-kind-filter button { padding: 4px 10px; background: #131a23; border: 1px solid #2b3644; border-radius: 3px; color: #93a3b3; font: 9px var(--mono); letter-spacing: .3px; }
+.workshop-kind-filter button.selected { background: #d63e2e1f; border-color: var(--accent); color: #fff; }
 .picker-selected { display: flex; align-items: center; gap: 6px; margin: 0; padding: 6px 10px; border: 1px solid var(--accent); border-radius: 4px; background: #d63e2e18; font-size: 12px; color: #f3e6cc; }
 .picker-selected svg { color: var(--accent); flex: none; }
 

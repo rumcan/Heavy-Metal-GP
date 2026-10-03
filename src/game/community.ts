@@ -12,6 +12,8 @@
  */
 import * as storage from './storage';
 import { decodeShareCode, encodeShareCode } from './sharecode';
+import { kindOfDef } from './platformer/lists';
+import type { CommunityKind } from './platformer/lists';
 import type { TrackDef } from './trackdef';
 
 export const CONTENT_TYPE = 'track';
@@ -33,6 +35,11 @@ export interface CommunityTrack {
   createdAt: number;
   /** The track as a share code; decode with `decodeCommunityTrack`. */
   code: string;
+  /**
+   * P2-22: what was published — a classic circuit, or a platformer course. It is stored with the entry so a list can
+   * keep the two apart without decoding every code; entries published before courses existed have none and are circuits.
+   */
+  kind?: CommunityKind;
 }
 
 export interface CommunityPage {
@@ -127,6 +134,7 @@ function fromEntry(e: UgcEntryLike): CommunityTrack | null {
     upvotedByMe: !!e.isLikedByMe,
     createdAt: e.createdAt,
     code,
+    kind: e.data?.kind === 'platformer' ? 'platformer' : 'track',
   };
 }
 
@@ -148,9 +156,10 @@ export class PublishError extends Error {}
 export async function publishTrack(def: TrackDef, tags: string[]): Promise<CommunityTrack> {
   const name = def.name.trim() || 'Untitled track';
   const picked = tags.filter((t) => (COMMUNITY_TAGS as readonly string[]).includes(t)).slice(0, MAX_TAGS);
+  const kind = kindOfDef(def);
   const code = await encodeShareCode(def);
   if (await isLocalCommunity()) {
-    const track: CommunityTrack = { id: `local-${Date.now().toString(36)}`, name, author: await myName(), tags: picked, upvotes: 0, upvotedByMe: false, createdAt: Date.now(), code };
+    const track: CommunityTrack = { id: `local-${Date.now().toString(36)}`, name, author: await myName(), tags: picked, upvotes: 0, upvotedByMe: false, createdAt: Date.now(), code, kind };
     saveLocal([track, ...loadLocal()]);
     return track;
   }
@@ -158,7 +167,7 @@ export async function publishTrack(def: TrackDef, tags: string[]): Promise<Commu
   const check = await api.ugc.checkTextAsync(name).catch(() => ({ clean: true, profaneWords: [] }));
   if (!check.clean) throw new PublishError('That track name was flagged by the word filter. Rename it and try again.');
   try {
-    const entry = await api.ugc.create({ contentType: CONTENT_TYPE, data: { v: 1, code }, isPublic: true, title: name, tags: picked });
+    const entry = await api.ugc.create({ contentType: CONTENT_TYPE, data: { v: 1, code, kind }, isPublic: true, title: name, tags: picked });
     const track = fromEntry(entry);
     if (!track) throw new Error('bad entry');
     return track;
