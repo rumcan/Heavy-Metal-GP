@@ -1,3 +1,5 @@
+import { ITEM_TYPES, MAX_ITEM_STACK, normalizeInventory, type Inventory } from './types';
+
 export const LOADOUT_SLOTS = 8;
 export const SLOT_KEYS = ['Q', 'W', 'E', 'R', 'A', 'S', 'D', 'F'] as const;
 export const BUDGETS = [0, 200, 500, 1000] as const;
@@ -208,4 +210,41 @@ export function dropPool(l: Loadout): string[] {
     }
   }
   return result;
+}
+
+// P2-20: the host's loadout budget, as pure helpers so the host, the settle path and the tests
+// all trim exactly the same way.
+
+/**
+ * Keep the first `slots` charged skill TYPES (ITEM_TYPES table order — the kit's own order) and
+ * drop the rest. The marble never carries its untrimmed kit into a trimmed race, so this runs
+ * once, host-side, before the roster is built. slots >= the kit's size brings everything.
+ */
+export function trimKit(inventory: Partial<Inventory> | undefined, slots: number): Inventory {
+  const out = normalizeInventory(inventory);
+  const budget = Number.isFinite(slots) ? Math.max(0, Math.floor(slots)) : LOADOUT_SLOTS;
+  let kept = 0;
+  for (const item of ITEM_TYPES) {
+    if (out[item] > 0) {
+      kept += 1;
+      if (kept > budget) out[item] = 0;
+    }
+  }
+  return out;
+}
+
+/**
+ * P2-20: settle an online race whose kit the host trimmed. Skills the driver RACED (brought)
+ * come home as the end-of-race kit reported them — charges spent, pickups kept; skills the
+ * budget left at home stay in the wallet untouched, plus any pickup of a type that started
+ * trimmed. Rooms with no budget keep today's behaviour: the kit simply replaces the wallet.
+ */
+export function mergeRaceKit(home: Inventory, kit: Inventory, loadoutSlots?: number): Inventory {
+  if (loadoutSlots === undefined) return normalizeInventory(kit);
+  const raced = trimKit(home, loadoutSlots);
+  const out = normalizeInventory(home);
+  for (const item of ITEM_TYPES) {
+    out[item] = raced[item] > 0 ? kit[item] : Math.min(MAX_ITEM_STACK, out[item] + kit[item]);
+  }
+  return out;
 }

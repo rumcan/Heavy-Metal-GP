@@ -1,4 +1,4 @@
-// P2-17: spend talent points in five trees. Tiers are rows; a locked tier says what it needs. Readable at 375 px
+// P2-17: spend talent points in six trees. Tiers are rows; a locked tier says what it needs. Readable at 375 px
 // (one tree at a time, picked with the tabs).
 import { useState } from 'react';
 import Dialog from '../Dialog';
@@ -15,6 +15,7 @@ const TREE_INFO: Record<string, { label: string; blurb: string; color: string }>
   arsenal: { label: 'Arsenal', blurb: 'Offence skills', color: '#f97316' },
   tactics: { label: 'Tactics', blurb: 'Skill duration and cooldown', color: '#38bdf8' },
   fortune: { label: 'Fortune', blurb: 'Credits and XP', color: '#facc15' },
+  driver: { label: 'Driver', blurb: 'Your hands, not the car', color: '#a78bfa' },
 };
 
 interface Props { account: RacerAccount; onChange: (next: RacerAccount) => void; onClose: () => void }

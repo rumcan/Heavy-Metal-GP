@@ -2,7 +2,7 @@ import * as storage from './storage';
 import { emptyInventory, ITEM_INFO, ITEM_TYPES, MAX_ITEM_STACK, normalizeInventory } from './types';
 import type { HeatResult, Inventory, ItemType } from './types';
 import { settle } from './settlement';
-import { awardXp, migrateAccount, newProgress } from './progression';
+import { awardXp, migrateAccount, newProgress, raceXp } from './progression';
 import type { ProgressState } from './progression';
 import { talentEffects, validateBuild, pointsSpent, respecCost } from './talents';
 import type { Build } from './talents';
@@ -85,6 +85,33 @@ export function progressOf(account: RacerAccount): ProgressState {
 export function awardRaceXp(account: RacerAccount, raceId: string, xp: number): { account: RacerAccount; levelsGained: number[] } {
   const r = awardXp(progressOf(account), raceId, xp);
   return { account: { ...account, progress: r.state }, levelsGained: r.levelsGained };
+}
+
+export interface RaceXpAward {
+  account: RacerAccount;
+  /** The XP this result paid (after the Lucky Goblin), 0 when the race id was already paid. */
+  xp: number;
+  from: number;
+  to: number;
+  levelsGained: number[];
+}
+
+/**
+ * P2-20: XP for one race result — the one path every mode pays through.
+ *
+ * `raceXp` from the result (finish, place, pegs, KOs), scaled by the account's
+ * talent build, awarded ONCE per race id. `from`/`to`/`levelsGained` are what
+ * the level-up card on the results screen reads.
+ */
+export function awardResultXp(account: RacerAccount, raceId: string, result: HeatResult): RaceXpAward {
+  const finished = result.time !== null && !result.dnf;
+  const xp = Math.round(
+    raceXp({ finished, rank: result.rank, pegs: result.pegs, kos: result.kos ?? 0, beatBest: false })
+      * (1 + (talentEffects(account.talents ?? {}).xpPct ?? 0) / 100),
+  );
+  const from = progressOf(account).level;
+  const r = awardRaceXp(account, raceId, xp);
+  return { account: r.account, xp, from, to: progressOf(r.account).level, levelsGained: r.levelsGained };
 }
 
 function readProgress(value: unknown): ProgressState | undefined {

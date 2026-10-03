@@ -581,6 +581,19 @@ test('P2-19 validation: a wire talent build is checked against the real tree, th
   assert.equal(readRaceSettings({ circuit: 0 })?.talents, undefined, 'absent reads as on where it is used');
 });
 
+test('P2-20 wire: the host loadout budget rides in race settings, 1-8, or not at all', () => {
+  assert.equal(readRaceSettings({ circuit: 0, loadoutSlots: 1 })?.loadoutSlots, 1, 'a strict house can race with one skill');
+  assert.equal(readRaceSettings({ circuit: 0, loadoutSlots: 8 })?.loadoutSlots, 8, 'eight is a full kit');
+  assert.equal(readRaceSettings({ circuit: 0 })?.loadoutSlots, undefined, 'absent reads as a full kit where it is used');
+  assert.equal(readRaceSettings({ circuit: 0, loadoutSlots: 0 }), null, 'no zero-slot budget');
+  assert.equal(readRaceSettings({ circuit: 0, loadoutSlots: 9 }), null, 'nine is more slots than a kit holds');
+  assert.equal(readRaceSettings({ circuit: 0, loadoutSlots: 4.5 }), null, 'half a slot is nonsense');
+  assert.equal(readRaceSettings({ circuit: 0, loadoutSlots: '4' }), null, 'the wire carries numbers');
+  // A lobby frame carries the rule — this is how a guest learns it (it only displays).
+  assert.equal(check({ type: 'lobby', seats: SEATS, settings: { circuit: 0, loadoutSlots: 4 } }), null);
+  assert.equal(check({ type: 'lobby', seats: SEATS, settings: { circuit: 0, loadoutSlots: 12 } })?.code, 'malformed');
+});
+
 test('RK-03 validation: the rated wire, and every way it can lie', () => {
   // A rating is the one number a player is allowed to be wrong about: a low one
   // is CLAMPED to the floor rather than refused, and the reader is what the room

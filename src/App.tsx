@@ -46,17 +46,16 @@ import { SeasonState, newSeason, recordHeat, gridOrder, gpSeed, CALENDAR, saveSe
 import { officialTrack } from './game/official-tracks';
 import LevelUpCard from './components/progression/LevelUpCard';
 import TalentsScreen from './components/talents/TalentsScreen';
-import { raceXp } from './game/progression';
-import { talentEffects, validateBuild } from './game/talents';
+import { validateBuild } from './game/talents';
 import { isPlatformerPick, platformerCourse } from './game/platformer/course';
 import { TRACK_THEMES } from './game/types';
-import { loadAccount, saveAccount, purchaseItem, onlineRaceId, settleOnlineRace, settleRace, settleCustomRace, progressOf, awardRaceXp } from './game/economy';
+import { loadAccount, saveAccount, purchaseItem, onlineRaceId, settleOnlineRace, settleRace, settleCustomRace, progressOf, awardResultXp } from './game/economy';
 import type { RacerAccount, RacePayout } from './game/economy';
 import { loadTracksSync } from './game/tracks';
 import type { TrackDef } from './game/trackdef';
-import { normalizeInventory } from './game/types';
 import type { Inventory, ItemType } from './game/types';
 import LoadoutScreen from './components/loadout/LoadoutScreen';
+import { mergeRaceKit } from './game/loadout';
 import { RIVALS, PLAYER_PORTRAIT_COUNT, preRaceBanter } from './game/characters';
 import type { Line } from './game/characters';
 import LoadingScreen from './components/LoadingScreen';
@@ -601,18 +600,18 @@ export default function App() {
     const raceId = onlineRaceId(room?.roomCode ?? 'race', online.countdownAt);
     const isCustom = !!(online.settings as unknown as { customCode?: string })?.customCode;
     const paid = isCustom ? settleCustomRace(accountRef.current, raceId, mine, true) : settleOnlineRace(accountRef.current, raceId, mine);
-    // P2-19: XP for an online race, once, off the same race id as the purse — KO XP included.
+    // P2-19/P2-20: XP for an online race, once, off the same race id as the purse — KO XP included.
     let next = paid.account;
     if (!paid.payout.alreadyPaid) {
-      const finished = mine.time !== null && !mine.dnf;
-      const xp = Math.round(raceXp({ finished, rank: mine.rank, pegs: mine.pegs, kos: mine.kos ?? 0, beatBest: false }) * (1 + (talentEffects(next.talents ?? {}).xpPct ?? 0) / 100));
-      const before = progressOf(next).level;
-      const r = awardRaceXp(next, raceId, xp);
+      const r = awardResultXp(next, raceId, mine);
       next = r.account;
-      if (r.levelsGained.length) setLevelUp({ from: before, to: progressOf(next).level, xp });
+      if (r.levelsGained.length) setLevelUp({ from: r.from, to: r.to, xp: r.xp });
     }
-    // What you came home with is what you have: spent is spent, picked is kept.
-    publishAccount(kit ? { ...next, inventory: normalizeInventory(kit) } : next);
+    // What you came home with is what you have: spent is spent, picked is kept. Under the host's
+    // loadout budget (P2-20) only the skills you RACED replaced the wallet — the ones left at
+    // home stayed untouched, as did any pickup of a type the budget trimmed.
+    const slots = online.settings.loadoutSlots;
+    publishAccount(kit ? { ...next, inventory: mergeRaceKit(next.inventory, kit, slots) } : next);
     setPayout(paid.payout);
   }, [online, publishAccount, room, claimRanked]);
 
@@ -621,15 +620,12 @@ export default function App() {
     const result = results.find((r) => r.id === 0);
     if (!result) return;
     const paid = isCustom ? settleCustomRace(accountRef.current, raceId, result, false) : settleRace(accountRef.current, raceId, result, 1, mode);
-    // P2-09: XP for the race, once (same race id as the purse).
+    // P2-09/P2-20: XP for the race, once (same race id as the purse).
     let next = paid.account;
     if (!paid.payout.alreadyPaid) {
-      const finished = result.time !== null && !result.dnf;
-      const xp = Math.round(raceXp({ finished, rank: result.rank, pegs: result.pegs, kos: result.kos ?? 0, beatBest: false }) * (1 + (talentEffects(next.talents ?? {}).xpPct ?? 0) / 100));
-      const before = progressOf(next).level;
-      const r = awardRaceXp(next, raceId, xp);
+      const r = awardResultXp(next, raceId, result);
       next = r.account;
-      if (r.levelsGained.length) setLevelUp({ from: before, to: progressOf(next).level, xp });
+      if (r.levelsGained.length) setLevelUp({ from: r.from, to: r.to, xp: r.xp });
     }
     publishAccount(next);
     setPayout(paid.payout);
@@ -829,6 +825,7 @@ export default function App() {
         driver={{ name: 'Sprocket', ...garages.story }}
         account={account}
         onAccount={publishAccount}
+        onLevelUp={(from, to, xp) => setLevelUp({ from, to, xp })}
         onShop={openShop}
         onExit={() => setPhase('menu')}
       />
@@ -876,6 +873,7 @@ export default function App() {
         title={roundName(season, season.round)}
         subtitle={`ROUND ${String(season.round + 1).padStart(2, '0')} / HEAT ${heatNo} OF ${HEATS_PER_GP}`}
         championship
+        loadoutMode="championship"
         onExit={() => {
           setPendingResult(null);
           setPhase('hub');
@@ -911,6 +909,7 @@ export default function App() {
         title={onlinePlatformer ? onlinePlatformer.name : gp.name}
         isCustom={isCustomOnline || !!onlinePlatformer}
         subtitle={`ONLINE / ${online.isHost ? 'HOSTING' : 'JOINED'} / ${drivers} DRIVERS${onlinePlatformer ? ' / PLATFORMER' : isCustomOnline ? ' / CUSTOM' : ''}`}
+        loadoutMode="online"
         onExit={leaveRoom}
         // MP-09: an online race settles this screen's own seat, at the online
         // scale, and writes back the kit it came home with.
@@ -955,6 +954,7 @@ export default function App() {
       title={quickTitle}
       isCustom={!!customTrackDef || platformerPick}
       subtitle={quickSubtitle}
+      loadoutMode="quick"
       onExit={() => setPhase('menu')}
       onFinished={(results) => awardWinnings(results, undefined, 'quick')}
       actions={quickActions}
