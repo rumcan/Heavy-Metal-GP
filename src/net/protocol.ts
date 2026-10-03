@@ -61,7 +61,7 @@ export type { RaceEntry, RankWire };
  * lobby/ready/start, 20 Hz packed `state`, `events`, chunked `snapshot`,
  * `intent`, `resync`, `results`, presence and the hard refusal on mismatch.
  */
-export const PROTOCOL_VERSION = 10; // 10: P2-18 validated cosmetic look in SeatGarage/Seat; 9: P2-20 loadoutSlots house rule; 8: P2-19 hp byte + DNF flag per marble, ko/skillfx events, dnf/kos result rows, talents; 7: P2-08 24-skill inventories; 6: P2-00 depth lane byte per marble; 5: P2-01 engine flag + jump intent; // 3: the rated wire (rating board, result claim, the room's result);
+export const PROTOCOL_VERSION = 11; // 11: P2-22 platformerCode (a Workshop platformer course rides in the race settings); 10: P2-18 validated cosmetic look in SeatGarage/Seat; 9: P2-20 loadoutSlots house rule; 8: P2-19 hp byte + DNF flag per marble, ko/skillfx events, dnf/kos result rows, talents; 7: P2-08 24-skill inventories; 6: P2-00 depth lane byte per marble; 5: P2-01 engine flag + jump intent; // 3: the rated wire (rating board, result claim, the room's result);
 // 4: MB-10 launchers (cannon/catapult/scoop holds, flipper firedAt, sling flash) and the movers' dynamic state
 
 /**
@@ -252,6 +252,8 @@ export interface Seat {
 
 /** Largest share-code the wire will carry (a full track is ~5 KB as a code, well inside the frame cap). */
 export const MAX_CUSTOM_CODE_CHARS = 12000;
+/** The longest platformer course code a room carries (it shares the frame with the other settings). */
+export const MAX_PLATFORMER_CODE_CHARS = 12000;
 
 /** What the race is: which circuit, and how many times around it. */
 export interface RaceSettings {
@@ -286,6 +288,11 @@ export interface RaceSettings {
    * When present the race is on that course; `circuit` is kept for compatibility only.
    */
   platformer?: string;
+  /**
+   * P2-22: a Workshop platformer course as a `pf1-` share code (src/game/platformer/share.ts). Present only with
+   * `platformer: 'my-room'`; host and guests decode and fully validate it before the race builds its course.
+   */
+  platformerCode?: string;
   /** False: AI drivers never use power-ups. Absent reads as true. */
   aiItems?: boolean;
   /** AI seats the host took off the grid: they do not race. Human seats are never benched. */
@@ -1617,6 +1624,12 @@ export function readRaceSettings(value: unknown): RaceSettings | null {
   if (s.talents !== undefined && typeof s.talents !== 'boolean') return null; // P2-19
   if (s.loadoutSlots !== undefined && !isInt(s.loadoutSlots, 1, 8)) return null; // P2-20
   if (s.platformer !== undefined && (typeof s.platformer !== 'string' || !/^[a-z0-9-]{1,32}$/.test(s.platformer))) return null;
+  if (s.platformerCode !== undefined) {
+    // P2-22: a custom course code only ever comes with the room course id, and has the shape of a pf1- code.
+    if (typeof s.platformerCode !== 'string' || s.platformer !== 'my-room') return null;
+    if (s.platformerCode.length < 8 || s.platformerCode.length > MAX_PLATFORMER_CODE_CHARS) return null;
+    if (!s.platformerCode.startsWith('pf1-') || !/^[A-Za-z0-9_-]+$/.test(s.platformerCode.slice(4))) return null;
+  }
   let benched: number[] | undefined;
   if (s.benched !== undefined) {
     if (!Array.isArray(s.benched) || s.benched.length > MARBLE_COUNT) return null;
@@ -1633,6 +1646,7 @@ export function readRaceSettings(value: unknown): RaceSettings | null {
     ...(s.loadoutSlots !== undefined ? { loadoutSlots: s.loadoutSlots as number } : {}),
     ...(benched ? { benched } : {}),
     ...(typeof s.platformer === 'string' ? { platformer: s.platformer } : {}),
+    ...(typeof s.platformerCode === 'string' ? { platformerCode: s.platformerCode } : {}),
   };
 }
 

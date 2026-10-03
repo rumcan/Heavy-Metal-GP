@@ -528,6 +528,17 @@ export default function App() {
     } else {
       setOnlineCustomDef(null);
     }
+    // P2-22: a Workshop platformer course rides in the settings: every screen decodes and registers the same def.
+    const courseCode = (race.settings as { platformerCode?: string } | undefined)?.platformerCode;
+    if (courseCode) {
+      try {
+        const { registerRoomCourse } = await import('./game/platformer/room');
+        await registerRoomCourse(courseCode);
+      } catch (err) {
+        console.warn('Platformer course decode failed', err);
+        setMpError(err instanceof Error ? err.message : 'The host\'s platformer course is invalid: racing the first official course instead.');
+      }
+    }
     setPhase('online');
   }, []);
 
@@ -933,7 +944,7 @@ export default function App() {
         key={raceKey}
         seed={online.seed}
         roster={onlineRoster}
-        profile={onlinePlatformer ? { ...CALENDAR[0].profile, generator: 'platformer' as const, course: onlinePlatformer.id, theme: TRACK_THEMES.forest } : gp.profile}
+        profile={onlinePlatformer ? { ...CALENDAR[0].profile, generator: 'platformer' as const, course: onlinePlatformer.id, theme: TRACK_THEMES[(onlinePlatformer.def as { theme?: keyof typeof TRACK_THEMES } | undefined)?.theme ?? 'forest'] } : gp.profile}
         // Calendar circuits race their official archives online too — never a generated layout.
         trackDef={onlinePlatformer ? null : isCustomOnline ? onlineCustomDef : officialTrack(circuitIndexOf(online.settings)) ?? onlineCustomDef}
         gridOrder={onlineGrid}

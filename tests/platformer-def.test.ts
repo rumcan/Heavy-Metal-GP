@@ -158,3 +158,36 @@ test('saved courses: save, list, overwrite, delete; each saved course is raceabl
   if ('id' in b) deleteCourse(b.id);
   setItem(COURSES_KEY, '');
 });
+
+// ------------------------------------------------------------------ online: the def rides with the room
+import { ROOM_COURSE_ID, registerRoomCourse } from '../src/game/platformer/room';
+import { MAX_PLATFORMER_CODE_CHARS, PROTOCOL_VERSION, readRaceSettings } from '../src/net/protocol';
+
+test('online: a Workshop course rides in the race settings as platformerCode, and only with the room course id', async () => {
+  assert.ok(PROTOCOL_VERSION >= 11);
+  const code = await encodePlatformerCode(flow());
+  assert.ok(code.length < MAX_PLATFORMER_CODE_CHARS, `a default course code is ${code.length} chars`);
+  assert.deepEqual(readRaceSettings({ circuit: 0, platformer: ROOM_COURSE_ID, platformerCode: code }), { circuit: 0, platformer: ROOM_COURSE_ID, platformerCode: code });
+  assert.equal(readRaceSettings({ circuit: 0, platformerCode: code }), null, 'no code without the room course id');
+  assert.equal(readRaceSettings({ circuit: 0, platformer: 'misty-ridge', platformerCode: code }), null, 'not with an official course id');
+  assert.equal(readRaceSettings({ circuit: 0, platformer: ROOM_COURSE_ID, platformerCode: 'pf1-' + 'A'.repeat(MAX_PLATFORMER_CODE_CHARS) }), null, 'too long');
+  assert.equal(readRaceSettings({ circuit: 0, platformer: ROOM_COURSE_ID, platformerCode: '1-abcdefgh' }), null, 'not a platformer code');
+  assert.equal(readRaceSettings({ circuit: 0, platformer: ROOM_COURSE_ID, platformerCode: 'pf1-no spaces!' }), null);
+  assert.equal(readRaceSettings({ circuit: 0, platformer: ROOM_COURSE_ID, platformerCode: 12 }), null);
+});
+
+test('online: host and guest both turn the room code into the same raceable course; a tampered code is refused', async () => {
+  const def = { ...flow(), name: 'Room Rumble', gates: [] as PlatformerDef['gates'] };
+  const code = await encodePlatformerCode(def);
+  // the "host" and the "guest" each run the same call on the same code
+  const hostDef = await registerRoomCourse(code);
+  const hostPlan = planOfficial(platformerCourse(`platformer:${ROOM_COURSE_ID}`));
+  const guestDef = await registerRoomCourse(code);
+  const guestPlan = planOfficial(platformerCourse(ROOM_COURSE_ID));
+  assert.deepEqual(hostDef, guestDef);
+  assert.deepEqual(hostPlan, guestPlan);
+  assert.equal(platformerCourse(ROOM_COURSE_ID).name, 'Room Rumble');
+  assert.deepEqual(hostPlan.gates, []);
+  await assert.rejects(registerRoomCourse(code.slice(0, 40)), /damaged|must|name/);
+  unregisterCustomCourse(ROOM_COURSE_ID);
+});

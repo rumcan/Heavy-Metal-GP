@@ -49,6 +49,10 @@ import Brand from './Brand';
 import RankChip from './RankChip';
 import type { RankChipLookup } from '../game/rank-view';
 import { PLATFORMER_COURSES, platformerCourse } from '../game/platformer/course';
+import { ROOM_COURSE_ID, registerRoomCourse } from '../game/platformer/room';
+import { encodePlatformerCode } from '../game/platformer/share';
+import { loadSavedCourses } from '../game/platformer/courses-store';
+import type { SavedCourse } from '../game/platformer/courses-store';
 
 /**
  * RK-05: is this lobby a RATED one? The host's answer: they came in through
@@ -143,6 +147,11 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
   const [circuitTab, setCircuitTab] = useState<'calendar' | 'custom' | 'platformer'>('calendar');
   /** Host only (P2-00): the platformer course picked, or null for the calendar / a custom track. */
   const [platformer, setPlatformer] = useState<string | null>(null);
+  /** P2-22: the host's Workshop course for this room, as a pf1- code (null = an official course). Kept in a ref so a pick publishes at once. */
+  const platformerCodeRef = useRef<string | null>(null);
+  /** Guests re-render once a room course they were sent has been decoded and registered. */
+  const [, setCourseTick] = useState(0);
+  const [myCourses] = useState<SavedCourse[]>(() => (isHost ? loadSavedCourses() : []));
   const [customCode, setCustomCode] = useState<string | null>(null);
   const [customName, setCustomName] = useState<string | null>(null);
   /** Host only: AI seats taken off the grid, and whether AI may use power-ups. */
@@ -243,6 +252,7 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
     // arms race in the talent tree. The switch is forced off rather than merely defaulted off.
     const base = buildSettings(circuitId, l.items, l.benched, l.aiItems, l.platformer, !l.autoStart && l.talents, l.loadoutSlots);
     if (customCode) (base as unknown as { customCode: string }).customCode = customCode;
+    if (platformerCodeRef.current && l.platformer === ROOM_COURSE_ID) base.platformerCode = platformerCodeRef.current;
     return base;
   };
 
@@ -299,11 +309,28 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
     publish(latest.current.grid ?? seats, circuitIndex);
   };
 
+  /** Host only (P2-22): race one of my Workshop courses in this room. Its code rides in the settings. */
+  const pickMyCourse = async (course: SavedCourse) => {
+    if (!isHost) return;
+    try {
+      const code = await encodePlatformerCode(course.def);
+      await registerRoomCourse(code);
+      platformerCodeRef.current = code;
+      setPlatformer(ROOM_COURSE_ID);
+      latest.current.platformer = ROOM_COURSE_ID;
+      setCustomCode(null);
+      setCustomName(null);
+      setCircuitTab('platformer');
+      publish(latest.current.grid ?? seats, circuitIndex);
+    } catch { /* an invalid or too-long course is simply not picked */ }
+  };
+
   /** Host only (P2-00): race a platformer course (null = back to the calendar). */
   const pickPlatformer = (id: string | null) => {
     if (!isHost) return;
     setPlatformer(id);
     latest.current.platformer = id;
+    platformerCodeRef.current = null;
     setCustomCode(null);
     setCustomName(null);
     setCircuitTab(id ? 'platformer' : 'calendar');
@@ -380,6 +407,9 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
         setLobbySeats(msg.seats);
         if (msg.settings) {
           setLobbySettings(msg.settings);
+          // P2-22: the host's Workshop course: decode and register it so this lobby can name it (and the race can build it).
+          const courseCode = msg.settings.platformerCode;
+          if (typeof courseCode === 'string' && !latest.current.isHost) void registerRoomCourse(courseCode).then(() => setCourseTick((t) => t + 1)).catch(() => undefined);
           const code = (msg.settings as unknown as { customCode?: string })?.customCode;
           if (typeof code === 'string') {
             setCustomCode(code);
@@ -614,6 +644,7 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
         )}
         {isHost && circuitTab === 'platformer' ? (
           <div className="circuit-selector" aria-label="Select a platformer course">
+            {myCourses.map((c) => <button key={c.id} className={platformerCodeRef.current && settings.platformer === ROOM_COURSE_ID && platformerCourse(ROOM_COURSE_ID).name === c.def.name ? 'selected' : ''} onClick={() => void pickMyCourse(c)}><span>MY</span><strong>{c.def.name}</strong></button>)}
             {PLATFORMER_COURSES.map((c, i) => <button key={c.id} className={c.id === settings.platformer ? 'selected' : ''} aria-pressed={c.id === settings.platformer} onClick={() => pickPlatformer(c.id)}><span>{String(i + 1).padStart(2, '0')}</span><strong>{c.name}</strong></button>)}
           </div>
         ) : circuitTab === 'calendar' || !isHost ? (
