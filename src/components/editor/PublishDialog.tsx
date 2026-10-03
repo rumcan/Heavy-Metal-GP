@@ -8,6 +8,7 @@ import Dialog from '../Dialog';
 import TrackMap from '../TrackMap';
 import { COMMUNITY_TAGS, MAX_TAGS, PublishError, isLocalCommunity, publishTrack } from '../../game/community';
 import type { TrackDef } from '../../game/trackdef';
+import { isPlatformerDef } from '../../game/platformer/def';
 
 interface Props { def: TrackDef; onClose: () => void; onViewCommunity?: () => void }
 
@@ -18,6 +19,9 @@ export default function PublishDialog({ def, onClose, onViewCommunity }: Props) 
   const [done, setDone] = useState(false);
   const [local, setLocal] = useState(false);
   useEffect(() => { void isLocalCommunity().then(setLocal); }, []);
+  // P2-22: a platformer course is published as a course, and its length runs left to right.
+  const course = isPlatformerDef(def);
+  const noun = course ? 'course' : 'track';
 
   const toggle = (t: string) => setTags((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : cur.length >= MAX_TAGS ? cur : [...cur, t]));
 
@@ -35,17 +39,17 @@ export default function PublishDialog({ def, onClose, onViewCommunity }: Props) 
   };
 
   return <Dialog titleId="publish-title" onClose={onClose} className="publish-dialog">
-    <span className="eyebrow"><Users size={14} /> COMMUNITY TRACKS</span>
-    <h2 id="publish-title">{done ? 'Published!' : 'Publish your track'}</h2>
+    <span className="eyebrow"><Users size={14} /> {course ? 'COMMUNITY COURSES' : 'COMMUNITY TRACKS'}</span>
+    <h2 id="publish-title">{done ? 'Published!' : `Publish your ${noun}`}</h2>
     <div className="publish-body">
       <div className="publish-map community-map"><TrackMap def={def} width={96} /></div>
       <div className="publish-form">
-        <p className="publish-name"><b>{def.name.trim() || 'Untitled track'}</b><span>{def.pieces.length} {def.pieces.length === 1 ? 'piece' : 'pieces'} · {Math.round(def.height).toLocaleString()} u long</span></p>
+        <p className="publish-name"><b>{def.name.trim() || `Untitled ${noun}`}</b><span>{def.pieces.length} {def.pieces.length === 1 ? 'piece' : 'pieces'} · {Math.round(course ? def.width ?? 0 : def.height).toLocaleString()} u long</span></p>
         {done ? (
-          <p className="dialog-intro">Everyone can now find it under <b>Just added</b> in Community tracks, upvote it and add it to their own tracks.{local ? ' (Local test mode: only on this device.)' : ''}</p>
+          <p className="dialog-intro">Everyone can now find it under <b>Just added</b> in Community {course ? 'courses (Quick race → Platformer)' : 'tracks'}, upvote it and add it to their own {course ? 'courses' : 'tracks'}.{local ? ' (Local test mode: only on this device.)' : ''}</p>
         ) : (
           <>
-            <p className="dialog-intro">Everyone on RUN.world will be able to see it, race it and upvote it, with your username on it. Rename it in the Track name field first if you like.{local ? ' Local test mode: it will only be saved on this device.' : ''}</p>
+            <p className="dialog-intro">Everyone on RUN.world will be able to see it, race it and upvote it, with your username on it. Rename it in the Track name field first if you like.{course ? ' It is published as a platformer course, so it is listed with the other courses.' : ''}{local ? ' Local test mode: it will only be saved on this device.' : ''}</p>
             <p className="publish-tags-label"><Tag size={13} /> Pick up to {MAX_TAGS} tags <span>{tags.length}/{MAX_TAGS}</span></p>
             <div className="community-tags publish-tags" role="group" aria-label="Tags">
               {COMMUNITY_TAGS.map((t) => <button key={t} type="button" className={tags.includes(t) ? 'selected' : ''} aria-pressed={tags.includes(t)} disabled={!tags.includes(t) && tags.length >= MAX_TAGS} onClick={() => toggle(t)}>{t}</button>)}

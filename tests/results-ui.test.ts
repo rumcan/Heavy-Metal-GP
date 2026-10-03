@@ -10,7 +10,7 @@ import { emptyInventory, ITEM_TYPES, teamOf } from '../src/game/types';
 import { createAccount, keptSkills, settleCustomRace, settleRace } from '../src/game/economy';
 import { PAYOUT_LINE_MS, PAYOUT_TICK_MS, payoutFrame } from '../src/components/results/payout';
 
-const server = await createServer({ configFile: false, server: { middlewareMode: true }, appType: 'custom', logLevel: 'error', esbuild: { jsx: 'automatic' } });
+const server = await createServer({ configFile: false, server: { middlewareMode: true, watch: null }, appType: 'custom', logLevel: 'error', esbuild: { jsx: 'automatic' } });
 after(() => server.close());
 const Podium = (await server.ssrLoadModule('/src/components/results/Podium.tsx')).default;
 const KeptSkills = (await server.ssrLoadModule('/src/components/results/KeptSkills.tsx')).default;

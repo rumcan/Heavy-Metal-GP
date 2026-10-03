@@ -8,13 +8,15 @@
  *   - `CommunityPicker` is the same list as a panel inside the Quick race track picker: one column with a sort toggle,
  *     and each card's button PICKS the track for the race (it is saved to My tracks first, so the race can find it).
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowBigUp, Check, ChevronDown, Flag, Hammer, Plus, Trophy, Sparkles, Users } from 'lucide-react';
 import Brand from './Brand';
 import WalletButton from './WalletButton';
 import TrackMap from './TrackMap';
 import { COMMUNITY_TAGS, browseCommunity, decodeCommunityTrack, isLocalCommunity, recordTrackUse, setUpvote } from '../game/community';
 import type { CommunitySort, CommunityTrack } from '../game/community';
+import { entriesOfKind } from '../game/platformer/lists';
+import type { CommunityKind } from '../game/platformer/lists';
 import { createTrack, loadTracksSync } from '../game/tracks';
 import type { TrackDef } from '../game/trackdef';
 import type { RacerAccount } from '../game/economy';
@@ -128,25 +130,34 @@ interface PickerProps {
   onPick: (id: string) => void;
   /** Open the Workshop to build and publish a track of your own. */
   onWorkshop?: () => void;
+  /**
+   * P2-22: which half of the community this list shows. Circuits (the default) appear under Quick race → Community,
+   * platformer courses under Quick race → Platformer, and never in each other's list.
+   */
+  kind?: CommunityKind;
 }
 
 /**
- * The community list as a picker panel (Quick race → Community). One column with a sort toggle and the tag filter;
- * only the feed that is on screen is fetched.
+ * The community list as a picker panel (Quick race → Community, and the courses half of Quick race → Platformer).
+ * One column with a sort toggle and the tag filter; only the feed that is on screen is fetched.
  */
-export function CommunityPicker({ selectedId, onPick, onWorkshop }: PickerProps) {
+export function CommunityPicker({ selectedId, onPick, onWorkshop, kind = 'track' }: PickerProps) {
   const { top, fresh, local, load, patch } = useCommunityFeed();
   const [sort, setSort] = useState<CommunitySort>('top');
   const [tag, setTag] = useState<string | null>(null);
   const col = sort === 'top' ? top : fresh;
+  const course = kind === 'platformer';
 
   useEffect(() => {
     if (!col.loaded && !col.loading) void load(sort, false);
   }, [sort, col.loaded, col.loading, load]);
 
-  const shown = tag ? col.tracks.filter((t) => t.tags.includes(tag)) : col.tracks;
-  return <section className="community-picker" aria-label="Community tracks">
-    <p className="community-picker-intro">Tracks built by other goblins. Pick one to race it — it is saved to My tracks too. Races on your own or community tracks pay 30 % of the usual winnings.</p>
+  const ofKind = useMemo(() => entriesOfKind(col.tracks, kind), [col.tracks, kind]);
+  const shown = tag ? ofKind.filter((t) => t.tags.includes(tag)) : ofKind;
+  return <section className="community-picker" aria-label={course ? 'Community platformer courses' : 'Community tracks'}>
+    <p className="community-picker-intro">{course
+      ? 'Platformer courses built by other goblins. Pick one to race it — it is saved to My tracks too.'
+      : 'Tracks built by other goblins. Pick one to race it — it is saved to My tracks too.'} Races on your own or community tracks pay 30 % of the usual winnings.</p>
     {local && <p className="community-local">{LOCAL_NOTE}</p>}
     <div className="community-picker-bar">
       <div className="circuit-tabs" role="group" aria-label="Sort community tracks">
@@ -158,7 +169,9 @@ export function CommunityPicker({ selectedId, onPick, onWorkshop }: PickerProps)
     <TagFilter tag={tag} onTag={setTag} />
     <div className="community-list">
       {shown.map((t, i) => <CommunityCard key={t.id} track={t} rank={sort === 'top' && !tag ? i + 1 : null} onPatch={patch} pick={{ selectedId, onPick }} />)}
-      <FeedStatus col={col} shown={shown.length} tag={tag} onMore={() => void load(sort, true)} />
+      <FeedStatus col={col} shown={shown.length} tag={tag} onMore={() => void load(sort, true)} empty={course
+        ? 'No community courses yet. Build one in the Workshop (New track → Platformer course) and press Publish.'
+        : 'No community tracks yet. Be the first: build one in the Workshop and press Publish.'} />
     </div>
   </section>;
 }
@@ -171,9 +184,9 @@ function TagFilter({ tag, onTag }: { tag: string | null; onTag: (tag: string | n
 }
 
 /** What a feed says when it is empty, failed, loading, or has another page. */
-function FeedStatus({ col, shown, tag, onMore }: { col: Column; shown: number; tag: string | null; onMore: () => void }) {
+function FeedStatus({ col, shown, tag, onMore, empty }: { col: Column; shown: number; tag: string | null; onMore: () => void; empty?: string }) {
   return <>
-    {col.loaded && !col.loading && shown === 0 && !col.error && <p className="muted community-empty">{tag ? `No ${tag} tracks here yet.` : 'No community tracks yet. Be the first: build one in the Workshop and press Publish.'}</p>}
+    {col.loaded && !col.loading && shown === 0 && !col.error && <p className="muted community-empty">{tag ? `No ${tag} tracks here yet.` : empty ?? 'No community tracks yet. Be the first: build one in the Workshop and press Publish.'}</p>}
     {col.error && <p className="community-error">{col.error}</p>}
     {col.loading && <p className="muted community-empty">Loading tracks…</p>}
     {col.cursor && !col.loading && <button className="button-secondary community-more" onClick={onMore}><ChevronDown size={15} />Load more</button>}

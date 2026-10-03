@@ -41,7 +41,7 @@ const { createElement } = await import('react');
 
 const server = await createServer({
   configFile: false, // not this app's config: that boots the SDK's room sidecar
-  server: { middlewareMode: true },
+  server: { middlewareMode: true, watch: null }, // no file watcher: it can outlive server.close() and keep the run alive
   appType: 'custom',
   logLevel: 'error',
   esbuild: { jsx: 'automatic' },
