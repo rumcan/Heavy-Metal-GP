@@ -7,7 +7,7 @@
  * camera pulls back. Everything here is a function of an explicit view, so the drawing can be reasoned about
  * (and its maths tested) without a browser.
  */
-import { W } from '../../game/track';
+import { isSideWorld, worldWidth } from './world';
 import { RULER_W, formatUnits, gridStep, rulerStep, viewWindowOf } from './camera';
 import type { EditorCamera, Point } from './camera';
 
@@ -18,6 +18,8 @@ export interface OverlayView {
   height: number;
   /** World y of the finish, so the ruler can name it. */
   finishY: number;
+  /** World x of the finish (a platformer course is built sideways). */
+  finishX?: number;
   /** Total height of the circuit being edited. */
   trackHeight: number;
   /** Where the pointer is, in world units, or null while it is off the canvas. */
@@ -49,6 +51,7 @@ export function drawGrid(ctx: CanvasRenderingContext2D, view: OverlayView): void
   const at = screenOf(view);
   const win = viewWindow(view);
   const left = Math.max(0, at.x(0));
+  const W = worldWidth();
   const right = Math.min(width, at.x(W));
   if (right - left < 4) return;
   const { minor, major } = gridStep(camera.scale);
@@ -62,7 +65,8 @@ export function drawGrid(ctx: CanvasRenderingContext2D, view: OverlayView): void
   // Two passes so the heavier lattice sits on top of the fine one.
   for (const heavy of [false, true]) {
     ctx.beginPath();
-    for (let wx = 0; wx <= W; wx += minor) {
+    const x0 = Math.max(0, Math.floor(win.left / minor) * minor), x1 = Math.min(W, win.right + minor);
+    for (let wx = x0; wx <= x1; wx += minor) {
       if (isMajor(wx, major) !== heavy) continue;
       const x = Math.round(at.x(wx)) + 0.5;
       ctx.moveTo(x, 0);
@@ -131,7 +135,8 @@ export function drawRuler(ctx: CanvasRenderingContext2D, view: OverlayView): voi
 
   ctx.font = `bold 7px ${MONO}`;
   ctx.textAlign = 'left';
-  for (const [worldY, label, color] of [[0, 'START', '#b6cb99'], [finishY, 'FINISH', '#f2f5fa']] as [number, string, string][]) {
+  const marks: [number, string, string][] = isSideWorld() ? [] : [[0, 'START', '#b6cb99'], [finishY, 'FINISH', '#f2f5fa']];
+  for (const [worldY, label, color] of marks) {
     const y = at.y(worldY);
     if (y < 14 || y > height - 14) continue;
     ctx.fillStyle = color;
@@ -152,7 +157,46 @@ export function drawRuler(ctx: CanvasRenderingContext2D, view: OverlayView): voi
   ctx.lineTo(RULER_W - 5, centre + 4);
   ctx.closePath();
   ctx.fill();
+  if (isSideWorld()) drawRulerX(ctx, view);
   ctx.restore();
+}
+
+/** The platformer course's ruler along the top: distance in world units, START and FINISH where they fall. */
+function drawRulerX(ctx: CanvasRenderingContext2D, view: OverlayView): void {
+  const { camera, width, finishX } = view;
+  const at = screenOf(view);
+  const win = viewWindow(view);
+  const strip = 16;
+  ctx.fillStyle = 'rgba(9,15,24,0.86)';
+  ctx.fillRect(RULER_W, 0, width - RULER_W, strip);
+  ctx.strokeStyle = 'rgba(52,71,88,0.9)';
+  ctx.beginPath();
+  ctx.moveTo(RULER_W, strip + 0.5);
+  ctx.lineTo(width, strip + 0.5);
+  ctx.stroke();
+  const step = rulerStep(camera.scale, 70);
+  ctx.font = '8px ' + MONO;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  for (let wx = Math.max(0, Math.floor(win.left / step) * step); wx <= Math.min(worldWidth(), win.right + step); wx += step) {
+    const x = Math.round(at.x(wx)) + 0.5;
+    if (x < RULER_W + 2 || x > width - 2) continue;
+    ctx.strokeStyle = 'rgba(160,184,206,0.6)';
+    ctx.beginPath();
+    ctx.moveTo(x, strip - 7);
+    ctx.lineTo(x, strip);
+    ctx.stroke();
+    ctx.fillStyle = '#8298ac';
+    ctx.fillText(formatUnits(wx), x + 3, 8);
+  }
+  ctx.font = 'bold 7px ' + MONO;
+  for (const [worldX, label, color] of [[0, 'START', '#b6cb99'], [finishX ?? worldWidth(), 'FINISH', '#f2f5fa']] as [number, string, string][]) {
+    const x = at.x(worldX);
+    if (x < RULER_W || x > width - 30) continue;
+    ctx.fillStyle = color;
+    ctx.fillRect(Math.round(x), 0, 1, strip + 6);
+    ctx.fillText(label, x + 3, strip + 8);
+  }
 }
 
 /** A crosshair on the pointer, drawn on the lattice when the snap grid is armed. */

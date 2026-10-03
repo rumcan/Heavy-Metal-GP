@@ -8,6 +8,7 @@
  * without a browser in `tests/editor-ui.test.ts`.
  */
 import { W } from '../../game/track';
+import { isSideWorld, worldWidth } from './world';
 
 export interface EditorCamera {
   /** World x under the middle of the canvas. */
@@ -29,6 +30,12 @@ export const SNAP = 25;
 export const PAD_X = 150;
 export const PAD_Y = 90;
 export const MIN_ZOOM = 0.2;
+/** A platformer course is long: it may be zoomed out much further to see all of it. */
+export const MIN_ZOOM_SIDE = 0.02;
+/** Where a platformer course opens: the start platform in view at this scale. */
+export const SIDE_OPEN_SCALE = 0.5;
+/** The y of the start platform in a platformer course (a platformer def is built downwards from here). */
+export const SIDE_START_Y = 800;
 export const MAX_ZOOM = 2.5;
 /** Width of the ruler strip down the canvas's left edge, in CSS pixels. */
 export const RULER_W = 52;
@@ -59,17 +66,18 @@ export function newRig(): CameraRig {
   return { camera: { x: W / 2, y: 0, scale: 1 }, width: 0, height: 0, trackHeight: 0, startY: 0 };
 }
 
-export const clampZoom = (scale: number) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, scale));
+export const clampZoom = (scale: number) => Math.max(isSideWorld() ? MIN_ZOOM_SIDE : MIN_ZOOM, Math.min(MAX_ZOOM, scale));
 
 /** The scale that fits the whole pipe across the canvas, and a race screen of track down it. */
 export function fitScale(width: number, height: number): number {
   if (width < 1 || height < 1) return 1;
-  return clampZoom(Math.min((width - RULER_W - 8) / (W + 90), height / FIT_HEIGHT));
+  return clampZoom(Math.min((width - RULER_W - 8) / (worldWidth() + 90), isSideWorld() ? Infinity : height / FIT_HEIGHT));
 }
 
 /** The scale the Workshop opens at: the fit, unless the canvas is too narrow to work at. */
 export function openScale(width: number, height: number): number {
   if (width < 1 || height < 1) return 1;
+  if (isSideWorld()) return clampZoom(Math.min(SIDE_OPEN_SCALE, height / FIT_HEIGHT));
   return clampZoom(Math.max(fitScale(width, height), Math.min(height / FIT_HEIGHT, MIN_WORK_SCALE)));
 }
 
@@ -79,7 +87,8 @@ export function clampCamera(camera: EditorCamera, width: number, height: number,
   const halfW = width / 2 / scale;
   const halfH = height / 2 / scale;
   // Too wide (or too tall) to overflow: centre that axis instead of pinning it to an edge.
-  const x = halfW >= W / 2 + PAD_X ? W / 2 : Math.max(halfW - PAD_X, Math.min(W - halfW + PAD_X, camera.x));
+  const ww = worldWidth();
+  const x = halfW >= ww / 2 + PAD_X ? ww / 2 : Math.max(halfW - PAD_X, Math.min(ww - halfW + PAD_X, camera.x));
   const span = Math.max(1, trackHeight);
   const y = halfH >= span / 2 + PAD_Y ? span / 2 : Math.max(halfH - PAD_Y, Math.min(span - halfH + PAD_Y, camera.y));
   return { x, y, scale };
@@ -165,5 +174,11 @@ export function rigFit(rig: CameraRig): void {
 /** Opens on the start grid at the working scale — the picture a race begins with. */
 export function rigOpen(rig: CameraRig): void {
   const { width, height, trackHeight, startY } = rig;
+  if (isSideWorld()) {
+    // Sideways: open on the start platform, the camera's left edge a little behind the start line.
+    const scale = openScale(width, height);
+    rig.camera = clampCamera({ x: width / 2 / scale - 250, y: startY - 150, scale }, width, height, trackHeight);
+    return;
+  }
   rig.camera = clampCamera({ x: W / 2, y: startY + 115, scale: openScale(width, height) }, width, height, trackHeight);
 }

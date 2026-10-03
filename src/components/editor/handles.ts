@@ -13,6 +13,7 @@
 import type { Piece } from '../../game/trackdef';
 import { SNAP } from './camera';
 import { W } from '../../game/track';
+import { worldWidth } from './world';
 import { clampDeltaToExtent, xExtent } from './extent';
 import { fitGroupTranslation, translatePiece } from './translation';
 import { applyRotateHandle } from './rotate';
@@ -31,7 +32,7 @@ export interface Handle {
 }
 
 const snapVal = (v: number) => Math.round(v / SNAP) * SNAP;
-const clampX = (x: number) => Math.max(0, Math.min(W, x));
+const clampX = (x: number) => Math.max(0, Math.min(worldWidth(), x));
 const clampNum = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 function withSnap(v: number, snap: boolean): number {
@@ -629,7 +630,7 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
     case 'pad': {
       if (handleId === 'move') return { ...piece, x: withSnap(to.x, sx), y: withSnap(to.y, sx) };
       if (handleId === 'w') {
-        const w = Math.max(8, Math.min(W, Math.abs(withSnap(to.x, sx) - piece.x) * 2));
+        const w = Math.max(8, Math.min(worldWidth(), Math.abs(withSnap(to.x, sx) - piece.x) * 2));
         return { ...piece, w: sx ? snapVal(w) : w };
       }
       if (handleId === 'dir') {
@@ -666,7 +667,7 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       if (handleId === 'move') return { ...piece, x: withSnap(to.x, sx), y: withSnap(to.y, sx) };
       if (handleId === 'len') {
         const dx = withSnap(to.x, sx) - piece.x;
-        const len = Math.max(20, Math.min(W, Math.abs(dx) * 2));
+        const len = Math.max(20, Math.min(worldWidth(), Math.abs(dx) * 2));
         return { ...piece, len: sx ? snapVal(len) : len };
       }
       if (handleId === 'speed') {
@@ -690,7 +691,7 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       if (handleId === 'se') {
         const nx = withSnap(to.x, sx);
         const ny = withSnap(to.y, sx);
-        const w = Math.max(8, Math.min(W, Math.abs(nx - piece.x) * 2));
+        const w = Math.max(8, Math.min(worldWidth(), Math.abs(nx - piece.x) * 2));
         const h = Math.max(8, Math.min(4000, Math.abs(ny - piece.y) * 2));
         return { ...piece, w: sx ? snapVal(w) : w, h: sx ? snapVal(h) : h };
       }
@@ -700,7 +701,7 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       if (handleId === 'move') return { ...piece, x: withSnap(to.x, sx), y: withSnap(to.y, sx) };
       if (handleId === 'se') {
         // A trapdoor's thickness is fixed — the corner handle only sets the leaf width.
-        const w = Math.max(40, Math.min(W, Math.abs(withSnap(to.x, sx) - piece.x) * 2));
+        const w = Math.max(40, Math.min(worldWidth(), Math.abs(withSnap(to.x, sx) - piece.x) * 2));
         return { ...piece, w: sx ? snapVal(w) : w };
       }
       return piece;
