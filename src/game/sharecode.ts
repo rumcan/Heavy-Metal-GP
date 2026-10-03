@@ -35,7 +35,9 @@ const PIECE_TYPES = ['ramp','ice','curve','loop','hoop','wrecker','pad','boost',
   // Workshop: ring rail
   'ring',
   // Workshop: sign
-  'sign'] as const;
+  'sign',
+  // P2-22: platformer courses
+  'gate','ledge'] as const;
 type PieceTypeName = typeof PIECE_TYPES[number];
 const PIECE_TO_ID = Object.fromEntries(PIECE_TYPES.map((t,i)=>[t,i])) as Record<PieceTypeName, number>;
 
@@ -153,11 +155,13 @@ function encodeBinary(def: TrackDef): Uint8Array {
     writeUVarint(out, typeId);
     // Flag bits: 1 = flip, 2 = Workshop rotation follows, 4 = Workshop size follows, 8 = a skin id follows (1-based into
     // PIECE_SKINS, append-only). Old codes only ever hold 0..7.
-    const rotOn = !!p.rot, scOn = p.sc !== undefined && p.sc !== 1, skinOn = !!p.skin && PIECE_SKINS.includes(p.skin);
-    writeUVarint(out, (p.flip ? 1 : 0) | (rotOn ? 2 : 0) | (scOn ? 4 : 0) | (skinOn ? 8 : 0));
+    // 16 = a depth lane follows (P2-22 platformer courses; 0 back, 2 front, absent = the middle).
+    const rotOn = !!p.rot, scOn = p.sc !== undefined && p.sc !== 1, skinOn = !!p.skin && PIECE_SKINS.includes(p.skin), laneOn = p.lane === 0 || p.lane === 2;
+    writeUVarint(out, (p.flip ? 1 : 0) | (rotOn ? 2 : 0) | (scOn ? 4 : 0) | (skinOn ? 8 : 0) | (laneOn ? 16 : 0));
     if (rotOn) writeUVarint(out, Math.round(((p.rot! % 360) + 360) % 360 * 100));
     if (scOn) writeUVarint(out, Math.round(p.sc! * 1000));
     if (skinOn) writeUVarint(out, PIECE_SKINS.indexOf(p.skin!) + 1);
+    if (laneOn) writeUVarint(out, p.lane!);
     switch (p.t) {
       case 'ramp':
       case 'ice': {
@@ -228,6 +232,15 @@ function encodeBinary(def: TrackDef): Uint8Array {
       case 'ring': {
         writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y));
         writeUVarint(out, Math.round(p.r)); writeUVarint(out, Math.round(p.thick));
+        break;
+      }
+      case 'gate': {
+        writeUVarint(out, p.kind === 'door' ? 1 : 0); writeUVarint(out, p.to);
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y)); writeUVarint(out, Math.round(p.w));
+        break;
+      }
+      case 'ledge': {
+        writeUVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.y)); writeUVarint(out, Math.round(p.w));
         break;
       }
       case 'ppeg': {
@@ -437,6 +450,7 @@ function encodeBinary(def: TrackDef): Uint8Array {
       }
     }
   }
+  if (def.mode === 'platformer') { writeUVarint(out, 1); writeUVarint(out, Math.round(def.width ?? 0)); }
   return new Uint8Array(out);
 }
 
@@ -466,6 +480,7 @@ function decodeBinary(bytes: Uint8Array, version = 1): TrackDef {
     const xrot = flipFlag & 2 ? readUVarint(bytes, pos) / 100 : undefined;
     const xsc = flipFlag & 4 ? readUVarint(bytes, pos) / 1000 : undefined;
     const xskin = flipFlag & 8 ? PIECE_SKINS[readUVarint(bytes, pos) - 1] : undefined;
+    const xlane = flipFlag & 16 ? readUVarint(bytes, pos) : undefined;
     const t = PIECE_TYPES[typeId];
     if (!t) throw new ShareCodeError(`Unknown piece type id ${typeId}`);
     // #99: retired types are read (their bytes keep the stream aligned) but dropped.
@@ -538,6 +553,17 @@ function decodeBinary(bytes: Uint8Array, version = 1): TrackDef {
         const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), w = readUVarint(bytes, pos);
         const text = readString(bytes, pos);
         p = { t:'sign', x, y, w, text, ...(flip?{flip}:{}) };
+        break;
+      }
+      case 'gate': {
+        const door = readUVarint(bytes, pos) === 1, to = readUVarint(bytes, pos);
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), w = readUVarint(bytes, pos);
+        p = { t:'gate', kind: door ? 'door' : 'ramp', to: to as 0 | 1 | 2, x, y, w };
+        break;
+      }
+      case 'ledge': {
+        const x = readUVarint(bytes, pos), y = readUVarint(bytes, pos), w = readUVarint(bytes, pos);
+        p = { t:'ledge', x, y, w };
         break;
       }
       case 'ring': {
@@ -786,7 +812,15 @@ function decodeBinary(bytes: Uint8Array, version = 1): TrackDef {
     if (p && xrot) p.rot = xrot;
     if (p && xsc) p.sc = xsc;
     if (p && xskin) p.skin = xskin;
+    if (p && (xlane === 0 || xlane === 2)) p.lane = xlane;
     if (p) pieces.push(p);
+  }
+  // P2-22: a platformer course closes with a trailer (tag 1, then its width). Codes made before it simply end here.
+  let width: number | undefined;
+  if (pos.o < bytes.length) {
+    const tag = readUVarint(bytes, pos);
+    if (tag !== 1) throw new ShareCodeError('Unknown trailer on track data.');
+    width = readUVarint(bytes, pos);
   }
   // ensure no trailing bytes (tamper detection)
   if (pos.o !== bytes.length) throw new ShareCodeError('Extra bytes after track data.');
@@ -799,6 +833,7 @@ function decodeBinary(bytes: Uint8Array, version = 1): TrackDef {
     height,
     pieces,
     ...(segments.length ? { segments } : {}),
+    ...(width !== undefined ? { mode: 'platformer', width } : {}),
   } as TrackDef;
 
   const check = validateTrackDef(def);
