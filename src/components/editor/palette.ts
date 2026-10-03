@@ -170,6 +170,49 @@ export const PALETTE: PaletteGroup[] = [
 /** Every tile, flat — for looking one up by piece type. */
 export const TILES: PaletteTile[] = PALETTE.flatMap((group) => group.tiles);
 
+/**
+ * P2-22: what a platformer course is built from. Same sprites, same tiles' behaviour in the editor (arm, ghost, place,
+ * drag handles); the words say what they do on a course built sideways.
+ */
+export const PLATFORMER_PALETTE: PaletteGroup[] = [
+  {
+    id: 'pf-floors',
+    label: 'Floors',
+    note: 'Ground to roll on, built sideways',
+    tiles: [
+      { id: 'ramp', t: 'ramp', label: 'Floor', sprite: 'rail-wood', hint: 'A straight floor. Drag its ends to set the slope. Marbles roll on top of it.' },
+      { id: 'curve', t: 'curve', label: 'Curve', sprite: 'rail-wood', hint: 'A bent floor: a hill or a valley. Drag the middle dot to set the bend.' },
+      { id: 'ice', t: 'ice', label: 'Ice floor', sprite: 'strip-ice', hint: 'Almost frictionless: carry speed, lose control.' },
+      { id: 'bridge', t: 'bridge', label: 'Rope bridge', sprite: 'bridge', hint: 'A sagging plank bridge over a chasm. It sways a little and holds weight.' },
+      { id: 'loop', t: 'loop', label: 'Loop', sprite: 'loop-ring', hint: 'A loop ring. A marble with enough speed rides over the top; a slow one rolls back. Put a boost in the run-up.' },
+      { id: 'ledge', t: 'ledge', label: 'Ledge', sprite: 'strip-metal', hint: 'A one-way ledge: jump up through it from below and land on top. A shortcut over a chasm.' },
+    ],
+  },
+  {
+    id: 'pf-lanes',
+    label: 'Lanes and launchers',
+    note: 'Back, middle and front lanes',
+    tiles: [
+      { id: 'gate-ramp', t: 'gate', label: 'Lane ramp', sprite: null, preset: { kind: 'ramp' } as Partial<Piece>, hint: 'Roll through it and you move to the lane it leads to. Jump over it to stay in your lane.' },
+      { id: 'gate-door', t: 'gate', label: 'Lane door', sprite: null, preset: { kind: 'door' } as Partial<Piece>, hint: 'Press jump inside it to go through to the lane it leads to.' },
+      { id: 'pad', t: 'pad', label: 'Spring', sprite: 'sheep-spring', hint: 'A spring: roll or land on it and it throws you up. Put one before a chasm.' },
+      { id: 'boost', t: 'boost', label: 'Boost', sprite: 'rail-chevron', hint: 'A chevron strip that speeds up whatever crosses it.' },
+    ],
+  },
+  {
+    id: 'pf-things',
+    label: 'On the course',
+    note: 'Items, crates and hazards',
+    tiles: [
+      { id: 'itembox', t: 'itembox', label: 'Item box', sprite: 'crate', hint: 'Roll through it for a skill item. It comes back after a while.' },
+      { id: 'block', t: 'block', label: 'Crate', sprite: 'tile-metal', hint: 'A crate to jump. It sits on the floor of its lane.' },
+      { id: 'wrecker', t: 'wrecker', label: 'Wrecking ball', sprite: 'wrecking-ball', hint: 'A swinging ball on a chain. Time it or jump it.' },
+      { id: 'sign', t: 'sign', label: 'Sign', sprite: null, hint: 'A wooden sign with your own words. Decoration only.' },
+    ],
+  },
+];
+
 /** A tile by its id, falling back to the plain tile of a piece type. */
+const SIDE_TILES = PLATFORMER_PALETTE.flatMap((group) => group.tiles);
 export const tileFor = (idOrType: string): PaletteTile | undefined =>
-  TILES.find((tile) => tile.id === idOrType) ?? TILES.find((tile) => tile.t === idOrType);
+  TILES.find((tile) => tile.id === idOrType) ?? SIDE_TILES.find((tile) => tile.id === idOrType) ?? TILES.find((tile) => tile.t === idOrType) ?? SIDE_TILES.find((tile) => tile.t === idOrType);

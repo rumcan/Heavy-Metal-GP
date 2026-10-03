@@ -56,20 +56,24 @@ import type { EditorStatus } from './editor/EditorCanvas';
 import EditorMap from './editor/EditorMap';
 import PiecePalette from './editor/PiecePalette';
 import PropertiesPanel from './editor/PropertiesPanel';
-import { SNAP, clampCamera, formatUnits, formatZoom, newRig, rigCenter, rigFit, rigZoom } from './editor/camera';
+import { SNAP, clampCamera, formatUnits, formatZoom, newRig, rigCenter, rigFit, rigGoX, rigZoom, viewWindowOf } from './editor/camera';
 import type { CameraRig, Point } from './editor/camera';
 import { PALETTE, tileFor } from './editor/palette';
 import { placementPieces, TEMPLATE_ARM } from './editor/ghost';
 import { saveTemplate, snapshotTemplate } from './editor/templates';
 import { History } from './editor/history';
 import { buildEditorTrack } from './editor/build';
+import { buildPlatformerEditor } from './editor/build-side';
+import EditorMapSide from './editor/EditorMapSide';
+import { setEditorWorld } from './editor/world';
+import { PF_DEFAULT_WIDTH, PF_WIDTH_STEP, finishXOf, isPlatformerDef, settle } from '../game/platformer/def';
 import { applyHandle, movePieces, mirrorPiece } from './editor/handles';
 import { ROTATE_STEP_DEG, rotateSelection } from './editor/rotate';
 import { applyGroupHandle } from './editor/group';
 import type { GroupBox } from './editor/group';
 import { FINISH_H, START_H } from '../game/track';
 import type { Piece, TrackDef } from '../game/trackdef';
-import { MAX_NAME } from '../game/trackdef';
+import { MAX_NAME, PLATFORMER_MAX_WIDTH, PLATFORMER_MIN_WIDTH } from '../game/trackdef';
 import { generateTrackDef } from '../game/trackdef';
 import { Game } from '../game/engine';
 import { clearStaticChunks } from '../game/render';
@@ -104,6 +108,8 @@ interface Props {
   onExit: () => void;
   /** Open the Community tracks screen (the draft is saved first). */
   onCommunity?: () => void;
+  /** P2-22: race a platformer course (the Workshop's Test drive for one; the app starts the race and returns here). */
+  onTestDrivePlatformer?: (def: TrackDef, opts: { watch: boolean }) => void;
 }
 
 interface Circuit {
@@ -225,6 +231,11 @@ function minLengthFor(def: TrackDef): number {
 }
 
 function ensureHeight(def: TrackDef): TrackDef {
+  const out = ensureHeightRaw(def);
+  return isPlatformerDef(out) ? settle(out) : out; // P2-22: springs, crates and gates follow the floor under them
+}
+
+function ensureHeightRaw(def: TrackDef): TrackDef {
   // Height must contain every piece's y and still leave room for the finish stub.
   // Validation rejects a piece whose y exceeds height, so after adding/moving we
   // grow the circuit if needed — but never past MAX_TRACK_LENGTH (or the track's own
@@ -292,7 +303,7 @@ function TrackNameInput({ value, onCommit }: { value: string; onCommit: (name: s
 /** Storage key for the id of the saved track the Workshop has open. */
 const ACTIVE_TRACK_KEY = 'heavy-metal-gp:workshop-active-track';
 
-export default function TrackEditor({ seed, profile, name, initialDef, driver, onExit, onCommunity }: Props) {
+export default function TrackEditor({ seed, profile, name, initialDef, driver, onExit, onCommunity, onTestDrivePlatformer }: Props) {
   const [publishOpen, setPublishOpen] = useState(false);
   const [templateSnapshot, setTemplateSnapshot] = useState<ReturnType<typeof snapshotTemplate> | null>(null);
   const [circuit, setCircuit] = useState<Circuit>(() => {
@@ -301,6 +312,12 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
     if (initialDef) return { def: cloneDef(initialDef), build: 0 };
     return { def: generateTrackDef(seed, profile, name), build: 0 };
   });
+  // P2-22: a platformer course is built sideways and down. The world (how wide it is) is read by every editor module.
+  const side = isPlatformerDef(circuit.def);
+  setEditorWorld(side ? { width: circuit.def.width ?? PF_DEFAULT_WIDTH } : null);
+  useEffect(() => () => setEditorWorld(null), []);
+  /** The lane being edited on a platformer course: 0 back, 1 middle, 2 front. The other lanes show behind it. */
+  const [lane, setLane] = useState<0 | 1 | 2>(1);
   // MB-06: My tracks + open draft persistence
   const [savedTracks, setSavedTracks] = useState<SavedTrack[]>(() => loadTracksSync());
   // The saved track the editor has open. Remembered across reloads, so Save updates it instead of adding a copy.
@@ -373,7 +390,10 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
   // Rebuild only when something that shapes the track changes: renaming it must not rebuild a big map per keystroke.
   const { pieces: defPieces, height: defHeight, seed: defSeed, theme: defTheme, segments: defSegments } = circuit.def;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const built = useMemo(() => (opened ? buildEditorTrack(circuit.def) : NOT_BUILT), [opened, defPieces, defHeight, defSeed, defTheme, defSegments, circuit.build]);
+  const built = useMemo(() => (opened ? (isPlatformerDef(circuit.def) ? buildPlatformerEditor(circuit.def) : buildEditorTrack(circuit.def)) : NOT_BUILT), [opened, defPieces, defHeight, defSeed, defTheme, defSegments, circuit.build, circuit.def.width]);
+  /** Pieces in another lane than the one being edited: drawn behind, not selectable. */
+  const inactive = useMemo<ReadonlySet<number> | undefined>(() => (side ? new Set(defPieces.flatMap((p, i) => ((p.lane ?? 1) !== lane ? [i] : []))) : undefined), [side, defPieces, lane]);
+  useEffect(() => { setSelected([]); }, [lane]);
   const track = built.track;
   const bodyToPiece = built.bodyToPiece;
   const buildError = built.error;
@@ -526,7 +546,8 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
       // piece that lands: a variant tile's preset, a template group's transform and the grid snap all
       // resolve inside `placementPieces`. A null result is `placeTemplate`'s refusal (#74), which the
       // player hears about; an empty array is an id that names nothing placeable, which stays silent.
-      const toAdd = placementPieces(armed, world, grid);
+      const placed = placementPieces(armed, world, grid);
+      const toAdd = placed && side && lane !== 1 ? placed.map((p) => ({ ...p, lane }) as Piece) : placed;
       if (!toAdd) {
         setDraftMsg(armed === 'scaffold' ? 'This tunnel is wider than the track. Pick a narrower one.' : 'This template cannot fit inside the track without changing its layout.');
         return;
@@ -562,7 +583,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
         setSettingsOpen(true);
       }
     },
-    [armed, grid, commit, circuit.def.pieces.length],
+    [armed, grid, commit, circuit.def.pieces.length, side, lane],
   );
 
   // Groups select as one: picking any member picks every piece that shares its group id.
@@ -699,7 +720,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
   }, [selected, grid, pushHistory]);
 
   const handleMirror = useCallback(() => {
-    if (selected.length === 0) return;
+    if (selected.length === 0 || side) return;
     pushHistory();
     setCircuit((cur) => {
       const next = cloneDef(cur.def);
@@ -710,7 +731,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
       }
       return { def: ensureHeight(next), build: cur.build + 1 };
     });
-  }, [selected, pushHistory]);
+  }, [selected, pushHistory, side]);
 
   /** Turn the selection by `deg` degrees, clockwise on screen. One undo step per press. */
   const handleRotate = useCallback(
@@ -738,6 +759,12 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
     },
     [commit],
   );
+
+  /** P2-22: how far a platformer course runs to the right (its Length). */
+  const setCourseWidth = useCallback((value: number) => {
+    if (!Number.isFinite(value)) return;
+    commit((def) => ({ ...def, width: Math.round(Math.max(PLATFORMER_MIN_WIDTH, Math.min(PLATFORMER_MAX_WIDTH, value))) }));
+  }, [commit]);
 
   /** Remove every piece (name, theme and length stay). One undo step, so Ctrl+Z brings it all back. */
   const handleClearMap = useCallback(() => {
@@ -801,7 +828,11 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
     setSpawnAt(world);
     setPickSpawn(false);
   }, []);
-  const enterTest = useCallback(() => setTesting(true), []);
+  const enterTest = useCallback(() => {
+    // A platformer course is raced by the app (the classic test drive only knows the pipe): it comes back here after.
+    if (isPlatformerDef(circuit.def)) { onTestDrivePlatformer?.(circuit.def, { watch: watchAi }); return; }
+    setTesting(true);
+  }, [circuit.def, watchAi, onTestDrivePlatformer]);
   const exitTest = useCallback(() => setTesting(false), []);
 
   // MB-05: validation, draft saving and share gating
@@ -1117,6 +1148,8 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
   );
 
   const cursor = status.cursor;
+  const viewX = viewWindowOf(rig.camera, rig.width, rig.height);
+  const courseWidth = circuit.def.width ?? PF_DEFAULT_WIDTH;
   const cursorText = cursor ? `x ${formatUnits(cursor.x)} u · y ${formatUnits(cursor.y)} u${grid ? ' · SNAPPED' : ''}` : 'POINTER OFF THE CIRCUIT';
   const canUndo = history.canUndo;
   const canRedo = history.canRedo;
@@ -1149,7 +1182,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
         <div className="workshop-banner-title"><strong>Workshop</strong><span>GOBLIN MECHANICS AT WORK — BUILD, TEST, SHARE</span></div>
       </div>
 
-      <main className="editor-main">
+      <main className="editor-main" data-mode={side ? 'side' : 'drop'}>
         <section className="editor-tools" aria-label="Piece palette">
           <header className="editor-tools-head">
             <span className="eyebrow"><b>01</b> PIECES</span>
@@ -1158,7 +1191,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
             </button>
           </header>
           <button className="button-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={() => setShowNew(true)}><LayoutGrid size={13} /> New track</button>
-          <PiecePalette active={armed} onPick={(id) => setArmed((cur) => (cur === id ? null : id))} onShowToast={(msg) => { setDraftMsg(msg); setTimeout(() => setDraftMsg(null), 3500); }} />
+          <PiecePalette side={side} active={armed} onPick={(id) => setArmed((cur) => (cur === id ? null : id))} onShowToast={(msg) => { setDraftMsg(msg); setTimeout(() => setDraftMsg(null), 3500); }} />
           <div className="editor-inspector">
             <header className="eyebrow"><b>02</b> PROPERTIES</header>
             <PropertiesPanel selected={selected} pieces={circuit.def.pieces} onChange={handlePropChange} onChangeMany={handleBulkChange} />
@@ -1234,6 +1267,11 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
                 <Ruler size={13} />Ruler
               </button>
             </div>
+            {side && <div className="editor-toggles" role="group" aria-label="Lane being edited">
+              {([[0, 'Back'], [1, 'Middle'], [2, 'Front']] as const).map(([n, label]) => (
+                <button key={n} type="button" className={`editor-toggle ${lane === n ? 'on' : ''}`} aria-pressed={lane === n} onClick={() => setLane(n)} title={`Build in the ${label.toLowerCase()} lane. The other lanes show behind it.`}>{label}</button>
+              ))}
+            </div>}
             <div className="editor-zoom">
               <button className="icon-button" onClick={() => rigZoom(rig, 1 / 1.25)} aria-label="Zoom out">
                 <ZoomOut size={15} />
@@ -1246,17 +1284,22 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
                 <ScanSearch size={13} />Fit
               </button>
             </div>
-            <div className="editor-length" title={`Track length: ${formatUnits(minLengthFor(circuit.def))} to ${formatUnits(MAX_TRACK_LENGTH)}. It can't be shorter than the lowest piece.`}>
+            {side ? <div className="editor-length" title={`Course length: ${formatUnits(PLATFORMER_MIN_WIDTH)} to ${formatUnits(PLATFORMER_MAX_WIDTH)} u`}>
+              <span className="eyebrow"><MoveVertical size={12} style={{ transform: 'rotate(90deg)' }} />Length</span>
+              <button className="icon-button" aria-label="Shorter course" onClick={() => setCourseWidth(courseWidth - PF_WIDTH_STEP)} disabled={courseWidth <= PLATFORMER_MIN_WIDTH}>−</button>
+              <LengthInput value={courseWidth} min={PLATFORMER_MIN_WIDTH} max={PLATFORMER_MAX_WIDTH} step={PF_WIDTH_STEP} onCommit={setCourseWidth} />
+              <button className="icon-button" aria-label="Longer course" onClick={() => setCourseWidth(courseWidth + PF_WIDTH_STEP)} disabled={courseWidth >= PLATFORMER_MAX_WIDTH}>+</button>
+            </div> : <div className="editor-length" title={`Track length: ${formatUnits(minLengthFor(circuit.def))} to ${formatUnits(MAX_TRACK_LENGTH)}. It can't be shorter than the lowest piece.`}>
               <span className="eyebrow"><MoveVertical size={12} />Length</span>
               <button className="icon-button" aria-label="Shorter track" onClick={() => setTrackLength(circuit.def.height - LENGTH_STEP)} disabled={circuit.def.height <= minLengthFor(circuit.def)}>−</button>
               <LengthInput value={circuit.def.height} min={minLengthFor(circuit.def)} max={MAX_TRACK_LENGTH} step={LENGTH_STEP} onCommit={setTrackLength} />
               <button className="icon-button" aria-label="Longer track" onClick={() => setTrackLength(circuit.def.height + LENGTH_STEP)} disabled={circuit.def.height >= MAX_TRACK_LENGTH}>+</button>
-            </div>
+            </div>}
             <div className="editor-jumps">
-              <button className="text-button" onClick={() => rigCenter(rig, 0)}>
+              <button className="text-button" onClick={() => (side ? rigGoX(rig, 0) : rigCenter(rig, 0))}>
                 <ArrowUpToLine size={13} />Start
               </button>
-              <button className="text-button" onClick={() => rigCenter(rig, track?.finishY ?? 0)}>
+              <button className="text-button" onClick={() => (side ? rigGoX(rig, finishXOf(courseWidth) - 400) : rigCenter(rig, track?.finishY ?? 0))}>
                 Finish<Flag size={13} />
               </button>
             </div>
@@ -1291,7 +1334,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
             <button className="text-button" onClick={handleSaveTemplate} disabled={selected.length < 2} title="Save selected items as a new template">
               <Save size={13} />Template
             </button>
-            <button className="text-button" onClick={handleMirror} disabled={selected.length === 0} title="Mirror horizontally (M)">
+            <button className="text-button" onClick={handleMirror} disabled={selected.length === 0 || side} title={side ? 'A platformer course is never mirrored' : 'Mirror horizontally (M)'}>
               <FlipHorizontal size={13} />Mirror
             </button>
             <button className="text-button" onClick={handleDelete} disabled={selected.length === 0} title="Delete">
@@ -1319,13 +1362,13 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
               className={`button-primary editor-testdrive ${testing ? 'is-testing' : ''}`}
               onClick={testing ? exitTest : enterTest}
               aria-pressed={testing}
-              disabled={!!buildError && !testing}
+              disabled={(!!buildError && !testing) || (side && !onTestDrivePlatformer)}
               title={buildError ? `Cannot test: ${buildError}` : testing ? 'Stop test and return to editor (Esc)' : 'Test drive this circuit — Esc returns, camera preserved'}
             >
               {testing ? <Pause size={14} /> : <Play size={14} />}
               {testing ? 'Stop test' : 'Test drive'}
             </button>
-            <button
+            {!side && <button
               type="button"
               className={`editor-toggle ${ghost ? 'on' : ''}`}
               aria-pressed={ghost}
@@ -1333,11 +1376,11 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
               title="AI rivals: race your marble against 9 AI marbles (you still drive yours)"
             >
               <Users size={13} /> AI rivals
-            </button>
+            </button>}
             <label className="editor-toggle editor-check" title="Watch AI: 10 AI marbles race the map on their own (your garage marble too). Tab cycles who the camera follows.">
               <input type="checkbox" checked={watchAi} onChange={(e) => setWatchAi(e.target.checked)} /> Watch AI
             </label>
-            <button
+            {!side && <button
               type="button"
               className={`editor-toggle ${pickSpawn ? 'on' : ''} ${spawnAt ? 'has-spawn' : ''}`}
               aria-pressed={pickSpawn}
@@ -1346,7 +1389,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
             >
               <Crosshair size={13} />
               {spawnAt ? `Start ${Math.round(spawnAt.x)},${Math.round(spawnAt.y)}` : pickSpawn ? 'Click track…' : 'Set start'}
-            </button>
+            </button>}
             {spawnAt && (
               <button className="text-button" onClick={() => setSpawnAt(null)} title="Clear custom start — next test starts at grid">
                 <Target size={13} /> Clear start
@@ -1368,6 +1411,10 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
               )}
 
               <EditorCanvas
+                key={side ? 'side' : 'drop'}
+                side={side}
+                focus={lane}
+                inactive={inactive}
                 game={stage}
                 rig={rig}
                 grid={grid}
@@ -1430,8 +1477,8 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
 
               <footer className="editor-status">
                 <span className={`editor-chip ${cursor ? '' : 'is-muted'}`}>{cursorText}</span>
-                <span className="editor-chip">VIEW {formatUnits(status.top)} – {formatUnits(status.bottom)} u</span>
-                <span className="editor-chip">LENGTH {track ? formatUnits(track.height) : '—'} u</span>
+                {side ? <span className="editor-chip">VIEW x {formatUnits(Math.max(0, viewX.left))} – {formatUnits(Math.min(courseWidth, viewX.right))} u</span> : <span className="editor-chip">VIEW {formatUnits(status.top)} – {formatUnits(status.bottom)} u</span>}
+                <span className="editor-chip">LENGTH {side ? formatUnits(courseWidth) : track ? formatUnits(track.height) : '—'} u</span>
                 <span className="editor-chip">{circuit.def.pieces.length} PIECES</span>
                 <span className={`editor-chip ${selected.length ? '' : 'is-muted'}`}>
                   {selected.length ? `${selected.length} selected` : armed ? 'ARMED' : 'NO SELECTION'}
@@ -1441,7 +1488,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
           )}
         </section>
 
-        <EditorMap track={track} top={status.top} bottom={status.bottom} onJump={(worldY) => rigCenter(rig, worldY)} />
+        {side ? <EditorMapSide track={track} left={viewX.left} right={viewX.right} onJump={(worldX) => rigGoX(rig, worldX - rig.width / 3 / rig.camera.scale)} /> : <EditorMap track={track} top={status.top} bottom={status.bottom} onJump={(worldY) => rigCenter(rig, worldY)} />}
       </main>
 
       {settingsOpen && selected.length === 1 && (

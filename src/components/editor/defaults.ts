@@ -12,7 +12,8 @@ import type { Piece } from '../../game/trackdef';
 import type { PieceType } from './palette';
 import type { Point } from './camera';
 import { W } from '../../game/track';
-import { worldWidth } from './world';
+import { isSideWorld, worldWidth } from './world';
+import { sidePiece } from './defaults-side';
 import { fitGroupTranslation, translatePiece } from './translation';
 
 const SNAP = 25;
@@ -45,6 +46,7 @@ function buildDefault(type: PieceType, at: Point, snap = false): Piece {
   // Clamp x inside the pipe; y is unbounded (the track grows downward).
   const cx = Math.max(0, Math.min(worldWidth(), p.x));
   const cy = p.y;
+  if (isSideWorld()) { const side = sidePiece(type, cx, cy); if (side) return side; }
 
   switch (type) {
     case 'ramp': {

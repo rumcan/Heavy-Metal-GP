@@ -182,3 +182,9 @@ export function rigOpen(rig: CameraRig): void {
   }
   rig.camera = clampCamera({ x: W / 2, y: startY + 115, scale: openScale(width, height) }, width, height, trackHeight);
 }
+
+/** Puts a world x at the left third of the canvas (what a sideways course's Start and Finish buttons do). */
+export function rigGoX(rig: CameraRig, worldX: number): void {
+  const { camera, width, height, trackHeight } = rig;
+  rig.camera = clampCamera({ ...camera, x: worldX + width / 3 / camera.scale }, width, height, trackHeight);
+}
