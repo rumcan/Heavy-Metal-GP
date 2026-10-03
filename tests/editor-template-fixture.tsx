@@ -8,7 +8,7 @@ import '../src/index.css';
 import '../src/layout.css';
 import '../src/kit.css';
 
-setItem('heavy-metal-gp:coach:v2', JSON.stringify({ dismissed: true, step: 0 }));
+setItem('heavy-metal-gp:coach:v3', JSON.stringify({ dismissed: true, step: 0 }));
 setItem('heavy-metal-templates', '[]');
 saveDraft({ v: 1, name: 'Template regression', seed: 0, theme: 'classic', height: 4000, pieces: [] });
 saveTemplate({ name: 'Two walls', sprite: 'rail-wood', ...snapshotTemplate([
