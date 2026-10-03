@@ -34,6 +34,7 @@ Prompts and specs are in `docs/arena/`:
 1. Agent jobs A, B, D (then C). Review and merge each.
 2. **Game test** (no deploy): phone portrait/landscape and desktop. Platformer race, online host + guest race, Loadout, Talents, Ball customizer, tutorial prologue, a classic race. Use the Browser pane (`.claude/launch.json` dev server on port 5173; the dev server was stopped during a reinstall and may need `preview_start`).
 3. Scheduled for later (spend RUN.world credits; need `rundot whoami` to work, dry run first): story voice-over #120, Workshop voice tour #121 (after A and C), tutorial audio (about 404 credits: `node scripts/voice/generate.mjs --set tutorial --cap 1500`), 16 new skill icons (about 2,400 credits, glyph placeholders in `src/components/ItemGlyph.tsx`), the look-and-feel pass (platformer art, backdrops, owner's art in `assets/new-art/`, which is git-ignored; converted copies live in `src/assets/game/platformer/`).
+   **Credits: the owner has said the next AI may use as many RUN.world credits as it wants** (stated 2026-10-03), so the per-ticket credit caps (for example 1,500 for voice) are no longer limits; still do a dry run first and keep the work sensible.
 4. Not wired / polish: the 2x4 skill bar polish (#107), per-mode loadouts exist but host budget only trims by skill-type count, the Workshop voice tour, cosmetics art is procedural only.
 5. When all of the above is done and the owner says so: bump version, `rundot deploy`, and `rundot game set-public` only if asked.
 
