@@ -164,24 +164,38 @@ export function planFromTrackDef(def: TrackDef): CoursePlan {
   };
 }
 
-/** Readable problems that stop a course being raced (empty = fine). The headless AI race is the other half of validation. */
-export function platformerProblems(def: TrackDef): string[] {
-  const out: string[] = [];
+/** One thing wrong with a course, in plain words, and where to look. */
+export interface PlatformerIssue { message: string; x: number; y: number; piece?: number }
+
+/** Problems that stop a course being raced (empty = fine). The headless AI race is the other half of validation. */
+export function platformerIssues(def: TrackDef): PlatformerIssue[] {
+  const out: PlatformerIssue[] = [];
   const width = def.width ?? PF_DEFAULT_WIDTH;
   const floors = [...pieceFloors(def), ...fixedFloors(def, pieceFloors(def))];
   const finishX = finishXOf(width);
+  const at = (x: number) => Math.round(x);
   for (const [i, p] of def.pieces.entries()) {
     const lane = laneOf(p);
     const name = `${p.t} #${i + 1}`;
-    const at = (x: number) => Math.round(x);
+    const here = (() => {
+      switch (p.t) {
+        case 'ramp': case 'ice': return { x: p.a[0], y: p.a[1] };
+        case 'curve': return { x: p.a[0], y: p.a[1] };
+        case 'bridge': return { x: p.a[0], y: p.a[1] };
+        case 'wrecker': return { x: p.pivot[0], y: p.pivot[1] };
+        case 'loop': return { x: p.x, y: p.bottom };
+        default: return { x: 'x' in p ? (p as { x: number }).x : 0, y: 'y' in p ? (p as { y: number }).y : PF_START_Y };
+      }
+    })();
+    const add = (message: string) => out.push({ message, x: here.x, y: here.y, piece: i });
     if (p.t === 'gate') {
-      if (p.to === lane) out.push(`${name} at x ${at(p.x)} leads to its own lane (back, middle or front): pick another lane to go to.`);
-      if (floorYAt(floors, lane, p.x + p.w / 2) === null) out.push(`${name} at x ${at(p.x)} has no floor under it in its lane.`);
-      if (floorYAt(floors, p.to, p.x + p.w / 2) === null) out.push(`${name} at x ${at(p.x)} sends you to a lane with no floor there.`);
+      if (p.to === lane) add(`${name} at x ${at(p.x)} leads to its own lane (back, middle or front): pick another lane to go to.`);
+      if (floorYAt(floors, lane, p.x + p.w / 2) === null) add(`${name} at x ${at(p.x)} has no floor under it in its lane.`);
+      if (floorYAt(floors, p.to, p.x + p.w / 2) === null) add(`${name} at x ${at(p.x)} sends you to a lane with no floor there.`);
     }
-    if (p.t === 'pad' && floorYAt(floors, lane, p.x) === null) out.push(`${name} at x ${at(p.x)} floats: there is no floor under it in its lane.`);
-    if (p.t === 'block' && floorYAt(floors, lane, p.x) === null) out.push(`${name} at x ${at(p.x)} floats: there is no floor under it in its lane.`);
-    if (p.t === 'loop' && floorYAt(floors, lane, p.x) === null) out.push(`${name} at x ${at(p.x)} has no floor to start the ride on.`);
+    if (p.t === 'pad' && floorYAt(floors, lane, p.x) === null) add(`${name} at x ${at(p.x)} floats: there is no floor under it in its lane.`);
+    if (p.t === 'block' && floorYAt(floors, lane, p.x) === null) add(`${name} at x ${at(p.x)} floats: there is no floor under it in its lane.`);
+    if (p.t === 'loop' && floorYAt(floors, lane, p.x) === null) add(`${name} at x ${at(p.x)} has no floor to start the ride on.`);
     const xs = (() => {
       switch (p.t) {
         case 'ramp': case 'ice': return [p.a[0], p.b[0]];
@@ -192,14 +206,19 @@ export function platformerProblems(def: TrackDef): string[] {
         default: return 'x' in p ? [(p as { x: number }).x] : [];
       }
     })();
-    if (xs.some((x) => x > finishX + 400)) out.push(`${name} stands beyond the finish line (x ${at(finishX)}): move it back or make the course longer.`);
+    if (xs.some((x) => x > finishX + 400)) add(`${name} stands beyond the finish line (x ${at(finishX)}): move it back or make the course longer.`);
   }
   // A floor under the middle lane from the start to the finish, except where a bridge or a jump crosses a gap.
   let gap = 0;
   for (let x = PF_START_END; x < finishX; x += 50) {
     const bridged = (def.pieces as Piece[]).some((p) => p.t === 'bridge' && laneOf(p) === 1 && x >= Math.min(p.a[0], p.b[0]) && x <= Math.max(p.a[0], p.b[0]));
-    if (floorYAt(floors, 1, x) === null && !bridged) { gap += 50; if (gap > 300) { out.push(`The middle lane has a gap near x ${Math.round(x)} that is too wide to jump (over 300): add a floor, a bridge or another route.`); break; } }
-    else gap = 0;
+    if (floorYAt(floors, 1, x) === null && !bridged) {
+      gap += 50;
+      if (gap > 300) { out.push({ message: `The middle lane has a gap near x ${Math.round(x)} that is too wide to jump (over 300): add a floor, a bridge or another route.`, x, y: PF_START_Y }); break; }
+    } else gap = 0;
   }
   return out;
 }
+
+/** The same problems as plain sentences. */
+export const platformerProblems = (def: TrackDef): string[] => platformerIssues(def).map((i) => i.message);
