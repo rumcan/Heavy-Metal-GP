@@ -8,6 +8,7 @@ import { laneCategory } from '../lanes';
 import { makePath } from '../course-path';
 import type { CoursePath } from '../course-path';
 import { floorAt, planCourse, planOfficial, platformerCourse } from './course';
+import { buildBridgeBodies, buildLoopBodies } from './routes';
 import type { CoursePlan, Lane } from './course';
 
 export interface PlatformerInfo {
@@ -46,7 +47,11 @@ function box(x: number, y: number, w: number, h: number, lane: number | null, ki
 
 /** Build the platformer Track: an official course by id, else a course planned from the seed. */
 export function buildPlatformerTrack(seed: number, theme: TrackTheme, courseId?: string): Track {
-  const plan = courseId ? planOfficial(platformerCourse(courseId)) : planCourse(seed);
+  return trackFromPlan(courseId ? planOfficial(platformerCourse(courseId)) : planCourse(seed), seed, theme);
+}
+
+/** The Track for any course plan (an official one, a generated one, or one made by hand in a test or the Workshop). */
+export function trackFromPlan(plan: CoursePlan, seed: number, theme: TrackTheme): Track {
   const bodies: Matter.Body[] = [];
   for (const f of plan.floors) {
     const depth = Math.max(240, plan.height - Math.max(f.y0, f.y1));
@@ -60,6 +65,9 @@ export function buildPlatformerTrack(seed: number, theme: TrackTheme, courseId?:
     body.plugin = { kind: 'ledge', lane: l.lane, depth: 0 };
     bodies.push(body);
   }
+  // P2-21: loop rings and rope-bridge decks.
+  for (const l of plan.loops ?? []) bodies.push(...buildLoopBodies(l));
+  for (const br of plan.bridges ?? []) bodies.push(...buildBridgeBodies(br));
   // The classic map pieces, each in its own lane's collision layer.
   const itemBoxes: Matter.Body[] = [];
   const wreckers: Matter.Body[] = [];

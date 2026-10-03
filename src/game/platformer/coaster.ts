@@ -6,6 +6,7 @@ import type { CoursePlan, Floor, Lane } from './course';
 import { SPRING_W } from './course';
 import type Matter from 'matter-js';
 import { LEDGE_H } from './build';
+import { drawRoutes } from './routes';
 import wreckingBallUrl from '../../assets/game/wrecking-ball.webp';
 import railWoodUrl from '../../assets/game/rail-wood.webp';
 import rockFillUrl from '../../assets/game/rock-fill.webp';
@@ -269,6 +270,7 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
     ctx.drawImage(ART.sheep, s.x - 9, s.y - h + 4, w, h);
   }
   drawMapPieces(ctx, pieces, lane, left, right, time);
+  drawRoutes(ctx, plan.loops, pieces, lane, left, right); // P2-21: loop rings and rope bridges
   return true;
 }
 

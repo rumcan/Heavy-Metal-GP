@@ -176,6 +176,8 @@ export interface Marble {
   aiJumpAt?: number;
   /** P2-00 platformer: the last spring launch (one launch per landing). */
   springAt?: number;
+  /** P2-21: which half of a loop ring this marble is riding (0 = the climb, 1 = the way back down). */
+  loopPhase?: 0 | 1;
   /** P2-00 platformer: the start cannon this marble is loaded in (fired = out on the course). */
   cannon?: platformer.Cannon;
   /** P2-17: this driver's talent effects (stat -> total), and max HP. Computers have none. */
@@ -1084,9 +1086,9 @@ export class Game {
         }
       }
 
-      v = input.steer(this, m, v, s);
+      if (!(this.track.platformer && platformer.loopLocked(this, m))) v = input.steer(this, m, v, s);
       // P2-00: computer drivers have to drive a platformer (on a classic drop gravity does it for them).
-      if (this.track.platformer && !this.isHuman(m)) v = platformer.aiDrive(this, m, v, s);
+      if (this.track.platformer && !this.isHuman(m) && !platformer.loopLocked(this, m)) v = platformer.aiDrive(this, m, v, s);
 
       // speed cap
       const cap = this.speedLimit(m);

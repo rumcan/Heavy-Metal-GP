@@ -7,8 +7,10 @@ import { laneCategory, LANE_SWITCH_MS, LANE_MIDDLE } from '../lanes';
 import { progressAlong, pointAt } from '../course-path';
 import { floorAt, SPRING_W } from '../platformer/course';
 import { CAT_ONEWAY } from '../platformer/build';
-import type { Lane, LaneGate } from '../platformer/course';
-import { CAT_WALL, CAT_SENSOR, CAT_FRAGILE, CAT_DANGER, meta } from '../track';
+import type { CoursePlan, Lane, LaneGate } from '../platformer/course';
+import { CAT_WALL, CAT_SENSOR, CAT_FRAGILE, CAT_DANGER, CAT_LOOP_UP, CAT_LOOP_CLOSE, meta } from '../track';
+import { PLANK_H, bridgeLineAt, inLoopBox } from '../platformer/routes';
+import type { LoopSpot } from '../platformer/routes';
 import { CONTROL_TUNING, steerVelocity } from '../controls';
 import { SAMPLE_STEP, decide } from '../ai-brain';
 import type { Difficulty, Sense } from '../ai-brain';
@@ -104,8 +106,41 @@ export function applyLaneMask(game: Game, m: Marble): void {
   m.body.collisionFilter.category = laneCategory(lane);
   // P2-08: a Drill passes through the floor (only sensors are felt for its second)
   if ((m.fx?.drillUntil ?? 0) > game.time) { m.body.collisionFilter.mask = CAT_SENSOR; return; }
-  m.body.collisionFilter.mask = CAT_WALL | CAT_SENSOR | (ghost ? 0 : laneCategory(lane) | CAT_FRAGILE | CAT_DANGER) | (onLedgeSide(game, m) ? CAT_ONEWAY : 0);
+  // P2-21: a loop ring is two halves on their own bits; a marble meets the half it is riding (see loopStep).
+  const loopBit = game.track.platformer?.plan.loops?.length ? ((m.loopPhase ?? 0) === 1 ? CAT_LOOP_CLOSE : CAT_LOOP_UP) : 0;
+  m.body.collisionFilter.mask = CAT_WALL | CAT_SENSOR | (ghost ? 0 : laneCategory(lane) | CAT_FRAGILE | CAT_DANGER) | loopBit | (onLedgeSide(game, m) ? CAT_ONEWAY : 0);
 }
+
+/**
+ * Loops (P2-21): which half of the ring a marble rides. It starts on the climb; once it is up high and past the top
+ * (left of the ring's middle) it is on the way back down, until it is out past the exit or leaves the ring's box.
+ * A marble that runs out of speed on the climb never passes the top, so it falls back down the climb and out the way
+ * it came; one that falls off inside the ring after the top lands on the way down and rolls out the exit.
+ */
+export function loopStep(game: Game, m: Marble): void {
+  const loops = game.track.platformer?.plan.loops;
+  if (!loops?.length) return;
+  const lane = m.lane ?? LANE_MIDDLE;
+  const p = m.body.position;
+  let phase = 0;
+  for (const l of loops) {
+    if (l.lane !== lane || !inLoopBox(l, p)) continue;
+    const top = l.x + l.pitch / 2;
+    if ((m.loopPhase ?? 0) === 1) phase = p.x > l.x + l.pitch + 24 ? 0 : 1;
+    else phase = p.y < l.y - l.r && p.x < top ? 1 : 0;
+  }
+  m.loopPhase = phase as 0 | 1;
+}
+
+/** Steering is off while a marble is up on a loop ring: the ride is the speed it came in with (pushing against it at the top would stall it). */
+export function loopLocked(game: Game, m: Marble): boolean {
+  const loops = game.track.platformer?.plan.loops;
+  if (!loops?.length) return false;
+  const lane = m.lane ?? LANE_MIDDLE;
+  const p = m.body.position;
+  return loops.some((l) => l.lane === lane && inLoopBox(l, p) && (p.y < l.y - 34 || (m.loopPhase ?? 0) === 1));
+}
+
 
 /**
  * One-way ledges: a ball meets a ledge only when it is coming down onto it from above (its bottom at or above
@@ -124,12 +159,31 @@ function onLedgeSide(game: Game, m: Marble): boolean {
   return false;
 }
 
+/**
+ * A marble resting on a rope bridge is grounded (it can jump from the deck, steer on it, and the driver can read it).
+ * The engine re-poses the planks every step, so their contacts never settle into 'active' ones; this looks for the plank
+ * under the marble instead: its bottom within a few pixels of a plank top.
+ */
+function bridgeGround(game: Game, m: Marble): void {
+  if (!game.track.platformer?.plan.bridges?.length) return;
+  const lane = m.lane ?? LANE_MIDDLE;
+  const p = m.body.position;
+  for (const plank of game.bridgeChains().flat()) {
+    const md = meta(plank);
+    if (md.lane !== lane || Math.abs(p.x - plank.position.x) > (md.bridge?.plankLen ?? 30) / 2 + 2) continue;
+    const gap = p.y + MARBLE_RADIUS - (plank.position.y - PLANK_H / 2);
+    if (gap > -5 && gap < 9) { m.grounded = 0; return; }
+  }
+}
+
 /** Spring launch speed (upward). Higher than a jump: a spring is how you reach a ledge. */
 export const SPRING_SPEED = 13;
 
 /** Every step: the one-way mask, and springs under a grounded ball. */
 export function laneStep(game: Game, m: Marble): void {
+  loopStep(game, m);
   applyLaneMask(game, m);
+  bridgeGround(game, m);
   const springs = game.track.platformer!.plan.springs;
   if (!springs?.length || game.time < (m.springAt ?? -Infinity) + 400) return;
   const lane = m.lane ?? LANE_MIDDLE;
@@ -262,15 +316,30 @@ function heldSkills(m: Marble): ItemType[] {
   return ITEM_TYPES.filter((id) => m.inventory[id] > 0);
 }
 
+/** The floor a computer driver senses at `x`: a rope bridge counts as the straight line between its anchors (not its sag). */
+function sensedFloor(plan: CoursePlan, lane: Lane, x: number): number | null {
+  for (const b of plan.bridges ?? []) if (b.lane === lane) { const line = bridgeLineAt(b, x); if (line !== null) return line; }
+  return floorAt(plan, lane, x);
+}
+
+/** The loop of this marble's lane whose entry is up to `reach` px ahead (the driver commits to it), if any. */
+export function loopAhead(game: Game, m: Marble, reach = 420): LoopSpot | null {
+  const loops = game.track.platformer?.plan.loops;
+  if (!loops?.length) return null;
+  const lane = m.lane ?? LANE_MIDDLE;
+  const x = m.body.position.x;
+  return loops.find((l) => l.lane === lane && x > l.x - reach && x < l.x + 20) ?? null;
+}
+
 /** What a computer driver senses this step (src/game/ai-brain.ts decides from it). */
 function sense(game: Game, m: Marble, vx: number, grounded: boolean): Sense {
   const plan = game.track.platformer!.plan;
   const lane = (m.lane ?? LANE_MIDDLE) as Lane;
   const p = m.body.position;
-  const here = floorAt(plan, lane, p.x) ?? p.y + MARBLE_RADIUS;
+  const here = sensedFloor(plan, lane, p.x) ?? p.y + MARBLE_RADIUS;
   const ahead: (number | null)[] = [];
   for (let i = 1; i <= 16; i++) {
-    const f = floorAt(plan, lane, p.x + i * SAMPLE_STEP);
+    const f = sensedFloor(plan, lane, p.x + i * SAMPLE_STEP);
     ahead.push(f === null ? null : f - here);
   }
   const dist = (xs: number[]) => xs.filter((x) => x > p.x).reduce((a, x) => Math.min(a, x - p.x), Infinity);
@@ -311,11 +380,14 @@ function sense(game: Game, m: Marble, vx: number, grounded: boolean): Sense {
  */
 export function aiDrive(game: Game, m: Marble, v: Matter.Vector, s: number): Matter.Vector {
   const grounded = m.grounded < 5;
-  const d = decide(sense(game, m, v.x, grounded));
+  // P2-21: with a loop just ahead the driver commits: full push all the way in, no hop, no door (the ring is ridden on speed).
+  const loop = loopAhead(game, m);
+  const brain = decide(sense(game, m, v.x, grounded));
+  const d = loop ? { ...brain, nudge: 1, jump: false, takeDoor: false } : brain;
   if (d.nudge !== 0) v = { x: steerVelocity(v.x, d.nudge, grounded, s), y: v.y };
   if (grounded && game.time >= (m.aiJumpAt ?? 0)) {
     // Pushing but not moving: a rival (or anything else) is in the way. Hop it.
-    const blocked = v.x < 1.2 && game.time - game.raceStartTime > 1500;
+    const blocked = !loop && v.x < 1.2 && game.time - game.raceStartTime > 1500;
     if (d.jump || blocked) {
       m.aiJumpAt = game.time + CONTROL_TUNING.jumpCooldownMs;
       v = { x: v.x, y: Math.min(v.y, -CONTROL_TUNING.jumpSpeed) };
