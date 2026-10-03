@@ -620,6 +620,7 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
 }
 
 function drawBall(ctx: CanvasRenderingContext2D, game: Game, m: Marble, t: number) {
+  // drawMarble is the shared renderer: its cached P2-18 ball skin and trail scale with this lane transform.
   // contact shadow
   ctx.save();
   ctx.fillStyle = 'rgba(0,0,0,0.28)';
