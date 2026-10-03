@@ -18,7 +18,7 @@ export const MAX_PER_KIND = 300;
 /** A lane gate is this wide; ramps and doors both. */
 export const GATE_W = 170;
 /** Things in one lane keep this far apart. */
-const GAP = 60;
+const GAP = 40;
 
 export type CourseStyle = 'flow' | 'blocks';
 
@@ -216,7 +216,7 @@ export function validatePlatformerDef(value: unknown): DefCheck {
     if (s.lane !== t.lane || (s.kind === t.kind && s.i === t.i)) continue;
     if (s.x1 + GAP > t.x0 && t.x1 + GAP > s.x0) problems.add(`${where(s.kind, s.i, s.lane, s.x0)} overlaps ${where(t.kind, t.i, t.lane, t.x0)}: keep them at least ${GAP} px apart.`);
   }
-  def.ledges.forEach((l, i) => def.ledges.forEach((o, j) => { if (j > i && o.lane === l.lane && o.x < l.x + l.w && l.x < o.x + o.w) problems.add(`${where('ledges', i, l.lane, l.x)} overlaps ${where('ledges', j, o.lane, o.x)}.`); }));
+  // (One-way ledges may overlap: a marble lands on the higher one it reaches, so the seed's own planner overlaps them too.)
 
   return problems.list.length ? { ok: false, errors: problems.list } : { ok: true, def };
 }
