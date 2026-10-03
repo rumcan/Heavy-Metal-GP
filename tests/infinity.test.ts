@@ -239,7 +239,7 @@ test('records: best and total distance are kept, no credits or XP, and damaged s
   r = loadRecords();
   assert.equal(r.bestKm, 4);
   assert.ok(Math.abs(r.totalKm - 5.2) < 1e-9);
-  assert.deepEqual(Object.keys(r).sort(), ['bestKm', 'choice', 'lastSeed', 'mySeed', 'runs', 'totalKm'], 'distance and seeds only');
+  assert.deepEqual(Object.keys(r).sort(), ['bestKm', 'choice', 'lastSeed', 'mySeed', 'reduceMotion', 'runs', 'totalKm'], 'distance, seeds and the Reduce motion choice only');
   assert.deepEqual(normalizeRecords({ bestKm: -3, totalKm: 'x', runs: 2.7, choice: 'weird', mySeed: 5 }), { ...emptyRecords(), runs: 2 });
   storage.setItem(INFINITY_KEY, '{not json');
   assert.deepEqual(loadRecords(), emptyRecords());

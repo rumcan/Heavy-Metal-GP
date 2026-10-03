@@ -2,14 +2,17 @@
 // rolling across a land that grows ahead of it. The HUD is one soft distance readout, a pause button, a mute button and
 // Hide UI (photo mode: only the world, tap anywhere to bring the buttons back).
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, EyeOff, Pause, Play, Volume2, VolumeX } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Camera, EyeOff, Pause, Play, Volume2, VolumeX } from 'lucide-react';
 import { InfinityRun } from '../../game/platformer/infinity-world';
 import { marbleDepth, renderPlatformer } from '../../game/platformer/render';
 import { PHYSICS_STEP } from '../../game/physics';
 import { nudgeOf } from '../../game/controls';
 import { actionForKey } from '../../game/skill-keys';
 import { raceAudio } from '../../game/audio';
-import { formatKm, recordDistance, recordStart, seedFromText } from '../../game/infinity-store';
+import { formatKm, loadRecords, recordDistance, recordStart, seedFromText, setReduceMotion } from '../../game/infinity-store';
+import { biomeAt, dayAt } from '../../game/infinity-look';
+import { InfinityAudio } from '../../game/infinity-audio';
+import { InfinityPainter } from './InfinityPainter';
 import type { MarbleInfo } from '../../game/types';
 import Dialog from '../Dialog';
 import './infinity.css';
@@ -37,20 +40,51 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
   const [uiHidden, setUiHidden] = useState(false);
   const [muted, setMuted] = useState(() => raceAudio.loadPreference());
   const [km, setKm] = useState(0);
+  // P2-25: fewer particles and no drifting motion; remembered with the records.
+  const [reduceMotion, setReduceMotionState] = useState(() => loadRecords().reduceMotion);
+  const reduceRef = useRef(reduceMotion);
+  reduceRef.current = reduceMotion;
+  const audioRef = useRef<InfinityAudio | null>(null);
+  const [savedNote, setSavedNote] = useState<string | null>(null);
 
   const setPaused = useCallback((next: boolean) => {
     pausedRef.current = next;
     setPausedState(next);
     if (next) controls.current = { left: false, right: false, touch: 0, engine: false };
   }, []);
-  const toggleMute = useCallback(() => { raceAudio.unlock(); raceAudio.setMuted(!raceAudio.muted); setMuted(raceAudio.muted); }, []);
+  const toggleMute = useCallback(() => { raceAudio.unlock(); raceAudio.setMuted(!raceAudio.muted); setMuted(raceAudio.muted); audioRef.current?.setMuted(raceAudio.muted); }, []);
+  /** Photo mode: save what is on screen as a picture. */
+  const savePicture = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `heavy-metal-gp-infinity-${new Date().toISOString().slice(0, 10)}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      setSavedNote('Picture saved');
+      setTimeout(() => setSavedNote(null), 1800);
+    }, 'image/png');
+  }, []);
   const pressJump = useCallback(() => { if (runRef.current && !pausedRef.current) runRef.current.game.jumpPressed = true; }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
-    const run = new InfinityRun(seedFromText(seedText), driver, { effects: true });
+    const seed = seedFromText(seedText);
+    const run = new InfinityRun(seed, driver, { effects: true });
+    const painter = new InfinityPainter(seed);
+    const audio = new InfinityAudio(seed);
+    audioRef.current = audio;
+    audio.setMuted(raceAudio.muted);
+    painter.onKm = () => audio.chime();
+    let elapsed = 0, frameMs = 16;
     runRef.current = run;
     recordStart(seedText);
     if (import.meta.env.DEV) (window as unknown as { __infinity?: unknown }).__infinity = run;
@@ -72,7 +106,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
     const onKey = (event: KeyboardEvent, down: boolean) => {
       if (event.target instanceof HTMLElement && (['INPUT', 'TEXTAREA'].includes(event.target.tagName) || event.target.isContentEditable)) return;
       if (event.code === 'Space' && event.target instanceof HTMLButtonElement) return;
-      if (down && !event.repeat) raceAudio.unlock();
+      if (down && !event.repeat) { raceAudio.unlock(); audio.start(); }
       if (down && !event.repeat && event.code === 'KeyM') { toggleMute(); return; }
       if (down && !event.repeat && (event.code === 'KeyP' || event.code === 'Escape')) { setPaused(!pausedRef.current); return; }
       if (down && !event.repeat && event.code === 'KeyH') { setUiHidden((v) => !v); return; }
@@ -94,13 +128,15 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
     window.addEventListener('blur', blur);
     const hidden = () => { if (document.hidden) blur(); };
     document.addEventListener('visibilitychange', hidden);
-    const unlock = () => raceAudio.unlock();
+    const unlock = () => { raceAudio.unlock(); audio.start(); };
     window.addEventListener('pointerdown', unlock);
 
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame);
       const dt = Math.min(now - last, 100);
       last = now;
+      frameMs += (dt - frameMs) * 0.05;
+      if (!pausedRef.current) elapsed += dt;
       if (!pausedRef.current) {
         game.nudge = nudgeOf(controls.current);
         game.engineHeld = controls.current.engine;
@@ -110,13 +146,25 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
       if (width > 0 && height > 0) {
         const p = game.player.body.position;
         // Side-scrolling camera, framed for landscape, easing toward a little way ahead of the ball.
-        const target = Math.max(0.42, Math.min(1.25, Math.min(width / 1000, height / 520)));
+        // P2-25: a slow zoom out as the ball picks up speed (never sudden).
+        const v = game.player.body.velocity;
+        const speed = Math.hypot(v.x, v.y);
+        const target = Math.max(0.42, Math.min(1.25, Math.min(width / 1000, height / 520))) * (1 - Math.min(0.16, speed * 0.011));
         camera.scale += (target - camera.scale) * (1 - Math.exp(-dt / 180));
         const ahead = Math.max(-160, Math.min(260, game.player.body.velocity.x * 26));
         camera.x += (p.x + ahead - camera.x) * (1 - Math.exp(-dt / 220));
         camera.y += (p.y + 10 - camera.y) * (1 - Math.exp(-dt / 200));
         camera.focus = marbleDepth(game, game.player);
         renderPlatformer(ctx, game, camera, width, height, pausedRef.current ? game.time : now, game.player);
+        const grounded = game.player.grounded < 5;
+        painter.paint(ctx, {
+          width, height, camera, dtMs: dt, frameMs, km: run.km, elapsedMs: elapsed, reduceMotion: reduceRef.current, paused: pausedRef.current,
+          ball: { x: p.x, y: p.y, vx: v.x, vy: v.y, grounded },
+        });
+        const biome = biomeAt(run.km, seed);
+        const music = biome.t > 0.5 ? biome.to : biome.from;
+        audio.setScale(music.scale, music.root);
+        audio.update(pausedRef.current ? 0 : speed, grounded && !pausedRef.current, dayAt(run.km, elapsed).dark);
         const cues = game.sounds.splice(0);
         if (cues.length && !pausedRef.current) {
           const listener = { x: camera.x, y: camera.y, halfHeight: height / 2 / camera.scale };
@@ -139,6 +187,8 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
       document.removeEventListener('visibilitychange', hidden);
       window.removeEventListener('pointerdown', unlock);
       recordDistance(run.km, banked);
+      audio.stop();
+      audioRef.current = null;
       runRef.current = null;
       run.destroy();
     };
@@ -158,10 +208,12 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
     {!uiHidden && <>
       <div className="infinity-hud" aria-live="off">
         <span className="infinity-km"><strong>{formatKm(km)}</strong><small>km</small></span>
+        {savedNote && <span className="infinity-note" role="status">{savedNote}</span>}
       </div>
       <div className="infinity-tools">
         <button className="infinity-icon" onClick={() => setPaused(true)} aria-label="Pause" title="Pause (P)"><Pause size={18} /></button>
         <button className="infinity-icon" onClick={toggleMute} aria-label={muted ? 'Unmute' : 'Mute'} aria-pressed={muted} title="Sound (M)">{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button>
+        <button className="infinity-icon" onClick={savePicture} aria-label="Save picture" title="Save a picture"><Camera size={18} /></button>
         <button className="infinity-icon" onClick={() => setUiHidden(true)} aria-label="Hide the buttons" title="Hide the buttons (H)"><EyeOff size={18} /></button>
       </div>
       <div className="infinity-controls">
@@ -181,6 +233,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
       <span className="eyebrow">INFINITY</span>
       <h2 id="infinity-pause-title">Taking a breath.</h2>
       <p className="dialog-intro">{formatKm(km)} km so far on the seed “{seedText}”. Nothing is lost whenever you stop.</p>
+      <label className="infinity-option"><input type="checkbox" checked={reduceMotion} onChange={(e) => { setReduceMotionState(e.target.checked); setReduceMotion(e.target.checked); }} /> Reduce motion (fewer drifting things, no twinkle)</label>
       <div className="pause-actions">
         <button className="button-primary" onClick={() => setPaused(false)} autoFocus><Play size={15} />Resume</button>
         <button className="button-secondary" onClick={onNewSeed}>New seed</button>
