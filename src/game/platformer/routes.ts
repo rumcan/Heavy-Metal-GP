@@ -110,15 +110,12 @@ export function bridgeDeckAt(bridge: BridgeSpot, x: number): number | null {
 
 const WOOD = '#9a6a35', WOOD_DARK = '#4b2f15', WOOD_LIGHT = '#c99a5b';
 
-/** The loop ring as a wooden coaster ribbon with cross-ties, on a pair of posts. */
+/** The loop ring as a wooden coaster ribbon with cross-ties. */
 export function drawLoop(ctx: CanvasRenderingContext2D, loop: LoopSpot): void {
   ctx.save();
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
   const N = LOOP_STEPS * 2;
-  // posts under the ring's feet
-  ctx.fillStyle = WOOD_DARK;
-  for (const px of [loop.x - loop.r * 0.5, loop.x + loop.pitch + loop.r * 0.6]) ctx.fillRect(px - 5, loop.y + 4, 10, 120);
   // the ribbon: a dark under-stroke, the plank colour over it, a light edge on the ride side
   const trace = (off: number) => {
     ctx.beginPath();
@@ -180,4 +177,22 @@ export function drawBridge(ctx: CanvasRenderingContext2D, planks: Matter.Body[])
   ctx.fillStyle = WOOD_DARK;
   for (const [p, side] of [[first, -1], [last, 1]] as const) ctx.fillRect(p.position.x + side * 6 - 4, p.position.y - 40, 8, 46);
   ctx.restore();
+}
+
+/** The loops of `lane` in view, then its rope bridges (their planks come from the track's bodies: they move). */
+export function drawRoutes(ctx: CanvasRenderingContext2D, loops: LoopSpot[] | undefined, bodies: Matter.Body[], lane: number, left: number, right: number): void {
+  for (const l of loops ?? []) {
+    if (l.lane !== lane) continue;
+    const [x0, x1] = loopSpan(l);
+    if (x1 < left || x0 > right) continue;
+    drawLoop(ctx, l);
+  }
+  const chains = new Map<number, Matter.Body[]>();
+  for (const b of bodies) {
+    const md = b.plugin as Meta | undefined;
+    if (md?.kind !== 'bridge' || md.lane !== lane || !md.bridge || b.bounds.max.x < left - 200 || b.bounds.min.x > right + 200) continue;
+    const key = md.bridge.anchor[0].x;
+    (chains.get(key) ?? chains.set(key, []).get(key)!).push(b);
+  }
+  for (const planks of chains.values()) drawBridge(ctx, planks);
 }

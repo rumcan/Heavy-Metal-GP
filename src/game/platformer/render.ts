@@ -10,6 +10,7 @@ import { drawSkillWorld } from '../skills/draw';
 import { SPRING_W, floorAt } from './course';
 import type { CoursePlan, Floor, Lane, LaneGate } from './course';
 import { drawCoasterLane } from './coaster';
+import { drawRoutes } from './routes';
 import { LEDGE_H } from './build';
 import earthUrl from '../../assets/game/platformer/earth.webp';
 import grassUrl from '../../assets/game/platformer/grass.webp';
@@ -368,13 +369,13 @@ function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, 
   // Flow courses: the coaster skin (track on trestles over cliffs) once its art is loaded; until then the
   // slope as whole runs of earth and grass. Either way never thousands of little blocks.
   const fired = (sx: number) => game.marbles.some((m) => m.springAt !== undefined && game.time - m.springAt < 220 && (m.lane ?? 1) === lane && Math.abs(m.body.position.x - sx - SPRING_W / 2) < 80);
-  const pieces = flow ? game.track.bodies.filter((b) => { const k = meta(b).kind; return (k === 'wrecker' || k === 'itembox' || k === 'boost') && meta(b).lane === lane; }) : [];
+  const pieces = flow ? game.track.bodies.filter((b) => { const k = meta(b).kind; return (k === 'wrecker' || k === 'itembox' || k === 'boost' || k === 'bridge') && meta(b).lane === lane; }) : [];
   const coaster = flow && drawCoasterLane(ctx, info.plan, lane as Lane, left, right, bottom, t, fired, pieces);
-  if (flow && !coaster) drawFlowGround(ctx, info.plan, lane, left, right, bottom);
+  if (flow && !coaster) { drawFlowGround(ctx, info.plan, lane, left, right, bottom); drawRoutes(ctx, info.plan.loops, pieces, lane, left, right); }
   for (const body of game.track.bodies) {
     const md = meta(body);
     if (md.kind !== 'floor' || md.lane !== lane) continue;
-    if (flow && md.depth !== undefined && md.depth > 100) continue;
+    if (flow && md.depth !== undefined && (md.depth > 100 || md.depth < 0)) continue; // earth runs / loop rings are drawn whole elsewhere
     if (coaster) continue; // the coaster skin drew the crates
     if (body.bounds.max.x < left || body.bounds.min.x > right) continue;
     const v = body.vertices;
