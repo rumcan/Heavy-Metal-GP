@@ -197,3 +197,61 @@ test('races: the AI field gets through every flow course that has a loop and bri
     assert.ok(rode.size >= 1, `seed ${seed}: somebody rode the loop over the top`);
   }
 });
+
+// ------------------------------------------------------------------ the AI
+test('AI: a computer driver commits to a loop (full push, no hop) and rides it over the top after the boost pad', () => {
+  const plan = flat({ loops: [LOOP], boosts: [{ lane: 1, x: LOOP.x - 420, w: 160 }] });
+  const ai = { ...driver, isPlayer: false } as MarbleInfo;
+  const game = new Game(1, [ai], { track: trackFromPlan(plan, 1, TRACK_THEMES.forest), humanSeats: [], recovery: false, effects: false, aiItems: false });
+  game.start();
+  game.openGate();
+  const m = game.marbles[0];
+  m.lane = 1;
+  m.cannon = undefined;
+  Matter.Body.setPosition(m.body, { x: LOOP.x - 750, y: Y - 16 });
+  Matter.Body.setVelocity(m.body, { x: 0, y: 0 });
+  let rode = false, hopped = false, maxVy = 0;
+  for (let i = 0; i < 1400; i++) {
+    game.step(PHYSICS_STEP);
+    const p = m.body.position;
+    if (m.loopPhase === 1) rode = true;
+    if (p.x > LOOP.x - 330 && p.x < LOOP.x && p.y < Y - 24) hopped = true; // up in the air on the run-up
+    maxVy = Math.min(maxVy, m.body.velocity.y);
+  }
+  assert.ok(!hopped, 'no hop on the way into the ring');
+  assert.ok(rode, 'it rode over the top');
+  assert.ok(m.body.position.x > LOOP.x + LOOP_PITCH + 150, `and came out the far side (x ${Math.round(m.body.position.x)})`);
+});
+
+test('AI: a computer driver rolls across a rope bridge instead of jumping the chasm', () => {
+  const plan = withChasm({ bridges: [BRIDGE] });
+  const ai = { ...driver, isPlayer: false } as MarbleInfo;
+  const game = new Game(1, [ai], { track: trackFromPlan(plan, 1, TRACK_THEMES.forest), humanSeats: [], recovery: false, effects: false, aiItems: false });
+  game.start();
+  game.openGate();
+  const m = game.marbles[0];
+  m.lane = 1;
+  m.cannon = undefined;
+  Matter.Body.setPosition(m.body, { x: CHASM[0] - 500, y: Y - 16 });
+  let airborne = 0;
+  for (let i = 0; i < 1200; i++) {
+    game.step(PHYSICS_STEP);
+    if (m.body.position.x > CHASM[0] - 20 && m.body.position.x < CHASM[1] + 20 && m.body.position.y < Y - 30) airborne++;
+  }
+  assert.ok(m.body.position.x > CHASM[1] + 100, `crossed (x ${Math.round(m.body.position.x)})`);
+  assert.equal(airborne, 0, 'it never jumped over the deck');
+});
+
+test('bridge: a marble on the deck counts as grounded, so it can jump from it', () => {
+  const game = new Game(1, [driver], { track: trackFromPlan(withChasm({ bridges: [BRIDGE] }), 1, TRACK_THEMES.forest), recovery: false, effects: false, aiItems: false });
+  game.start();
+  game.openGate();
+  const m = game.player;
+  m.lane = 1;
+  m.cannon = undefined;
+  Matter.Body.setPosition(m.body, { x: (CHASM[0] + CHASM[1]) / 2, y: Y - 10 });
+  let grounded = 0;
+  for (let i = 0; i < 90; i++) { game.step(PHYSICS_STEP); if (i > 40 && m.grounded < 5) grounded++; }
+  assert.ok(grounded >= 45, `grounded on ${grounded} of 49 steps once settled on the deck`);
+  assert.ok(m.body.position.y > Y - 20 && m.body.position.y < Y + 20, 'resting on the deck, not in the chasm');
+});

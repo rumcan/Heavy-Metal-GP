@@ -106,6 +106,13 @@ export function bridgeDeckAt(bridge: BridgeSpot, x: number): number | null {
   return bridge.y0 + (bridge.y1 - bridge.y0) * t + bridge.slack * 4 * t * (1 - t) - PLANK_H / 2;
 }
 
+/** The straight line between the two anchors under `x`, or null off the bridge. A computer driver senses this, not the sag: a bridge is a level crossing to it. */
+export function bridgeLineAt(bridge: BridgeSpot, x: number): number | null {
+  if (x < bridge.x0 || x > bridge.x1) return null;
+  const t = (x - bridge.x0) / (bridge.x1 - bridge.x0);
+  return bridge.y0 + (bridge.y1 - bridge.y0) * t - PLANK_H / 2;
+}
+
 // ------------------------------------------------------------------ drawing (vector only, shared by both skins)
 
 const WOOD = '#9a6a35', WOOD_DARK = '#4b2f15', WOOD_LIGHT = '#c99a5b';
