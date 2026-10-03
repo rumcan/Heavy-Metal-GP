@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react';
-import { Flag, SlidersHorizontal, Trophy, CircleDot, ArrowRight, Coins, Play, Square, Volume2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Flag, SlidersHorizontal, Trophy, CircleDot, ArrowRight, Coins, GraduationCap, Play, Square, Volume2 } from 'lucide-react';
 import Dialog from './Dialog';
 import ItemGlyph from './ItemGlyph';
 import VoiceSubtitles from './VoiceSubtitles';
+import TutorialRace from './story/TutorialRace';
+import { completeTutorial, loadStory, saveStory } from '../game/story/state';
+import type { StoryDriver } from '../game/story/state';
 import { currentVoice, getVoiceSettings, playVoice, setVoiceEnabled, setVoiceVolume, stopVoice, subscribeVoice, voiceLines } from '../game/voice';
 import { ITEM_INFO } from '../game/types';
 import type { ItemType } from '../game/types';
@@ -29,6 +32,21 @@ export default function RulesDialog({ onClose }: { onClose: () => void }) {
   // screen changes them. `raceAudio`'s mute (M) is separate and always wins.
   const [voice, setVoice] = useState(getVoiceSettings);
   const [spoken, setSpoken] = useState(currentVoice);
+  // P2-13: the tutorial replays from here. While it runs it REPLACES the dialog — a race
+  // cannot live inside the dialog shell — and afterwards the briefing comes back.
+  const [playingTutorial, setPlayingTutorial] = useState(false);
+  // The learner drives the story save's marble when there is one, a balanced goblin otherwise.
+  const tutorialDriver = useMemo<StoryDriver>(() => loadStory()?.driver
+    ?? { name: 'You', color: '#d63e2e', portrait: 0, stats: { weight: 5, speed: 5, bounce: 5 } }, [playingTutorial]);
+  const endTutorial = () => {
+    // A replay still banks completion, so a save that skipped long ago stops being asked.
+    const saved = loadStory();
+    if (saved) saveStory(completeTutorial(saved));
+    setPlayingTutorial(false);
+  };
+  if (playingTutorial) {
+    return <TutorialRace driver={tutorialDriver} subtitle="HOW TO PLAY · TRAINING GROUNDS" onDone={endTutorial} onSkip={endTutorial} />;
+  }
   useEffect(() => subscribeVoice(() => { setVoice(getVoiceSettings()); setSpoken(currentVoice()); }), []);
   // The caption strip lives in this dialog, so closing it has to cut the line: audio talking
   // with no caption on screen is the one thing the player must never do.
@@ -40,6 +58,10 @@ export default function RulesDialog({ onClose }: { onClose: () => void }) {
   return <Dialog onClose={onClose} titleId="rules-title" className="rules-dialog">
     <span className="eyebrow"><Flag size={15} /> THE RACE BRIEFING</span>
     <h2 id="rules-title">Know your way down.</h2>
+    <div className="rules-tutorial" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', padding: '12px 14px', marginBottom: 18, border: '1px solid rgba(125,211,252,0.35)', borderRadius: 12, background: 'rgba(125,211,252,0.07)' }}>
+      <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.45 }}>New to the drop? One voiced lap of the Training Grounds: steering, the Magic Engine, skills, jumps and shortcuts. Nobody can hurt you.</p>
+      <button className="button-secondary" style={{ whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 8 }} onClick={() => { stopVoice(); setPlayingTutorial(true); }}><GraduationCap size={16} /> Play the tutorial</button>
+    </div>
     <div className="rules-steps">
       <section><SlidersHorizontal /><div><h3>Build your advantage.</h3><p>Weight, speed, and bounce share 15 points. Heavy marbles break shortcut walls; bouncy ones clear jump lips. More speed means less drag.</p></div></section>
       <section><Trophy /><div><h3>Race for the championship.</h3><p>Six Grands Prix, three heats on the exact same circuit. Finishers score 25, 18, 15, 12, 10, 8, 6, 4, 2, or 1 point. The fastest heat of each GP adds one bonus point. Your teammate also scores for Apex Racing.</p></div></section>

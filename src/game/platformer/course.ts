@@ -254,9 +254,13 @@ export function planTutorial(): CoursePlan {
     { kind: 'ramp', lane: 1, to: 0, x: 2900, w: 170, y: y + 90 },
     { kind: 'door', lane: 0, to: 1, x: 3700, w: 170, y: y + 90 },
   ];
+  // P2-13 lesson 5, the shortcut: a one-way ledge over the long slope. Jump up onto it from the
+  // flat before the slope and it carries you past the slope AND the 50 px climb; the low road
+  // down and back up is clearly the long way round.
+  const ledges: Ledge[] = L.map((lane) => ({ lane, x: 4120, w: 900, y: y + 30 }));
   const path = [
     { x: 0, y: y - 30 }, { x: 2400, y: y - 30 }, { x: 2400, y: y + 60 }, { x: 4100, y: y + 60 },
     { x: 4900, y: y + 300 }, { x: 4900, y: y + 250 }, { x: 6600, y: y + 250 },
   ];
-  return { seed: 0, width: 6600, height: y + 280 + 900, floors, bumps, gates, path, startX: 520, startY: y, finishX: 5900, finishY: y + 280 };
+  return { seed: 0, width: 6600, height: y + 280 + 900, floors, bumps, gates, ledges, path, startX: 520, startY: y, finishX: 5900, finishY: y + 280 };
 }

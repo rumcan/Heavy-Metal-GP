@@ -53,6 +53,8 @@ export interface StoryState {
   /** Chapter select replay: nothing is written back to the save while this is set. */
   replaying: boolean;
   driver: StoryDriver;
+  /** P2-13: the Training Grounds tutorial has been finished (or skipped) at least once. */
+  tutorialDone: boolean;
   /**
    * Cosmetic unlocks banked per chapter (ST-08). Story-save only: the racer account keeps credits, the
    * story keeps the flags, and `applyChapterReward()` uses this list as its paid-marker.
@@ -121,6 +123,7 @@ export function newStory(seed: number, driver: StoryDriver, startedAt = 0): Stor
     finishedAt: null,
     replaying: false,
     driver,
+    tutorialDone: false,
     unlocks: [],
   };
 }
@@ -183,6 +186,12 @@ export function startReplay(state: StoryState, chapter: ChapterNumber): StorySta
 
 export function endReplay(state: StoryState): StoryState {
   return { ...state, replaying: false };
+}
+
+/** P2-13: bank the tutorial — finishing OR skipping the Training Grounds sets this once. */
+export function completeTutorial(state: StoryState): StoryState {
+  if (state.tutorialDone) return state;
+  return { ...state, tutorialDone: true };
 }
 
 // ─────────────────────────── race wiring ───────────────────────────
@@ -363,6 +372,7 @@ export function parseStory(raw: string | null): StoryState | null {
     ending: ending === 'champion' || ending === 'bittersweet' || ending === 'heartbreak' ? ending : null,
     finishedAt: typeof story.finishedAt === 'number' && Number.isFinite(story.finishedAt) ? story.finishedAt : null,
     replaying: false,
+    tutorialDone: story.tutorialDone === true,
     driver: {
       name: typeof driver.name === 'string' && driver.name.length < 40 ? driver.name : CAST.sprocket.name,
       color: typeof driver.color === 'string' && /^#[0-9a-f]{3,8}$/i.test(driver.color) ? driver.color : '#d63e2e',

@@ -17,8 +17,9 @@ import type { StoryHookHandle } from '../../game/story/modifiers';
 import { applyChapterReward, rewardForChapter } from '../../game/story/rewards';
 import type { ChapterPayout } from '../../game/story/rewards';
 import {
-  applyChoice, chapterObjectives, chapterUnlocked, clearStory, loadStory, newStory, saveStory,
-  startReplay, storyGrandPrix, storyPosition, storyProfile, storyRaceSeed, storyRoster,
+  applyChoice, chapterObjectives, chapterUnlocked, clearStory, completeTutorial, loadStory,
+  newStory, saveStory, startReplay, storyGrandPrix, storyPosition, storyProfile, storyRaceSeed,
+  storyRoster,
 } from '../../game/story/state';
 import type { StoryDriver, StoryState } from '../../game/story/state';
 import { ENDING_TITLE } from '../../game/story/types';
@@ -29,12 +30,18 @@ import StoryHub from './StoryHub';
 import type { StoryNotice } from './StoryHub';
 import { actStarts } from './StoryHub';
 import StoryScene from './StoryScene';
+import TutorialPrologue from './TutorialPrologue';
+import TutorialRace from './TutorialRace';
 import type { StoryRaceProps } from './StoryRace';
 import '../../story.css';
 
 /** Stages of the story flow. Scene playback lives in `playing`, on top of whichever stage queued it. */
 type Stage =
   | { kind: 'hub' }
+  /** P2-13: a fresh save opens here; Skip goes straight to Chapter 1. */
+  | { kind: 'prologue' }
+  /** P2-13: the Training Grounds tutorial race (player + 2 slow AI, no damage). */
+  | { kind: 'tutorial' }
   | { kind: 'card'; chapter: ChapterNumber }
   | { kind: 'intro'; chapter: ChapterNumber }
   | { kind: 'pre'; chapter: ChapterNumber; heat: number }
@@ -99,7 +106,13 @@ export default function StoryMode({ driver, account, onAccount, onLevelUp, onSho
   const settlementRef = useRef<HeatSettlement | null>(null);
   const heatRef = useRef(1);
 
-  const [stage, setStage] = useState<Stage>({ kind: 'hub' });
+  // P2-13: a save with no tutorial and no progress yet opens on the prologue — the first
+  // race of the campaign IS the tutorial. Anything with history goes to the hub as before.
+  const [stage, setStage] = useState<Stage>(() => {
+    const saved = loadStory();
+    const fresh = !saved || (!saved.tutorialDone && !saved.seenScenes.length && !saved.season.results.some((heats) => heats.length));
+    return fresh ? { kind: 'prologue' } : { kind: 'hub' };
+  });
   const [playing, setPlaying] = useState<Playback | null>(null);
   const [setup, setSetup] = useState<RaceSetup | null>(null);
   const [payout, setPayout] = useState<RacePayout | null>(null);
@@ -123,7 +136,7 @@ export default function StoryMode({ driver, account, onAccount, onLevelUp, onSho
     return next;
   };
 
-  const chapter = stage.kind === 'hub' ? state.chapter : stage.chapter;
+  const chapter = stage.kind === 'hub' || stage.kind === 'prologue' || stage.kind === 'tutorial' ? state.chapter : stage.chapter;
   const def = chapterDef(chapter);
   const roster = useMemo(() => storyRoster(state.driver), [state.driver]);
   // Mid-race bubbles play in the first race of a chapter only; they used to repeat in every race.
@@ -207,6 +220,8 @@ export default function StoryMode({ driver, account, onAccount, onLevelUp, onSho
     switch (next.kind) {
       case 'hub':
       case 'card':
+      case 'prologue':
+      case 'tutorial':
         setStage(next);
         return;
       case 'intro':
@@ -271,7 +286,8 @@ export default function StoryMode({ driver, account, onAccount, onLevelUp, onSho
     setNotice(null);
     setPlaying(null);
     setSetup(null);
-    setStage({ kind: 'hub' });
+    // P2-13: a restarted save is a fresh save, so it learns to race again.
+    setStage({ kind: 'prologue' });
   };
 
   const onSceneDone = (choice: ChoiceOption | null) => {
@@ -366,7 +382,32 @@ export default function StoryMode({ driver, account, onAccount, onLevelUp, onSho
     />;
   }
 
+  // P2-13: leaving the tutorial banks `tutorialDone` either way — finishing teaches every
+  // lesson, skipping is a choice the save remembers too. Both roads lead to Chapter 1.
+  const finishTutorial = () => {
+    mutate(completeTutorial);
+    beginChapter(1, false);
+  };
+  const skipTutorial = () => {
+    mutate(completeTutorial);
+    leaveToHub();
+  };
+
   switch (stage.kind) {
+    case 'prologue':
+      return <TutorialPrologue
+        onPlay={() => setStage({ kind: 'tutorial' })}
+        onSkip={() => { mutate(completeTutorial); beginChapter(1, false); }}
+      />;
+
+    case 'tutorial':
+      return <TutorialRace
+        driver={state.driver}
+        subtitle="PROLOGUE · LEARN TO RACE"
+        onDone={finishTutorial}
+        onSkip={skipTutorial}
+      />;
+
     case 'hub':
       return <StoryHub
         state={state}
