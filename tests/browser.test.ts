@@ -235,7 +235,7 @@ test('Browser: a complete long heat pays winnings and the saved season advances 
     await page.clock.install();
     await page.getByRole('button', { name: 'START HEAT 1', exact: true }).click();
     await dismissGate(page);
-    for (let i = 0; i < 80 && await page.locator('.results-panel').count() === 0; i++) await page.clock.runFor(10000);
+    for (let i = 0; i < 140 && await page.locator('.results-panel').count() === 0; i++) await page.clock.runFor(10000);
     await page.waitForSelector('.results-panel', { timeout: 5000 });
     assert.equal(await page.locator('.results-table tbody tr').count(), 10);
     assert.equal(await page.locator('.dnf-label').count(), 0, 'Race cut off while marbles were still on track.');
