@@ -5,13 +5,20 @@ import assert from 'node:assert/strict';
 
 import {
   MATERIALS, PATTERNS, TRAILS, KO_BURSTS, FINISH_FX, PALETTE, DEFAULT_LOOK,
-  unlockOf, isUnlocked, unlockHint, sanitizeLook, lockedReset,
+  COSMETICS_STORAGE_KEY, unlockOf, isUnlocked, unlockHint, sanitizeLook, lockedReset, parseCosmeticsSave,
 } from '../src/game/cosmetics';
 import type { Progress } from '../src/game/cosmetics';
+import { createAccount, parseAccount, purchaseCosmetic } from '../src/game/economy';
 
 const fresh: Progress = { level: 1, owned: [], achievements: [] };
 
-test('catalogue sizes and order', () => {
+test('catalogue sizes, order and unique ids', () => {
+  assert.equal(MATERIALS.length, 10);
+  assert.equal(PATTERNS.length, 12);
+  assert.equal(TRAILS.length, 8);
+  assert.equal(KO_BURSTS.length, 4);
+  assert.equal(FINISH_FX.length, 4);
+  for (const ids of [MATERIALS, PATTERNS, TRAILS, KO_BURSTS, FINISH_FX]) assert.equal(new Set(ids).size, ids.length);
   assert.deepEqual([...MATERIALS], ['steel', 'chrome', 'brass', 'rust', 'oak', 'granite', 'glass', 'lava', 'ice', 'gold']);
   assert.deepEqual([...PATTERNS], ['plain', 'stripes', 'band', 'checker', 'flames', 'skull', 'goblin', 'number', 'team', 'stars', 'cracks', 'rivets']);
   assert.deepEqual([...TRAILS], ['none', 'smoke', 'sparks', 'fire', 'ice', 'rainbow', 'coins', 'wisps']);
@@ -74,4 +81,32 @@ test('lockedReset: locked choices fall back to the default, unlocked ones stay',
   const look = { ...DEFAULT_LOOK, material: 'gold', trail: 'smoke', pattern: 'flames' } as const;
   assert.deepEqual(lockedReset(look, fresh), { ...look, material: 'steel', pattern: 'plain' });
   assert.deepEqual(lockedReset(look, { level: 6, owned: [], achievements: ['first-win'] }), look);
+});
+
+test('cosmetics save migration: old accounts and an absent look key start with the default ball', () => {
+  assert.equal(COSMETICS_STORAGE_KEY, 'heavy-metal-gp:cosmetics:v1');
+  assert.deepEqual(parseCosmeticsSave(null), { version: 1, look: DEFAULT_LOOK });
+  const legacyLook = { material: 'chrome', primary: PALETTE[4], pattern: 'stripes' };
+  assert.deepEqual(parseCosmeticsSave(JSON.stringify(legacyLook)), {
+    version: 1,
+    look: { ...DEFAULT_LOOK, material: 'chrome', primary: PALETTE[4], pattern: 'stripes' },
+  });
+  const migrated = parseAccount(JSON.stringify({ version: 1, credits: 765, inventory: {}, finishes: 3 }));
+  assert.equal(migrated.credits, 765, 'migration keeps the existing wallet');
+  assert.deepEqual(migrated.cosmeticOwned, []);
+  assert.deepEqual(migrated.cosmeticAchievements, []);
+  assert.equal(migrated.cosmeticKos, 0);
+  assert.deepEqual(createAccount().cosmeticOwned, []);
+});
+
+test('cosmetic credit purchases are deduplicated, persisted on the account, and cannot bypass locks', () => {
+  const before = createAccount();
+  const bought = purchaseCosmetic(before, 'material', 'oak');
+  assert.equal(bought.error, undefined);
+  assert.equal(bought.account.credits, 100);
+  assert.deepEqual(bought.account.cosmeticOwned, ['material:oak']);
+  assert.deepEqual(parseAccount(JSON.stringify(bought.account)).cosmeticOwned, ['material:oak']);
+  assert.equal(purchaseCosmetic(bought.account, 'material', 'oak').error, 'You already own this cosmetic.');
+  assert.equal(purchaseCosmetic(before, 'material', 'chrome').error, 'Reach level 3');
+  assert.equal(purchaseCosmetic({ ...before, credits: 0 }, 'material', 'oak').error, 'You need 300 more credits.');
 });
