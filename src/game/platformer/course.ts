@@ -25,6 +25,9 @@ export interface PlatformerCourse {
   tutorial?: boolean;
   /** Rolling slopes (src/game/platformer/flow.ts) instead of blocks. */
   flow?: boolean;
+  /** P2-22: a course made in the Workshop (src/game/platformer/def.ts); `plan` builds its CoursePlan. */
+  def?: unknown;
+  plan?: () => CoursePlan;
 }
 
 /** The official platformer courses (owner playtest first, then the other calendar slots convert). */
@@ -35,13 +38,20 @@ export const PLATFORMER_COURSES: readonly PlatformerCourse[] = [
   { id: 'training', name: 'Training Grounds', blurb: 'The short tutorial course: one crate, one gap, one ramp, one door, a slope and a climb.', seed: 1, tutorial: true },
 ];
 
+/** P2-22: courses made in the Workshop, by id (`my-<saved id>`): they race exactly like the official ones. */
+const customCourses = new Map<string, PlatformerCourse>();
+export function registerCustomCourse(course: PlatformerCourse): void { customCourses.set(course.id, course); }
+export function unregisterCustomCourse(id: string): void { customCourses.delete(id); }
+export function customCourseList(): PlatformerCourse[] { return [...customCourses.values()]; }
+
 export function platformerCourse(id: string | null | undefined): PlatformerCourse {
   const key = id && id.startsWith(PLATFORMER_PREFIX) ? id.slice(PLATFORMER_PREFIX.length) : id;
-  return PLATFORMER_COURSES.find((c) => c.id === key) ?? PLATFORMER_COURSES[0];
+  return PLATFORMER_COURSES.find((c) => c.id === key) ?? (key ? customCourses.get(key) : undefined) ?? PLATFORMER_COURSES[0];
 }
 
 /** The plan for an official course. */
 export function planOfficial(course: PlatformerCourse): CoursePlan {
+  if (course.plan) return course.plan(); // a Workshop course: its def overrides the planned one
   if (course.tutorial) return planTutorial();
   if (course.flow) return planFlow(course.seed);
   return planCourse(course.seed, course.length ? { ...COURSE_TUNING, length: course.length } : COURSE_TUNING);
