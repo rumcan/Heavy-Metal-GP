@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { FilePenLine, Hammer, Share2, Trash2, Users } from 'lucide-react';
+import { FilePenLine, Hammer, Mountain, Share2, Trash2, Users } from 'lucide-react';
 import '../../editor.css';
 import bannerUrl from '../../assets/editor/workshop-banner.webp';
 import { deleteTrack, loadDraftSync, loadTracksSync, saveDraft } from '../../game/tracks';
@@ -10,6 +10,8 @@ import ConfirmDialog from '../ConfirmDialog';
 import NewTrackDialog from '../editor/NewTrackDialog';
 import TrackThumbnail from '../editor/TrackThumbnail';
 import { draftNeedsSaving } from './trackIdentity';
+import { deleteCourse, loadSavedCourses } from '../../game/platformer/courses-store';
+import type { SavedCourse } from '../../game/platformer/courses-store';
 
 /** The id of the saved track the editor has open: the key `TrackEditor.tsx` remembers it under. */
 const ACTIVE_TRACK_KEY = 'heavy-metal-gp:workshop-active-track';
@@ -22,12 +24,15 @@ interface Props {
   /** The footer's New track button opens the dialog: the screen owns that one primary button, so it owns the flag. */
   newTrackOpen: boolean;
   onNewTrackClose: () => void;
+  /** P2-22: open the platformer course editor on a saved course, or a new one (null). */
+  onPlatformerEditor?: (course: SavedCourse | null) => void;
 }
 
 type Pending =
   | { kind: 'open'; track: SavedTrack }
   | { kind: 'new'; def: TrackDef }
-  | { kind: 'delete'; track: SavedTrack };
+  | { kind: 'delete'; track: SavedTrack }
+  | { kind: 'delete-course'; course: SavedCourse };
 
 const when = (ms: number) => new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 
@@ -36,13 +41,15 @@ const when = (ms: number) => new Date(ms).toLocaleDateString(undefined, { day: '
  * doing. Opening anything goes to the full-screen editor — which loads its open draft on mount, so this page hands
  * it a track by writing the draft first. The editor itself is unchanged.
  */
-export default function WorkshopTab({ onOpenEditor, onBrowseCommunity, newTrackOpen, onNewTrackClose }: Props) {
+export default function WorkshopTab({ onOpenEditor, onBrowseCommunity, newTrackOpen, onNewTrackClose, onPlatformerEditor }: Props) {
   const [version, setVersion] = useState(0);
   // Parsing saved tracks checks every one of them: once per change, not on every render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const tracks = useMemo(() => loadTracksSync(), [version]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const draft = useMemo(() => loadDraftSync(), [version]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const courses = useMemo(() => loadSavedCourses(), [version]);
   const [pending, setPending] = useState<Pending | null>(null);
 
   /** Write the draft the editor will open on, and the saved track it belongs to, then go. */
@@ -60,6 +67,9 @@ export default function WorkshopTab({ onOpenEditor, onBrowseCommunity, newTrackO
     if (!pending) return;
     if (pending.kind === 'delete') {
       deleteTrack(pending.track.id);
+      setVersion((v) => v + 1);
+    } else if (pending.kind === 'delete-course') {
+      deleteCourse(pending.course.id);
       setVersion((v) => v + 1);
     } else if (pending.kind === 'open') launch(pending.track.def, pending.track.id);
     else launch(pending.def, null);
@@ -85,12 +95,26 @@ export default function WorkshopTab({ onOpenEditor, onBrowseCommunity, newTrackO
             <button className="icon-button" onClick={() => setPending({ kind: 'delete', track: t })} aria-label={`Delete ${t.def.name}`} title="Delete"><Trash2 size={15} /></button>
           </span>
         </li>)}</ul>}
+      <div className="section-topline"><span className="eyebrow"><Mountain size={13} aria-hidden="true" /> MY PLATFORMER COURSES</span><span className="eyebrow">{courses.length} SAVED</span></div>
+      {courses.length === 0
+        ? <p className="muted">No platformer courses yet. Press New platformer course to grow one from a seed and place springs, ledges, gates and more.</p>
+        : <ul className="workshop-list" aria-label="Saved platformer courses">{courses.map((c) => <li key={c.id} className="my-track-row workshop-row">
+          <span className="my-track-meta">
+            <strong>{c.def.name}</strong>
+            <span className="muted">{Math.round(c.def.length / 1000)}k long • {c.def.gates.length} gates • {c.def.springs.length} springs • {when(c.updatedAt)}</span>
+          </span>
+          <span className="workshop-row-actions">
+            <button className="button-secondary" onClick={() => onPlatformerEditor?.(c)} aria-label={`Open ${c.def.name} in the course editor`}><FilePenLine size={14} />Open</button>
+            <button className="icon-button" onClick={() => setPending({ kind: 'delete-course', course: c })} aria-label={`Delete ${c.def.name}`} title="Delete"><Trash2 size={15} /></button>
+          </span>
+        </li>)}</ul>}
     </section>
 
     <section className="fit-pane home-garage workshop-hero" data-pane-id="garage" aria-labelledby="workshop-title">
       <div className="section-topline"><span className="eyebrow"><b>02</b> THE WORKSHOP</span></div>
       <div className="workshop-banner-card"><img src={bannerUrl as unknown as string} alt="" draggable={false} /><div><strong id="workshop-title">Workshop</strong><span>GOBLIN MECHANICS AT WORK — BUILD, TEST, SHARE</span></div></div>
       <p className="workshop-blurb">Lay ramps, loops, pegs and hazards on your own circuit, test-drive it with the real physics, then race it in Quick race or publish it for everyone.</p>
+      {onPlatformerEditor && <button className="button-secondary" onClick={() => onPlatformerEditor(null)}><Mountain size={14} />New platformer course</button>}
       <div className="workshop-draft">
         <span className="eyebrow">LAST DRAFT</span>
         {draft
@@ -119,11 +143,13 @@ export default function WorkshopTab({ onOpenEditor, onBrowseCommunity, newTrackO
 
     {newTrackOpen && <NewTrackDialog onClose={onNewTrackClose} onCreate={create} />}
     {pending && <ConfirmDialog
-      title={pending.kind === 'delete' ? 'Delete this track?' : 'Replace your unsaved draft?'}
-      message={pending.kind === 'delete'
+      title={pending.kind === 'delete' ? 'Delete this track?' : pending.kind === 'delete-course' ? 'Delete this course?' : 'Replace your unsaved draft?'}
+      message={pending.kind === 'delete-course'
+        ? `“${pending.course.def.name}” will be removed from My platformer courses. This can't be undone.`
+        : pending.kind === 'delete'
         ? `“${pending.track.def.name}” will be removed from My tracks. This can't be undone.`
         : `Your open draft “${draft?.name ?? ''}” is not saved to My tracks. ${pending.kind === 'open' ? `Opening “${pending.track.def.name}”` : 'Starting a new track'} replaces it.`}
-      confirmLabel={pending.kind === 'delete' ? 'Delete' : pending.kind === 'open' ? 'Open anyway' : 'Start new anyway'}
+      confirmLabel={pending.kind === 'delete' || pending.kind === 'delete-course' ? 'Delete' : pending.kind === 'open' ? 'Open anyway' : 'Start new anyway'}
       onConfirm={confirm}
       onCancel={() => setPending(null)}
     />}

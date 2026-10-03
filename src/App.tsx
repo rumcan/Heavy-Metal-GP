@@ -48,6 +48,11 @@ import LevelUpCard from './components/progression/LevelUpCard';
 import TalentsScreen from './components/talents/TalentsScreen';
 import { validateBuild } from './game/talents';
 import { isPlatformerPick, platformerCourse } from './game/platformer/course';
+import PlatformerEditor from './components/editor/PlatformerEditor';
+import { defFromSeed, registerPlatformerDef } from './game/platformer/def';
+import type { PlatformerDef } from './game/platformer/def';
+import { loadSavedCourses } from './game/platformer/courses-store';
+import type { SavedCourse } from './game/platformer/courses-store';
 import { TRACK_THEMES } from './game/types';
 import { loadAccount, saveAccount, purchaseItem, onlineRaceId, settleOnlineRace, settleRace, settleCustomRace, progressOf, awardResultXp } from './game/economy';
 import type { RacerAccount, RacePayout } from './game/economy';
@@ -90,7 +95,7 @@ function makeRivals(seed: number): MarbleInfo[] {
   }));
 }
 
-type Phase = 'menu' | 'retune' | 'hub' | 'race' | 'quick' | 'story' | 'lobby' | 'online' | 'editor' | 'community';
+type Phase = 'menu' | 'retune' | 'hub' | 'race' | 'quick' | 'story' | 'lobby' | 'online' | 'editor' | 'community' | 'platformer-editor';
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>('menu');
@@ -103,6 +108,15 @@ export default function App() {
   const [raceKey, setRaceKey] = useState(0);
   const [circuitIndex, setCircuitIndex] = useState(0);
   const [customTrackId, setCustomTrackId] = useState<string | null>(null);
+  // P2-22: the platformer course editor (null = closed), and a test drive that returns to it instead of the garage.
+  const [pfEdit, setPfEdit] = useState<{ id: string | null; def: PlatformerDef; dirty?: boolean } | null>(null);
+  const [testDrive, setTestDrive] = useState<{ back: string | null } | null>(null);
+  // Saved platformer courses are registered once at boot, so a quick-race pick of one resolves.
+  useState(() => { loadSavedCourses(); return 0; });
+  const openPlatformerEditor = (course: SavedCourse | null) => {
+    setPfEdit(course ? { id: course.id, def: course.def } : { id: null, def: defFromSeed(Math.floor(Math.random() * 1_000_000), 30000, 'flow', 'My platformer') });
+    setPhase('platformer-editor');
+  };
   const [season, setSeason] = useState<SeasonState | null>(() => loadSeason());
   // P2-04: one garage per mode — { story, championship, quick, online } — each its own stats, livery and portrait.
   // A season that is running owns the championship garage, so it is read back from the season.
@@ -655,12 +669,12 @@ export default function App() {
       {confirmNewSeason && <ConfirmDialog title="Start a new championship?" message="This replaces your saved season." confirmLabel="Start new" onConfirm={() => startSeason(true)} onCancel={() => setConfirmNewSeason(false)} />}
     </>
   );
-  const launchQuickRace = () => {
+  const launchQuickRace = (pick: string | null = customTrackId, drive = false) => {
     setRaceId(`quick:${crypto.randomUUID()}`);
     setPayout(null);
     setRaceKey((k) => k + 1);
-    if (isPlatformerPick(customTrackId)) {
-      setLoading({ eyebrow: 'QUICK RACE / PLATFORMER', title: platformerCourse(customTrackId).name.toUpperCase(), cta: 'Lights out', banter: preRaceBanter(quickRoster, Math.random), next: 'quick' });
+    if (isPlatformerPick(pick)) {
+      setLoading({ eyebrow: drive || testDrive ? 'TEST DRIVE / PLATFORMER' : 'QUICK RACE / PLATFORMER', title: platformerCourse(pick).name.toUpperCase(), cta: 'Lights out', banter: preRaceBanter(quickRoster, Math.random), next: 'quick' });
     } else if (customTrackDef) {
       setLoading({ eyebrow: 'QUICK RACE / CUSTOM HEAT', title: customTrackDef.name.toUpperCase(), cta: 'Lights out', banter: preRaceBanter(quickRoster, Math.random), next: 'quick' });
     } else {
@@ -747,7 +761,8 @@ export default function App() {
         onRerollRivals={() => setRivalSeed(Math.floor(Math.random() * 0xffffffff))}
         seed={seed}
         onNewSeed={newSeed}
-        onStart={launchQuickRace}
+        onStart={() => launchQuickRace()}
+        onPlatformerWorkshop={openPlatformerEditor}
         onStartSeason={() => startSeason()}
         onContinueSeason={season && phase === 'menu' ? () => enterSeason(season) : undefined}
         onRetune={season && phase === 'menu' ? () => { setCircuitIndex(season.round); setPhase('retune'); } : undefined}
@@ -788,6 +803,22 @@ export default function App() {
       driver={quickRoster[0]}
       onExit={() => setPhase('menu')}
       onCommunity={() => setPhase('community')}
+    />;
+  }
+
+  // P2-22: the platformer course editor. A test drive races the course and comes back here (no winnings for it).
+  if (phase === 'platformer-editor' && pfEdit) {
+    return <PlatformerEditor
+      key={`${pfEdit.id ?? 'new'}:${raceKey}`}
+      initial={pfEdit}
+      onExit={() => { setPfEdit(null); setPhase('menu'); }}
+      onTestDrive={(def, state) => {
+        const id = registerPlatformerDef('test-drive', def);
+        setPfEdit({ ...state, def });
+        setTestDrive({ back: customTrackId });
+        setCustomTrackId(`platformer:${id}`);
+        launchQuickRace(`platformer:${id}`, true);
+      }}
     />;
   }
 
@@ -930,9 +961,13 @@ export default function App() {
   }
 
   // quick race
+  // A test drive (P2-22) goes back to the editor and puts the player's own pick back.
+  const leaveQuick = () => {
+    if (testDrive) { setCustomTrackId(testDrive.back); setTestDrive(null); setPhase('platformer-editor'); } else setPhase('menu');
+  };
   const quickActions: RaceAction[] = [
-    { label: 'Race again', onClick: launchQuickRace, primary: true },
-    { label: 'Back to garage', onClick: () => setPhase('menu') },
+    { label: 'Race again', onClick: () => launchQuickRace(), primary: true },
+    { label: testDrive ? 'Back to the editor' : 'Back to garage', onClick: leaveQuick },
   ];
   // MB-08: quick race on a custom circuit — title/seed/profile follow the def when present.
   // Calendar circuits race the official archives: no quick-race layout is generated either.
@@ -940,9 +975,10 @@ export default function App() {
   const platformerPick = isPlatformerPick(customTrackId);
   const platformer = platformerCourse(customTrackId);
   const quickDef = platformerPick ? null : customTrackDef ?? officialTrack(circuitIndex);
-  const quickProfile = platformerPick ? { ...CALENDAR[0].profile, generator: 'platformer' as const, course: platformer.id, theme: TRACK_THEMES.forest } : customTrackDef ? CALENDAR[0].profile : CALENDAR[circuitIndex].profile;
+  const pfTheme = (platformer.def as { theme?: keyof typeof TRACK_THEMES } | undefined)?.theme;
+  const quickProfile = platformerPick ? { ...CALENDAR[0].profile, generator: 'platformer' as const, course: platformer.id, theme: TRACK_THEMES[pfTheme ?? 'forest'] } : customTrackDef ? CALENDAR[0].profile : CALENDAR[circuitIndex].profile;
   const quickTitle = platformerPick ? platformer.name : customTrackDef ? customTrackDef.name : CALENDAR[circuitIndex].name;
-  const quickSubtitle = platformerPick ? 'QUICK RACE / PLATFORMER' : customTrackDef ? `QUICK RACE / CUSTOM // ${customTrackDef.pieces.length} PCS` : "QUICK RACE / SINGLE HEAT";
+  const quickSubtitle = platformerPick ? (testDrive ? 'TEST DRIVE / PLATFORMER' : 'QUICK RACE / PLATFORMER') : customTrackDef ? `QUICK RACE / CUSTOM // ${customTrackDef.pieces.length} PCS` : "QUICK RACE / SINGLE HEAT";
   return withShop(
     <RaceScreen
       key={raceKey}
@@ -955,8 +991,8 @@ export default function App() {
       isCustom={!!customTrackDef || platformerPick}
       subtitle={quickSubtitle}
       loadoutMode="quick"
-      onExit={() => setPhase('menu')}
-      onFinished={(results) => awardWinnings(results, undefined, 'quick')}
+      onExit={leaveQuick}
+      onFinished={(results) => { if (!testDrive) awardWinnings(results, undefined, 'quick'); }}
       actions={quickActions}
       inventory={account.inventory}
       credits={account.credits}

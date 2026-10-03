@@ -42,6 +42,7 @@ import StoryTab from './home/StoryTab';
 import WorkshopTab from './home/WorkshopTab';
 import type { QuickSub } from './home/TrackPicker';
 import { isPlatformerPick, platformerCourse } from '../game/platformer/course';
+import type { SavedCourse } from '../game/platformer/courses-store';
 import './home/home.css';
 
 export interface SetupScreenProps {
@@ -94,6 +95,8 @@ export interface SetupScreenProps {
   onRank?: () => void;
   /** MB-02: open the full-screen Workshop (the track editor). */
   onWorkshop?: () => void;
+  /** P2-22: open the platformer course editor on a saved course (or a new one when null). */
+  onPlatformerWorkshop?: (course: SavedCourse | null) => void;
 
   /** Open on this tab instead of the one the player left on. */
   initialTab?: HomeTab;
@@ -276,6 +279,7 @@ export default function SetupScreen(props: SetupScreenProps) {
       />}
       {tab === 'workshop' && <WorkshopTab
         onOpenEditor={onWorkshop ?? (() => undefined)}
+        onPlatformerEditor={props.onPlatformerWorkshop}
         onBrowseCommunity={browseCommunity}
         newTrackOpen={newTrackOpen}
         onNewTrackClose={() => setNewTrackOpen(false)}

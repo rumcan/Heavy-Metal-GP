@@ -8,6 +8,7 @@ import CircuitPreview from '../CircuitPreview';
 import { CommunityPicker } from '../CommunityScreen';
 import TrackThumbnail from '../editor/TrackThumbnail';
 import { PLATFORMER_COURSES, PLATFORMER_PREFIX, PLATFORMER_TRACK_ID, isPlatformerPick, platformerCourse } from '../../game/platformer/course';
+import { CommunityCourses, MyCourses } from './CourseLists';
 
 /** Where the quick race's circuit comes from. */
 export type QuickSub = 'calendar' | 'mine' | 'community' | 'platformer';
@@ -103,6 +104,10 @@ export default function TrackPicker({ sub, onSub, circuitIndex, onCircuit, seed,
           <p className="muted">Roll right with ← →, jump with ↑ or Space. A ramp takes you to the next lane when you roll through it on the ground (jump over it to stay). In a door, press ↑ to go through.</p>
           <div className="circuit-selector" aria-label="Select a platformer course">{PLATFORMER_COURSES.map((c, i) => <button key={c.id} className={c.id === course.id ? 'selected' : ''} aria-pressed={c.id === course.id} onClick={() => onSelectCustom(PLATFORMER_PREFIX + c.id)}><span>{String(i + 1).padStart(2, '0')}</span><strong>{c.name}</strong></button>)}</div>
           <p className="picker-selected" role="status"><Check size={14} aria-hidden="true" />Selected for the race: <b>{course.name}</b></p>
+          <h3 className="eyebrow">MY COURSES</h3>
+          <MyCourses customTrackId={customTrackId} onSelect={onSelectCustom} />
+          <h3 className="eyebrow">COMMUNITY COURSES</h3>
+          <CommunityCourses customTrackId={customTrackId} onSelect={onSelectCustom} />
         </div>;
       })()}
       {sub === 'community' && <>
