@@ -13,6 +13,7 @@ export const STORAGE_KEYS = [
   'mrr-season-v1',
   'heavy-metal-gp:story',
   'heavy-metal-gp:tracks:v1',
+  'heavy-metal-gp:platformer-courses:v1',
   'heavy-metal-gp:open-draft:v1',
   'heavy-metal-gp:coach:v2',
   'heavy-metal-gp:cosmetics:v1',

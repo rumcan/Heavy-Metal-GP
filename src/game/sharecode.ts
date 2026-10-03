@@ -808,7 +808,7 @@ function decodeBinary(bytes: Uint8Array, version = 1): TrackDef {
 
 // ── deflate / inflate (CompressionStream with zlib fallback) ──
 
-async function deflateBytes(bytes: Uint8Array): Promise<Uint8Array> {
+export async function deflateBytes(bytes: Uint8Array): Promise<Uint8Array> {
   const maybeCS = (globalThis as unknown as { CompressionStream?: unknown }).CompressionStream;
   if (typeof maybeCS === 'function') {
     try {
@@ -829,7 +829,7 @@ async function deflateBytes(bytes: Uint8Array): Promise<Uint8Array> {
   }
 }
 
-async function inflateBytes(bytes: Uint8Array): Promise<Uint8Array> {
+export async function inflateBytes(bytes: Uint8Array): Promise<Uint8Array> {
   const maybeDS = (globalThis as unknown as { DecompressionStream?: unknown }).DecompressionStream;
   if (typeof maybeDS === 'function') {
     try {
@@ -852,7 +852,7 @@ async function inflateBytes(bytes: Uint8Array): Promise<Uint8Array> {
 
 // ── base64url ──
 
-function base64UrlEncode(bytes: Uint8Array): string {
+export function base64UrlEncode(bytes: Uint8Array): string {
   // Use Buffer if available (Node), else btoa
   if (typeof Buffer !== 'undefined') {
     return Buffer.from(bytes).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/,'');
@@ -861,7 +861,7 @@ function base64UrlEncode(bytes: Uint8Array): string {
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/,'');
 }
-function base64UrlDecode(str: string): Uint8Array {
+export function base64UrlDecode(str: string): Uint8Array {
   const b64 = str.replace(/-/g, '+').replace(/_/g, '/');
   const pad = b64.length % 4 ? '='.repeat(4 - (b64.length % 4)) : '';
   const full = b64 + pad;

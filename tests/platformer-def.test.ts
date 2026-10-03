@@ -111,3 +111,50 @@ test('def: a custom course registers under platformer:my-<id>, resolves like an 
     assert.ok(game.finishOrder.length >= 3, `${game.finishOrder.length}/4 finished`);
   } finally { unregisterCustomCourse(id); }
 });
+
+// ------------------------------------------------------------------ saving and sharing
+import { COURSES_KEY, deleteCourse, loadSavedCourses, saveCourse } from '../src/game/platformer/courses-store';
+import { PLATFORMER_CODE_PREFIX, decodePlatformerCode, encodePlatformerCode } from '../src/game/platformer/share';
+import { getItem, setItem } from '../src/game/storage';
+import { customCourseList } from '../src/game/platformer/course';
+
+test('share code: pf1- round trip is exact, compact, and tampering is refused with a reason', async () => {
+  const def = flow();
+  const code = await encodePlatformerCode(def);
+  assert.ok(code.startsWith(PLATFORMER_CODE_PREFIX));
+  assert.ok(code.length < JSON.stringify(def).length, 'deflated');
+  assert.deepEqual(await decodePlatformerCode(` ${code}\n`), def);
+  await assert.rejects(decodePlatformerCode('1-abc'), /not a platformer course code/);
+  await assert.rejects(decodePlatformerCode(PLATFORMER_CODE_PREFIX + 'not base64!'), /characters/);
+  await assert.rejects(decodePlatformerCode(PLATFORMER_CODE_PREFIX + 'AAAA'), /damaged/);
+  await assert.rejects(decodePlatformerCode(code.slice(0, -12)), /damaged|name|list|must/);
+  await assert.rejects(encodePlatformerCode({ ...def, name: '' }), /needs a name/);
+});
+
+test('saved courses: save, list, overwrite, delete; each saved course is raceable as platformer:my-<id>', () => {
+  setItem(COURSES_KEY, '');
+  assert.deepEqual(loadSavedCourses(), []);
+  const a = saveCourse({ ...flow(), name: 'First' });
+  assert.ok('id' in a);
+  if (!('id' in a)) return;
+  assert.match(a.id, /^[a-z0-9]{4,24}$/);
+  assert.equal(platformerCourse(`platformer:my-${a.id}`).name, 'First');
+  const b = saveCourse({ ...blocks(), name: 'Second' });
+  assert.ok('id' in b);
+  assert.deepEqual(loadSavedCourses().map((c) => c.def.name), ['Second', 'First']);
+  const again = saveCourse({ ...flow(), name: 'First, renamed' }, a.id);
+  assert.ok('id' in again && again.id === a.id);
+  assert.equal(loadSavedCourses().length, 2);
+  assert.equal(platformerCourse(`platformer:my-${a.id}`).name, 'First, renamed');
+  assert.ok('error' in saveCourse({ ...flow(), name: '' }), 'an invalid course is not saved');
+  assert.equal(loadSavedCourses().length, 2);
+  assert.ok(deleteCourse(a.id));
+  assert.equal(deleteCourse(a.id), false);
+  assert.deepEqual(loadSavedCourses().map((c) => c.def.name), ['Second']);
+  assert.ok(!customCourseList().some((c) => c.id === `my-${a.id}`), 'a deleted course is gone from the registry');
+  // a corrupt entry in storage is dropped, not fatal
+  setItem(COURSES_KEY, JSON.stringify([{ id: 'zzzz1234', def: { version: 1, name: 'x' } }, 'junk', ...JSON.parse(getItem(COURSES_KEY)!)]));
+  assert.deepEqual(loadSavedCourses().map((c) => c.def.name), ['Second']);
+  if ('id' in b) deleteCourse(b.id);
+  setItem(COURSES_KEY, '');
+});
