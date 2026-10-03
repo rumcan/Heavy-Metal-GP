@@ -4,6 +4,8 @@
 import { mulberry32 } from '../types';
 import { LANE_BACK, LANE_FRONT, LANE_MIDDLE } from '../lanes';
 import { planFlow } from './flow';
+import { bridgeDeckAt } from './routes';
+import type { BridgeSpot, LoopSpot } from './routes';
 
 export type Lane = 0 | 1 | 2;
 
@@ -90,6 +92,9 @@ export interface CoursePlan {
   wreckers?: WreckerSpot[];
   boosts?: BoostSpot[];
   ledges?: Ledge[];
+  /** P2-21: loops (a ring a fast ball rides over) and rope bridges over chasms (absent = none). */
+  loops?: LoopSpot[];
+  bridges?: BridgeSpot[];
   /** P2-00: 'flow' = rolling slopes (src/game/platformer/flow.ts); absent = the block style. */
   style?: 'blocks' | 'flow';
 }
@@ -230,6 +235,8 @@ export function floorAt(plan: CoursePlan, lane: Lane, x: number): number | null 
     const f = list[i];
     if (x >= f.x0 && x <= f.x1) return f.y0 + ((x - f.x0) / (f.x1 - f.x0)) * (f.y1 - f.y0);
   }
+  // A rope bridge is floor over its chasm (the drivers see it as floor and roll across).
+  for (const b of plan.bridges ?? []) if (b.lane === lane) { const deck = bridgeDeckAt(b, x); if (deck !== null) return deck; }
   return null;
 }
 

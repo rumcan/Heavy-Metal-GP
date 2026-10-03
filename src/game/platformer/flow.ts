@@ -3,6 +3,8 @@
 // Pure data (a CoursePlan), deterministic from the seed. Floors are short straight pieces along a smooth curve.
 import { mulberry32 } from '../types';
 import type { BoostSpot, Bump, CoursePlan, Floor, ItemBoxSpot, Lane, LaneGate, Ledge, Spring, WreckerSpot } from './course';
+import { LOOP_PITCH, LOOP_R, LOOP_RUN_OUT, PLANK_H } from './routes';
+import type { BridgeSpot, LoopSpot } from './routes';
 
 export interface FlowTuning {
   length: number;
@@ -14,6 +16,8 @@ export interface FlowTuning {
   chasmChance: readonly number[];
   crateChance: readonly number[];
   gateEvery: number;
+  /** P2-21: plan a loop and rope bridges (default on; tests turn it off to compare). */
+  routes?: boolean;
 }
 
 export const FLOW_TUNING: FlowTuning = {
@@ -170,10 +174,58 @@ export function planFlow(seed: number, t: FlowTuning = FLOW_TUNING): CoursePlan 
     }
   }
 
+  // P2-21: at most one loop and two rope bridges. Their own random stream, so adding them moved nothing above.
+  const route = mulberry32(seed ^ 0x2f1d0a3b);
+  const loops: LoopSpot[] = [];
+  const bridges: BridgeSpot[] = [];
+  if (t.routes !== false) {
+    // The loop: on a stretch that is clear of everything and not climbing into it, with a boost pad in the run-up (a
+    // ring needs more speed than steering gives; the pad is what a driver builds it from). The floor under the ring is
+    // laid flat, with a short ramp in and out.
+    const RAMP = 120;
+    const lanes = [...LANES].sort(() => route() - 0.5);
+    search: for (const lane of lanes) {
+      for (let bx = START_FLAT + 3000; bx < end - 3000; bx += 700) {
+        // Snap to this lane's own floor pieces (their grid shifts after every chasm), so the flat replaces whole pieces.
+        const laneFloors = floors.filter((f) => f.lane === lane).sort((p, q) => p.x0 - q.x0);
+        const pieceAt = (x: number) => laneFloors.find((f) => x >= f.x0 && x < f.x1);
+        const startPiece = pieceAt(bx + route() * 500), endPiece = startPiece && pieceAt(startPiece.x0 + RAMP * 2 + LOOP_PITCH + 60);
+        if (!startPiece || !endPiece) continue;
+        const a = startPiece.x0, b = endPiece.x1, entry = a + RAMP, flatEnd = b - RAMP;
+        if (flatEnd - entry < LOOP_PITCH + 40) continue;
+        const y0 = Math.round(heightAt(lane, entry));
+        const from = a - 460, to = b + LOOP_RUN_OUT;
+        if (!clearTrack(lane, from, to) || taken(lane, from, to)) continue;
+        if (heightAt(lane, entry) - heightAt(lane, a) < -2 || Math.abs(heightAt(lane, b) - y0) > 60 || Math.abs(y0 - heightAt(lane, a)) > 60) continue;
+        // Lay the flat: drop this lane's floor pieces in [a, b], then the ramps and the flat.
+        for (let i = floors.length - 1; i >= 0; i--) if (floors[i].lane === lane && floors[i].x0 >= a && floors[i].x1 <= b) floors.splice(i, 1);
+        floors.push({ lane, x0: a, y0: heightAt(lane, a), x1: entry, y1: y0 }, { lane, x0: entry, y0, x1: flatEnd, y1: y0 }, { lane, x0: flatEnd, y0, x1: b, y1: heightAt(lane, b) });
+        loops.push({ lane, x: entry, y: y0, r: LOOP_R, pitch: LOOP_PITCH });
+        boosts.push({ lane, x: entry - 420, w: 160 });
+        break search;
+      }
+    }
+    // Rope bridges: over up to two chasms (not the shortcut ones with a spring and a ledge, not near the loop).
+    const nearLoop = (x: number) => loops.some((l) => x > l.x - 1500 && x < l.x + 1500);
+    const eligible: { lane: Lane; a: number; b: number }[] = [];
+    for (const lane of LANES) for (const [a, b] of chasms.get(lane)!) {
+      const shortcut = springs.some((s) => s.lane === lane && Math.abs(s.x - (a - 300)) < 10);
+      if (!shortcut && !nearLoop(a) && !gates.some((g) => (g.lane === lane || g.to === lane) && b > g.x - 60 && a < g.x + g.w + 60)) eligible.push({ lane, a, b });
+    }
+    for (let n = 0; n < 2 && eligible.length; n++) {
+      const pickAt = Math.floor(route() * eligible.length);
+      const { lane, a, b } = eligible.splice(pickAt, 1)[0];
+      if (bridges.some((o) => Math.abs(o.x0 - a) < 1500)) continue;
+      const span = b - a;
+      const planks = Math.ceil(span / 20);
+      bridges.push({ lane, x0: a, y0: heightAt(lane, a) + PLANK_H / 2, x1: b, y1: heightAt(lane, b) + PLANK_H / 2, planks, slack: Math.max(8, Math.min(14, Math.round(span * 0.09))) });
+    }
+  }
+
   const path: { x: number; y: number }[] = [];
   for (let x = 0; x <= t.length; x += 200) path.push({ x, y: heightAt(1, x) - 30 });
   const finishX = end + 360;
   const finishY = heightAt(1, finishX);
   const height = Math.max(...floors.map((f) => Math.max(f.y0, f.y1))) + 900;
-  return { seed, style: 'flow' as const, width: t.length, height, floors, bumps: rocks, gates, path, springs, ledges, itemBoxes, wreckers, boosts, startX: 520, startY: t.startY, finishX, finishY };
+  return { seed, style: 'flow' as const, width: t.length, height, floors, bumps: rocks, gates, path, springs, ledges, itemBoxes, wreckers, boosts, loops, bridges, startX: 520, startY: t.startY, finishX, finishY };
 }
