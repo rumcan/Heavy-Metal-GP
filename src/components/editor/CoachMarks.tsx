@@ -1,23 +1,25 @@
 /**
- * MB-09. 5-step coach marks for first-time Workshop players.
+ * MB-09 / P2-15. The Workshop tour: Zapp walks a first-time builder through the Workshop in nine voiced steps
+ * (src/components/editor/tour/steps.ts): New track, the pieces, editing, track settings, Test drive, Validate,
+ * Save and My tracks, Publish, and where to play your track.
  *
- * Steps: place a ramp, add a loop, test drive, validate, share.
- * The overlay highlights the relevant control via data-coach attributes and
- * advances when the player performs the action (or clicks Next). Dismissal is
- * persisted so returning players aren't nagged, but a "Show tutorial" button can
- * reopen it.
+ * Each step spotlights its control via a data-coach attribute and speaks its line (captioned on the card). It moves on
+ * with Next, or when the player does the thing (starts a test drive, passes validation). It opens by itself the first
+ * time the Workshop opens; Skip is remembered, and the Tutorial button replays it.
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { X, ChevronRight, ChevronLeft, Sparkles } from 'lucide-react';
 import * as storage from '../../game/storage';
+import { playVoice, stopVoice } from '../../game/voice';
 import type { TrackDef } from '../../game/trackdef';
+import { TOUR_STEPS, TOUR_VOICE_SET, tourAutoAdvance, tourCaption, tourVoiceId } from './tour/steps';
 
-// v2: v1 saves were pushed to step 3 by the old auto-advance, so everyone restarts at step 1 once.
-const KEY = 'heavy-metal-gp:coach:v2';
+// v3: the voiced tour (P2-15) replaces the old 5 steps, so everyone sees it once.
+const KEY = 'heavy-metal-gp:coach:v3';
 
 interface CoachState {
   dismissed: boolean;
-  step: number; // 0..4, 5 = done
+  step: number; // 0..TOUR_STEPS.length-1, TOUR_STEPS.length = done
 }
 
 function loadCoach(): CoachState {
@@ -41,74 +43,55 @@ export interface CoachProps {
   armed: string | null;
   onClose: () => void;
   onReset?: () => void;
-  /** Force open even if dismissed (for Help menu) */
+  /** Force open even if dismissed (the Tutorial button) */
   forceOpen?: boolean;
 }
 
-interface Step {
-  id: string;
-  title: string;
-  body: string;
-  target: string; // data-coach value
-  cta: string;
-}
-
-const STEPS: Step[] = [
-  { id: 'ramp', title: 'Step 1 — Place a ramp', body: 'Pick Ramp in the palette (Rails) then click the canvas to drop it. Drag its ends to set the angle.', target: 'palette-ramp', cta: 'Place a ramp' },
-  { id: 'loop', title: 'Step 2 — Add a loop', body: 'Pick Loop, click to place it where the marble will have speed. Loops need a run-up — the ramp you just placed.', target: 'palette-loop', cta: 'Add a loop' },
-  { id: 'test', title: 'Step 3 — Test drive', body: 'Hit Test drive to roll a marble through your track. Esc returns — your edits and camera are kept.', target: 'testdrive', cta: 'Test drive' },
-  { id: 'validate', title: 'Step 4 — Validate', body: 'Press Validate to race 10 AI marbles through your track. At least 9 must finish, with nobody getting stuck, before you can share it.', target: 'validate', cta: 'Validate' },
-  { id: 'share', title: 'Step 5 — Share', body: 'When VALID, Share copies a compressed code. Paste it online to host a custom race, or send it to a friend.', target: 'share', cta: 'Share' },
-];
-
-export default function CoachMarks({ def, testing, canShare, forceOpen, onClose }: CoachProps) {
+export default function CoachMarks({ testing, canShare, forceOpen, onClose }: CoachProps) {
   const [state, setState] = useState<CoachState>(() => loadCoach());
   const [open, setOpen] = useState(false);
   const [rect, setRect] = useState<DOMRect | null>(null);
 
-  const stepIdx = Math.min(state.step, STEPS.length);
-  const done = stepIdx >= STEPS.length;
-  const step = !done ? STEPS[stepIdx] : null;
+  const stepIdx = Math.min(state.step, TOUR_STEPS.length);
+  const done = stepIdx >= TOUR_STEPS.length;
+  const step = !done ? TOUR_STEPS[stepIdx] : null;
 
-  // Auto-open on first visit
+  const save = (ns: CoachState) => { setState(ns); saveCoach(ns); };
+
+  // Auto-open on the first visit; the Tutorial button replays from the start.
   useEffect(() => {
-    if (forceOpen) { setOpen(true); return; }
-    if (!state.dismissed && state.step < STEPS.length) {
+    if (forceOpen) {
+      if (loadCoach().step >= TOUR_STEPS.length || loadCoach().dismissed) save({ dismissed: false, step: 0 });
+      setOpen(true);
+      return;
+    }
+    if (!state.dismissed && state.step < TOUR_STEPS.length) {
       const t = setTimeout(() => setOpen(true), 600);
       return () => clearTimeout(t);
     }
-  }, [forceOpen, state.dismissed, state.step]);
+  }, [forceOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Advance when the player actually does the step. The Workshop usually opens on a copy of a calendar
-  // circuit that already has ramps and loops, so "the track has a ramp" can't count as placing one: count
-  // pieces against a baseline taken when the step began, and only advance when the player adds one.
-  const rampCount = def.pieces.filter((p) => p.t === 'ramp' || p.t === 'ice').length;
-  const loopCount = def.pieces.filter((p) => p.t === 'loop').length;
-  const baseline = useRef<{ step: number; ramps: number; loops: number } | null>(null);
+  // Doing the step moves the tour on.
   useEffect(() => {
-    if (!open || done) { baseline.current = null; return; }
-    if (!baseline.current || baseline.current.step !== stepIdx) {
-      baseline.current = { step: stepIdx, ramps: rampCount, loops: loopCount };
-      return;
-    }
-    let next = stepIdx;
-    if (stepIdx === 0 && rampCount > baseline.current.ramps) next = 1;
-    else if (stepIdx === 1 && loopCount > baseline.current.loops) next = 2;
-    else if (stepIdx === 2 && testing) next = 3;
-    else if (stepIdx === 3 && canShare) next = 4;
-    if (next !== stepIdx) {
-      const ns = { ...state, step: next };
-      setState(ns); saveCoach(ns);
-    }
-  }, [rampCount, loopCount, testing, canShare, open, done, stepIdx, state]);
+    if (!open || done) return;
+    const next = tourAutoAdvance(stepIdx, { testing, valid: canShare });
+    if (next !== stepIdx) save({ ...state, step: next });
+  }, [testing, canShare, open, done, stepIdx]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Track target rect for spotlight
+  // Zapp speaks each step; closing the tour (or leaving the Workshop) cuts him off.
+  useEffect(() => {
+    if (!open || !step) return;
+    void playVoice(TOUR_VOICE_SET, tourVoiceId(step));
+    return () => stopVoice();
+  }, [open, step]);
+
+  // Track the target rect for the spotlight. A control that is hidden (the phone palette drawer) gets no spotlight.
   useLayoutEffect(() => {
-    if (!open || !step) { setRect(null); return; }
+    if (!open || !step?.target) { setRect(null); return; }
     const update = () => {
-      const el = document.querySelector(`[data-coach=\"${step.target}\"]`) as HTMLElement | null;
-      if (el) setRect(el.getBoundingClientRect());
-      else setRect(null);
+      const el = document.querySelector(`[data-coach="${step.target}"]`) as HTMLElement | null;
+      const r = el?.getBoundingClientRect();
+      setRect(r && r.width > 0 && r.height > 0 ? r : null);
     };
     update();
     window.addEventListener('resize', update);
@@ -117,55 +100,31 @@ export default function CoachMarks({ def, testing, canShare, forceOpen, onClose 
     return () => { window.removeEventListener('resize', update); window.removeEventListener('scroll', update, true); clearInterval(id); };
   }, [open, step]);
 
-  const dismiss = () => {
-    const ns: CoachState = { dismissed: true, step: stepIdx };
-    setState(ns); saveCoach(ns);
-    setOpen(false);
-    onClose();
-  };
+  const close = () => { setOpen(false); onClose(); };
+  const dismiss = () => { save({ dismissed: true, step: stepIdx }); close(); };
   const next = () => {
-    const n = Math.min(stepIdx + 1, STEPS.length);
-    const ns: CoachState = { ...state, step: n };
-    if (n >= STEPS.length) ns.dismissed = true;
-    setState(ns); saveCoach(ns);
-    if (n >= STEPS.length) { setOpen(false); onClose(); }
+    const n = Math.min(stepIdx + 1, TOUR_STEPS.length);
+    save({ ...state, step: n, dismissed: n >= TOUR_STEPS.length });
+    if (n >= TOUR_STEPS.length) close();
   };
-  const prev = () => {
-    const n = Math.max(0, stepIdx - 1);
-    const ns = { ...state, step: n, dismissed: false };
-    setState(ns); saveCoach(ns);
-  };
-  const resetAndOpen = () => {
-    const ns: CoachState = { dismissed: false, step: 0 };
-    setState(ns); saveCoach(ns);
-    setOpen(true);
-  };
+  const prev = () => save({ ...state, step: Math.max(0, stepIdx - 1), dismissed: false });
+  const replay = () => { save({ dismissed: false, step: 0 }); setOpen(true); };
 
-  // Expose reset globally via custom event for parent to call? Instead parent controls via forceOpen.
-  // Also allow external reset via window (for help button)
   useEffect(() => {
-    (window as unknown as { __coachReset?: () => void }).__coachReset = resetAndOpen;
+    (window as unknown as { __coachReset?: () => void }).__coachReset = replay;
     return () => { delete (window as unknown as { __coachReset?: () => void }).__coachReset; };
-  }, []);
-
-  const style = useMemo(() => {
-    // Keep the card bottom-centered so it never clips or goes off-screen;
-    // the spotlight still points at the target. Bottom-center is also the
-    // Blizzard tutorial convention and works on mobile.
-    void rect;
-    return { bottom: '20px', left: '50%', transform: 'translateX(-50%)', top: 'auto' } as const;
-  }, [rect]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!open || done) {
     if (forceOpen && done) {
       return (
-        <div className="coach-overlay" role="dialog" aria-modal="true" aria-label="Tutorial complete">
+        <div className="coach-overlay" role="dialog" aria-modal="true" aria-label="Tour complete">
           <div className="coach-card is-done">
-            <h3><Sparkles size={16} /> You built it!</h3>
-            <p>Ramp, loop, test, validate, share — you are a Workshop goblin now. Make another track or close.</p>
+            <h3><Sparkles size={16} /> That's the tour!</h3>
+            <p>Build, test, validate, publish, race. You are a Workshop goblin now.</p>
             <div className="coach-actions">
-              <button className="button-primary" onClick={() => { const ns: CoachState = { dismissed: true, step: STEPS.length }; setState(ns); saveCoach(ns); setOpen(false); onClose(); }}>Done</button>
-              <button className="button-secondary" onClick={resetAndOpen}>Replay</button>
+              <button className="button-primary" onClick={() => { save({ dismissed: true, step: TOUR_STEPS.length }); close(); }}>Done</button>
+              <button className="button-secondary" onClick={replay}>Replay</button>
             </div>
           </div>
         </div>
@@ -176,35 +135,29 @@ export default function CoachMarks({ def, testing, canShare, forceOpen, onClose 
 
   return (
     <div className="coach-overlay" role="dialog" aria-modal="true" aria-label={step!.title}>
-      {/* Spotlight cutout via box-shadow */}
       {rect && (
         <div
           className="coach-spot"
           aria-hidden="true"
-          style={{
-            top: rect.top - 6,
-            left: rect.left - 6,
-            width: rect.width + 12,
-            height: rect.height + 12,
-          }}
+          style={{ top: rect.top - 6, left: rect.left - 6, width: rect.width + 12, height: rect.height + 12 }}
         />
       )}
-      <div className="coach-card" style={style as unknown as React.CSSProperties}>
+      {/* Bottom-centred so it never clips on a phone; the spotlight still points at the control. */}
+      <div className="coach-card" style={{ bottom: '20px', left: '50%', transform: 'translateX(-50%)', top: 'auto' }}>
         <header className="coach-head">
-          <span className="coach-step">{stepIdx + 1} / {STEPS.length}</span>
+          <span className="coach-step">{stepIdx + 1} / {TOUR_STEPS.length}</span>
           <h3>{step!.title}</h3>
           <button className="icon-button" onClick={dismiss} aria-label="Dismiss tutorial"><X size={14} /></button>
         </header>
-        <p className="coach-body">{step!.body}</p>
-        {stepIdx === 0 && <p className="coach-hint">Tip: Grid snaps to 25 u — toggle it in the toolbar.</p>}
+        <p className="coach-body"><b className="coach-speaker">Zapp:</b> {tourCaption(step!)}</p>
         <div className="coach-dots" aria-hidden="true">
-          {STEPS.map((_, i) => <span key={i} className={i === stepIdx ? 'is-active' : i < stepIdx ? 'is-done' : ''} />)}
+          {TOUR_STEPS.map((_, i) => <span key={i} className={i === stepIdx ? 'is-active' : i < stepIdx ? 'is-done' : ''} />)}
         </div>
         <div className="coach-actions">
           <button className="button-secondary" onClick={dismiss}>Skip</button>
           <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
             {stepIdx > 0 && <button className="button-secondary" onClick={prev}><ChevronLeft size={14} /> Back</button>}
-            <button className="button-primary" onClick={next}>{stepIdx === STEPS.length - 1 ? 'Done' : 'Next'} <ChevronRight size={14} /></button>
+            <button className="button-primary" onClick={next}>{stepIdx === TOUR_STEPS.length - 1 ? 'Done' : 'Next'} <ChevronRight size={14} /></button>
           </div>
         </div>
       </div>

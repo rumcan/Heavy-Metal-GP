@@ -14,7 +14,7 @@ export const STORAGE_KEYS = [
   'heavy-metal-gp:story',
   'heavy-metal-gp:tracks:v1',
   'heavy-metal-gp:open-draft:v1',
-  'heavy-metal-gp:coach:v2',
+  'heavy-metal-gp:coach:v3',
   'heavy-metal-gp:cosmetics:v1',
   'heavy-metal-gp:infinity:v1',
   'heavy-metal-gp:community-local:v1',

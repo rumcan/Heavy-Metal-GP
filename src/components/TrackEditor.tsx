@@ -1166,8 +1166,8 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
         </nav>
         <div className="header-tools">
           <span className="editor-seed">SEED <b>{seed.toString(16).slice(0, 6).toUpperCase()}</b></span>
-          <button className="text-button" onClick={() => setCoachForced(true)} title="Show the 5-step Workshop tutorial">Tutorial</button>
-          <button className="button-secondary" onClick={() => setShowNew(true)} title="Start a new track — blank, calendar copy or starter template">New track</button>
+          <button className="text-button" onClick={() => setCoachForced(true)} title="Zapp's voiced tour of the Workshop">Tutorial</button>
+          <button className="button-secondary" data-coach="new-track" onClick={() => setShowNew(true)} title="Start a new track — blank, calendar copy or starter template">New track</button>
           <button className="icon-button mobile-only" onClick={() => setRules(true)} aria-label="How to play">
             <CircleHelp size={17} />
           </button>
@@ -1191,7 +1191,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
             </button>
           </header>
           <button className="button-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={() => setShowNew(true)}><LayoutGrid size={13} /> New track</button>
-          <PiecePalette side={side} active={armed} onPick={(id) => setArmed((cur) => (cur === id ? null : id))} onShowToast={(msg) => { setDraftMsg(msg); setTimeout(() => setDraftMsg(null), 3500); }} />
+          <div data-coach="palette"><PiecePalette side={side} active={armed} onPick={(id) => setArmed((cur) => (cur === id ? null : id))} onShowToast={(msg) => { setDraftMsg(msg); setTimeout(() => setDraftMsg(null), 3500); }} /></div>
           <div className="editor-inspector">
             <header className="eyebrow"><b>02</b> PROPERTIES</header>
             <PropertiesPanel selected={selected} pieces={circuit.def.pieces} onChange={handlePropChange} onChangeMany={handleBulkChange} />
@@ -1219,7 +1219,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
             }}
           />
           <SharePanel def={circuit.def} validation={validation} validating={validating} onImport={handleImportTrack} />
-          <div className="editor-savebar" role="toolbar" aria-label="Save and share">
+          <div className="editor-savebar" role="toolbar" aria-label="Save and share" data-coach="save">
             <button className="button-secondary" onClick={handleSaveDraft} title="Save as draft — always allowed, even with errors">
               <Save size={13} /> Save draft
             </button>
@@ -1234,6 +1234,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
             </button>
             <button
               className="button-primary"
+              data-coach="publish"
               onClick={() => setPublishOpen(true)}
               disabled={!validation?.canShare}
               title={validation?.canShare ? 'Publish this track to Community tracks for everyone to race' : 'Run Validate first: only tracks that pass can be published'}
@@ -1247,7 +1248,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
         </section>
 
         <section className="editor-stage">
-          <div className="editor-toolbar">
+          <div className="editor-toolbar" data-coach="track-settings">
             <label className="editor-field editor-name">
               <span className="eyebrow">Track name</span>
               <TrackNameInput value={circuit.def.name} onCommit={editName} />
@@ -1308,7 +1309,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
             </button>
           </div>
 
-          <div className="editor-editbar">
+          <div className="editor-editbar" data-coach="editbar">
             <button className="icon-button" onClick={handleUndo} disabled={!canUndo} title="Undo (Ctrl+Z)" aria-label="Undo">
               <Undo2 size={14} />
             </button>
