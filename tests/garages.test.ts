@@ -107,7 +107,7 @@ test('The tab can be remembered before any garage has been saved, and the migrat
 });
 
 test('Every tab the screen draws can be remembered, and an unknown one is ignored', () => {
-  assert.deepEqual([...HOME_TABS], ['story', 'championship', 'quick', 'online', 'workshop']);
+  assert.deepEqual([...HOME_TABS], ['story', 'championship', 'quick', 'online', 'infinity', 'workshop']);
   saveGarages(loadGarages(PORTRAITS));
   storage.setItem(GARAGES_KEY, JSON.stringify({ ...JSON.parse(storage.getItem(GARAGES_KEY)!), tab: 'community' }));
   assert.equal(loadHomeTab(), DEFAULT_HOME_TAB, 'the Community button is gone, and so is its tab');

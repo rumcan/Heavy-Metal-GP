@@ -50,8 +50,11 @@ export function buildPlatformerTrack(seed: number, theme: TrackTheme, courseId?:
   return trackFromPlan(courseId ? planOfficial(platformerCourse(courseId)) : planCourse(seed), seed, theme);
 }
 
-/** The Track for any course plan (an official one, a generated one, or one made by hand in a test or the Workshop). */
-export function trackFromPlan(plan: CoursePlan, seed: number, theme: TrackTheme): Track {
+/**
+ * The bodies of everything a plan describes, except the shared walls and the start gate. `trackFromPlan` builds a whole
+ * course with it; Infinity mode builds one chunk of land at a time.
+ */
+export function planBodies(plan: CoursePlan): { bodies: Matter.Body[]; itemBoxes: Matter.Body[]; wreckers: Matter.Body[] } {
   const bodies: Matter.Body[] = [];
   for (const f of plan.floors) {
     const depth = Math.max(240, plan.height - Math.max(f.y0, f.y1));
@@ -97,6 +100,12 @@ export function trackFromPlan(plan: CoursePlan, seed: number, theme: TrackTheme)
     body.plugin = { kind: 'boost', dir, lane: b.lane };
     bodies.push(body);
   }
+  return { bodies, itemBoxes, wreckers };
+}
+
+/** The Track for any course plan (an official one, a generated one, or one made by hand in a test or the Workshop). */
+export function trackFromPlan(plan: CoursePlan, seed: number, theme: TrackTheme): Track {
+  const { bodies, itemBoxes, wreckers } = planBodies(plan);
   // Shared walls: behind the grid and after the run-out.
   bodies.push(box(-240, plan.startY - 1400, 40, 1400 + FLOOR_DEPTH, null, 'wall'));
   bodies.push(box(plan.width + 200, -400, 40, plan.height + 400, null, 'wall'));

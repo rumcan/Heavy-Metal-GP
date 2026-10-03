@@ -22,7 +22,7 @@ const STAT_META = [
 const COLOR_NAMES = ['Race Red', 'Glacier', 'Coral', 'Tangerine', 'Violet', 'Pearl', 'Mint'];
 
 /** What the pane's title line says it is the goblin FOR. */
-const MODE_LABEL: Record<GarageMode, string> = { story: 'Story', championship: 'Championship', quick: 'Quick race', online: 'Online' };
+const MODE_LABEL: Record<GarageMode, string> = { story: 'Story', championship: 'Championship', quick: 'Quick race', online: 'Online', infinity: 'Infinity' };
 
 export interface GaragePanelProps {
   /** Which mode's goblin this is: it only names the pane. The garage itself is the `garage` prop. */

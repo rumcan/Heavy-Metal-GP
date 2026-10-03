@@ -40,6 +40,7 @@ import OnlineTab from './home/OnlineTab';
 import QuickRaceTab from './home/QuickRaceTab';
 import StoryTab from './home/StoryTab';
 import WorkshopTab from './home/WorkshopTab';
+import InfinityTab from './home/InfinityTab';
 import type { QuickSub } from './home/TrackPicker';
 import { isPlatformerPick, platformerCourse } from '../game/platformer/course';
 import './home/home.css';
@@ -94,6 +95,8 @@ export interface SetupScreenProps {
   onRank?: () => void;
   /** MB-02: open the full-screen Workshop (the track editor). */
   onWorkshop?: () => void;
+  /** P2-24: roll an Infinity run. */
+  onStartInfinity?: () => void;
 
   /** Open on this tab instead of the one the player left on. */
   initialTab?: HomeTab;
@@ -108,6 +111,7 @@ function paneLabels(tab: HomeTab, seasonStarted: boolean): [string, string, stri
     case 'championship': return ['Season', 'Driver', seasonStarted ? 'Standings' : 'Grid'];
     case 'quick': return ['Circuit', 'Driver', 'Grid'];
     case 'online': return ['Play', 'Driver', 'Field'];
+    case 'infinity': return ['Roll', 'Driver', 'Records'];
     case 'workshop': return ['Tracks', 'Draft', 'Community'];
   }
 }
@@ -176,6 +180,8 @@ export default function SetupScreen(props: SetupScreenProps) {
         const offline = isOfflineMockRealtime();
         return { label: 'Host', onClick: onHostGame ?? (() => undefined), disabled: !doors || mpBusy || searching || offline, hint: !doors || offline ? NO_ROOM_SERVER_MESSAGE : 'A friendly room, up to six drivers.' };
       }
+      case 'infinity':
+        return { label: 'Roll', onClick: props.onStartInfinity ?? (() => undefined), disabled: !props.onStartInfinity, hint: 'No rivals, no timer. Roll for as long as you like.' };
       case 'workshop':
         return { label: 'New track', onClick: () => setNewTrackOpen(true), hint: 'Build it, test it, race it.' };
     }
@@ -269,6 +275,14 @@ export default function SetupScreen(props: SetupScreenProps) {
           onRejoin: props.onRejoin,
           onDismissRejoin: props.onDismissRejoin,
         } : undefined}
+        account={account}
+        onShop={onShop}
+        rank={rank}
+        onRank={onRank}
+      />}
+      {tab === 'infinity' && <InfinityTab
+        garage={garages.infinity}
+        onGarage={(g) => onGarage('infinity', g)}
         account={account}
         onShop={onShop}
         rank={rank}
