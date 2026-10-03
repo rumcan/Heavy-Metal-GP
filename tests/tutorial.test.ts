@@ -1,8 +1,11 @@
-// P2-13 (#119) — the tutorial lesson state machine (src/game/story/tutorial.ts).
-// Covers: advance-on-action, NO advance without the action, zone gating, the full lesson
-// order, skip, replay, and the training roster.
+// P2-13 (#119) — the tutorial lesson state machine (src/game/story/tutorial.ts) and its
+// voice manifest. Covers: advance-on-action, NO advance without the action, zone gating,
+// the full lesson order, skip, replay, the training roster, and every spoken line.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   TUTORIAL_LESSONS, TUTORIAL_SEED, TUTORIAL_SHORTCUT, TUTORIAL_VOICE_SET,
@@ -10,6 +13,12 @@ import {
 } from '../src/game/story/tutorial';
 import type { TutorialFrame, TutorialState } from '../src/game/story/tutorial';
 import { planOfficial, PLATFORMER_COURSES } from '../src/game/platformer/course';
+import { subtitleText } from '../src/game/voice';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const MANIFEST = JSON.parse(readFileSync(path.join(ROOT, 'src/voice/manifests/tutorial.json'), 'utf8')) as
+  { id: string; speaker: string; text: string }[];
+const CAST = JSON.parse(readFileSync(path.join(ROOT, 'src/voice/cast.json'), 'utf8')) as Record<string, unknown>;
 
 const driver = { name: 'Sprocket', color: '#d63e2e', portrait: 3, stats: { weight: 5, speed: 5, bounce: 5 } };
 
@@ -152,6 +161,29 @@ test('tutorial: replay hands back a brand-new machine', () => {
   assert.deepEqual(replay, newTutorial());
   assert.notDeepEqual(replay, finished);
   assert.equal(currentLesson(replay)?.id, 'steer');
+});
+
+test('tutorial manifest: every line has an id, a text and a cast speaker', () => {
+  assert.ok(Array.isArray(MANIFEST) && MANIFEST.length >= 7, 'welcome + one line per lesson');
+  const seen = new Set<string>();
+  for (const line of MANIFEST) {
+    assert.match(line.id, /^[a-z0-9-]+$/, `${line.id ?? 'line'} id is kebab-case`);
+    assert.ok(!seen.has(line.id), `${line.id} appears once`);
+    seen.add(line.id);
+    assert.ok(typeof line.speaker === 'string' && CAST[line.speaker], `${line.id} speaks with a cast voice`);
+    assert.ok(typeof line.text === 'string' && line.text.trim(), `${line.id} says something`);
+    assert.ok(line.text.length <= 400, `${line.id} stays one speakable breath`);
+    assert.ok(line.id.startsWith(`${TUTORIAL_VOICE_SET}-`), `${line.id} belongs to the tutorial set`);
+  }
+});
+
+test('tutorial manifest: every lesson speaks its own line, and the captions match', () => {
+  for (const lesson of TUTORIAL_LESSONS) {
+    const line = MANIFEST.find((entry) => entry.id === lesson.line);
+    assert.ok(line, `lesson ${lesson.id} has a voice line (${lesson.line})`);
+    assert.equal(subtitleText(line!.text), lesson.text, `the ${lesson.id} caption is what the narrator says`);
+  }
+  assert.ok(MANIFEST.some((entry) => entry.id === 'tutorial-welcome'), 'the ride opens with a welcome line');
 });
 
 test('tutorial: the grid is the player plus exactly two slow rivals', () => {
