@@ -1,0 +1,47 @@
+[
+  {
+    "id": "tour-new",
+    "speaker": "zapp-gutwrench",
+    "text": "[cheerful] Oi, builder! Zapp here. Every track starts with New track: a blank one, a copy of a championship track, a starter, or one I generate for you."
+  },
+  {
+    "id": "tour-palette",
+    "speaker": "zapp-gutwrench",
+    "text": "These are your pieces, sorted into groups. Tap one, then tap the map to drop it. Each picture shows what it does, pegs and all."
+  },
+  {
+    "id": "tour-edit",
+    "speaker": "zapp-gutwrench",
+    "text": "Tap a piece to select it. Drag to move it, use the handles to turn and stretch it. The cog opens its settings, Group glues pieces together, the bin deletes, and the arrows undo and redo."
+  },
+  {
+    "id": "tour-settings",
+    "speaker": "zapp-gutwrench",
+    "text": "Up here you name your track, pick its theme, and set how long it runs."
+  },
+  {
+    "id": "tour-test",
+    "speaker": "zapp-gutwrench",
+    "text": "[excited] Now the fun bit! Test drive rolls a marble through it right away. Escape brings you back, nothing lost."
+  },
+  {
+    "id": "tour-validate",
+    "speaker": "zapp-gutwrench",
+    "text": "Validate races ten marbles down your track. Nine must finish and nobody may get stuck. Each warning says what is wrong; tap it to jump to the spot."
+  },
+  {
+    "id": "tour-save",
+    "speaker": "zapp-gutwrench",
+    "text": "Save draft any time, even half built. Your tracks wait in My tracks, ready to load, rename or copy."
+  },
+  {
+    "id": "tour-publish",
+    "speaker": "zapp-gutwrench",
+    "text": "Once it passes, Publish puts it in Community tracks. Give it a name and tags, and goblins everywhere can race it and upvote it."
+  },
+  {
+    "id": "tour-play",
+    "speaker": "zapp-gutwrench",
+    "text": "[laughs] And to race it: Quick Race, then My tracks or Community. Or host an online lobby and pick it as the circuit. Off you go, build something mad!"
+  }
+]

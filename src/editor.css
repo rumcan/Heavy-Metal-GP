@@ -314,6 +314,7 @@
 .coach-head h3 { flex: 1; margin: 0; font: 700 11px/1.2 var(--sans); letter-spacing: 0.4px; color: #fff; }
 .coach-step { font: 8px var(--mono); letter-spacing: 0.8px; color: #ffd18a; background: rgba(255,209,138,0.12); border: 1px solid rgba(255,209,138,0.3); padding: 2px 6px; border-radius: 99px; }
 .coach-body { margin: 0; font: 10px/1.5 var(--sans); color: #c3cdd7; }
+.coach-speaker { color: #ffb347; margin-right: 2px; }
 .coach-hint { margin: 0; font: 8px var(--mono); color: #8ea2b5; background: #0b1016; border: 1px dashed #2b3644; padding: 6px 8px; border-radius: 4px; }
 .coach-dots { display: flex; gap: 5px; align-items: center; }
 .coach-dots span { width: 22px; height: 4px; border-radius: 99px; background: #1e2936; transition: background .2s; }
