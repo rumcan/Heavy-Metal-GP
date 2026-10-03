@@ -10,6 +10,8 @@
  * create/like. So in that mode the same calls run against a small device-only store, and the UI says so.
  * Nothing written there ever reaches RUN.world.
  */
+import { PLATFORMER_CODE_PREFIX, decodePlatformerCode, encodePlatformerCode } from './platformer/share';
+import type { PlatformerDef } from './platformer/def';
 import * as storage from './storage';
 import { decodeShareCode, encodeShareCode } from './sharecode';
 import type { TrackDef } from './trackdef';
@@ -31,9 +33,14 @@ export interface CommunityTrack {
   upvotes: number;
   upvotedByMe: boolean;
   createdAt: number;
-  /** The track as a share code; decode with `decodeCommunityTrack`. */
+  /** The track as a share code; decode with `decodeCommunityTrack`. A platformer course carries a `pf1-` code instead. */
   code: string;
+  /** P2-22: 'course' for a platformer course (its code is a `pf1-` code), absent for a classic track. */
+  kind?: 'course';
 }
+
+/** Is this entry a platformer course? (Courses share the community store with tracks; the two never mix in a list.) */
+export const isCourseEntry = (t: Pick<CommunityTrack, 'code'>): boolean => t.code.startsWith(PLATFORMER_CODE_PREFIX);
 
 export interface CommunityPage {
   tracks: CommunityTrack[];
@@ -127,19 +134,21 @@ function fromEntry(e: UgcEntryLike): CommunityTrack | null {
     upvotedByMe: !!e.isLikedByMe,
     createdAt: e.createdAt,
     code,
+    ...(code.startsWith(PLATFORMER_CODE_PREFIX) ? { kind: 'course' as const } : {}),
   };
 }
 
 /** One page of community tracks: most upvoted first (`top`) or newest first (`new`). */
-export async function browseCommunity(sort: CommunitySort, cursor?: string): Promise<CommunityPage> {
+export async function browseCommunity(sort: CommunitySort, cursor?: string, kind: 'track' | 'course' = 'track'): Promise<CommunityPage> {
+  const wanted = (t: CommunityTrack) => isCourseEntry(t) === (kind === 'course');
   if (await isLocalCommunity()) {
-    const list = loadLocal().slice();
+    const list = loadLocal().filter(wanted);
     list.sort(sort === 'top' ? (a, b) => b.upvotes - a.upvotes || b.createdAt - a.createdAt : (a, b) => b.createdAt - a.createdAt);
     return pageOf(list, cursor);
   }
   const api = (await sdk())!;
   const res = await api.ugc.browse({ contentType: CONTENT_TYPE, sortBy: sort === 'top' ? 'mostLiked' : 'recent', sortOrder: 'desc', limit: PAGE_SIZE, cursor });
-  return { tracks: res.entries.map(fromEntry).filter((t): t is CommunityTrack => t !== null), cursor: res.nextCursor };
+  return { tracks: res.entries.map(fromEntry).filter((t): t is CommunityTrack => t !== null && wanted(t)), cursor: res.nextCursor };
 }
 
 export class PublishError extends Error {}
@@ -165,6 +174,35 @@ export async function publishTrack(def: TrackDef, tags: string[]): Promise<Commu
   } catch (e) {
     throw new PublishError(e instanceof PublishError ? e.message : 'Publishing failed. Check your connection and try again.');
   }
+}
+
+/** Publish a (validated) platformer course for everyone: the same store and rules as a track, carried as a `pf1-` code. */
+export async function publishCourse(def: PlatformerDef, tags: string[]): Promise<CommunityTrack> {
+  const name = def.name.trim() || 'Untitled course';
+  const picked = tags.filter((t) => (COMMUNITY_TAGS as readonly string[]).includes(t)).slice(0, MAX_TAGS);
+  let code: string;
+  try { code = await encodePlatformerCode(def); } catch (e) { throw new PublishError(e instanceof Error ? e.message : 'This course is not ready to publish.'); }
+  if (await isLocalCommunity()) {
+    const track: CommunityTrack = { id: `local-${Date.now().toString(36)}`, name, author: await myName(), tags: picked, upvotes: 0, upvotedByMe: false, createdAt: Date.now(), code, kind: 'course' };
+    saveLocal([track, ...loadLocal()]);
+    return track;
+  }
+  const api = (await sdk())!;
+  const check = await api.ugc.checkTextAsync(name).catch(() => ({ clean: true, profaneWords: [] }));
+  if (!check.clean) throw new PublishError('That course name was flagged by the word filter. Rename it and try again.');
+  try {
+    const entry = await api.ugc.create({ contentType: CONTENT_TYPE, data: { v: 1, code }, isPublic: true, title: name, tags: picked });
+    const track = fromEntry(entry);
+    if (!track) throw new Error('bad entry');
+    return track;
+  } catch (e) {
+    throw new PublishError(e instanceof PublishError ? e.message : 'Publishing failed. Check your connection and try again.');
+  }
+}
+
+/** Decode (and validate) a community course back into a def. */
+export function decodeCommunityCourse(track: CommunityTrack): Promise<PlatformerDef> {
+  return decodePlatformerCode(track.code);
 }
 
 /** Upvote (on = true) or take an upvote back. Returns the new count. */
