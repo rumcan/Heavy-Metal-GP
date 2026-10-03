@@ -1255,7 +1255,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
         t: 'bridge',
         a: vec(raw.a, `${at}.a`, problems),
         b: vec(raw.b, `${at}.b`, problems),
-        planks: number(raw.planks, `${at}.planks`, 6, 12, problems),
+        planks: number(raw.planks, `${at}.planks`, 6, platformerWidth === null ? 12 : 80, problems),
         slack: number(raw.slack, `${at}.slack`, 8, 90, problems),
         ...body,
       };
