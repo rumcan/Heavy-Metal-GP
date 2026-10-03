@@ -379,3 +379,18 @@
 .editor-map-side .editor-map-svg { flex: none; height: 56px; min-height: 56px; cursor: ew-resize; }
 @media (max-width: 1100px) { .editor-main[data-mode='side'] { grid-template-columns: 226px minmax(0, 1fr); } }
 @media (max-width: 760px) { .editor-main[data-mode='side'] { grid-template-columns: minmax(0, 1fr); } .editor-main[data-mode='side'] > .editor-tools { grid-row: auto; } .editor-main[data-mode='side'] > .editor-map { grid-column: 1; } }
+/* Phones: the canvas is what you build on, so the banner goes and the sideways course map shrinks to a strip. */
+@media (max-width: 760px), (max-height: 520px) {
+  .editor-shell .workshop-banner { display: none; }
+  .editor-shell { grid-template-rows: auto minmax(0, 1fr); }
+  .editor-main[data-mode='side'] > .editor-map { padding: 4px 8px; gap: 2px; }
+  .editor-main[data-mode='side'] .editor-map-head, .editor-main[data-mode='side'] .editor-map-foot { display: none; }
+  .editor-map-side .editor-map-svg { height: 30px; min-height: 30px; }
+}
+/* Short screens (a phone held sideways): every toolbar is one row that scrolls sideways, the status line goes. */
+@media (max-height: 520px) {
+  .editor-shell > .app-header { padding-block: 4px; min-height: 0; }
+  .editor-toolbar, .editor-editbar, .editor-testbar { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; padding-block: 4px; scrollbar-width: none; }
+  .editor-toolbar > *, .editor-editbar > *, .editor-testbar > * { flex-shrink: 0; }
+  .editor-editbar .editor-chip, .editor-testbar .editor-chip, .editor-status { display: none; }
+}

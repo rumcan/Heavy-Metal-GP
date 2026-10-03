@@ -670,3 +670,81 @@ for (const { label, options } of SCREEN_VIEWPORTS) {
     } finally { await context.close(); }
   });
 }
+
+// P2-23: Infinity (P2-24) and the platformer Workshop (P2-22), at phone portrait and on the desktop.
+for (const { label, options } of SCREEN_VIEWPORTS) {
+  const slug = label.replace(' ', '-');
+
+  test(`Browser: Infinity rolls a canvas with a km readout; Hide UI and Pause work (${label})`, { timeout: 120000 }, async () => {
+    const context = await browser.newContext(options);
+    const page = await context.newPage();
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    try {
+      await ready(page);
+      await openTab(page, 'Infinity');
+      await page.locator('.home-actions').getByRole('button', { name: 'Roll', exact: true }).click();
+      await dismissGate(page, 8000);
+      const canvas = page.locator('canvas.infinity-canvas');
+      await canvas.waitFor();
+      await page.locator('.infinity-km').waitFor();
+      assert.match(await page.locator('.infinity-km').textContent() ?? '', /km/);
+      // Hide UI: the buttons go, a tap brings them back.
+      await page.getByRole('button', { name: 'Hide the buttons' }).click();
+      assert.equal(await page.getByRole('button', { name: 'Pause' }).count(), 0, 'the buttons are hidden');
+      await page.getByRole('button', { name: 'Show the buttons' }).click();
+      await page.getByRole('button', { name: 'Pause' }).waitFor();
+      // Pause: Resume / New seed / Leave.
+      await page.getByRole('button', { name: 'Pause' }).click();
+      for (const name of ['Resume', 'New seed', 'Leave']) assert.ok(await page.getByRole('button', { name, exact: true }).isVisible(), name);
+      await page.screenshot({ path: `${artifacts}/infinity-${slug}.png` });
+      await page.getByRole('button', { name: 'Resume', exact: true }).click();
+      await page.getByRole('button', { name: 'Pause' }).click();
+      await page.getByRole('button', { name: 'Leave', exact: true }).click();
+      await page.getByRole('navigation', { name: 'Game modes' }).waitFor();
+      assert.deepEqual(errors, []);
+    } finally { await context.close(); }
+  });
+
+  test(`Browser: the platformer Workshop places a floor, test-drives it and comes back with it (${label})`, { timeout: 180000 }, async () => {
+    const context = await browser.newContext(options);
+    const page = await context.newPage();
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    try {
+      await ready(page);
+      await openTab(page, 'Workshop');
+      await page.locator('.home-actions').getByRole('button', { name: /New track/ }).click();
+      await page.getByTestId('new-platformer').click();
+      const lanes = page.getByRole('group', { name: 'Lane being edited' });
+      await lanes.waitFor({ timeout: 60000 });
+      // The Workshop's first-visit coach marks open over the canvas: dismiss them.
+      await page.getByRole('button', { name: 'Dismiss tutorial' }).click({ timeout: 4000 }).catch(() => { /* not shown */ });
+      for (const name of ['Back', 'Middle', 'Front']) assert.ok(await lanes.getByRole('button', { name, exact: true }).isVisible(), name);
+      assert.ok(await page.getByRole('button', { name: 'Longer course' }).count() === 1);
+      assert.ok(await page.getByRole('button', { name: 'Shorter course' }).count() === 1);
+      const pieces = async () => Number((await page.locator('.editor-status').textContent() ?? '').match(/(\d+) PIECES/)?.[1] ?? NaN);
+      const before = await pieces();
+      // On a phone the palette lives in a drawer.
+      const drawer = page.getByRole('button', { name: /^Pieces$/ });
+      if (await drawer.isVisible().catch(() => false)) await drawer.click();
+      await page.locator('[data-tile="ramp"]').first().click();
+      if (await page.locator('.editor-drawer-close').isVisible().catch(() => false)) await page.locator('.editor-drawer-close').click();
+      const canvas = page.locator('.editor-canvas');
+      const box = await canvas.boundingBox();
+      assert.ok(box);
+      await canvas.click({ position: { x: box.width * 0.6, y: box.height * 0.5 } });
+      await page.waitForFunction((n) => (document.querySelector('.editor-status')?.textContent ?? '').includes(`${n + 1} PIECES`), before);
+      await page.screenshot({ path: `${artifacts}/platformer-workshop-${slug}.png` });
+      await page.getByRole('button', { name: /^Test drive$/ }).click();
+      await dismissGate(page, 20000);
+      await page.waitForSelector('.race-canvas', { timeout: 60000 });
+      await page.getByRole('button', { name: /^Exit/ }).click();
+      const leave = page.getByRole('button', { name: /Leave heat|Back to the editor|Leave/ });
+      if (await leave.first().isVisible({ timeout: 3000 }).catch(() => false)) await leave.first().click();
+      await page.getByRole('group', { name: 'Lane being edited' }).waitFor({ timeout: 60000 });
+      assert.equal(await pieces(), before + 1, 'the floor is still there');
+      assert.deepEqual(errors, []);
+    } finally { await context.close(); }
+  });
+}
