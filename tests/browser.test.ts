@@ -90,13 +90,18 @@ async function dismissWhatsNew(page: Page, timeout = 45000) {
   await page.getByRole('button', { name: "Let's race" }).click({ timeout }).catch(() => { /* not this load */ });
 }
 
+/** Open a home tab (Story, Championship, Quick race, Online, Workshop). */
+async function openTab(page: Page, name: string) {
+  await page.getByRole('navigation', { name: 'Game modes' }).getByRole('button', { name }).click();
+}
+
 async function ready(page: Page, path = '/') {
   await page.goto(`${baseUrl}${path}`, { waitUntil: 'networkidle', timeout: 60000 });
   await page.evaluate(() => Promise.race([document.fonts.ready, new Promise((resolve) => setTimeout(resolve, 3500))]));
   if (path === '/') {
     await dismissGate(page);
     await dismissWhatsNew(page);
-    await page.locator('#circuit-title').waitFor({ state: 'visible', timeout: 45000 }).catch(() => {});
+    await page.getByRole('navigation', { name: 'Game modes' }).waitFor({ state: 'visible', timeout: 45000 });
   } else if (path.includes('ui-fixture.html')) {
     await page.locator('.results-table').waitFor({ state: 'visible', timeout: 45000 }).catch(() => {});
   }
@@ -109,6 +114,7 @@ test('Browser: garage controls preserve budget and select the actual circuit', {
   page.on('pageerror', (error) => errors.push(error.message));
   try {
     await ready(page);
+    await openTab(page, 'Quick race');
     assert.ok(await page.locator('#circuit-title').isVisible(), 'Garage did not reach the circuit pane.');
     await page.getByRole('button', { name: 'Pause circuit preview' }).click();
     await page.screenshot({ path: `${artifacts}/garage-desktop.png`, fullPage: true });
@@ -121,8 +127,7 @@ test('Browser: garage controls preserve budget and select the actual circuit', {
     assert.equal(await page.getByRole('button', { name: 'Glacier livery' }).getAttribute('aria-pressed'), 'true');
     await page.locator('.circuit-selector button').nth(1).click();
     assert.equal(await page.locator('#circuit-title').textContent(), 'MONTE PIPO');
-    await page.getByRole('button', { name: 'Quick race', exact: true }).click();
-    await page.getByRole('button', { name: 'LIGHTS OUT', exact: true }).click();
+    await page.getByRole('button', { name: 'Race', exact: true }).click();
     await dismissGate(page);
     await page.waitForSelector('.race-canvas');
     assert.match(await page.locator('.race-event').textContent() ?? '', /Monte Pipo/);
@@ -147,13 +152,13 @@ test('Browser: mobile layout stays in-bounds and controls remain usable', { time
   page.on('pageerror', (error) => errors.push(error.message));
   try {
     await ready(page);
+    await openTab(page, 'Quick race');
     // The garage is tabbed on mobile: the live preview lives in the Circuit pane.
     await page.getByRole('button', { name: 'Circuit', exact: true }).click();
     await page.getByRole('button', { name: 'Pause circuit preview' }).click();
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Garage overflows on mobile.');
     await page.screenshot({ path: `${artifacts}/garage-mobile.png`, fullPage: true });
-    await page.getByRole('button', { name: 'Quick race', exact: true }).click();
-    await page.getByRole('button', { name: 'LIGHTS OUT', exact: true }).click();
+    await page.getByRole('button', { name: 'Race', exact: true }).click();
     await dismissGate(page);
     await page.waitForSelector('.race-canvas');
     assert.ok(await page.getByRole('button', { name: 'Nudge left', exact: true }).isVisible());
@@ -223,7 +228,8 @@ test('Browser: a complete long heat pays winnings and the saved season advances 
       window.cancelAnimationFrame = (id) => clearTimeout(id);
     });
     await ready(page);
-    await page.getByRole('button', { name: 'START CHAMPIONSHIP', exact: true }).click();
+    await openTab(page, 'Championship');
+    await page.getByRole('button', { name: 'Start season', exact: true }).click();
     await page.waitForSelector('.next-event');
     await page.screenshot({ path: `${artifacts}/championship-desktop.png`, fullPage: true });
     await page.clock.install();
@@ -239,6 +245,8 @@ test('Browser: a complete long heat pays winnings and the saved season advances 
     assert.ok(paid.credits > 400, 'Finishing did not pay race winnings.');
     assert.equal(paid.paidRaces.length, 1, 'Race payout was recorded multiple times.');
     assert.ok(await page.locator('.race-payout').isVisible());
+    // The first race earns XP: a fresh driver levels up, and the card is modal until it is closed.
+    await page.getByRole('dialog', { name: 'LEVEL UP!' }).getByRole('button', { name: 'Continue', exact: true }).click({ timeout: 5000 }).catch(() => { /* no level-up this time */ });
     await page.getByRole('button', { name: 'Standings & next heat' }).click();
     await page.waitForSelector('.next-event');
     assert.ok(await page.getByRole('button', { name: 'START HEAT 2', exact: true }).isVisible());
@@ -247,7 +255,8 @@ test('Browser: a complete long heat pays winnings and the saved season advances 
     assert.equal(await page.locator('.constructor-list li').count(), 5);
     await page.reload({ waitUntil: 'networkidle' });
     await dismissGate(page);
-    await page.getByRole('button', { name: 'Continue', exact: true }).click();
+    await openTab(page, 'Championship');
+    await page.getByRole('button', { name: 'Continue season', exact: true }).click();
     await page.getByRole('button', { name: 'START HEAT 2', exact: true }).waitFor({ state: 'visible', timeout: 30000 });
     assert.ok(await page.getByRole('button', { name: 'START HEAT 2', exact: true }).isVisible());
     assert.equal((await page.evaluate(() => JSON.parse(Object.entries(localStorage).find(([k]) => k === 'mrr-season-v1' || k.endsWith(':mrr-season-v1'))![1]))).seed, saved.seed);
@@ -264,26 +273,30 @@ test('Browser: shop purchases persist, number keys spend only selected items, an
   try {
     await ready(page);
     await page.getByRole('button', { name: /Open pit shop/ }).click();
-    assert.equal(await page.locator('.shop-item').count(), 8);
-    await page.getByRole('button', { name: 'Buy Speed boost for 90 credits', exact: true }).click();
-    await page.getByRole('button', { name: 'Buy Speed boost for 90 credits', exact: true }).click();
-    await page.getByRole('button', { name: 'Buy Jump for 65 credits', exact: true }).click();
-    await page.getByRole('button', { name: 'Buy Slipstream for 75 credits', exact: true }).click();
+    const loadout = page.getByRole('dialog', { name: 'LOADOUT' });
+    await loadout.waitFor();
+    assert.equal(await loadout.locator('.loadout-slot').count(), 8);
+    // The pit shop is folded into the Loadout screen: every slotted skill has a "+1" buy button.
+    const buy = (skill: string) => loadout.locator('.loadout-slot').filter({ has: page.getByRole('button', { name: new RegExp(`^Slot \\w: ${skill},`) }) }).getByRole('button', { name: /^\+1/ });
+    await buy('Speed boost').click();
+    await buy('Speed boost').click();
+    await buy('Jump').click();
+    await buy('Slipstream').click();
     let account = await page.evaluate(() => JSON.parse(Object.entries(localStorage).find(([k]) => k === 'mrr-account-v1' || k.endsWith(':mrr-account-v1'))![1]));
     assert.equal(account.credits, 80);
     assert.equal(account.inventory.rocket, 2);
-    assert.ok(await page.getByRole('button', { name: 'Buy Shockwave for 100 credits', exact: true }).isDisabled());
+    assert.ok(await buy('Shockwave').isDisabled());
     await page.screenshot({ path: `${artifacts}/pit-shop-desktop.png` });
-    await page.getByRole('button', { name: 'Loadout ready', exact: true }).click();
+    await loadout.getByRole('button', { name: 'Done', exact: true }).click();
     await page.reload({ waitUntil: 'networkidle' });
     await dismissGate(page);
     await page.getByRole('button', { name: 'Open pit shop, 80 credits', exact: true }).waitFor({ state: 'visible', timeout: 30000 });
     assert.ok(await page.getByRole('button', { name: 'Open pit shop, 80 credits', exact: true }).isVisible());
+    await openTab(page, 'Quick race');
     await page.getByRole('button', { name: 'Pause circuit preview', exact: true }).click();
     await page.clock.install({ time: new Date('2026-01-01T00:00:00Z') });
     await page.clock.pauseAt(new Date('2026-01-01T00:00:01Z'));
-    await page.getByRole('button', { name: 'Quick race', exact: true }).click();
-    await page.getByRole('button', { name: 'LIGHTS OUT', exact: true }).click();
+    await page.getByRole('button', { name: 'Race', exact: true }).click();
     // The virtual clock is paused, so wind it past the loading gate's minimum duration.
     await page.clock.runFor(3400);
     await page.getByRole('button', { name: 'Lights out', exact: true }).click();
@@ -539,3 +552,121 @@ test('Browser: Workshop loop shows its entry and exit route', { timeout: 120000 
     assert.deepEqual(errors, []);
   } finally { await page.close(); }
 });
+
+// P2-23: the three screens the garage opens — Loadout (the pit shop folded in), Talents and the Ball customizer —
+// at phone portrait (375 px) and on the desktop.
+const SCREEN_VIEWPORTS = [
+  { label: 'phone 375', options: { viewport: { width: 375, height: 812 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true } },
+  { label: 'desktop', options: { viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 } },
+] as const;
+
+/** A modal must fit the screen: inside the viewport horizontally and no page-wide horizontal scroll. */
+async function assertDialogFits(page: Page, name: string) {
+  const box = await page.getByRole('dialog', { name }).boundingBox();
+  assert.ok(box);
+  const width = page.viewportSize()!.width;
+  assert.ok(box.x >= -1 && box.x + box.width <= width + 1, `${name} dialog overflows the ${width}px screen.`);
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${name} makes the page scroll sideways.`);
+}
+
+for (const { label, options } of SCREEN_VIEWPORTS) {
+  const slug = label.replace(' ', '-');
+
+  test(`Browser: Loadout screen picks skills for the keys and sells charges (${label})`, { timeout: 120000 }, async () => {
+    const context = await browser.newContext(options);
+    const page = await context.newPage();
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    try {
+      await ready(page);
+      await page.getByRole('button', { name: /Open pit shop/ }).click();
+      const loadout = page.getByRole('dialog', { name: 'LOADOUT' });
+      await loadout.waitFor();
+      await assertDialogFits(page, 'LOADOUT');
+      assert.equal(await loadout.locator('.loadout-slot').count(), 8);
+      // Every mode keeps its own bar.
+      for (const mode of ['Quick', 'Championship', 'Story', 'Online']) {
+        await loadout.getByRole('button', { name: mode, exact: true }).click();
+        assert.equal(await loadout.getByRole('button', { name: mode, exact: true }).getAttribute('aria-pressed'), 'true');
+      }
+      await loadout.getByRole('button', { name: 'Quick', exact: true }).click();
+      // Clear slot Q, then fill it with a starter skill.
+      await loadout.getByRole('button', { name: 'Clear slot Q', exact: true }).click();
+      await loadout.getByRole('button', { name: /^Slot Q, empty/ }).waitFor();
+      await loadout.getByRole('region', { name: 'Defence' }).getByRole("button", { name: /^Bubble Shield/ }).click();
+      await loadout.getByRole('button', { name: /^Slot Q: Bubble Shield,/ }).waitFor();
+      // A skill above the driver's level says why it cannot be slotted.
+      await loadout.locator('.loadout-skill.is-locked').first().click({ force: true });
+      assert.match(await loadout.getByRole('alert').textContent() ?? '', /unlocks at level \d+/);
+      await page.screenshot({ path: `${artifacts}/loadout-${slug}.png` });
+      await loadout.getByRole('button', { name: 'Done', exact: true }).click();
+      await loadout.waitFor({ state: 'detached' });
+      assert.deepEqual(errors, []);
+    } finally { await context.close(); }
+  });
+
+  test(`Browser: Talents screen shows six trees and locks what the level cannot reach (${label})`, { timeout: 120000 }, async () => {
+    const context = await browser.newContext(options);
+    const page = await context.newPage();
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    try {
+      await ready(page);
+      await openTab(page, 'Quick race');
+      await page.getByRole('region', { name: 'Quick race garage' }).getByRole('button', { name: /^Talents/ }).click();
+      const talents = page.getByRole('dialog', { name: 'TALENTS' });
+      await talents.waitFor();
+      await assertDialogFits(page, 'TALENTS');
+      assert.equal(await talents.getByRole('tablist', { name: 'Talent trees' }).getByRole('tab').count(), 6);
+      for (const tree of ['Engine', 'Chassis', 'Arsenal', 'Tactics', 'Fortune', 'Driver']) {
+        await talents.getByRole('tab', { name: new RegExp(`^${tree}`) }).click();
+        assert.equal(await talents.getByRole('tab', { name: new RegExp(`^${tree}`) }).getAttribute('aria-selected'), 'true');
+        assert.equal(await talents.getByRole('region', { name: /^Tier \d$/ }).count(), 4);
+      }
+      // A fresh driver is level 1 with no points: nothing can be raised, and the respec has nothing to undo.
+      assert.equal(await talents.locator('button.talent:not([disabled])').count(), 0, 'A level-1 driver should not be able to raise a talent.');
+      assert.ok(await talents.getByRole('button', { name: /^Respec/ }).isDisabled());
+      await page.screenshot({ path: `${artifacts}/talents-${slug}.png` });
+      await talents.getByRole('button', { name: 'Done', exact: true }).click();
+      await talents.waitFor({ state: 'detached' });
+      assert.deepEqual(errors, []);
+    } finally { await context.close(); }
+  });
+
+  test(`Browser: Ball customizer changes the look and keeps it (${label})`, { timeout: 120000 }, async () => {
+    const context = await browser.newContext(options);
+    const page = await context.newPage();
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    const swatch = () => page.locator('[aria-label^="primary swatch 3 "]');
+    const openBall = async () => {
+      await openTab(page, 'Quick race');
+      await page.getByRole('region', { name: 'Quick race garage' }).getByRole('tab', { name: 'Ball', exact: true }).click();
+      const ball = page.getByRole('tabpanel', { name: 'Ball customisation' });
+      await ball.waitFor();
+      await ball.getByRole('tab', { name: 'Colors', exact: true }).click();
+      return ball;
+    };
+    try {
+      await ready(page);
+      const ball = await openBall();
+      assert.ok(await ball.getByRole('img', { name: 'Live spinning ball preview' }).isVisible());
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'The ball panel makes the page scroll sideways.');
+      await swatch().click();
+      assert.equal(await swatch().getAttribute('aria-pressed'), 'true');
+      // The other categories list their options and say which are locked.
+      const categories = ball.getByRole('tablist', { name: 'Ball categories' }).getByRole('tab');
+      assert.ok(await categories.count() >= 3);
+      await categories.nth(2).click();
+      assert.ok(await ball.getByRole('tabpanel').locator('button').count() > 0, 'A cosmetic category lists no options.');
+      await page.screenshot({ path: `${artifacts}/ball-${slug}.png` });
+      // The look is saved with the cosmetics and survives a reload.
+      await page.waitForFunction(() => Object.entries(localStorage).some(([k, v]) => k.endsWith('heavy-metal-gp:cosmetics:v1') && v.includes('primary')));
+      await page.reload({ waitUntil: 'networkidle' });
+      await dismissGate(page);
+      await openBall();
+      assert.equal(await swatch().getAttribute('aria-pressed'), 'true');
+      assert.deepEqual(errors, []);
+    } finally { await context.close(); }
+  });
+}

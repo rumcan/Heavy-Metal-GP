@@ -62,7 +62,7 @@
 .shop-footer .button-primary { flex-shrink: 0; font-size: 11px; }
 
 /* The entire purchased and collected inventory stays in dedicated bottom-screen space. */
-.race-shell { grid-template-rows: 70px minmax(0, 1fr) auto; }
+.race-shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: 70px minmax(0, 1fr) auto; }
 .race-dashboard.race-cockpit { display: flex; flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 0; padding: 10px 23px 13px; }
 .race-telemetry { display: flex; align-items: center; gap: 24px; min-height: 49px; margin-bottom: 10px; }
 .race-telemetry .position-readout { min-width: 70px; }

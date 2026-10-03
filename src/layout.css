@@ -51,7 +51,7 @@ body { min-width: 0; }
 .champ-fit .standings-column { order: 2; }
 .champ-fit .results-pane { order: 3; }
 .champ-fit .next-event, .champ-fit .gp-scoreboard, .champ-fit .season-calendar { margin: 0; padding: 0; border: 0; background: none; display: flex; flex-direction: column; gap: 10px; min-height: 0; flex-shrink: 0; }
-.champ-fit .next-event { flex: 1; }
+.champ-fit .next-event { flex: 1 0 auto; }
 .champ-fit .next-event .circuit-canvas-wrap { min-height: 180px; flex: 1 1 auto; }
 .champ-fit .next-gp-title h2 { font-size: 26px; margin: 0; }
 .champ-fit .next-gp-title p { margin: 4px 0 0; }
