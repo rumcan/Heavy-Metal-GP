@@ -2,6 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
 import { FastForward, SkipForward } from 'lucide-react';
 import { raceAudio } from '../../game/audio';
+import { hasVoiceAudio, playVoice, preloadVoice, stopVoice } from '../../game/voice';
+import { STORY_VOICE_SET, storyVoiceId } from '../../game/story/voice-lines';
 import { storyBackground, storyEnding, storyProp } from '../../game/story/assets';
 import { CAST } from '../../game/story/cast';
 import { castFacing, castName, castPlateColor, castPortrait, castRing } from '../../game/story/portraits';
@@ -61,6 +63,20 @@ export default function StoryScene({
   const line: Line | undefined = lines[index];
   const text = line?.text ?? '';
   const typing = !still && !!line && shown < text.length;
+  const [speaking, setSpeaking] = useState(false);
+
+  // Voice-over (P2-14): each line with recorded audio is spoken; the next line is warmed. Leaving stops it.
+  useEffect(() => {
+    if (!line) return;
+    const id = storyVoiceId(scene.id, index);
+    if (index + 1 < lines.length) preloadVoice(STORY_VOICE_SET, storyVoiceId(scene.id, index + 1));
+    if (!hasVoiceAudio(STORY_VOICE_SET, id)) { setSpeaking(false); return; }
+    let live = true;
+    setSpeaking(true);
+    void playVoice(STORY_VOICE_SET, id).then(() => { if (live) setSpeaking(false); });
+    return () => { live = false; };
+  }, [scene.id, index, line, lines.length]);
+  useEffect(() => () => stopVoice(), []);
 
   // Typewriter, one blip every few characters. Reduced motion shows the whole line.
   useEffect(() => {
@@ -91,11 +107,13 @@ export default function StoryScene({
     if (shown < line.text.length && !still) { setShown(line.text.length); return; }
     if (index + 1 < lines.length) { setIndex(index + 1); return; }
     if (showChoice) return; // a choice is displayed, wait for player to pick
+    stopVoice();
     onDone(null);
   }, [line, shown, still, index, lines.length, showChoice, onDone]);
 
   const pick = useCallback((option: ChoiceOption) => {
     uiSound('blip');
+    stopVoice();
     onDone(option);
   }, [onDone]);
 
@@ -119,11 +137,13 @@ export default function StoryScene({
 
   // Auto-advance once the line has finished typing and no choice is active.
   useEffect(() => {
-    if (!autoAdvance || typing || !line || showChoice) return;
-    const wait = still ? 1800 : Math.max(AUTO_MIN, text.length * AUTO_PER_CHAR);
+    if (!autoAdvance || typing || speaking || !line || showChoice) return;
+    // A spoken line has been heard in full: a short beat, then on.
+    const wait = hasVoiceAudio(STORY_VOICE_SET, storyVoiceId(scene.id, index)) ? 500
+      : still ? 1800 : Math.max(AUTO_MIN, text.length * AUTO_PER_CHAR);
     const id = window.setTimeout(advance, wait);
     return () => window.clearTimeout(id);
-  }, [autoAdvance, typing, line, showChoice, still, text.length, advance]);
+  }, [autoAdvance, typing, speaking, line, showChoice, still, text.length, advance, scene.id, index]);
 
   // Keyboard: Space/Enter advance (held = fast-forward), Escape skips.
   useEffect(() => {

@@ -65,6 +65,7 @@ Options
   --force <id>      regenerate this line even if it is cached (repeatable, or "all")
   --remote          record the hosted URL instead of saving an mp3 (see src/voice/README.md)
   --model <id>      TTS model (default ${DEFAULT_MODEL})
+  --kbps <n>        mono bitrate of the bundled mp3s when ffmpeg is available (default 48)
   --cap <credits>   refuse a real run whose estimate exceeds this (default ${DEFAULT_CAP}; 0 disables)
   --max-mb <mb>     bundled-audio budget for ALL sets (default ${DEFAULT_MAX_MB})
   --list            list the manifest sets and their line counts, then exit
@@ -75,7 +76,7 @@ Options
 export function parseArgs(argv = []) {
   const args = {
     sets: [], force: [], dryRun: false, remote: false, list: false, help: false,
-    model: DEFAULT_MODEL, cap: DEFAULT_CAP, maxMb: DEFAULT_MAX_MB, cli: 'rundot', root: REPO_ROOT,
+    model: DEFAULT_MODEL, cap: DEFAULT_CAP, maxMb: DEFAULT_MAX_MB, kbps: 48, cli: 'rundot', root: REPO_ROOT,
   };
   for (let i = 0; i < argv.length; i++) {
     const [flag, inline] = argv[i].startsWith('--') ? argv[i].split(/=(.*)/s) : [argv[i], undefined];
@@ -94,13 +95,14 @@ export function parseArgs(argv = []) {
       case '--model': args.model = take(); break;
       case '--cap': args.cap = Number(take()); break;
       case '--max-mb': args.maxMb = Number(take()); break;
+      case '--kbps': args.kbps = Number(take()); break;
       case '--cli': args.cli = take(); break;
       case '--root': args.root = path.resolve(take()); break;
       default: throw new Error(`unknown option ${argv[i]}\n\n${USAGE}`);
     }
   }
   if (!args.sets.length && !args.list && !args.help) throw new Error(`--set is required\n\n${USAGE}`);
-  for (const [name, value] of [['cap', args.cap], ['max-mb', args.maxMb]]) {
+  for (const [name, value] of [['cap', args.cap], ['max-mb', args.maxMb], ['kbps', args.kbps]]) {
     if (!Number.isFinite(value) || value < 0) throw new Error(`--${name} must be a number ≥ 0`);
   }
   return args;
@@ -305,7 +307,7 @@ function rundot(args, { cli, cwd }) {
 }
 
 function ffmpegPath() {
-  for (const candidate of ['ffmpeg', 'ffmpeg.exe']) {
+  for (const candidate of [process.env.FFMPEG_PATH, 'ffmpeg', 'ffmpeg.exe'].filter(Boolean)) {
     const probe = spawnSync(candidate, ['-version'], { encoding: 'utf8' });
     if (!probe.error && probe.status === 0) return candidate;
   }
@@ -503,7 +505,7 @@ export async function main(argv = process.argv.slice(2), log = console.log) {
         const target = path.join(audioDir, `${line.id}.mp3`);
         if (convert) {
           const small = `${target}.tmp.mp3`;
-          const conv = spawnSync(convert, ['-y', '-loglevel', 'error', '-i', tmp, '-ac', '1', '-b:a', '48k', small], { encoding: 'utf8' });
+          const conv = spawnSync(convert, ['-y', '-loglevel', 'error', '-i', tmp, '-ac', '1', '-b:a', `${args.kbps}k`, small], { encoding: 'utf8' });
           if (conv.status === 0 && existsSync(small) && statSync(small).size) copyFileSync(small, target);
           else copyFileSync(tmp, target); // ffmpeg said no: ship the original rather than nothing
           rmSync(small, { force: true });
@@ -519,7 +521,7 @@ export async function main(argv = process.argv.slice(2), log = console.log) {
           writeFileSync(generatedFile, `${JSON.stringify({ ...previous, ...next }, null, 2)}
 `);
         }
-        log(`  new     ${entry.set}/${line.id}  ${mb(statSync(target).size)}${convert ? ' (mono 48 kbps)' : ''}  ${durationSec ? `${durationSec}s` : 'duration unknown'}`);
+        log(`  new     ${entry.set}/${line.id}  ${mb(statSync(target).size)}${convert ? ` (mono ${args.kbps} kbps)` : ''}  ${durationSec ? `${durationSec}s` : 'duration unknown'}`);
       }
     }
     // Orphans (a line the manifest dropped) lose their entry but keep their mp3 on disk: deleting

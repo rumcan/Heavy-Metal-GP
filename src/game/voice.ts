@@ -265,6 +265,11 @@ export function holdMsFor(text: string, durationSec = 0): number {
   return Math.min(15_000, Math.max(900, Math.round((text.length / 14) * 1000)));
 }
 
+/** True when the line has real audio to play (not just a caption). */
+export function hasVoiceAudio(set: string, id: string): boolean {
+  return !!planVoice(set, id)?.source;
+}
+
 /** What playing this line would do — the unit-testable half of `playVoice`. */
 export function planVoice(set: string, id: string): VoicePlan | null {
   const line = voiceLine(set, id);
