@@ -22,6 +22,8 @@
 // ══════════════════════════════════════════════════════════════════════════
 import { AI_COLORS, AI_NAMES, mulberry32, randomStats } from '../game/types';
 import type { MarbleInfo } from '../game/types';
+import { sanitizeLook } from '../game/cosmetics';
+import type { BallLook } from '../game/cosmetics';
 import type { RaceSettings, Seat, SeatGarage } from './protocol';
 import { MARBLE_COUNT } from './protocol';
 
@@ -75,22 +77,31 @@ export function dressGrid(seats: readonly Seat[], seed: number): Seat[] {
 
 /** A garage arrives: file it against the seat that sent it. */
 export function fileGarage(seats: readonly Seat[], playerId: string, garage: SeatGarage): Seat[] {
-  return inSlotOrder(seats).map((seat) =>
-    seat.playerId === playerId && !seat.isAI
-      ? {
-          ...seat,
-          name: garage.name,
-          color: garage.color,
-          stats: { ...garage.stats },
-          portrait: garage.portrait,
-          // The kit travels with the garage (MP-09): what a driver bought is
-          // what that marble carries, and nothing here invents an item.
-          inventory: garage.inventory ? { ...garage.inventory } : seat.inventory,
-          // P2-19: so do the driver's talents — the seat is what the race is built from.
-          talents: garage.talents ? { ...garage.talents } : seat.talents,
-        }
-      : seat,
-  );
+  const statsLook = (garage.stats as typeof garage.stats & { cosmeticLook?: unknown }).cosmeticLook;
+  const hasTopLevelLook = Object.prototype.hasOwnProperty.call(garage, 'cosmeticLook') && garage.cosmeticLook !== undefined;
+  const hasStatsLook = Object.prototype.hasOwnProperty.call(garage.stats, 'cosmeticLook');
+  const hasLook = hasTopLevelLook || hasStatsLook;
+  const rawLook = hasTopLevelLook ? garage.cosmeticLook : statsLook;
+  const cosmeticLook = hasLook ? sanitizeLook(rawLook) : undefined;
+  return inSlotOrder(seats).map((seat) => {
+    if (seat.playerId !== playerId || seat.isAI) return seat;
+    const nextLook = cosmeticLook ?? (seat.cosmeticLook === undefined ? undefined : sanitizeLook(seat.cosmeticLook));
+    return {
+      ...seat,
+      name: garage.name,
+      color: garage.color,
+      // host.ts and guest.ts build MarbleInfo from stats by reference; carrying the
+      // normalized look here makes it visible to every renderer without widening those files.
+      stats: { ...garage.stats, ...(nextLook === undefined ? {} : { cosmeticLook: nextLook }) } as typeof garage.stats,
+      portrait: garage.portrait,
+      ...(nextLook === undefined ? {} : { cosmeticLook: nextLook }),
+      // The kit travels with the garage (MP-09): what a driver bought is
+      // what that marble carries, and nothing here invents an item.
+      inventory: garage.inventory ? { ...garage.inventory } : seat.inventory,
+      // P2-19: so do the driver's talents — the seat is what the race is built from.
+      talents: garage.talents ? { ...garage.talents } : seat.talents,
+    };
+  });
 }
 
 /** One seat's ready flag. AI seats are always ready — they have no say. */
@@ -122,17 +133,25 @@ export function startBlockedReason(seats: readonly Seat[]): string | null {
  * the marble's id being the seat's slot — the same numbering as the packed
  * state frames, so there is no translation table to get wrong.
  */
-export function rosterOf(seats: readonly Seat[], localSeat: number): MarbleInfo[] {
-  return inSlotOrder(seats).map((seat) => ({
-    id: seat.slot,
-    name: seat.name,
-    color: seat.color,
-    stats: seat.stats,
-    isPlayer: seat.slot === localSeat,
-    isHuman: !seat.isAI,
-    character: seat.portrait,
-    inventory: seat.inventory,
-  }));
+export type NetworkMarbleInfo = MarbleInfo & { cosmeticLook?: BallLook };
+
+export function rosterOf(seats: readonly Seat[], localSeat: number): NetworkMarbleInfo[] {
+  return inSlotOrder(seats).map((seat) => {
+    const statsLook = (seat.stats as typeof seat.stats & { cosmeticLook?: unknown }).cosmeticLook;
+    const hasLook = seat.cosmeticLook !== undefined || statsLook !== undefined;
+    const cosmeticLook = seat.cosmeticLook !== undefined ? seat.cosmeticLook : statsLook;
+    return {
+      id: seat.slot,
+      name: seat.name,
+      color: seat.color,
+      stats: seat.stats,
+      isPlayer: seat.slot === localSeat,
+      isHuman: !seat.isAI,
+      character: seat.portrait,
+      inventory: seat.inventory,
+      ...(hasLook ? { cosmeticLook: sanitizeLook(cosmeticLook) } : {}),
+    };
+  });
 }
 
 /** The grid in starting order: seat order, the order the marbles were built in. */

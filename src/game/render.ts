@@ -4,7 +4,8 @@ import { hingeTimerState, hingeIsOpen, trapdoorWarn, pistonState, beltDir } from
 import { meta, W, cannonAim } from './track';
 import { MARBLE_RADIUS, ITEM_INFO, skinFor, themeIdFor } from './types';
 import { drawAura, drawSkillWorld } from './skills/draw';
-import { ballFor, bodyFrame, contentBox, currentSkin, drawRail, drawSprite, drawStrip, setSkin, sprite } from './sprites';
+import { bodyFrame, contentBox, currentSkin, drawRail, drawSprite, drawStrip, setSkin, sprite } from './sprites';
+import { drawBallSkin, drawBallTrail, ballLookForMarble } from './ball-skin';
 import { WIND_FAN_ART, windFanAnchor, windDustPose } from './wind-art';
 import { CATAPULT_ARM, CATAPULT_BASE, CATAPULT_ARM_AXIS, CATAPULT_ARM_LENGTH, CATAPULT_ARM_DRAW, catapultArtAngle, flipperArtAngle, flipperArtRect, warDrumArtRect, warDrumArtAngle } from './launcher-art';
 import repeatingBgUrl from '../assets/bg/repeating.webp';
@@ -262,18 +263,8 @@ export function drawMarble(ctx: CanvasRenderingContext2D, game: Game, m: Marble,
   ctx.save();
   if (ghost) ctx.globalAlpha = 0.45;
 
-  // trail
-  if (m.trail.length > 2) {
-    ctx.beginPath();
-    ctx.moveTo(m.trail[0].x, m.trail[0].y);
-    for (let i = 1; i < m.trail.length; i++) ctx.lineTo(m.trail[i].x, m.trail[i].y);
-    ctx.lineTo(x, y);
-    ctx.strokeStyle = rocket ? 'rgba(251,146,60,0.7)' : m.info.color + '55';
-    ctx.lineWidth = rocket ? 10 : 6;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.stroke();
-  }
+  const look = ballLookForMarble(m);
+  drawBallTrail(ctx, m.trail, x, y, look, m.info.color, rocket);
 
   // shadow
   ctx.beginPath();
@@ -281,40 +272,21 @@ export function drawMarble(ctx: CanvasRenderingContext2D, game: Game, m: Marble,
   ctx.fillStyle = 'rgba(0,0,0,0.35)';
   ctx.fill();
 
-  // body: kit ball sprite (spiked ball while Heavy metal is active), flat gradient until sprites load
-  if (drawSprite(ctx, anvil ? 'ball-spiked' : ballFor(m.info.color), x, y, (anvil ? r * 2.9 : r * 2.2), (anvil ? r * 2.9 : r * 2.2), b.angle)) {
-    // spin is visible in the sprite texture
-  } else {
-  const g = ctx.createRadialGradient(x - r * 0.4, y - r * 0.4, r * 0.1, x, y, r);
-  const base = anvil ? '#475569' : m.info.color;
-  g.addColorStop(0, shade(base, 1.6));
-  g.addColorStop(0.5, base);
-  g.addColorStop(1, shade(base, 0.55));
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.fillStyle = g;
-  ctx.fill();
-
-  // swirl showing spin
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(b.angle);
-  ctx.beginPath();
-  ctx.arc(0, 0, r * 0.55, 0.2, Math.PI * 0.9);
-  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-  ctx.lineWidth = 3;
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(0, 0, r * 0.55, Math.PI + 0.2, Math.PI * 1.9);
-  ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-  ctx.stroke();
-  ctx.restore();
-
-  // specular
-  ctx.beginPath();
-  ctx.ellipse(x - r * 0.35, y - r * 0.4, r * 0.28, r * 0.18, -0.6, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(255,255,255,0.8)';
-  ctx.fill();
+  // One cached procedural sprite per marble; keep a flat fallback for canvas-less test/host environments.
+  if (!drawBallSkin(ctx, m)) {
+    const g = ctx.createRadialGradient(x - r * 0.4, y - r * 0.4, r * 0.1, x, y, r);
+    const base = anvil ? '#475569' : look.primary;
+    g.addColorStop(0, shade(base, 1.6));
+    g.addColorStop(0.5, base);
+    g.addColorStop(1, shade(base, 0.55));
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = g; ctx.fill();
+    ctx.save(); ctx.translate(x, y); ctx.rotate(b.angle);
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.55, 0.2, Math.PI * 0.9);
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.55, Math.PI + 0.2, Math.PI * 1.9);
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.stroke(); ctx.restore();
+    ctx.beginPath(); ctx.ellipse(x - r * 0.35, y - r * 0.4, r * 0.28, r * 0.18, -0.6, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.fill();
   }
 
   // outline

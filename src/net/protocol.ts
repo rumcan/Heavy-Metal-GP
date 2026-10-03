@@ -61,7 +61,7 @@ export type { RaceEntry, RankWire };
  * lobby/ready/start, 20 Hz packed `state`, `events`, chunked `snapshot`,
  * `intent`, `resync`, `results`, presence and the hard refusal on mismatch.
  */
-export const PROTOCOL_VERSION = 9; // 9: P2-20 loadoutSlots house rule (host trims each kit to N skill types); 8: P2-19 hp byte + DNF flag per marble, ko/skillfx events, dnf/kos result rows, talents; 7: P2-08 24-skill inventories; 6: P2-00 depth lane byte per marble; 5: P2-01 engine flag + jump intent; // 3: the rated wire (rating board, result claim, the room's result);
+export const PROTOCOL_VERSION = 10; // 10: P2-18 validated cosmetic look in SeatGarage/Seat; 9: P2-20 loadoutSlots house rule; 8: P2-19 hp byte + DNF flag per marble, ko/skillfx events, dnf/kos result rows, talents; 7: P2-08 24-skill inventories; 6: P2-00 depth lane byte per marble; 5: P2-01 engine flag + jump intent; // 3: the rated wire (rating board, result claim, the room's result);
 // 4: MB-10 launchers (cannon/catapult/scoop holds, flipper firedAt, sling flash) and the movers' dynamic state
 
 /**
@@ -194,6 +194,22 @@ export const LOBBY_CLOSED_REASON = 'The host closed this lobby to new drivers.';
 export type TrackDef = TrackProfile;
 
 /**
+ * The serialisable cosmetics shape is kept local to the protocol file so the
+ * room bundle does not gain a runtime or type-level dependency on UI game code.
+ * Lobby consumers normalize every field through the catalogue before rendering.
+ */
+export interface SeatCosmeticLook {
+  material: string;
+  primary: string;
+  secondary: string;
+  pattern: string;
+  number: number;
+  trail: string;
+  koBurst: string;
+  finishFx: string;
+}
+
+/**
  * One grid slot. The SAME index is used three ways, on purpose:
  *   - `slot` here, and the seat's position in `welcome.seats`,
  *   - the marble's offset in every packed `state` frame,
@@ -210,6 +226,8 @@ export interface Seat {
   /** Livery colour, `#rrggbb` — it is painted straight into a canvas/style. */
   color: string;
   stats: MarbleStats;
+  /** P2-18: validated ball appearance; absent on legacy/default seats. */
+  cosmeticLook?: SeatCosmeticLook;
   /** Portrait (player) or rival sprite (AI) index. */
   portrait: number;
   isAI: boolean;
@@ -368,6 +386,8 @@ export interface SeatGarage {
   color: string;
   stats: MarbleStats;
   portrait: number;
+  /** P2-18: this driver's selected ball look. Unknown ids are sanitized to the default before rendering. */
+  cosmeticLook?: SeatCosmeticLook;
   /** MP-09: this driver's own items, filed against their seat. */
   inventory?: Inventory;
   /**

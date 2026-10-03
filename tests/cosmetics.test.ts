@@ -1,17 +1,29 @@
 // P2-18 (#126) battle tests, job BRAVO: the ball-customisation catalogue in src/game/cosmetics.ts.
-// Standalone: imports only the module under test.
+// Standalone: these tests use the pure catalogue, wallet, cache, and lobby/protocol helpers.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
   MATERIALS, PATTERNS, TRAILS, KO_BURSTS, FINISH_FX, PALETTE, DEFAULT_LOOK,
-  unlockOf, isUnlocked, unlockHint, sanitizeLook, lockedReset,
+  COSMETICS_STORAGE_KEY, unlockOf, isUnlocked, unlockHint, sanitizeLook, lockedReset, parseCosmeticsSave,
 } from '../src/game/cosmetics';
-import type { Progress } from '../src/game/cosmetics';
+import type { BallLook, Progress } from '../src/game/cosmetics';
+import { createAccount, cosmeticProgressOf, parseAccount, purchaseCosmetic, settleRace } from '../src/game/economy';
+import { BallSkinCache, ballSkinKey, ballLookForMarble } from '../src/game/ball-skin';
+import { fileGarage, rosterOf } from '../src/net/lobby';
+import { PROTOCOL_VERSION, validateGarage } from '../src/net/protocol';
+import type { Seat } from '../src/net/protocol';
+import type { Marble } from '../src/game/engine';
 
 const fresh: Progress = { level: 1, owned: [], achievements: [] };
 
-test('catalogue sizes and order', () => {
+test('catalogue sizes, order and unique ids', () => {
+  assert.equal(MATERIALS.length, 10);
+  assert.equal(PATTERNS.length, 12);
+  assert.equal(TRAILS.length, 8);
+  assert.equal(KO_BURSTS.length, 4);
+  assert.equal(FINISH_FX.length, 4);
+  for (const ids of [MATERIALS, PATTERNS, TRAILS, KO_BURSTS, FINISH_FX]) assert.equal(new Set(ids).size, ids.length);
   assert.deepEqual([...MATERIALS], ['steel', 'chrome', 'brass', 'rust', 'oak', 'granite', 'glass', 'lava', 'ice', 'gold']);
   assert.deepEqual([...PATTERNS], ['plain', 'stripes', 'band', 'checker', 'flames', 'skull', 'goblin', 'number', 'team', 'stars', 'cracks', 'rivets']);
   assert.deepEqual([...TRAILS], ['none', 'smoke', 'sparks', 'fire', 'ice', 'rainbow', 'coins', 'wisps']);
@@ -74,4 +86,91 @@ test('lockedReset: locked choices fall back to the default, unlocked ones stay',
   const look = { ...DEFAULT_LOOK, material: 'gold', trail: 'smoke', pattern: 'flames' } as const;
   assert.deepEqual(lockedReset(look, fresh), { ...look, material: 'steel', pattern: 'plain' });
   assert.deepEqual(lockedReset(look, { level: 6, owned: [], achievements: ['first-win'] }), look);
+});
+
+test('cosmetics save migration: old accounts and an absent look key start with the default ball', () => {
+  assert.equal(COSMETICS_STORAGE_KEY, 'heavy-metal-gp:cosmetics:v1');
+  assert.deepEqual(parseCosmeticsSave(null), { version: 1, look: DEFAULT_LOOK });
+  const legacyLook = { material: 'chrome', primary: PALETTE[4], pattern: 'stripes' };
+  assert.deepEqual(parseCosmeticsSave(JSON.stringify(legacyLook)), {
+    version: 1,
+    look: { ...DEFAULT_LOOK, material: 'chrome', primary: PALETTE[4], pattern: 'stripes' },
+  });
+  const migrated = parseAccount(JSON.stringify({ version: 1, credits: 765, inventory: {}, finishes: 3 }));
+  assert.equal(migrated.credits, 765, 'migration keeps the existing wallet');
+  assert.deepEqual(migrated.cosmeticOwned, []);
+  assert.deepEqual(migrated.cosmeticAchievements, []);
+  assert.equal(migrated.cosmeticKos, 0);
+  assert.deepEqual(createAccount().cosmeticOwned, []);
+});
+
+test('cosmetic credit purchases are deduplicated, persisted on the account, and cannot bypass locks', () => {
+  const before = createAccount();
+  const bought = purchaseCosmetic(before, 'material', 'oak');
+  assert.equal(bought.error, undefined);
+  assert.equal(bought.account.credits, 100);
+  assert.deepEqual(bought.account.cosmeticOwned, ['material:oak']);
+  assert.deepEqual(parseAccount(JSON.stringify(bought.account)).cosmeticOwned, ['material:oak']);
+  assert.equal(purchaseCosmetic(bought.account, 'material', 'oak').error, 'You already own this cosmetic.');
+  assert.equal(purchaseCosmetic(before, 'material', 'chrome').error, 'Reach level 3');
+  assert.equal(purchaseCosmetic({ ...before, credits: 0 }, 'material', 'oak').error, 'You need 300 more credits.');
+});
+
+test('race achievements unlock cosmetics once and migrate through the account ledger', () => {
+  const won = settleRace(createAccount(), 'cosmetics:first-win', { id: 0, rank: 1, time: 12000, pegs: 50, kos: 10 }).account;
+  const progress = cosmeticProgressOf(won);
+  assert.ok(progress.achievements.includes('first-win'));
+  assert.ok(progress.achievements.includes('ten-kos'));
+  assert.ok(progress.achievements.includes('pegs-50'));
+  assert.equal(isUnlocked('material', 'gold', progress), true);
+  assert.equal(isUnlocked('pattern', 'skull', progress), true);
+  assert.equal(isUnlocked('trail', 'rainbow', progress), true);
+  assert.ok(cosmeticProgressOf({ ...createAccount(), campaignComplete: true }).achievements.includes('campaign'));
+  const replay = settleRace(won, 'cosmetics:first-win', { id: 0, rank: 1, time: 12000, pegs: 50, kos: 50 }).account;
+  assert.equal(replay.cosmeticKos, 10, 'duplicate race results do not award KOs twice');
+});
+
+test('skin cache redraws only when a validated look changes', () => {
+  const cache = new BallSkinCache<{ serial: number }>();
+  const owner = {};
+  let builds = 0;
+  const build = () => ({ serial: ++builds });
+  const defaultKey = ballSkinKey(DEFAULT_LOOK);
+  assert.equal(ballSkinKey({ material: 'not-in-the-catalogue' }), defaultKey, 'invalid ids normalize to the default key');
+  const first = cache.get(owner, defaultKey, build);
+  assert.strictEqual(cache.get(owner, defaultKey, build), first);
+  assert.equal(builds, 1, 'same look is not redrawn');
+  const changed = cache.get(owner, ballSkinKey({ ...DEFAULT_LOOK, primary: PALETTE[2] }), build);
+  assert.notStrictEqual(changed, first);
+  assert.equal(builds, 2, 'appearance changes redraw once');
+  assert.strictEqual(cache.get(owner, ballSkinKey({ ...DEFAULT_LOOK, primary: PALETTE[2] }), build), changed);
+  assert.equal(builds, 2);
+  cache.delete(owner);
+  cache.get(owner, ballSkinKey({ ...DEFAULT_LOOK, primary: PALETTE[2] }), build);
+  assert.equal(builds, 3, 'discarding a marble drops its entry');
+});
+
+test('multiplayer garages carry a look; catalogue-invalid ids become the default before every roster renders', () => {
+  assert.equal(PROTOCOL_VERSION, 10, 'cosmetic SeatGarage fields have a new wire version');
+  const invalid = { ...DEFAULT_LOOK, material: 'photon', pattern: 'fake-decal', number: 111 } as unknown as BallLook;
+  const garage = {
+    name: 'Network Goblin', color: '#22d3ee', stats: { weight: 5, speed: 5, bounce: 5 }, portrait: 1,
+    cosmeticLook: invalid,
+  };
+  assert.equal(validateGarage(garage), null, 'unknown cosmetic ids fall back instead of rejecting the whole lobby');
+  const seat: Seat = {
+    slot: 1, playerId: 'guest-1', name: 'Guest', color: '#d63e2e', stats: { weight: 5, speed: 5, bounce: 5 },
+    portrait: 0, isAI: false, ready: true,
+  };
+  const filed = fileGarage([seat], 'guest-1', garage);
+  const normalized = filed[0].cosmeticLook;
+  assert.deepEqual(normalized, DEFAULT_LOOK);
+  assert.deepEqual((filed[0].stats as typeof filed[0]['stats'] & { cosmeticLook?: BallLook }).cosmeticLook, DEFAULT_LOOK,
+    'the host/guest MarbleInfo stats path carries the same normalized appearance');
+  const roster = rosterOf(filed, 0);
+  assert.deepEqual(roster[0].cosmeticLook, DEFAULT_LOOK);
+  assert.deepEqual(ballLookForMarble({ info: roster[0] } as unknown as Marble), DEFAULT_LOOK);
+
+  const forgedSeat = { ...filed[0], cosmeticLook: invalid } as Seat;
+  assert.deepEqual(rosterOf([forgedSeat], 0)[0].cosmeticLook, DEFAULT_LOOK, 'received seats are sanitized too');
 });

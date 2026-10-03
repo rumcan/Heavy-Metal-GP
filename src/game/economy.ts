@@ -7,6 +7,11 @@ import type { ProgressState } from './progression';
 import { talentEffects, validateBuild, pointsSpent, respecCost } from './talents';
 import type { Build } from './talents';
 import type { PurseMode } from './settlement';
+import {
+  COSMETICS_STORAGE_KEY, cosmeticOptions, currentBallLook, isUnlocked, parseCosmeticsSave,
+  setCurrentBallLook, unlockHint, unlockOf,
+} from './cosmetics';
+import type { AchievementId, BallLook, Category as CosmeticCategory, CosmeticsSave, Progress as CosmeticProgress } from './cosmetics';
 
 const NO_TALENTS = { prizePct: 0, pegBonusPct: 0, koBountyPct: 0, shamanFeePct: 0 };
 
@@ -57,6 +62,12 @@ export interface RacerAccount {
   /** P2-17: the talent build (talent id -> rank) and how many respecs have been used (the first is free). */
   talents?: Build;
   respecs?: number;
+  /** P2-18: bought ball cosmetics, stored as `category:id` tags. */
+  cosmeticOwned?: string[];
+  /** P2-18: race achievements that open cosmetic catalogue items. */
+  cosmeticAchievements?: AchievementId[];
+  /** P2-18: lifetime KOs toward the 10-KO cosmetic achievement. */
+  cosmeticKos?: number;
 }
 
 export interface RacePayout {
@@ -73,12 +84,50 @@ export interface RacePayout {
 }
 
 export function createAccount(): RacerAccount {
-  return { version: 1, credits: STARTER_CREDITS, inventory: emptyInventory(), trophies: emptyInventory(), trophyRaces: [], paidRaces: [], totalWinnings: 0, finishes: 0, progress: newProgress() };
+  return {
+    version: 1, credits: STARTER_CREDITS, inventory: emptyInventory(), trophies: emptyInventory(),
+    trophyRaces: [], paidRaces: [], totalWinnings: 0, finishes: 0, progress: newProgress(),
+    cosmeticOwned: [], cosmeticAchievements: [], cosmeticKos: 0,
+  };
 }
 
 /** P2-09: this driver's progress; an old account gets 50 XP per past finish. */
 export function progressOf(account: RacerAccount): ProgressState {
   return account.progress ?? migrateAccount(account.finishes);
+}
+
+/** P2-18: the level, purchased shelf and earned achievements used by every cosmetic gate. */
+export function cosmeticProgressOf(account: RacerAccount): CosmeticProgress {
+  const achievements = new Set(account.cosmeticAchievements ?? []);
+  // Campaign completion predates the cosmetic shelf and is already persisted on old accounts.
+  if (account.campaignComplete) achievements.add('campaign');
+  return {
+    level: progressOf(account).level,
+    owned: [...new Set(account.cosmeticOwned ?? [])],
+    achievements: [...achievements],
+  };
+}
+
+/** Load/migrate the global look through device-cache storage (never localStorage). */
+export function loadCosmeticSave(): CosmeticsSave {
+  const saved = parseCosmeticsSave(storage.getItem(COSMETICS_STORAGE_KEY));
+  setCurrentBallLook(saved.look);
+  return saved;
+}
+
+/** Persist the global look and refresh the renderer's in-memory fast path. */
+export function saveCosmeticSave(value: unknown): CosmeticsSave {
+  let saved: CosmeticsSave;
+  try { saved = parseCosmeticsSave(JSON.stringify(value)); }
+  catch { saved = parseCosmeticsSave(null); }
+  storage.setItem(COSMETICS_STORAGE_KEY, JSON.stringify(saved));
+  setCurrentBallLook(saved.look);
+  return saved;
+}
+
+/** The active ball look; load once at UI boot and never parse a save in the frame loop. */
+export function ballLookOf(): BallLook {
+  return currentBallLook();
 }
 
 /** P2-09: give XP for one race (once per race id) and say which levels it earned. */
@@ -129,6 +178,39 @@ export function purchaseItem(account: RacerAccount, item: ItemType): { account: 
   return { account: { ...account, credits: account.credits - info.price, inventory: { ...account.inventory, [item]: account.inventory[item] + 1 } } };
 }
 
+/** P2-18: buy one catalogue item with CR. Non-credit locks cannot be bypassed. */
+export function purchaseCosmetic(account: RacerAccount, category: CosmeticCategory, id: string): { account: RacerAccount; error?: string } {
+  const unlock = unlockOf(category, id);
+  if (!unlock) return { account, error: 'Unknown cosmetic.' };
+  const progress = cosmeticProgressOf(account);
+  if (isUnlocked(category, id, progress)) return { account, error: 'You already own this cosmetic.' };
+  if (unlock.kind !== 'credits') return { account, error: unlockHint(category, id) };
+  if (account.credits < unlock.price) return { account, error: `You need ${unlock.price - account.credits} more credits.` };
+  const tag = `${category}:${id}`;
+  return {
+    account: {
+      ...account,
+      credits: account.credits - unlock.price,
+      cosmeticOwned: [...new Set([...(account.cosmeticOwned ?? []), tag])],
+    },
+  };
+}
+
+/** Gate a look's selectable ids against the driver's current account. */
+export function unlockedCosmeticLook(look: BallLook, account: RacerAccount): BallLook {
+  const progress = cosmeticProgressOf(account);
+  const candidate = { ...look };
+  const categories: CosmeticCategory[] = ['material', 'pattern', 'trail', 'koBurst', 'finishFx'];
+  for (const category of categories) {
+    const id = candidate[category];
+    if (!isUnlocked(category, id, progress)) {
+      const fallback = category === 'material' ? 'steel' : category === 'pattern' ? 'plain' : category === 'trail' ? 'none' : category === 'koBurst' ? 'classic' : 'flag';
+      (candidate as unknown as Record<string, string>)[category] = fallback;
+    }
+  }
+  return candidate;
+}
+
 /**
  * An ONLINE heat pays this fraction of a championship round (MP-09).
  *
@@ -173,6 +255,18 @@ export function prizeFor(result: HeatResult): { placement: number; pegBonus: num
   return { placement: RACE_PRIZES[result.rank - 1], pegBonus: pegCount * PEG_CREDITS };
 }
 
+/** Achievement ledger for one newly settled race. Caller enforces the race-id guard. */
+function awardCosmeticAchievements(account: RacerAccount, result: HeatResult): RacerAccount {
+  const achievements = new Set(account.cosmeticAchievements ?? []);
+  if (account.campaignComplete) achievements.add('campaign');
+  const gainedKos = Number.isFinite(result.kos) ? Math.max(0, Math.floor(result.kos ?? 0)) : 0;
+  const cosmeticKos = safeNumber((account.cosmeticKos ?? 0) + gainedKos);
+  if (result.time !== null && !result.dnf && result.rank === 1) achievements.add('first-win');
+  if (cosmeticKos >= 10) achievements.add('ten-kos');
+  if (Number.isFinite(result.pegs) && result.pegs >= 50) achievements.add('pegs-50');
+  return { ...account, cosmeticKos, cosmeticAchievements: [...achievements] };
+}
+
 /**
  * Settle one race into the wallet, once.
  *
@@ -195,10 +289,10 @@ export function settleRace(
     const amount = (kind: string) => s.lines.find((l) => l.kind === kind)?.amount ?? 0;
     const paid: RacePayout = { raceId, placement: amount('placement'), pegBonus: amount('pegs'), koBounty: amount('kos'), shamanFee: Math.abs(amount('shaman')), total: s.total, balance: account.credits, alreadyPaid };
     if (alreadyPaid) return { account, payout: paid };
-    const next = {
+    const next = awardCosmeticAchievements({
       ...account, credits: Math.max(0, account.credits + s.total), totalWinnings: account.totalWinnings + Math.max(0, s.total),
       finishes: account.finishes + (paid.placement > 0 ? 1 : 0), paidRaces: [...account.paidRaces, raceId],
-    };
+    }, result);
     return { account: next, payout: { ...paid, balance: next.credits } };
   }
   const prize = prizeFor(result);
@@ -206,10 +300,10 @@ export function settleRace(
   const pegBonus = Math.round(prize.pegBonus * scale);
   const total = placement + pegBonus;
   if (alreadyPaid) return { account, payout: { raceId, placement, pegBonus, total, balance: account.credits, alreadyPaid: true } };
-  const next = {
+  const next = awardCosmeticAchievements({
     ...account, credits: account.credits + total, totalWinnings: account.totalWinnings + total,
     finishes: account.finishes + (placement > 0 ? 1 : 0), paidRaces: [...account.paidRaces, raceId],
-  };
+  }, result);
   return { account: next, payout: { raceId, placement, pegBonus, total, balance: next.credits, alreadyPaid: false } };
 }
 
@@ -261,6 +355,29 @@ function normalizeTrophies(value: unknown): Inventory {
   return counts;
 }
 
+const COSMETIC_CATEGORIES: readonly CosmeticCategory[] = ['material', 'pattern', 'trail', 'koBurst', 'finishFx'];
+const ACHIEVEMENT_IDS: readonly AchievementId[] = ['first-win', 'ten-kos', 'campaign', 'pegs-50'];
+
+function readCosmeticOwned(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((item): item is string => {
+    if (typeof item !== 'string' || item.length > 64) return false;
+    const split = item.indexOf(':');
+    if (split <= 0) return false;
+    const category = item.slice(0, split) as CosmeticCategory;
+    const id = item.slice(split + 1);
+    return COSMETIC_CATEGORIES.includes(category)
+      && cosmeticOptions(category).some((option) => option.id === id)
+      && unlockOf(category, id)?.kind === 'credits';
+  }))];
+}
+
+function readCosmeticAchievements(value: unknown): AchievementId[] {
+  return Array.isArray(value)
+    ? [...new Set(value.filter((item): item is AchievementId => typeof item === 'string' && ACHIEVEMENT_IDS.includes(item as AchievementId)))]
+    : [];
+}
+
 /** Record a race's snapshots once, independently of its payout animation or DNF. */
 export function addRaceTrophies(account: RacerAccount, raceId: string, startKit: Inventory, endKit: Inventory): RacerAccount {
   if (!raceId || raceId.length >= 180 || account.trophyRaces.includes(raceId)) return account;
@@ -289,6 +406,9 @@ export function parseAccount(raw: string | null): RacerAccount {
       trophies: normalizeTrophies(account.trophies), trophyRaces: raceIds(account.trophyRaces),
       paidRaces: raceIds(account.paidRaces),
       totalWinnings: safeNumber(account.totalWinnings), finishes: safeNumber(account.finishes),
+      cosmeticOwned: readCosmeticOwned(account.cosmeticOwned),
+      cosmeticAchievements: readCosmeticAchievements(account.cosmeticAchievements),
+      cosmeticKos: safeNumber(account.cosmeticKos),
       ...(readProgress(account.progress) ? { progress: readProgress(account.progress) } : {}), ...(account.campaignComplete === true ? { campaignComplete: true } : {}),
       ...(readProgress(account.progress) && account.talents ? { talents: validateBuild(account.talents, readProgress(account.progress)!.level, readProgress(account.progress)!.talentPoints) } : {}),
       ...(typeof account.respecs === 'number' && account.respecs > 0 ? { respecs: Math.floor(account.respecs) } : {}),
@@ -297,7 +417,11 @@ export function parseAccount(raw: string | null): RacerAccount {
 }
 
 export function loadAccount(): RacerAccount {
-  try { return parseAccount(storage.getItem(ACCOUNT_KEY)); } catch { return createAccount(); }
+  try {
+    const account = parseAccount(storage.getItem(ACCOUNT_KEY));
+    loadCosmeticSave(); // initialize the cached, global look before any race frame draws
+    return account;
+  } catch { return createAccount(); }
 }
 
 export function saveAccount(account: RacerAccount) {
@@ -308,6 +432,9 @@ export function saveAccount(account: RacerAccount) {
     const trophies = normalizeTrophies(account.trophies);
     for (const item of ITEM_TYPES) trophies[item] = Math.max(trophies[item], saved.trophies[item]);
     const trophyRaces = raceIds([...account.trophyRaces, ...saved.trophyRaces]);
-    storage.setItem(ACCOUNT_KEY, JSON.stringify({ ...account, trophies, trophyRaces }));
+    const cosmeticOwned = readCosmeticOwned([...(account.cosmeticOwned ?? []), ...(saved.cosmeticOwned ?? [])]);
+    const cosmeticAchievements = readCosmeticAchievements([...(account.cosmeticAchievements ?? []), ...(saved.cosmeticAchievements ?? [])]);
+    const cosmeticKos = Math.max(safeNumber(account.cosmeticKos), safeNumber(saved.cosmeticKos));
+    storage.setItem(ACCOUNT_KEY, JSON.stringify({ ...account, trophies, trophyRaces, cosmeticOwned, cosmeticAchievements, cosmeticKos }));
   } catch { /* Play remains available when storage is blocked. */ }
 }

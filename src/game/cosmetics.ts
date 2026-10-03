@@ -92,7 +92,16 @@ export const PALETTE: readonly string[] = [
  * Types
  * ------------------------------------------------------------------ */
 
+export type MaterialId = typeof MATERIALS[number];
+export type PatternId = typeof PATTERNS[number];
+export type TrailId = typeof TRAILS[number];
+export type KoBurstId = typeof KO_BURSTS[number];
+export type FinishFxId = typeof FINISH_FX[number];
+
 export type Category = 'material' | 'pattern' | 'trail' | 'koBurst' | 'finishFx';
+
+/** Device-cache key for the one global ball look (shared by every race mode). */
+export const COSMETICS_STORAGE_KEY = 'heavy-metal-gp:cosmetics:v1';
 
 export type AchievementId = 'first-win' | 'ten-kos' | 'campaign' | 'pegs-50';
 
@@ -133,6 +142,16 @@ export const DEFAULT_LOOK: BallLook = {
   koBurst: 'classic',
   finishFx: 'flag',
 };
+
+/** Versioned, deliberately small save: ownership and progression live with the wallet in economy.ts. */
+export interface CosmeticsSave {
+  version: 1;
+  look: BallLook;
+}
+
+export function defaultCosmeticsSave(): CosmeticsSave {
+  return { version: 1, look: { ...DEFAULT_LOOK } };
+}
 
 /* ------------------------------------------------------------------ *
  * Unlock table
@@ -188,6 +207,28 @@ const UNLOCKS: Record<Category, Record<string, Unlock>> = {
     spin: { kind: 'credits', price: 150 },
   },
 };
+
+const LABELS: Record<Category, Record<string, string>> = {
+  material: { steel: 'Steel', chrome: 'Chrome', brass: 'Brass', rust: 'Rusty Iron', oak: 'Oak', granite: 'Granite', glass: 'Glass', lava: 'Lava', ice: 'Ice', gold: 'Gold' },
+  pattern: { plain: 'Plain', stripes: 'Stripes', band: 'Racing band', checker: 'Checker', flames: 'Flames', skull: 'Skull', goblin: 'Goblin face', number: 'Number', team: 'Team logo', stars: 'Stars', cracks: 'Cracks', rivets: 'Rivets' },
+  trail: { none: 'None', smoke: 'Smoke', sparks: 'Sparks', fire: 'Fire', ice: 'Ice crystals', rainbow: 'Rainbow', coins: 'Coins', wisps: 'Ghost wisps' },
+  koBurst: { classic: 'Classic', confetti: 'Confetti', scrap: 'Scrap', ghost: 'Ghost wisps' },
+  finishFx: { flag: 'Flag', fireworks: 'Fireworks', crown: 'Crown', spin: 'Victory spin' },
+};
+
+/** Category tabs in the ball customizer. */
+export const CATEGORY_LABELS: Readonly<Record<Category, string>> = {
+  material: 'Material', pattern: 'Pattern', trail: 'Trail', koBurst: 'KO burst', finishFx: 'Finish',
+};
+
+/** Display-ready catalogue rows for the garage and cosmetics shop. */
+export function cosmeticOptions(category: Category): { id: string; label: string }[] {
+  const ids: readonly string[] = category === 'material' ? MATERIALS
+    : category === 'pattern' ? PATTERNS
+      : category === 'trail' ? TRAILS
+        : category === 'koBurst' ? KO_BURSTS : FINISH_FX;
+  return ids.map((id) => ({ id, label: LABELS[category][id] ?? id }));
+}
 
 const ACHIEVEMENT_HINTS: Record<AchievementId, string> = {
   'first-win': 'Win your first race',
@@ -284,4 +325,37 @@ export function lockedReset(look: BallLook, p: Progress): BallLook {
     koBurst: isUnlocked('koBurst', look.koBurst, p) ? look.koBurst : DEFAULT_LOOK.koBurst,
     finishFx: isUnlocked('finishFx', look.finishFx, p) ? look.finishFx : DEFAULT_LOOK.finishFx,
   };
+}
+
+/**
+ * Migrate a device-cache value. A missing/old save receives the default ball;
+ * an unversioned pre-release look is accepted and normalized field by field.
+ */
+export function parseCosmeticsSave(raw: string | null): CosmeticsSave {
+  if (!raw) return defaultCosmeticsSave();
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return defaultCosmeticsSave();
+    const record = value as Record<string, unknown>;
+    if (record.version !== undefined && record.version !== 0 && record.version !== 1) return defaultCosmeticsSave();
+    // v0 stored the look at the root; v1 wraps it. This also means an old account
+    // with no cosmetics key naturally loads the default look without touching its wallet.
+    const candidate = record.version === 1 ? record.look : record.look ?? record;
+    return { version: 1, look: sanitizeLook(candidate) };
+  } catch {
+    return defaultCosmeticsSave();
+  }
+}
+
+// The active look is an in-memory fast path for the renderer. Persistence stays
+// in economy.ts via storage.ts; 600 frames/second must never parse a save file.
+let activeLook: BallLook = { ...DEFAULT_LOOK };
+
+export function currentBallLook(): BallLook {
+  return { ...activeLook };
+}
+
+export function setCurrentBallLook(raw: unknown): BallLook {
+  activeLook = sanitizeLook(raw);
+  return currentBallLook();
 }
