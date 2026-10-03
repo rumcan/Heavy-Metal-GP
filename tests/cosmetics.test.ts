@@ -151,7 +151,7 @@ test('skin cache redraws only when a validated look changes', () => {
 });
 
 test('multiplayer garages carry a look; catalogue-invalid ids become the default before every roster renders', () => {
-  assert.equal(PROTOCOL_VERSION, 10, 'cosmetic SeatGarage fields have a new wire version');
+  assert.ok(PROTOCOL_VERSION >= 10, 'cosmetic SeatGarage fields have a new wire version');
   const invalid = { ...DEFAULT_LOOK, material: 'photon', pattern: 'fake-decal', number: 111 } as unknown as BallLook;
   const garage = {
     name: 'Network Goblin', color: '#22d3ee', stats: { weight: 5, speed: 5, bounce: 5 }, portrait: 1,

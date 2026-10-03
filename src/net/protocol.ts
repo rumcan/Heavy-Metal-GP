@@ -61,7 +61,7 @@ export type { RaceEntry, RankWire };
  * lobby/ready/start, 20 Hz packed `state`, `events`, chunked `snapshot`,
  * `intent`, `resync`, `results`, presence and the hard refusal on mismatch.
  */
-export const PROTOCOL_VERSION = 10; // 10: P2-18 validated cosmetic look in SeatGarage/Seat; 9: P2-20 loadoutSlots house rule; 8: P2-19 hp byte + DNF flag per marble, ko/skillfx events, dnf/kos result rows, talents; 7: P2-08 24-skill inventories; 6: P2-00 depth lane byte per marble; 5: P2-01 engine flag + jump intent; // 3: the rated wire (rating board, result claim, the room's result);
+export const PROTOCOL_VERSION = 11; // 11: P2-11 rooms accept v2 share codes; 10: P2-18 validated cosmetic look in SeatGarage/Seat; 9: P2-20 loadoutSlots house rule; 8: P2-19 hp byte + DNF flag per marble, ko/skillfx events, dnf/kos result rows, talents; 7: P2-08 24-skill inventories; 6: P2-00 depth lane byte per marble; 5: P2-01 engine flag + jump intent; // 3: the rated wire (rating board, result claim, the room's result);
 // 4: MB-10 launchers (cannon/catapult/scoop holds, flipper firedAt, sling flash) and the movers' dynamic state
 
 /**
@@ -1577,8 +1577,9 @@ export function isCustomSettings(settings: RaceSettings | undefined): boolean {
   return typeof settings?.customCode === 'string' && settings.customCode.length > 0;
 }
 
-/** Share-code prefix for a valid custom track code (v1 deflate). */
-const CUSTOM_CODE_PREFIX = '1-';
+/** Share-code prefixes a room accepts: v1 deflate, and v2 (lanes, gates, platformer courses). P2-11: only '1-' was
+ *  accepted, so every lobby frame carrying a v2 code (all codes made since P2-22) was dropped as unreadable. */
+const CUSTOM_CODE_PREFIX = /^[12]-/;
 
 /** Read the race settings; `null` when present-but-unreadable. */
 export function readRaceSettings(value: unknown): RaceSettings | null {
@@ -1609,7 +1610,7 @@ export function readRaceSettings(value: unknown): RaceSettings | null {
   if (s.customCode !== undefined) {
     if (typeof s.customCode !== 'string') return null;
     if (s.customCode.length === 0 || s.customCode.length > MAX_CUSTOM_CODE_CHARS) return null;
-    if (!s.customCode.startsWith(CUSTOM_CODE_PREFIX)) return null;
+    if (!CUSTOM_CODE_PREFIX.test(s.customCode)) return null;
     // Base64url shape check — the full deflate validation is `decodeShareCode`.
     if (!/^[A-Za-z0-9_-]+$/.test(s.customCode.slice(2))) return null;
   }
