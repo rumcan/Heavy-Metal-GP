@@ -222,3 +222,60 @@ export function platformerIssues(def: TrackDef): PlatformerIssue[] {
 
 /** The same problems as plain sentences. */
 export const platformerProblems = (def: TrackDef): string[] => platformerIssues(def).map((i) => i.message);
+
+/**
+ * A copy of a course plan as a platformer def, to start the Workshop from an official course. Each lane's floors are
+ * joined into curves of up to 8 slabs (so a course is a few hundred pieces to edit, not a few thousand); the springs,
+ * crates, gates, ledges, boxes, wreckers, boosts, loops and bridges become the matching pieces. The result is close to
+ * the original, not identical: a curve passes through its middle slab's start.
+ */
+export function defFromPlan(plan: CoursePlan, name: string, theme: TrackDef['theme'] = 'classic'): TrackDef {
+  const dy = PF_START_Y - plan.startY;
+  const r = Math.round;
+  const lanePart = (lane: Lane): { lane?: Lane } => (lane === 1 ? {} : { lane });
+  const pieces: Piece[] = [];
+  const runX = plan.finishX - RUN_OUT_BEFORE;
+  for (const lane of LANES) {
+    const floors = plan.floors.filter((f) => f.lane === lane && f.x1 > PF_START_END && f.x0 < runX).sort((a, b) => a.x0 - b.x0)
+      .map((f) => {
+        // Clip to the part the builder owns: after the start platform and before the run-out.
+        const at = (x: number) => f.y0 + ((x - f.x0) / (f.x1 - f.x0)) * (f.y1 - f.y0);
+        const x0 = Math.max(f.x0, PF_START_END), x1 = Math.min(f.x1, runX);
+        return { x0, y0: at(x0) + dy, x1, y1: at(x1) + dy };
+      });
+    let run: typeof floors = [];
+    const flush = () => {
+      for (let i = 0; i < run.length; i += 8) {
+        const part = run.slice(i, i + 8);
+        const a = part[0], b = part[part.length - 1];
+        const A: [number, number] = [r(a.x0), r(a.y0)], B: [number, number] = [r(b.x1), r(b.y1)];
+        if (part.length === 1) { pieces.push({ t: 'ramp', a: A, b: B, ...lanePart(lane) }); continue; }
+        const mid = part[Math.floor(part.length / 2)];
+        const C: [number, number] = [r(2 * mid.x0 - (A[0] + B[0]) / 2), r(2 * mid.y0 - (A[1] + B[1]) / 2)];
+        pieces.push({ t: 'curve', a: A, c: C, b: B, n: Math.min(12, Math.max(2, part.length)), ...lanePart(lane) });
+      }
+      run = [];
+    };
+    for (const f of floors) {
+      if (run.length && Math.abs(f.x0 - run[run.length - 1].x1) > 1) flush();
+      run.push(f);
+    }
+    flush();
+  }
+  for (const s of plan.springs ?? []) pieces.push({ t: 'pad', x: r(s.x + SPRING_W / 2), y: r(s.y + dy), w: SPRING_W, dir: 1, ...lanePart(s.lane) });
+  for (const b of plan.bumps) pieces.push({ t: 'block', x: r(b.x + b.w / 2), y: r(b.y + b.h / 2 + dy), w: r(b.w), h: r(b.h), ...lanePart(b.lane) });
+  for (const g of plan.gates) pieces.push({ t: 'gate', kind: g.kind, to: g.to, x: r(g.x), y: r(g.y + dy), w: r(g.w), ...lanePart(g.lane) });
+  for (const l of plan.ledges ?? []) pieces.push({ t: 'ledge', x: r(l.x), y: r(l.y + dy), w: r(l.w), ...lanePart(l.lane) });
+  for (const b of plan.itemBoxes ?? []) pieces.push({ t: 'itembox', x: r(b.x), y: r(b.y + dy), ...lanePart(b.lane) });
+  for (const w of plan.wreckers ?? []) pieces.push({ t: 'wrecker', pivot: [r(w.x), r(w.pivotY + dy)], chain: r(w.chain), amp: Math.round(w.amp * 100) / 100, speed: Math.round(w.speed * 10000) / 10000, phase: Math.round(w.phase * 100) / 100, ...lanePart(w.lane) });
+  for (const b of plan.boosts ?? []) {
+    const y = floorYAt(plan.floors, b.lane, b.x + b.w / 2);
+    pieces.push({ t: 'boost', x: r(b.x + b.w / 2), y: r((y ?? plan.startY) + dy), len: r(b.w), thick: 20, dir: [1, 0], ...lanePart(b.lane) });
+  }
+  for (const l of plan.loops ?? []) pieces.push({ t: 'loop', x: r(l.x), bottom: r(l.y + dy), r: LOOP_R, ...lanePart(l.lane) });
+  for (const b of plan.bridges ?? []) pieces.push({ t: 'bridge', a: [r(b.x0), r(b.y0 - PLANK_H / 2 + dy)], b: [r(b.x1), r(b.y1 - PLANK_H / 2 + dy)], planks: b.planks, slack: b.slack, ...lanePart(b.lane) });
+  const width = r(plan.finishX + PF_FINISH_FROM_END);
+  let maxY = PF_START_Y;
+  for (const p of pieces) { const ys = 'a' in p ? [p.a[1], p.b[1]] : 'y' in p ? [(p as { y: number }).y] : []; for (const y of ys) maxY = Math.max(maxY, y); }
+  return { v: 1, name, theme, height: Math.max(PF_START_Y + 900, maxY + 900), mode: 'platformer', width, pieces };
+}

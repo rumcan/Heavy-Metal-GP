@@ -137,3 +137,28 @@ test('a hand-built course is raced end to end by the whole AI field', () => {
   for (; t < 240000 && !game.allFinished(); t += PHYSICS_STEP) game.step(PHYSICS_STEP);
   assert.ok(game.finishOrder.length >= 9, `${game.finishOrder.length}/10 finished after ${Math.round(t / 1000)} s`);
 });
+
+test('a copy of an official course is a valid def of a few hundred pieces that the field still races through', async () => {
+  const { planFlow } = await import('../src/game/platformer/flow');
+  const { defFromPlan } = await import('../src/game/platformer/def');
+  for (const seed of [7, 11]) {
+    const original = planFlow(seed);
+    const check = validateTrackDef(defFromPlan(original, `Copy ${seed}`));
+    assert.ok(check.ok, check.ok ? '' : check.error);
+    if (!check.ok) return;
+    assert.ok(check.def.pieces.length < 900, `${check.def.pieces.length} pieces`);
+    assert.equal(check.def.width! - 500, Math.round(original.finishX), 'the finish stands where it did');
+    assert.deepEqual(platformerProblems(check.def), [], 'a copy has no problems to fix');
+    const copy = planFromTrackDef(check.def);
+    for (const lane of [0, 1, 2] as const) {
+      const a = floorAt(original, lane, 4000), b = floorAt(copy, lane, 4000);
+      assert.ok(a === null ? b === null : b !== null && Math.abs(b - (a + (Y - original.startY))) < 60, `lane ${lane} floor at 4000: ${a} vs ${b}`);
+    }
+    const game = new Game(seed, field(), { track: trackFromPlan(copy, seed, TRACK_THEMES.forest) });
+    game.start();
+    game.openGate();
+    let t = 0;
+    for (; t < 300000 && !game.allFinished(); t += PHYSICS_STEP) game.step(PHYSICS_STEP);
+    assert.ok(game.finishOrder.length >= 8, `seed ${seed}: ${game.finishOrder.length}/10 finished after ${Math.round(t / 1000)} s`);
+  }
+});
