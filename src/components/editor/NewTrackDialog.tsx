@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { X, Sparkles, LayoutGrid, Zap, Target, ShoppingCart, Dices, Flag, ArrowRight, ArrowLeft, MoveRight, MoveDown } from 'lucide-react';
 import { CALENDAR } from '../../game/season';
-import { officialTrack } from '../../game/official-tracks';
+import { championshipTrack as officialTrack } from '../../game/championship-tracks';
 import { generateExperimentalTrackDef } from '../../game/trackdef';
 import type { TrackDef } from '../../game/trackdef';
 import { TEMPLATES, blankTemplate } from '../../game/templates';

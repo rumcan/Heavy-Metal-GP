@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { LockKeyhole, SlidersHorizontal, Trophy } from 'lucide-react';
 import { CALENDAR, computeStandings, gpRanking, gpSeed, roundName, roundTrack } from '../../game/season';
 import type { SeasonState } from '../../game/season';
-import { officialTrack } from '../../game/official-tracks';
+import { championshipTrack as officialTrack } from '../../game/championship-tracks';
 import { HEATS_PER_GP, teamOf } from '../../game/types';
 import type { MarbleInfo } from '../../game/types';
 import type { Garage } from '../../game/garages';

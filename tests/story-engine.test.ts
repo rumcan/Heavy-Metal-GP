@@ -12,6 +12,7 @@
 // uses are set before the dynamic import below.
 // ══════════════════════════════════════════════════════════════════════════
 import { test } from 'node:test';
+import { GP_COURSES, platformerCourse } from '../src/game/platformer/course';
 import assert from 'node:assert/strict';
 
 const stubs = globalThis as unknown as { window?: unknown; document?: unknown };
@@ -592,11 +593,9 @@ test('Story chapters: circuits, seeds and titles line up with the calendar', () 
     assert.equal(chapterTitle(def.chapter), def.title);
     assert.equal(storyGrandPrixName(def.chapter), CALENDAR[def.gp].name);
     const profile = storyProfile(def.chapter);
-    assert.equal(profile.segments, CALENDAR[def.gp].profile.segments, 'story mode never changes the circuit length');
-    for (const [piece, weight] of Object.entries(def.weights ?? {})) assert.equal(profile.weights[piece], weight);
-    for (const [piece, weight] of Object.entries(CALENDAR[def.gp].profile.weights)) {
-      if (!(def.weights ?? {})[piece]) assert.equal(profile.weights[piece], weight, 'the Grand Prix weights survive the merge');
-    }
+    assert.equal(profile.generator, 'platformer', 'story races are platformer courses (the drop tracks are retired)');
+    assert.equal(profile.course, `story-c${def.chapter}`, 'each chapter races its own course (its Grand Prix course plus its objective pieces)');
+    assert.equal(platformerCourse(profile.course).name, GP_COURSES[def.gp].name, 'named after its Grand Prix');
     assert.equal(storyRaceSeed(newStory(SEED, DRIVER, 0), def.chapter), storyRaceSeed(newStory(SEED, DRIVER, 0), def.chapter), 'seeds are stable');
     assert.notEqual(storyRaceSeed(newStory(SEED, DRIVER, 0), def.chapter), storyRaceSeed(newStory(0xbeef, DRIVER, 0), def.chapter));
   }

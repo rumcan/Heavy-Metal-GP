@@ -1,8 +1,10 @@
 import Matter from 'matter-js';
 import { generateTrack, meta, Track, CAT_MARBLE, CAT_WALL, CAT_SENSOR, CAT_LOOP_UP, CAT_LOOP_CLOSE, CAT_FRAGILE, CAT_DANGER, W, bridgePlankPose, cannonAim, catapultAngle } from './track';
 import { elementBodies, updateElements, hingeTimerState } from './elements';
-import { TrackDefError, buildTrackFromDef } from './trackdef';
-import { ItemType, MarbleInfo, MARBLE_RADIUS, statsToPhysics, mulberry32, TrackProfile, normalizeInventory, ITEM_TYPES, MAX_ITEM_STACK } from './types';
+import { TrackDefError, buildTrackFromDef, validateTrackDef } from './trackdef';
+import { trackFromPlan } from './platformer/build';
+import { planFromTrackDef, settle } from './platformer/def';
+import { ItemType, MarbleInfo, MARBLE_RADIUS, statsToPhysics, mulberry32, TrackProfile, normalizeInventory, ITEM_TYPES, MAX_ITEM_STACK, TRACK_THEMES } from './types';
 import type { Inventory } from './types';
 import { gridSlots } from './grid';
 import { assistRolling, createMarble } from './physics';
@@ -510,6 +512,10 @@ export class Game {
   trackFor(seed: number, profile: TrackProfile | undefined, def: unknown): Track {
     if (def === undefined || def === null) return generateTrack(seed, profile);
     try {
+      // A platformer course (every official track since the drop tracks were retired, and every Workshop course)
+      // races as a platformer: three lanes, left to right.
+      const check = validateTrackDef(def);
+      if (check.ok && check.def.mode === 'platformer') return trackFromPlan(planFromTrackDef(settle(check.def)), seed, TRACK_THEMES.forest);
       return buildTrackFromDef(def);
     } catch (error) {
       this.trackDefError = error instanceof TrackDefError ? error.message : `Track definition rejected: ${String(error)}`;

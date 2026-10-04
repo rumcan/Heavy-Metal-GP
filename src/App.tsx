@@ -43,7 +43,7 @@ import { circuitIndexOf, gridOrderOf, rosterOf } from './net/lobby';
 import type { SeatGarage } from './net/lobby';
 import { MarbleInfo, AI_COLORS, randomStats, mulberry32, HeatResult, HEATS_PER_GP } from './game/types';
 import { SeasonState, newSeason, recordHeat, gridOrder, gpSeed, CALENDAR, saveSeason, loadSeason, roundTrack, roundName, setRoundTrack } from './game/season';
-import { officialTrack } from './game/official-tracks';
+import { championshipTrack as officialTrack } from './game/championship-tracks';
 import LevelUpCard from './components/progression/LevelUpCard';
 import TalentsScreen from './components/talents/TalentsScreen';
 import { validateBuild } from './game/talents';

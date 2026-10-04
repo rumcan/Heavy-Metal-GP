@@ -11,11 +11,15 @@
 
 
 import type { RaceCounter } from '../story/types';
+import { STORY_SECTORS } from '../story/courses';
 
 import { Game, Marble } from '../engine';
 
 
 export function sectorOf(game: Game, m: Marble): number  {
+  // A platformer course runs sideways: its sectors are equal slices of the distance along it.
+  const pf = game.track.platformer;
+  if (pf) return Math.max(0, Math.min(STORY_SECTORS - 1, Math.floor(((m.progress ?? 0) / Math.max(1, pf.path.length)) * STORY_SECTORS)));
   const y = m.body.position.y;
   const segments = game.track.segments;
   for (let i = 0; i < segments.length; i++) if (y >= segments[i].y && y < segments[i].y + segments[i].h) return i;
@@ -43,7 +47,10 @@ export function storyStep(game: Game) {
   if (!hooks.onCounter) return;
   const order = game.marbles.filter((m) => m.finishedAt === null)
     .map((m) => m.info.id)
-    .sort((a, b) => game.byId.get(b)!.body.position.y - game.byId.get(a)!.body.position.y);
+    // ahead = further down a drop track, or further along a platformer course
+    .sort((a, b) => game.track.platformer
+      ? (game.byId.get(b)!.progress ?? 0) - (game.byId.get(a)!.progress ?? 0)
+      : game.byId.get(b)!.body.position.y - game.byId.get(a)!.body.position.y);
   const previousOrder = game.storyOrder;
   game.storyOrder = order;
   if (!previousOrder.length) return;

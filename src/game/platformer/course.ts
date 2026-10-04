@@ -3,7 +3,7 @@
 // Deterministic from the seed (multiplayer and replays build the same course).
 import { mulberry32 } from '../types';
 import { LANE_BACK, LANE_FRONT, LANE_MIDDLE } from '../lanes';
-import { planFlow } from './flow';
+import { FLOW_TUNING, planFlow } from './flow';
 import { bridgeDeckAt } from './routes';
 import type { BridgeSpot, LoopSpot } from './routes';
 
@@ -35,6 +35,19 @@ export const PLATFORMER_COURSES: readonly PlatformerCourse[] = [
   { id: 'training', name: 'Training Grounds', blurb: 'The short tutorial course: one crate, one gap, one ramp, one door, a slope and a climb.', seed: 1, tutorial: true },
 ];
 
+/**
+ * The championship calendar as platformer courses (the drop tracks are retired): one per Grand Prix, in calendar
+ * order, getting longer through the season. Rolling coaster courses like Rolling Hills, each from its own seed.
+ */
+export const GP_COURSES: readonly PlatformerCourse[] = [
+  { id: 'gp-marblehurst', name: 'Marblehurst Grand Prix', blurb: 'The season opener: gentle fairground hills, a few chasms and crates, room to learn your lines.', seed: 101, flow: true, length: 22000 },
+  { id: 'gp-monte-pipo', name: 'Monte Pipo Street Circuit', blurb: 'Harbour switchbacks: short sharp drops, lane gates every few hundred metres, crates on the inside line.', seed: 211, flow: true, length: 24000 },
+  { id: 'gp-silverpeg', name: 'Silverpeg Grand Prix', blurb: 'Fast rolling crests over silver chasms: carry speed and fly the gaps.', seed: 307, flow: true, length: 25000 },
+  { id: 'gp-spa', name: 'Spa-Francoroll', blurb: 'A long forest descent: loops, rope bridges and the fastest downhill of the year.', seed: 419, flow: true, length: 27000 },
+  { id: 'gp-suzuka', name: 'Suzuka Spiral', blurb: 'Canyon country: deep chasms, busy gates and crates in every lane.', seed: 523, flow: true, length: 28000 },
+  { id: 'gp-yas', name: 'Yas Marble Finale', blurb: 'The longest course of the season: everything at once, all the way to the flag.', seed: 631, flow: true, length: 32000 },
+];
+
 /** Courses built in the Workshop, registered for the session under a key (`my-...`). A race looks them up like the official ones. */
 const CUSTOM_COURSES = new Map<string, { course: PlatformerCourse; plan: CoursePlan }>();
 
@@ -46,7 +59,7 @@ export function registerCustomCourse(key: string, name: string, plan: CoursePlan
 
 export function platformerCourse(id: string | null | undefined): PlatformerCourse {
   const key = id && id.startsWith(PLATFORMER_PREFIX) ? id.slice(PLATFORMER_PREFIX.length) : id;
-  return CUSTOM_COURSES.get(key ?? '')?.course ?? PLATFORMER_COURSES.find((c) => c.id === key) ?? PLATFORMER_COURSES[0];
+  return CUSTOM_COURSES.get(key ?? '')?.course ?? PLATFORMER_COURSES.find((c) => c.id === key) ?? GP_COURSES.find((c) => c.id === key) ?? PLATFORMER_COURSES[0];
 }
 
 /** The plan for an official course. */
@@ -54,8 +67,9 @@ export function planOfficial(course: PlatformerCourse): CoursePlan {
   const custom = CUSTOM_COURSES.get(course.id);
   if (custom) return custom.plan;
   if (course.tutorial) return planTutorial();
-  if (course.flow) return planFlow(course.seed);
-  return planCourse(course.seed, course.length ? { ...COURSE_TUNING, length: course.length } : COURSE_TUNING);
+  if (course.flow) return planFlow(course.seed, course.length ? { ...FLOW_TUNING, length: course.length } : FLOW_TUNING);
+  // block courses are drawn in the painted coaster style like every other course (as 'blocks' they used the old pixel tiles)
+  return { ...planCourse(course.seed, course.length ? { ...COURSE_TUNING, length: course.length } : COURSE_TUNING), style: 'flow' };
 }
 
 /** One stretch of floor: its top edge runs from (x0, y0) to (x1, y1). */

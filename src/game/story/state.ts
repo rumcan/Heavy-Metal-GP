@@ -8,7 +8,8 @@
 import * as storage from '../storage';
 import { CALENDAR, computeStandings, newSeason } from '../season';
 import type { SeasonState } from '../season';
-import { AI_COLORS, HEATS_PER_GP, STAT_BUDGET, STAT_MAX, STAT_MIN } from '../types';
+import { AI_COLORS, HEATS_PER_GP, STAT_BUDGET, STAT_MAX, STAT_MIN, TRACK_THEMES } from '../types';
+import { storyCourseId } from './courses';
 import type { MarbleInfo, MarbleStats, TrackProfile } from '../types';
 import { CAST, STORY_GRID, castTeam, racingCast } from './cast';
 import type { CastId } from './cast';
@@ -202,13 +203,15 @@ export function storyRaceSeed(state: StoryState, chapter: number): number {
   return ((state.seed ^ (0x51ed270b + def.gp * 0x9e3779b9)) >>> 0);
 }
 
-/** The chapter's circuit profile: the Grand Prix profile with the chapter's extra weights merged in. */
+/**
+ * The chapter's circuit: its Grand Prix's platformer course (the drop tracks are retired), raced in the forest
+ * theme like every platformer course.
+ */
 export function storyProfile(chapter: number): TrackProfile {
   const def = chapterDef(chapter);
   const base = CALENDAR[def.gp]?.profile;
   if (!base) throw new Error(`Story chapter ${chapter} points at Grand Prix ${def.gp}, which does not exist.`);
-  if (!def.weights) return { ...base, generator: 'legacy' };
-  return { ...base, generator: 'legacy', weights: { ...base.weights, ...def.weights } };
+  return { ...base, generator: 'platformer', course: storyCourseId(chapter), theme: TRACK_THEMES.forest };
 }
 
 export function storyGrandPrix(chapter: number) {

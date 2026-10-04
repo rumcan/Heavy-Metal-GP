@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Check, Hammer, Shuffle } from 'lucide-react';
 import { CALENDAR } from '../../game/season';
-import { officialTrack } from '../../game/official-tracks';
+import { championshipTrack as officialTrack } from '../../game/championship-tracks';
 import { loadTracksSync } from '../../game/tracks';
 import type { MarbleInfo } from '../../game/types';
 import CircuitPreview from '../CircuitPreview';
