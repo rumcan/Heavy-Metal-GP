@@ -332,7 +332,6 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
    */
   /** The shared code is a platformer course (a Community course has no My courses entry to tell by). */
   const [customCourse, setCustomCourse] = useState(false);
-  const [communityKind, setCommunityKind] = useState<'track' | 'platformer'>('track');
   const shareDef = async (def: TrackDef, tab: 'custom' | 'community' | 'platformer') => {
     if (!isHost) return;
     const room = await roomCodeFor(def);
@@ -623,9 +622,9 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
         {isHost && (
           <div className="circuit-tabs" role="tablist" aria-label="Circuit source">
             <button role="tab" aria-selected={circuitTab === 'calendar'} className={circuitTab === 'calendar' ? 'selected' : ''} onClick={() => pickPlatformer(null)}>Calendar</button>
-            <button role="tab" aria-selected={circuitTab === 'custom'} className={circuitTab === 'custom' ? 'selected' : ''} onClick={() => setCircuitTab('custom')}>My tracks{myTracks.length ? ` (${myTracks.length})` : ''}</button>
+            <button role="tab" aria-selected={circuitTab === 'platformer'} className={circuitTab === 'platformer' ? 'selected' : ''} onClick={() => pickPlatformer(settings.platformer ?? PLATFORMER_COURSES[0].id)}>Courses</button>
+            <button role="tab" aria-selected={circuitTab === 'custom'} className={circuitTab === 'custom' ? 'selected' : ''} onClick={() => setCircuitTab('custom')}>My courses{myCourses.length ? ` (${myCourses.length})` : ''}</button>
             <button role="tab" aria-selected={circuitTab === 'community'} className={circuitTab === 'community' ? 'selected' : ''} onClick={() => setCircuitTab('community')}>Community</button>
-            <button role="tab" aria-selected={circuitTab === 'platformer'} className={circuitTab === 'platformer' ? 'selected' : ''} onClick={() => pickPlatformer(settings.platformer ?? PLATFORMER_COURSES[0].id)}>Platformer</button>
           </div>
         )}
         {settings.platformer ? (
@@ -661,11 +660,7 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
           </div>
         ) : isHost && circuitTab === 'community' ? (
           <div className="lobby-community">
-            <div className="circuit-tabs" role="group" aria-label="Community kind">
-              <button className={communityKind === 'track' ? 'selected' : ''} aria-pressed={communityKind === 'track'} onClick={() => setCommunityKind('track')}>Circuits</button>
-              <button className={communityKind === 'platformer' ? 'selected' : ''} aria-pressed={communityKind === 'platformer'} onClick={() => setCommunityKind('platformer')}>Platformer courses</button>
-            </div>
-            <CommunityPicker key={communityKind} kind={communityKind} selectedId={customCode ? communityPick : null} onPick={(id) => void pickCommunity(id)} />
+            <CommunityPicker kind="platformer" selectedId={customCode ? communityPick : null} onPick={(id) => void pickCommunity(id)} />
           </div>
         ) : circuitTab === 'calendar' || !isHost ? (
           <div className="circuit-selector" aria-label="Select a circuit">
@@ -678,46 +673,26 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
             ><span>{String(i + 1).padStart(2, '0')}</span><strong>{item.short}</strong></button>)}
           </div>
         ) : (
-          <div className="my-tracks-list lobby-custom-list" aria-label="My tracks">
-            {myTracks.length === 0 ? (
-              <p className="lobby-note">You have no saved tracks — build one in Workshop, then pick it here.</p>
+          <div className="my-tracks-list lobby-custom-list" aria-label="My courses">
+            {myCourses.length === 0 ? (
+              <p className="lobby-note">You have no saved courses: build one in the Workshop, then pick it here.</p>
             ) : (
-              myTracks.map((t) => (
+              myCourses.map((t) => (
                 <button
                   key={t.id}
-                  className={`my-track-row ${customName === t.def.name && customCode ? 'selected' : ''}`}
-                  onClick={() => void pickCustomTrack(t.id)}
+                  className={`my-track-row ${coursePick?.id === t.id ? 'selected' : ''}`}
+                  onClick={() => void pickMyCourse(t.id)}
                   disabled={!isHost}
                 >
-                  <TrackThumbnail def={t.def} />
+                  <TrackThumbnail def={t.def} wide />
                   <span className="my-track-meta">
                     <strong>{t.def.name}</strong>
-                    <span className="muted">{t.def.pieces.length} pcs • {t.def.height}px</span>
+                    <span className="muted">{t.def.pieces.length} pcs • {Math.round((t.def.width ?? 0) / 100) / 10}k long</span>
                   </span>
-                  <span className="my-track-check" aria-hidden>{customName === t.def.name && customCode ? '●' : ''}</span>
+                  <span className="my-track-check" aria-hidden>{coursePick?.id === t.id ? '●' : ''}</span>
                 </button>
               ))
             )}
-          </div>
-        )}
-        {isHost && circuitTab === 'platformer' && myCourses.length > 0 && (
-          <div className="my-tracks-list lobby-custom-list" aria-label="My courses">
-            <p className="lobby-note">Your own platformer courses: pick one and it is shared with the room as a code.</p>
-            {myCourses.map((t) => (
-              <button
-                key={t.id}
-                className={`my-track-row ${coursePick?.id === t.id ? 'selected' : ''}`}
-                onClick={() => void pickMyCourse(t.id)}
-                disabled={!isHost}
-              >
-                <TrackThumbnail def={t.def} />
-                <span className="my-track-meta">
-                  <strong>{t.def.name}</strong>
-                  <span className="muted">{t.def.pieces.length} pcs • {Math.round((t.def.width ?? 0) / 100) / 10}k long</span>
-                </span>
-                <span className="my-track-check" aria-hidden>{coursePick?.id === t.id ? '●' : ''}</span>
-              </button>
-            ))}
           </div>
         )}
         <p className="lobby-note">

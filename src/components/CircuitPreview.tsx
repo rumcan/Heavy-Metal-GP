@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Pause, Play, ScanLine } from 'lucide-react';
 import { Game } from '../game/engine';
 import { render } from '../game/render';
+import { marbleDepth, renderPlatformer } from '../game/platformer/render';
 import { PHYSICS_STEP } from '../game/physics';
 import { HEAT_TIME_LIMIT } from '../game/physics';
 import { W } from '../game/track';
@@ -24,6 +25,8 @@ export default function CircuitPreview({ seed, roster, profile, def }: Props) {
     let game: Game;
     const setup = () => {
       game = new Game(seed, roster, { profile, def: def ?? undefined });
+      // a platformer course has to be driven: in the preview the computer drives every marble, yours too
+      if (game.track.platformer) (game as unknown as { isHuman: () => boolean }).isHuman = () => false;
       game.openGate();
       for (let tick = 0; tick < 200; tick++) game.step(PHYSICS_STEP);
     };
@@ -34,7 +37,7 @@ export default function CircuitPreview({ seed, roster, profile, def }: Props) {
     let last = performance.now();
     let accumulator = 0;
     let labelTimer = 0;
-    const camera = { x: W / 2, y: game!.player.body.position.y + 180, scale: 1 };
+    const camera = { x: W / 2, y: game!.player.body.position.y + 180, scale: 1, focus: 1 };
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
       width = rect.width;
@@ -56,6 +59,20 @@ export default function CircuitPreview({ seed, roster, profile, def }: Props) {
         if (game.allFinished() || game.raceTime() > HEAT_TIME_LIMIT) { game.destroy(); setup(); camera.y = game.player.body.position.y; }
       }
       const follow = game.player.finishedAt === null ? game.player : game.ranking().find((r) => !r.finished)?.marble ?? game.player;
+      if (game.track.platformer) {
+        // sideways: follow the race leader, framed like the race camera
+        const lead = game.ranking().find((r) => !r.finished)?.marble ?? follow;
+        const p = lead.body.position;
+        camera.scale = Math.max(0.35, Math.min(1, Math.min(width / 1100, height / 560)));
+        camera.x += (p.x + 160 - camera.x) * (1 - Math.exp(-dt / 260));
+        camera.y += (p.y - camera.y) * (1 - Math.exp(-dt / 260));
+        camera.focus = marbleDepth(game, lead);
+        if (width && height) renderPlatformer(ctx, game, camera, width, height, now, lead);
+        labelTimer += dt;
+        if (labelTimer > 500) { labelTimer = 0; const pf = game.track.platformer; setSector(`${Math.round(Math.min(1, (lead.progress ?? 0) / Math.max(1, pf.path.length)) * 100)} % of the course`); }
+        raf = requestAnimationFrame(loop);
+        return;
+      }
       const target = follow.body.position.y + 130;
       camera.scale = width / (W + 90);
       const halfHeight = height / 2 / camera.scale;
