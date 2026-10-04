@@ -92,7 +92,10 @@ async function dismissWhatsNew(page: Page, timeout = 45000) {
 
 /** Open a home tab (Story, Championship, Quick race, Online, Workshop). */
 async function openTab(page: Page, name: string) {
-  await page.getByRole('navigation', { name: 'Game modes' }).getByRole('button', { name }).click();
+  // The main menu picks a mode; inside a mode, the header's back button returns to the menu first.
+  const back = page.getByRole('button', { name: 'Back to the main menu' });
+  if (await back.isVisible().catch(() => false)) await back.click();
+  await page.getByRole('main', { name: 'Main menu' }).getByRole('button', { name: new RegExp(name, 'i') }).click();
 }
 
 async function ready(page: Page, path = '/') {
@@ -101,7 +104,7 @@ async function ready(page: Page, path = '/') {
   if (path === '/') {
     await dismissGate(page);
     await dismissWhatsNew(page);
-    await page.getByRole('navigation', { name: 'Game modes' }).waitFor({ state: 'visible', timeout: 45000 });
+    await page.getByRole('main', { name: 'Main menu' }).or(page.getByRole('button', { name: 'Back to the main menu' })).first().waitFor({ state: 'visible', timeout: 45000 });
   } else if (path.includes('ui-fixture.html')) {
     await page.locator('.results-table').waitFor({ state: 'visible', timeout: 45000 }).catch(() => {});
   }
@@ -701,7 +704,7 @@ for (const { label, options } of SCREEN_VIEWPORTS) {
       await page.getByRole('button', { name: 'Resume', exact: true }).click();
       await page.getByRole('button', { name: 'Pause' }).click();
       await page.getByRole('button', { name: 'Leave', exact: true }).click();
-      await page.getByRole('navigation', { name: 'Game modes' }).waitFor();
+      await page.getByRole('main', { name: 'Main menu' }).or(page.getByRole('button', { name: 'Back to the main menu' })).first().waitFor();
       assert.deepEqual(errors, []);
     } finally { await context.close(); }
   });

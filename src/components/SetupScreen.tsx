@@ -16,7 +16,7 @@
  * and "Save setup" as its one button.
  */
 import { useMemo, useState } from 'react';
-import { ArrowRight, CircleHelp, FlaskConical, LockKeyhole } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CircleHelp, FlaskConical, LockKeyhole } from 'lucide-react';
 import { CALENDAR, roundName } from '../game/season';
 import type { SeasonState } from '../game/season';
 import type { MarbleInfo } from '../game/types';
@@ -35,7 +35,8 @@ import RulesDialog from './RulesDialog';
 import WalletButton from './WalletButton';
 import { storyPrimary } from './story/StoryHub';
 import ChampionshipTab from './home/ChampionshipTab';
-import HomeTabs, { TAB_META } from './home/HomeTabs';
+import { TAB_META } from './home/HomeTabs';
+import MainMenu from './home/MainMenu';
 import OnlineTab from './home/OnlineTab';
 import QuickRaceTab from './home/QuickRaceTab';
 import StoryTab from './home/StoryTab';
@@ -104,6 +105,12 @@ export interface SetupScreenProps {
 
 type PaneId = 'event' | 'garage' | 'field';
 
+/**
+ * The mode the player is in during this visit. The game opens on the main menu; coming back from a race (the screen
+ * mounts again) returns to the mode the race was started from. The back button clears it.
+ */
+let visitTab: HomeTab | null = null;
+
 /** What the bottom switcher calls the three columns, per tab. */
 function paneLabels(tab: HomeTab, seasonStarted: boolean): [string, string, string] {
   switch (tab) {
@@ -126,7 +133,9 @@ export default function SetupScreen(props: SetupScreenProps) {
   const onSelectCustom = props.onSelectCustom ?? (() => undefined);
   const seasonMode = !!props.seasonMode;
 
-  const [tab, setTab] = useState<HomeTab>(() => (seasonMode ? 'championship' : props.initialTab ?? loadHomeTab()));
+  const [tab, setTab] = useState<HomeTab>(() => (seasonMode ? 'championship' : props.initialTab ?? visitTab ?? loadHomeTab()));
+  /** The main menu is showing (every mode is picked from it; the header's back button returns to it). */
+  const [menu, setMenu] = useState(() => !seasonMode && !props.initialTab && !visitTab);
   // A mode with something waiting for the player (a race to rejoin, a search running) opens on it; every other mode
   // opens on the goblin, as the garage always did.
   const [pane, setPane] = useState<PaneId>(() => (tab === 'workshop' || (tab === 'online' && (rejoin || searching)) ? 'event' : 'garage'));
@@ -136,11 +145,14 @@ export default function SetupScreen(props: SetupScreenProps) {
   const [storyVersion, setStoryVersion] = useState(0);
 
   const selectTab = (next: HomeTab) => {
+    setMenu(false);
+    visitTab = next;
     if (next === tab) return;
     setTab(next);
     setPane(next === 'workshop' ? 'event' : 'garage');
     saveHomeTab(next);
   };
+  const backToMenu = () => { visitTab = null; setMenu(true); };
   const openWorkshopTab = () => selectTab('workshop');
   const browseCommunity = () => { setQuickSub('community'); selectTab('quick'); };
 
@@ -190,12 +202,12 @@ export default function SetupScreen(props: SetupScreenProps) {
   const panes = paneLabels(tab, !!season);
   const paneIds: PaneId[] = ['event', 'garage', 'field'];
 
-  return <div className="app-shell home-page garage-page fit-shell" data-pane={pane} data-tab={tab}>
-    <header className="app-header home-header">
+  const header = <header className="app-header home-header">
+      {!menu && !seasonMode && <button className="icon-button home-back" onClick={backToMenu} aria-label="Back to the main menu" title="Main menu"><ArrowLeft size={20} /></button>}
       <Brand />
       {seasonMode
         ? <div className="home-retune"><span className="eyebrow accent"><LockKeyhole size={13} aria-hidden="true" /> RETUNE</span><strong>{season ? roundName(season, seasonRound) : 'Championship'}</strong></div>
-        : <HomeTabs tab={tab} onTab={selectTab} />}
+        : !menu && <div className="home-mode"><span className="eyebrow">MODE</span><strong>{TAB_META[tab].label}</strong></div>}
       <div className="header-tools">
         <button className="text-button help-link" onClick={() => setDialog('rules')} aria-label="How to play" title="How to play"><CircleHelp size={17} /><span>How to play</span></button>
         {/* RK-05: the rank badge and rating live in the header — the one row every player sees before they pick a
@@ -209,7 +221,19 @@ export default function SetupScreen(props: SetupScreenProps) {
         {import.meta.env.DEV && <button className="text-button lab-link" onClick={() => setDialog('lab')}><FlaskConical size={16} /><span>Physics lab</span></button>}
         <WalletButton credits={account.credits} onClick={onShop} />
       </div>
-    </header>
+    </header>;
+
+  if (menu) {
+    return <div className="app-shell home-page main-menu-page">
+      {header}
+      <MainMenu onPick={selectTab} last={loadHomeTab()} />
+      {import.meta.env.DEV && dialog === 'lab' && <PhysicsLab onClose={() => setDialog(null)} />}
+      {dialog === 'rules' && <RulesDialog onClose={() => setDialog(null)} />}
+    </div>;
+  }
+
+  return <div className="app-shell home-page garage-page fit-shell" data-pane={pane} data-tab={tab}>
+    {header}
 
     <main className="fit-main home-main garage-fit" aria-label={`${TAB_META[tab].label} mode`}>
       {tab === 'story' && story && <StoryTab
