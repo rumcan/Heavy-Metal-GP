@@ -3,6 +3,7 @@
 // torches, banners and the sheep spring. Built from the game's existing painted art; a skin only (physics is the
 // plain floor pieces from build.ts). Returns false until the art has loaded, and the caller draws a fallback.
 import type { CoursePlan, Floor, Lane } from './course';
+import { drawImg } from '../mip';
 import { SPRING_W } from './course';
 import type Matter from 'matter-js';
 import { LEDGE_H } from './build';
@@ -115,7 +116,7 @@ function stripAlong(ctx: CanvasRenderingContext2D, img: CanvasImageSource & { wi
       let at = (u + done) % tw;
       if (tw - at < 0.5) at = 0;
       const piece = Math.max(0.5, Math.min(len - done, tw - at));
-      ctx.drawImage(img, at * srcPerPx, 0, Math.max(1, piece * srcPerPx), img.height, done - 0.6, -up, piece + 1.2, thick);
+      drawImg(ctx, img, at * srcPerPx, 0, Math.max(1, piece * srcPerPx), img.height, done - 0.6, -up, piece + 1.2, thick);
       done += piece;
     }
     ctx.restore();
@@ -179,7 +180,7 @@ function stackSupport(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: n
   const n = Math.max(1, Math.round(h / module));
   const mh = h / n;
   const w = Math.min((img.naturalWidth / img.naturalHeight) * mh, maxW);
-  for (let k = 0; k < n; k++) ctx.drawImage(img, x - w / 2, top + k * mh, w, mh + 1);
+  for (let k = 0; k < n; k++) drawImg(ctx, img, x - w / 2, top + k * mh, w, mh + 1);
 }
 
 /**
@@ -230,7 +231,7 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
       const h = 360 + r * 200;
       const w = (img.naturalWidth / img.naturalHeight) * h;
       const foot = yOn(run, x) + clearance(x) + 16;
-      ctx.drawImage(img, x - w / 2, foot - h, w, h);
+      drawImg(ctx, img, x - w / 2, foot - h, w, h);
     }
     trestle(ctx, run, pts[0].x - SUPPORT_EVERY, pts[pts.length - 1].x + SUPPORT_EVERY, (x) => yOn(run, x) + clearance(x));
     // the track: a plain wooden beam (no chevron rail, per the owner)
@@ -245,7 +246,7 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
     const squash = springFired(s.x) ? 0.82 : 1;
     const w = SPRING_W + 18;
     const h = (ART.sheep.naturalHeight / ART.sheep.naturalWidth) * w * squash;
-    ctx.drawImage(ART.sheep, s.x - 9, s.y - h + 4, w, h);
+    drawImg(ctx, ART.sheep, s.x - 9, s.y - h + 4, w, h);
   }
   drawMapPieces(ctx, pieces, lane, left, right, time);
   drawRoutes(ctx, plan.loops, pieces, lane, left, right); // P2-21: loop rings and rope bridges
@@ -260,7 +261,7 @@ function torches(ctx: CanvasRenderingContext2D, run: Pt[], pts: Pt[], lane: Lane
     // (the support sprites carry their own banners)
     if (r < 0.4 && ready(ART.torch)) {
       const flicker = 1 + Math.sin(time / 90 + x) * 0.03;
-      ctx.drawImage(ART.torch, x - 14, y - 66 * flicker, 28, 52 * flicker);
+      drawImg(ctx, ART.torch, x - 14, y - 66 * flicker, 28, 52 * flicker);
     }
   }
 }
@@ -272,7 +273,7 @@ function staticProps(ctx: CanvasRenderingContext2D, plan: CoursePlan, runs: Pt[]
     if (b.lane !== lane || b.x + b.w < left || b.x > right) continue;
     if (ready(ART.crate)) {
       const n = Math.max(1, Math.round(b.w / b.h));
-      for (let i = 0; i < n; i++) ctx.drawImage(ART.crate, b.x + (i * b.w) / n, b.y, b.w / n, b.h + 6);
+      for (let i = 0; i < n; i++) drawImg(ctx, ART.crate, b.x + (i * b.w) / n, b.y, b.w / n, b.h + 6);
     }
   }
   // ledges: spur tracks on posts
@@ -289,8 +290,8 @@ function staticProps(ctx: CanvasRenderingContext2D, plan: CoursePlan, runs: Pt[]
     }
     const flat = [{ x: l.x, y: l.y }, { x: l.x + l.w, y: l.y }];
     stripAlong(ctx, middle(ART.wood!), flat, 2, LEDGE_H + 8);
-    ctx.drawImage(ART.wood!, 0, 0, ART.wood!.naturalWidth * RAIL_CAP, ART.wood!.naturalHeight, l.x - 10, l.y - 2, 22, LEDGE_H + 8);
-    ctx.drawImage(ART.wood!, ART.wood!.naturalWidth * (1 - RAIL_CAP), 0, ART.wood!.naturalWidth * RAIL_CAP, ART.wood!.naturalHeight, l.x + l.w - 12, l.y - 2, 22, LEDGE_H + 8);
+    drawImg(ctx, ART.wood!, 0, 0, ART.wood!.naturalWidth * RAIL_CAP, ART.wood!.naturalHeight, l.x - 10, l.y - 2, 22, LEDGE_H + 8);
+    drawImg(ctx, ART.wood!, ART.wood!.naturalWidth * (1 - RAIL_CAP), 0, ART.wood!.naturalWidth * RAIL_CAP, ART.wood!.naturalHeight, l.x + l.w - 12, l.y - 2, 22, LEDGE_H + 8);
   }
 }
 
@@ -334,7 +335,7 @@ function drawMapPieces(ctx: CanvasRenderingContext2D, pieces: Matter.Body[], lan
       if (ready(postImg)) {
         const h = foot - (pv.y - 26);
         const w = Math.min((postImg.naturalWidth / postImg.naturalHeight) * h, 110);
-        ctx.drawImage(postImg, postX - w / 2, pv.y - 26, w, h);
+        drawImg(ctx, postImg, postX - w / 2, pv.y - 26, w, h);
       }
       if (ready(ART.wood)) stripAlong(ctx, middle(ART.wood), [{ x: postX - 10, y: pv.y - 14 }, { x: pv.x + 26, y: pv.y - 14 }], 2, 20);
       // chain
@@ -359,7 +360,7 @@ function drawMapPieces(ctx: CanvasRenderingContext2D, pieces: Matter.Body[], lan
         ctx.save();
         ctx.translate(b.position.x, b.position.y);
         ctx.rotate(-Math.atan2(dx, dy));
-        ctx.drawImage(ART.ball, -bw / 2, -bh * 0.62, bw, bh);
+        drawImg(ctx, ART.ball, -bw / 2, -bh * 0.62, bw, bh);
         ctx.restore();
       }
     } else if (md.kind === 'itembox' && md.active !== false) {
@@ -372,7 +373,7 @@ function drawMapPieces(ctx: CanvasRenderingContext2D, pieces: Matter.Body[], lan
       ctx.save();
       ctx.translate(b.position.x, y);
       ctx.rotate(Math.sin(time / 500 + b.position.x) * 0.25);
-      if (ready(ART.crate)) ctx.drawImage(ART.crate, -18, -16, 36, 32);
+      if (ready(ART.crate)) drawImg(ctx, ART.crate, -18, -16, 36, 32);
       ctx.font = 'bold 20px system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
