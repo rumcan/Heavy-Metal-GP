@@ -482,12 +482,16 @@ export class Game {
     if (!this.player) throw new Error('A race needs at least one marble.');
     this.streaming = this.track.bodies.length > 350;
     if (this.streaming) {
+      // A drop track is binned by height (it runs down); a platformer course by distance along (it runs sideways):
+      // either way only the geometry near the marbles is in the solver, which is what keeps a step cheap.
+      const sideways = !!this.track.platformer;
       for (const body of this.track.bodies) {
         this.loadedBodies.set(body.id, body);
-        if (body.bounds.max.y - body.bounds.min.y > 1800) this.globalBodies.push(body);
+        const lo = sideways ? body.bounds.min.x : body.bounds.min.y, hi = sideways ? body.bounds.max.x : body.bounds.max.y;
+        if (hi - lo > 1800) this.globalBodies.push(body);
         else {
-          const from = Math.floor(body.bounds.min.y / 400);
-          const to = Math.floor(body.bounds.max.y / 400);
+          const from = Math.floor(lo / 400);
+          const to = Math.floor(hi / 400);
           for (let cell = from; cell <= to; cell++) this.staticBins.set(cell, [...(this.staticBins.get(cell) ?? []), body]);
         }
       }
@@ -596,6 +600,13 @@ export class Game {
     const cells = new Set<number>();
     for (const marble of this.marbles) {
       if (marble.finishedAt !== null && !this.allFinished()) continue;
+      if (this.track.platformer) {
+        // sideways: a little behind, more ahead (the race runs to the right, fast)
+        const x = marble.body.position.x;
+        if (!Number.isFinite(x)) continue;
+        for (let cell = Math.floor((x - 800) / 400); cell <= Math.floor((x + 1400) / 400); cell++) cells.add(cell);
+        continue;
+      }
       const y = marble.body.position.y;
       if (!Number.isFinite(y)) continue;
       for (let cell = Math.floor((y - 380) / 400); cell <= Math.floor((y + 380) / 400); cell++) cells.add(cell);

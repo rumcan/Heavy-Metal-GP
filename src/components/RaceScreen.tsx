@@ -379,6 +379,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
     let accumulator = 0;
     let hudTimer = 0;
     let formationElapsed = 0;
+    let lookAhead = 0;
     let lights = 0;
     let finishHold = 0;
     const lightsOutAt = 4200 + game.rng() * 1000;
@@ -548,9 +549,11 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
           // in the direction of travel. Its depth (focus) dollies with the followed marble's lane changes.
           const platScale = Math.max(0.42, Math.min(1.25, Math.min(width / 1000, height / 520))) * zoomRef.current;
           camera.scale += (platScale - camera.scale) * (1 - Math.exp(-dt / 180));
-          const ahead = Math.max(-160, Math.min(260, following.body.velocity.x * 26));
-          camera.x += (p.x + ahead - camera.x) * (1 - Math.exp(-dt / 220));
-          camera.y += (p.y + 10 - camera.y) * (1 - Math.exp(-dt / 200));
+          // The look-ahead follows a smoothed speed: the raw speed jumps on every bump of the track, and x26 that
+          // shook the whole view. Vertical follow is a touch slower so small hops do not bob the camera.
+          lookAhead += (Math.max(-160, Math.min(260, following.body.velocity.x * 26)) - lookAhead) * (1 - Math.exp(-dt / 600));
+          camera.x += (p.x + lookAhead - camera.x) * (1 - Math.exp(-dt / 220));
+          camera.y += (p.y + 10 - camera.y) * (1 - Math.exp(-dt / 260));
           camera.focus = marbleDepth(game, following);
           renderPlatformer(ctx, game, camera, width, height, pausedRef.current || doneRef.current ? game.time : now, following);
         } else {
