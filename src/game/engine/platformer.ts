@@ -129,6 +129,7 @@ export function loopStep(game: Game, m: Marble): void {
     if ((m.loopPhase ?? 0) === 1) phase = p.x > l.x + l.pitch + 24 ? 0 : 1;
     else phase = p.y < l.y - l.r && p.x < top ? 1 : 0;
   }
+  if (phase === 1 && (m.loopPhase ?? 0) === 0) game.storyCounter('loops', m); // STORY HOOK: over the top of a loop ring
   m.loopPhase = phase as 0 | 1;
 }
 

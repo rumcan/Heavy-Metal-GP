@@ -44,7 +44,8 @@ const when = (ms: number) => new Date(ms).toLocaleDateString(undefined, { day: '
 export default function WorkshopTab({ onOpenEditor, onBrowseCommunity, newTrackOpen, onNewTrackClose }: Props) {
   const [version, setVersion] = useState(0);
   /** P2-22: circuits and platformer courses are built in the same Workshop, so the list can show either. */
-  const [kind, setKind] = useState<KindFilter>('all');
+  // The drop (pinball) tracks are retired: they stay in storage but are not listed.
+  const kind = 'platformer' as KindFilter;
   // Parsing saved tracks checks every one of them: once per change, not on every render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const tracks = useMemo(() => loadTracksSync(), [version]);
@@ -77,18 +78,13 @@ export default function WorkshopTab({ onOpenEditor, onBrowseCommunity, newTrackO
 
   return <>
     <section className="fit-pane home-event workshop-tracks" data-pane-id="event" aria-labelledby="workshop-tracks-title">
-      <div className="section-topline"><span className="eyebrow" id="workshop-tracks-title"><b>01</b> MY TRACKS</span><span className="eyebrow">{circuits.length} CIRCUIT{circuits.length === 1 ? '' : 'S'} • {courses.length} COURSE{courses.length === 1 ? '' : 'S'}</span></div>
-      {tracks.length === 0
+      <div className="section-topline"><span className="eyebrow" id="workshop-tracks-title"><b>01</b> MY TRACKS</span><span className="eyebrow">{courses.length} COURSE{courses.length === 1 ? '' : 'S'}</span></div>
+      {courses.length === 0
         ? <div className="my-tracks-empty">
           <p>You have no saved tracks yet.</p>
-          <p className="muted">Press New track to start one: a classic circuit, or a platformer course built sideways in three lanes. Save it inside the Workshop and it is listed here, and under My tracks in Quick race.</p>
+          <p className="muted">Press New track to start a platformer course, built sideways in three lanes. Save it inside the Workshop and it is listed here, and under My tracks in Quick race.</p>
         </div>
         : <>
-          <div className="workshop-kind-filter" role="group" aria-label="Show circuits or platformer courses">
-            {([['all', `All ${tracks.length}`], ['track', `Circuits ${circuits.length}`], ['platformer', `Courses ${courses.length}`]] as const).map(([id, label]) => (
-              <button key={id} type="button" className={kind === id ? 'selected' : ''} aria-pressed={kind === id} onClick={() => setKind(id)}>{label}</button>
-            ))}
-          </div>
           <ul className="workshop-list" aria-label="Saved tracks">{shown.map((t) => <li key={t.id} className="my-track-row workshop-row">
             <TrackThumbnail def={t.def} />
             <span className="my-track-meta">

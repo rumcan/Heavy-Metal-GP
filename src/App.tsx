@@ -43,7 +43,7 @@ import { circuitIndexOf, gridOrderOf, rosterOf } from './net/lobby';
 import type { SeatGarage } from './net/lobby';
 import { MarbleInfo, AI_COLORS, randomStats, mulberry32, HeatResult, HEATS_PER_GP } from './game/types';
 import { SeasonState, newSeason, recordHeat, gridOrder, gpSeed, CALENDAR, saveSeason, loadSeason, roundTrack, roundName, setRoundTrack } from './game/season';
-import { officialTrack } from './game/official-tracks';
+import { championshipTrack as officialTrack } from './game/championship-tracks';
 import LevelUpCard from './components/progression/LevelUpCard';
 import TalentsScreen from './components/talents/TalentsScreen';
 import { validateBuild } from './game/talents';
@@ -702,7 +702,8 @@ export default function App() {
   // Looked up when the pick or the screen changes, not on every render: parsing saved tracks checks every one.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const customTrack = useMemo(() => (customTrackId ? loadTracksSync().find((t) => t.id === customTrackId) ?? null : null), [customTrackId, phase]);
-  const customTrackDef: TrackDef | null = customTrack?.def ?? null;
+  // The drop (pinball) tracks are retired: a saved drop track is never raced (a platformer course of your own is).
+  const customTrackDef: TrackDef | null = customTrack && isPlatformerDef(customTrack.def) ? customTrack.def : null;
   // P2-22: a saved platformer course (or a Workshop test drive) races as a platformer pick, registered under a my-... key.
   const quickPick = useMemo<string | null>(() => {
     const def = pfTest ?? customTrackDef;

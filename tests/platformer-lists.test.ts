@@ -177,7 +177,7 @@ const seedStore = () => {
   seeded = true;
 };
 
-test('Quick race: My tracks lists circuits only, the Platformer tab lists courses only', () => {
+test('Quick race lists platformer courses only (the drop tracks are retired)', () => {
   // The picker reads My tracks itself, so seed the store it reads.
   seedStore();
   const props = {
@@ -186,23 +186,20 @@ test('Quick race: My tracks lists circuits only, the Platformer tab lists course
     customTrackId: null, onSelectCustom: noop, onWorkshop: noop,
   };
   const mine = renderToStaticMarkup(createElement(TrackPicker, { ...props, sub: 'mine' }));
-  assert.ok(mine.includes('Screw City'), 'the circuit is missing from My tracks');
-  assert.ok(!mine.includes('Hill Course'), 'a course showed up in the classic My tracks list');
-
-  const platformer = renderToStaticMarkup(createElement(TrackPicker, { ...props, sub: 'platformer' }));
-  assert.ok(platformer.includes('Hill Course'), 'My courses is missing from the Platformer tab');
-  assert.ok(!platformer.includes('Screw City'), 'a circuit showed up in the Platformer tab');
-  assert.ok(platformer.includes('Community courses'), 'the community courses are not listed on the Platformer tab');
+  assert.ok(mine.includes('Hill Course'), 'your course is missing from My courses');
+  assert.ok(!mine.includes('Screw City'), 'a drop track showed up in My courses');
+  const calendar = renderToStaticMarkup(createElement(TrackPicker, { ...props, sub: 'calendar' }));
+  assert.ok(calendar.includes('platformer course'), 'the calendar circuits are platformer courses');
+  assert.ok(!calendar.includes('Screw City'));
 });
 
-test('the Workshop landing page counts circuits and courses apart, and badges the courses', () => {
+test('the Workshop landing page lists platformer courses only, badged', () => {
   seedStore();
   const html = renderToStaticMarkup(createElement(WorkshopTab, {
     onOpenEditor: noop, onBrowseCommunity: noop, newTrackOpen: false, onNewTrackClose: noop,
   }));
-  assert.ok(html.includes('1 CIRCUIT • 1 COURSE'), 'the header does not count circuits and courses');
+  assert.ok(html.includes('1 COURSE'), 'the header counts the courses');
   assert.ok(html.includes('Hill Course'), 'the course is missing from the Workshop list');
-  assert.ok(html.includes('Screw City'), 'the circuit is missing from the Workshop list');
+  assert.ok(!html.includes('Screw City'), 'a drop track is listed in the Workshop');
   assert.ok(html.includes('>PLATFORMER<'), 'the course has no badge');
-  assert.ok(html.includes('workshop-kind-filter'), 'the list cannot be narrowed to one kind');
 });

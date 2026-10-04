@@ -17,7 +17,7 @@ import crowd from '../assets/game/goblin-crowd.webp';
 import Dialog from './Dialog';
 import TrackThumbnail from './editor/TrackThumbnail';
 import { loadTracksSync } from '../game/tracks';
-import { circuitsOf } from '../game/platformer/lists';
+import { coursesOf } from '../game/platformer/lists';
 import type { TrackDef } from '../game/trackdef';
 
 interface Props {
@@ -103,7 +103,8 @@ function TrackPicker({ round, current, onPick, onClose }: { round: number; curre
   const gp = CALENDAR[round];
   // Parsing saved tracks checks every one of them: once per visit, not on every render.
   // P2-22: a platformer course is not a championship circuit, so the round picker lists circuits only.
-  const tracks = useMemo(() => circuitsOf(loadTracksSync()), []);
+  // a round can be swapped for one of your own platformer courses (the drop tracks are retired)
+  const tracks = useMemo(() => coursesOf(loadTracksSync()), []);
   return <Dialog titleId="track-picker-title" onClose={onClose} className="track-picker">
     <span className="eyebrow"><Replace size={14} /> ROUND {String(round + 1).padStart(2, '0')}</span>
     <h2 id="track-picker-title">Choose the track</h2>

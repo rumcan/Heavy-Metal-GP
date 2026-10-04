@@ -44,10 +44,12 @@ test('every calendar round has a valid archived official circuit', () => {
   }
 });
 
-test('roundTrack races the archive, and the player swap-in still wins', () => {
+test('roundTrack races the Grand Prix platformer course, and the player swap-in still wins', () => {
   const season = newSeason(roster());
   for (const gp of CALENDAR) {
-    assert.deepEqual(roundTrack(season, gp.id), officialTrack(gp.id), `round ${gp.id} does not race its archive`);
+    const track = roundTrack(season, gp.id);
+    assert.equal(track?.mode, 'platformer', `round ${gp.id} races a platformer course (the drop tracks are retired)`);
+    assert.equal(track?.name, gp.name);
   }
 
   const mine: TrackDef = {
@@ -61,10 +63,10 @@ test('roundTrack races the archive, and the player swap-in still wins', () => {
   assert.ok(canChangeRoundTrack(season, 2));
   const swapped = setRoundTrack(season, 2, mine);
   assert.equal(roundTrack(swapped, 2)?.name, 'My workshop fix', 'the player swap-in must beat the archive');
-  assert.deepEqual(roundTrack(swapped, 0), officialTrack(0), 'other rounds keep their archive');
+  assert.deepEqual(roundTrack(swapped, 0), roundTrack(season, 0), 'other rounds keep their Grand Prix course');
 
   const restored = setRoundTrack(swapped, 2, null);
-  assert.deepEqual(roundTrack(restored, 2), officialTrack(2), 'dropping the swap-in returns to the archive');
+  assert.deepEqual(roundTrack(restored, 2), roundTrack(season, 2), 'dropping the swap-in returns to the Grand Prix course');
   // The swap-in is a copy: later edits to the source def cannot change a saved season.
   mine.name = 'Edited later';
   assert.equal(roundTrack(swapped, 2)?.name, 'My workshop fix');

@@ -33,7 +33,7 @@ test('a code over the limit is refused with a sentence the host can act on', () 
 
 test('the lobby offers Community tracks and courses, and publishes the current code (not a stale one)', () => {
   assert.match(lobby, />Community<\/button>/);
-  assert.match(lobby, /<CommunityPicker[^>]*kind=\{communityKind\}/);
+  assert.match(lobby, /<CommunityPicker[^>]*kind="platformer"/, "the lobby lists community platformer courses");
   assert.match(lobby, /if \(l\.customCode\)/, 'hostSettings reads the code through latest');
   assert.doesNotMatch(lobby, /if \(customCode\) \(base/, 'no captured customCode in hostSettings');
 });

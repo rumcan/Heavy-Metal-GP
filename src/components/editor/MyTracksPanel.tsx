@@ -64,7 +64,8 @@ export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, on
   const [editName, setEditName] = useState('');
   const [filter, setFilter] = useState('');
   /** P2-22: circuits and platformer courses share this list; the filter hides one kind or the other. */
-  const [kind, setKind] = useState<KindFilter>('all');
+  // The drop (pinball) tracks are retired: they stay in storage but are not listed.
+  const kind = 'platformer' as KindFilter;
 
   const filtered = useMemo(() => {
     const byKind = kind === 'all' ? tracks : tracks.filter((t) => kindOfEntry(t) === kind);
@@ -104,11 +105,6 @@ export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, on
           </button>
         )}
         <input className="my-tracks-filter" placeholder="Filter by name…" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Filter tracks" />
-        <div className="my-tracks-filter-row" role="group" aria-label="Show circuits or platformer courses">
-          {([['all', 'All'], ['track', 'Circuits'], ['platformer', 'Courses']] as const).map(([id, label]) => (
-            <button key={id} type="button" className={`my-tracks-toggle ${kind === id ? 'on' : ''}`} aria-pressed={kind === id} onClick={() => setKind(id)}>{label}</button>
-          ))}
-        </div>
       </div>
 
       {tracks.length === 0 ? (

@@ -1,13 +1,13 @@
 import { useState, useMemo } from 'react';
-import { X, Sparkles, LayoutGrid, Zap, Target, ShoppingCart, Dices, Flag, ArrowRight, ArrowLeft, MoveRight, MoveDown } from 'lucide-react';
+import { X, Sparkles, LayoutGrid, Zap, Target, ShoppingCart, Dices, Flag, ArrowRight, MoveRight, MoveDown } from 'lucide-react';
 import { CALENDAR } from '../../game/season';
-import { officialTrack } from '../../game/official-tracks';
+import { championshipTrack as officialTrack } from '../../game/championship-tracks';
 import { generateExperimentalTrackDef } from '../../game/trackdef';
 import type { TrackDef } from '../../game/trackdef';
 import { TEMPLATES, blankTemplate } from '../../game/templates';
 import TrackThumbnail from './TrackThumbnail';
 import { defFromPlan, newPlatformerDef } from '../../game/platformer/def';
-import { PLATFORMER_COURSES, planOfficial } from '../../game/platformer/course';
+import { GP_COURSES, PLATFORMER_COURSES, planOfficial } from '../../game/platformer/course';
 import { planFlow } from '../../game/platformer/flow';
 
 interface Props {
@@ -61,14 +61,14 @@ function KindArt({ kind }: { kind: TrackKind }) {
  * or a generated layout. The second step always says which kind it is making and has a Back link.
  */
 export default function NewTrackDialog({ onClose, onCreate }: Props) {
-  const [kind, setKind] = useState<TrackKind | null>(null);
+  // The drop (pinball) tracks are retired: New track goes straight to a platformer course.
+  const [kind, setKind] = useState<TrackKind | null>('platformer');
   const use = (def: TrackDef) => { onCreate(def); onClose(); };
 
   return (
     <div className="new-track-overlay" role="dialog" aria-modal="true" aria-labelledby="new-track-title" onClick={onClose}>
       <div className="new-track-sheet" onClick={(e) => e.stopPropagation()}>
         <header className="new-track-head">
-          {kind && <button className="text-button new-track-back" onClick={() => setKind(null)}><ArrowLeft size={13} /> Track type</button>}
           <h2 id="new-track-title">{kind ? `New ${KIND_INFO[kind].title.toLowerCase()}` : 'New track: pick a type'}</h2>
           <p>{kind ? `${KIND_INFO[kind].tagline} Now choose where to start.` : 'Two kinds of track, built in the same Workshop. You can make as many of each as you like.'}</p>
           <button className="icon-button new-track-close" onClick={onClose} aria-label="Close"><X size={16} /></button>
@@ -110,7 +110,7 @@ function Card({ def, title, desc, cta, onPick, testId }: { def: TrackDef; title:
 
 function PlatformerStarts({ use }: { use: (def: TrackDef) => void }) {
   const blank = useMemo(() => newPlatformerDef('My platformer course'), []);
-  const copies = useMemo(() => PLATFORMER_COURSES.filter((c) => !c.tutorial).map((c) => ({ c, def: defFromPlan(planOfficial(c), `${c.name} copy`) })), []);
+  const copies = useMemo(() => [...GP_COURSES, ...PLATFORMER_COURSES.filter((c) => !c.tutorial)].map((c) => ({ c, def: defFromPlan(planOfficial(c), `${c.name} copy`) })), []);
   const [seed, setSeed] = useState(() => randomSeed());
   const generated = useMemo(() => defFromPlan(planFlow(seed), `Random course #${seed % 10000}`), [seed]);
   return <>
