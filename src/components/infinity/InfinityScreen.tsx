@@ -6,6 +6,7 @@ import { ArrowLeft, ArrowRight, Camera, EyeOff, Pause, Play, Volume2, VolumeX } 
 import { InfinityRun } from '../../game/platformer/infinity-world';
 import { marbleDepth, renderPlatformer } from '../../game/platformer/render';
 import { PHYSICS_STEP } from '../../game/physics';
+import { blendPoses, rememberPoses } from '../../game/interpolate';
 import { nudgeOf } from '../../game/controls';
 import { actionForKey } from '../../game/skill-keys';
 import { raceAudio } from '../../game/audio';
@@ -141,8 +142,10 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
         game.nudge = nudgeOf(controls.current);
         game.engineHeld = controls.current.engine;
         accumulator += dt;
-        while (accumulator >= PHYSICS_STEP) { run.step(PHYSICS_STEP); accumulator -= PHYSICS_STEP; }
+        while (accumulator >= PHYSICS_STEP) { rememberPoses(game); run.step(PHYSICS_STEP); accumulator -= PHYSICS_STEP; }
       }
+      // Perf: draw the ball between its last two physics steps (undone at the end of the frame).
+      const unblend = pausedRef.current ? () => {} : blendPoses(game, accumulator / PHYSICS_STEP);
       if (width > 0 && height > 0) {
         const p = game.player.body.position;
         // Side-scrolling camera, framed for landscape, easing toward a little way ahead of the ball.
@@ -175,6 +178,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
       hudTimer += dt; bankTimer += dt;
       if (hudTimer > 120) { hudTimer = 0; setKm(run.km); }
       if (bankTimer > BANK_EVERY_MS && !pausedRef.current) { bankTimer = 0; recordDistance(run.km, banked); banked = run.km; }
+      unblend();
     };
     raf = requestAnimationFrame(frame);
 

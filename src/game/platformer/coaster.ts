@@ -186,13 +186,23 @@ function stackSupport(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: n
  * Draw one lane of a flow course in the coaster look. Returns false (draws nothing) until the art is loaded.
  * Order: cliffs, towers, trestles, the beam and rail, then props on the track.
  */
-export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan, lane: Lane, left: number, right: number, bottom: number, time: number, springFired: (x: number) => boolean, pieces: Matter.Body[] = []): boolean {
+/** True once the coaster art has loaded (until then a course is drawn with plain earth and grass). */
+export const coasterReady = (): boolean => allReady();
+
+/**
+ * `part` (perf): 'static' draws only the scenery that never changes (cliffs, towers, trestles, the beam, crates,
+ * ledges) so the race can cache it; 'dynamic' draws only what moves or flickers (torches, springs, map pieces, loops
+ * and bridges); 'all' draws both, as before.
+ */
+export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan, lane: Lane, left: number, right: number, bottom: number, time: number, springFired: (x: number) => boolean, pieces: Matter.Body[] = [], part: 'all' | 'static' | 'dynamic' = 'all'): boolean {
   if (!allReady()) return false;
   const runs = runsOf(plan)[lane];
-  const rock = rockPattern(ctx);
+  const statics = part !== 'dynamic', dynamics = part !== 'static';
+  const rock = statics ? rockPattern(ctx) : null;
   for (const run of runs) {
     if (run[run.length - 1].x < left || run[0].x > right) continue;
     const pts = clip(run, left, right);
+    if (!statics) { torches(ctx, run, pts, lane, time); continue; }
     const cliff = pts.map((p) => ({ x: p.x, y: p.y + clearance(p.x) }));
     // the cliff under this stretch of track: rock, darker lower down, moss on top
     ctx.beginPath();
@@ -225,17 +235,38 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
     trestle(ctx, run, pts[0].x - SUPPORT_EVERY, pts[pts.length - 1].x + SUPPORT_EVERY, (x) => yOn(run, x) + clearance(x));
     // the track: a plain wooden beam (no chevron rail, per the owner)
     stripAlong(ctx, middle(ART.wood!), pts, RAIL_UP, TRACK_T);
-    // torches on the beam now and then
-    for (let x = Math.ceil(pts[0].x / 600) * 600; x < pts[pts.length - 1].x; x += 600) {
-      const r = hash(Math.round(x), lane + 3);
-      const y = yOn(run, x);
-      // (the support sprites carry their own banners)
-      if (r < 0.4 && ready(ART.torch)) {
-        const flicker = 1 + Math.sin(time / 90 + x) * 0.03;
-        ctx.drawImage(ART.torch, x - 14, y - 66 * flicker, 28, 52 * flicker);
-      }
+    if (dynamics) torches(ctx, run, pts, lane, time);
+  }
+  if (statics) staticProps(ctx, plan, runs, lane, left, right);
+  if (!dynamics) return true;
+  // springs: the sheep on its coil
+  for (const s of plan.springs ?? []) {
+    if (s.lane !== lane || s.x + SPRING_W < left || s.x > right || !ready(ART.sheep)) continue;
+    const squash = springFired(s.x) ? 0.82 : 1;
+    const w = SPRING_W + 18;
+    const h = (ART.sheep.naturalHeight / ART.sheep.naturalWidth) * w * squash;
+    ctx.drawImage(ART.sheep, s.x - 9, s.y - h + 4, w, h);
+  }
+  drawMapPieces(ctx, pieces, lane, left, right, time);
+  drawRoutes(ctx, plan.loops, pieces, lane, left, right); // P2-21: loop rings and rope bridges
+  return true;
+}
+
+/** Torches on the beam now and then (they flicker, so they are never cached). */
+function torches(ctx: CanvasRenderingContext2D, run: Pt[], pts: Pt[], lane: Lane, time: number) {
+  for (let x = Math.ceil(pts[0].x / 600) * 600; x < pts[pts.length - 1].x; x += 600) {
+    const r = hash(Math.round(x), lane + 3);
+    const y = yOn(run, x);
+    // (the support sprites carry their own banners)
+    if (r < 0.4 && ready(ART.torch)) {
+      const flicker = 1 + Math.sin(time / 90 + x) * 0.03;
+      ctx.drawImage(ART.torch, x - 14, y - 66 * flicker, 28, 52 * flicker);
     }
   }
+}
+
+/** Crates and ledges: part of the cached scenery. */
+function staticProps(ctx: CanvasRenderingContext2D, plan: CoursePlan, runs: Pt[][], lane: Lane, left: number, right: number) {
   // crates on the track
   for (const b of plan.bumps) {
     if (b.lane !== lane || b.x + b.w < left || b.x > right) continue;
@@ -261,17 +292,6 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
     ctx.drawImage(ART.wood!, 0, 0, ART.wood!.naturalWidth * RAIL_CAP, ART.wood!.naturalHeight, l.x - 10, l.y - 2, 22, LEDGE_H + 8);
     ctx.drawImage(ART.wood!, ART.wood!.naturalWidth * (1 - RAIL_CAP), 0, ART.wood!.naturalWidth * RAIL_CAP, ART.wood!.naturalHeight, l.x + l.w - 12, l.y - 2, 22, LEDGE_H + 8);
   }
-  // springs: the sheep on its coil
-  for (const s of plan.springs ?? []) {
-    if (s.lane !== lane || s.x + SPRING_W < left || s.x > right || !ready(ART.sheep)) continue;
-    const squash = springFired(s.x) ? 0.82 : 1;
-    const w = SPRING_W + 18;
-    const h = (ART.sheep.naturalHeight / ART.sheep.naturalWidth) * w * squash;
-    ctx.drawImage(ART.sheep, s.x - 9, s.y - h + 4, w, h);
-  }
-  drawMapPieces(ctx, pieces, lane, left, right, time);
-  drawRoutes(ctx, plan.loops, pieces, lane, left, right); // P2-21: loop rings and rope bridges
-  return true;
 }
 
 /**

@@ -9,7 +9,7 @@ import { drawBodies, drawMarble } from '../render';
 import { drawSkillWorld } from '../skills/draw';
 import { SPRING_W, floorAt } from './course';
 import type { CoursePlan, Floor, Lane, LaneGate } from './course';
-import { drawCoasterLane } from './coaster';
+import { coasterReady, drawCoasterLane } from './coaster';
 import { drawRoutes } from './routes';
 import { LEDGE_H } from './build';
 import earthUrl from '../../assets/game/platformer/earth.webp';
@@ -363,14 +363,23 @@ function drawFinish(ctx: CanvasRenderingContext2D, x: number, y: number) {
 }
 
 /** Draw one lane's world (floors, bumps, gates, the finish) in world coordinates. */
-function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, left: number, right: number, bottom: number, t: number) {
+/** Perf: a lane's unchanging scenery is cached ('static'); what moves is drawn every frame ('dynamic'). */
+type LanePart = 'all' | 'static' | 'dynamic';
+
+function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, left: number, right: number, bottom: number, t: number, part: LanePart = 'all') {
   const info = game.track.platformer!;
   const flow = info.plan.style === 'flow';
+  if (part === 'static') {
+    // only ever asked for once the coaster art is loaded (see laneCache)
+    drawCoasterLane(ctx, info.plan, lane as Lane, left, right, bottom, t, () => false, [], 'static');
+    if (info.plan.finishX > left && info.plan.finishX < right) drawFinish(ctx, info.plan.finishX, info.plan.finishY);
+    return;
+  }
   // Flow courses: the coaster skin (track on trestles over cliffs) once its art is loaded; until then the
   // slope as whole runs of earth and grass. Either way never thousands of little blocks.
   const fired = (sx: number) => game.marbles.some((m) => m.springAt !== undefined && game.time - m.springAt < 220 && (m.lane ?? 1) === lane && Math.abs(m.body.position.x - sx - SPRING_W / 2) < 80);
   const pieces = flow ? game.track.bodies.filter((b) => { const k = meta(b).kind; return (k === 'wrecker' || k === 'itembox' || k === 'boost' || k === 'bridge') && meta(b).lane === lane; }) : [];
-  const coaster = flow && drawCoasterLane(ctx, info.plan, lane as Lane, left, right, bottom, t, fired, pieces);
+  const coaster = flow && drawCoasterLane(ctx, info.plan, lane as Lane, left, right, bottom, t, fired, pieces, part === 'dynamic' ? 'dynamic' : 'all');
   if (flow && !coaster) { drawFlowGround(ctx, info.plan, lane, left, right, bottom); drawRoutes(ctx, info.plan.loops, pieces, lane, left, right); }
   for (const body of game.track.bodies) {
     const md = meta(body);
@@ -396,7 +405,45 @@ function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, 
     if (g.lane !== lane || g.x + g.w < left || g.x > right) continue;
     drawGate(ctx, g, t, Math.abs(player.body.position.x - (g.x + g.w / 2)) < 260);
   }
-  if (info.plan.finishX > left && info.plan.finishX < right) drawFinish(ctx, info.plan.finishX, info.plan.finishY);
+  if (part === 'all' && info.plan.finishX > left && info.plan.finishX < right) drawFinish(ctx, info.plan.finishX, info.plan.finishY);
+}
+
+/**
+ * Perf: each lane's static scenery (cliffs, towers, trestles, the beam, crates, ledges, the finish) rendered once into
+ * an off-screen canvas a little larger than the view, at the lane's current zoom, and copied to the screen every
+ * frame. It is redrawn only when the camera nears its edge, the zoom drifts more than a few per cent, or the course
+ * changes. Redrawing all of it every frame cost ~7 ms per lane (up to three lanes).
+ */
+interface LaneCache { cv: HTMLCanvasElement; plan: CoursePlan; ox: number; oy: number; wx: number; wy: number; px: number }
+const laneCaches = new WeakMap<CanvasRenderingContext2D, Map<number, LaneCache>>();
+const CACHE_MAX_PX = 4096;
+
+function cachedLane(ctx: CanvasRenderingContext2D, game: Game, lane: number, view: { x0: number; x1: number; y0: number; y1: number }, pxWanted: number, t: number): LaneCache | null {
+  if (typeof document === 'undefined') return null;
+  const plan = game.track.platformer!.plan;
+  let byLane = laneCaches.get(ctx);
+  if (!byLane) { byLane = new Map(); laneCaches.set(ctx, byLane); }
+  const c = byLane.get(lane);
+  const ratio = c ? pxWanted / c.px : 0;
+  if (c && c.plan === plan && ratio > 0.93 && ratio < 1.07 && view.x0 >= c.ox && view.x1 <= c.ox + c.wx && view.y0 >= c.oy && view.y1 <= c.oy + c.wy) return c;
+  // Rebuild: margins around the view, wider ahead (the race runs left to right).
+  const vw = view.x1 - view.x0, vh = view.y1 - view.y0;
+  const ox = view.x0 - vw * 0.15, oy = view.y0 - vh * 0.2;
+  const wx = vw * 1.75, wy = vh * 1.4;
+  const px = Math.min(pxWanted, CACHE_MAX_PX / wx, CACHE_MAX_PX / wy);
+  const cv = c?.cv ?? document.createElement('canvas');
+  const w = Math.ceil(wx * px), h = Math.ceil(wy * px);
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  const cc = cv.getContext('2d');
+  if (!cc) return null;
+  cc.setTransform(1, 0, 0, 1, 0, 0);
+  cc.clearRect(0, 0, w, h);
+  cc.imageSmoothingQuality = 'high';
+  cc.setTransform(px, 0, 0, px, -ox * px, -oy * px);
+  drawLaneWorld(cc, game, lane, ox - 200, ox + wx + 200, oy + wy + 40, t, 'static');
+  const next = { cv, plan, ox, oy, wx, wy, px };
+  byLane.set(lane, next);
+  return next;
 }
 
 /**
@@ -558,7 +605,16 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
     target.translate(cw / 2, ch / 2 + v.lift * cam.scale);
     target.scale(s, s);
     target.translate(-cam.x, -cam.y);
-    drawLaneWorld(target, game, lane, left, right, bottom, t);
+    const flowArt = game.track.platformer!.plan.style === 'flow' && coasterReady();
+    const lift = v.lift * cam.scale;
+    const cache = flowArt && target === ctx
+      ? cachedLane(ctx, game, lane, { x0: cam.x - cw / 2 / s, x1: cam.x + cw / 2 / s, y0: cam.y + (-ch / 2 - lift) / s, y1: cam.y + (ch / 2 - lift) / s }, s * dpr, t)
+      : null;
+    if (cache) {
+      target.imageSmoothingQuality = 'high';
+      target.drawImage(cache.cv, cache.ox, cache.oy, cache.wx, cache.wy);
+      drawLaneWorld(target, game, lane, left, right, bottom, t, 'dynamic');
+    } else drawLaneWorld(target, game, lane, left, right, bottom, t);
     // Marbles settled on this layer (a ball mid-change is drawn between layers, below).
     for (const { m, z } of depths) if (z === lane) drawBall(target, game, m, t);
     target.restore();
