@@ -50,7 +50,7 @@ export default function RulesDialog({ onClose }: { onClose: () => void }) {
   useEffect(() => stopVoice, []);
   // After every hook: returning before them crashed React ("Rendered fewer hooks") on Play the tutorial.
   if (playingTutorial) {
-    return <TutorialRace driver={tutorialDriver} subtitle="HOW TO PLAY · TRAINING GROUNDS" onDone={endTutorial} onSkip={endTutorial} />;
+    return <div className="tutorial-takeover"><TutorialRace driver={tutorialDriver} subtitle="HOW TO PLAY · TRAINING GROUNDS" onDone={endTutorial} onSkip={endTutorial} /></div>;
   }
   const samples = voiceLines('samples');
   const playSamples = async () => {
