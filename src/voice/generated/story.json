@@ -448,5 +448,560 @@
     "file": "story/c3-intro-shack-4.mp3",
     "hash": "96c3774c90de58cfc61f4b557d4d59441deb22f432b3315a46127297257b63c2",
     "durationSec": 4.07
+  },
+  "c3-intro-shack-5": {
+    "file": "story/c3-intro-shack-5.mp3",
+    "hash": "4a606e6d7897096ef832a954dab8defb6b47572b9120f06c3fef926ebe11b4fb",
+    "durationSec": 3.5
+  },
+  "c3-intro-shack-6": {
+    "file": "story/c3-intro-shack-6.mp3",
+    "hash": "4c1e3764de82ce9a93c0b71734f3d71c5edcbad4993289be0efa7a7579007a43",
+    "durationSec": 5.82
+  },
+  "c3-intro-shack-7": {
+    "file": "story/c3-intro-shack-7.mp3",
+    "hash": "9e8da03c696d1d542c1434363cac4f366e68ddd094d8253db4068aab11253633",
+    "durationSec": 4.31
+  },
+  "c3-intro-alone-0": {
+    "file": "story/c3-intro-alone-0.mp3",
+    "hash": "f8714d11823e41c3b75910c35486a589b896a44609768e833c9948b670c5dc50",
+    "durationSec": 7.18
+  },
+  "c3-intro-alone-1": {
+    "file": "story/c3-intro-alone-1.mp3",
+    "hash": "645eb77f8ca3945199665ad415a0999eeaabfea64811dcf0ebf456c65310d650",
+    "durationSec": 7.34
+  },
+  "c3-lesson-crate-0": {
+    "file": "story/c3-lesson-crate-0.mp3",
+    "hash": "19b4611a5713b5cb4e036a176b446e081411288145fbcb6b34ca4048d1f0a4aa",
+    "durationSec": 6.13
+  },
+  "c3-lesson-crate-1": {
+    "file": "story/c3-lesson-crate-1.mp3",
+    "hash": "65f12c74ad7595f104805abcbc56f9a6d6f4ab19727c054dc79667ecd8f5885d",
+    "durationSec": 6.06
+  },
+  "c3-lesson-crate-2": {
+    "file": "story/c3-lesson-crate-2.mp3",
+    "hash": "5991141ec354f6d0f371d047ebd4d928aaf8588767c751c07583241f48cee052",
+    "durationSec": 5.59
+  },
+  "c3-lesson-loop-0": {
+    "file": "story/c3-lesson-loop-0.mp3",
+    "hash": "11bc563bb34891ae6e879e08a6d907a08f6863ddd690a2fc4ba51b255a9dd336",
+    "durationSec": 5.19
+  },
+  "c3-lesson-loop-1": {
+    "file": "story/c3-lesson-loop-1.mp3",
+    "hash": "506d76e276a759e06bf2d52fa7ac3c1dab7731b449a300adf81a590473165967",
+    "durationSec": 3.1
+  },
+  "c3-lesson-loop-2": {
+    "file": "story/c3-lesson-loop-2.mp3",
+    "hash": "b6503dd1115b40a2b5cb3b57fb2ab87c0a2efd97e1ed37c7699bf5552e63492d",
+    "durationSec": 5.9
+  },
+  "c3-lesson-hoops-0": {
+    "file": "story/c3-lesson-hoops-0.mp3",
+    "hash": "88e2623b4b464d1db693deec0ec3be8e1ee7c245bf3904746d3729a19d017f7d",
+    "durationSec": 5.59
+  },
+  "c3-lesson-hoops-1": {
+    "file": "story/c3-lesson-hoops-1.mp3",
+    "hash": "0a50f0b45b212ca1a9b1a40c18245ac5d1efe3e274e99ac62890a404fa9622ad",
+    "durationSec": 3.26
+  },
+  "c3-lesson-hoops-2": {
+    "file": "story/c3-lesson-hoops-2.mp3",
+    "hash": "5775aeeb4e08221813c71802ed95584b583715c786694d93b8c316d06e845c0a",
+    "durationSec": 4.93
+  },
+  "c3-pre-smart-0": {
+    "file": "story/c3-pre-smart-0.mp3",
+    "hash": "4efaa893e9c14a31935925ea40f8df98e875bfade2eaaa89fc17f9fad6b938ed",
+    "durationSec": 6.21
+  },
+  "c3-pre-smart-1": {
+    "file": "story/c3-pre-smart-1.mp3",
+    "hash": "5479f1d3bd536b993577970e9d70031e6d356f7e79529180b793881583d93cb9",
+    "durationSec": 4.78
+  },
+  "c3-mid-smokey-0": {
+    "file": "story/c3-mid-smokey-0.mp3",
+    "hash": "b8edbd0d437740a9940af54e3356fdf4b2a1597cafed555a0ed3885e7de88d53",
+    "durationSec": 4.31
+  },
+  "c3-mid-hoops-0": {
+    "file": "story/c3-mid-hoops-0.mp3",
+    "hash": "a7f6a51d8ce8d787335db59788ee4368232f4cfe68a9ed5b82c9b0f33f14f07b",
+    "durationSec": 3.42
+  },
+  "c3-post-win-0": {
+    "file": "story/c3-post-win-0.mp3",
+    "hash": "6adcbd1e88a3831fb586187ba6e073179d9c8bcfe9df07ab60b1520fbe99ca6a",
+    "durationSec": 6.37
+  },
+  "c3-post-win-1": {
+    "file": "story/c3-post-win-1.mp3",
+    "hash": "ff2c7cb96fe532af8d263c19af6ee519154f60f2441a6ce59d6d6f3118163818",
+    "durationSec": 2.95
+  },
+  "c3-post-win-2": {
+    "file": "story/c3-post-win-2.mp3",
+    "hash": "e09f41f9b894d8a2232949cf9b1b1dc6e7696feffa9314557db7d259ac72f4f5",
+    "durationSec": 5.9
+  },
+  "c3-post-win-3": {
+    "file": "story/c3-post-win-3.mp3",
+    "hash": "80efe39fefe48f3b70993cfd0d03a91f70ed252cc77f228ae5a70e55c69b8a23",
+    "durationSec": 2.45
+  },
+  "c3-post-win-4": {
+    "file": "story/c3-post-win-4.mp3",
+    "hash": "1459f03855013ac9044d954ffe4bd52da9e44d6e4a9c357251dc2027ea0ff05b",
+    "durationSec": 6.13
+  },
+  "c3-post-podium-0": {
+    "file": "story/c3-post-podium-0.mp3",
+    "hash": "bb522cfeb63d353b1386f2440a188521e4074c56dee4745eacf583210dea9e92",
+    "durationSec": 5.59
+  },
+  "c3-post-podium-1": {
+    "file": "story/c3-post-podium-1.mp3",
+    "hash": "a0c4927c1508eabf07d450d5ea5207f74a0ce1e8b252f645258a664aa55f6ee8",
+    "durationSec": 4.54
+  },
+  "c3-post-podium-2": {
+    "file": "story/c3-post-podium-2.mp3",
+    "hash": "e714e36bf8e2586eec0f79713626630e5bae62c54c6bdb8fb6dea78ae4a40c7b",
+    "durationSec": 6.87
+  },
+  "c3-post-loss-0": {
+    "file": "story/c3-post-loss-0.mp3",
+    "hash": "264a976c49f9d04d87259f585e986c2fe0ca39ef2a0f653b643734001b084aed",
+    "durationSec": 5.27
+  },
+  "c3-post-loss-1": {
+    "file": "story/c3-post-loss-1.mp3",
+    "hash": "f55481a78a71fb4e30a4b874394730dbfc26e2c08699ca5b0a87f4e1b5620dde",
+    "durationSec": 4.23
+  },
+  "c3-post-loss-2": {
+    "file": "story/c3-post-loss-2.mp3",
+    "hash": "5cdd750da5dba900a66354d9552f52987d6fbf0a556b8d18d0cb7fbe5cd627af",
+    "durationSec": 6.63
+  },
+  "c3-outro-shack-0": {
+    "file": "story/c3-outro-shack-0.mp3",
+    "hash": "adb14907db3993ebc3eae59625a015bd1749510baf2f81cda9faaa29f235fc3d",
+    "durationSec": 4.85
+  },
+  "c3-outro-shack-1": {
+    "file": "story/c3-outro-shack-1.mp3",
+    "hash": "ee53ebae35fdd08e02a8107c8d3426164efc8dcd232e32a404cd891a1df3edd7",
+    "durationSec": 3.81
+  },
+  "c3-outro-shack-2": {
+    "file": "story/c3-outro-shack-2.mp3",
+    "hash": "804e43d333040e5dcaf69a4d8ec9135821db7fea3bc045e45917f8a969c89ff6",
+    "durationSec": 3.99
+  },
+  "c3-outro-shack-3": {
+    "file": "story/c3-outro-shack-3.mp3",
+    "hash": "703fc6e2bd8233c08edb593912b2dccb1c1f1b3a5e03883f9bb9b48c7bb42b37",
+    "durationSec": 5.82
+  },
+  "c4-intro-office-0": {
+    "file": "story/c4-intro-office-0.mp3",
+    "hash": "b8127a01c3dde446bea283619446c28e6290ffd6d6a92ecd04c1e9a3e58479fc",
+    "durationSec": 5.66
+  },
+  "c4-intro-office-1": {
+    "file": "story/c4-intro-office-1.mp3",
+    "hash": "46812e5efe6633f1392c5c03cf9521e2ce60e516f82bb3e4307a4662aeb75529",
+    "durationSec": 5.19
+  },
+  "c4-intro-office-2": {
+    "file": "story/c4-intro-office-2.mp3",
+    "hash": "0add07331938016dc1293a12752cff5a193ad1d9961d33cc7fcf2ee4bb4dc2c0",
+    "durationSec": 6.55
+  },
+  "c4-intro-office-3": {
+    "file": "story/c4-intro-office-3.mp3",
+    "hash": "7057a34c43c81b327a6c20cb2958941c10290858a41b71bc5b86f6b4f7b70513",
+    "durationSec": 3.5
+  },
+  "c4-intro-office-4": {
+    "file": "story/c4-intro-office-4.mp3",
+    "hash": "22b01a32199c41ed2614802c61bdf124d5f738893028621786a39fa24d691327",
+    "durationSec": 6.79
+  },
+  "c4-intro-office-5": {
+    "file": "story/c4-intro-office-5.mp3",
+    "hash": "12ae5f26a39b3d25403be58986b72a736340943abce1b245aa8491a54bff3cd3",
+    "durationSec": 3.5
+  },
+  "c4-intro-office-6": {
+    "file": "story/c4-intro-office-6.mp3",
+    "hash": "e441dfb3dbe283fcfbf67d2f2d2668175d867606b1100eea2346ed828de553d9",
+    "durationSec": 6.21
+  },
+  "c4-intro-office-7": {
+    "file": "story/c4-intro-office-7.mp3",
+    "hash": "1533752219dab926e56ee7c14379beadf9d88d6b7a0dcc9a2df85282cf287017",
+    "durationSec": 5.74
+  },
+  "c4-pre-grid-0": {
+    "file": "story/c4-pre-grid-0.mp3",
+    "hash": "2e80d041dec4f163e9367ffae6368379a06d50d2e1df2e13a0b374e238e54ac9",
+    "durationSec": 4.93
+  },
+  "c4-pre-grid-1": {
+    "file": "story/c4-pre-grid-1.mp3",
+    "hash": "c8cb76d4eb38117c055beff04411183797ad3ca6b30166554557f598bdd48f91",
+    "durationSec": 4.85
+  },
+  "c4-pre-grid-2": {
+    "file": "story/c4-pre-grid-2.mp3",
+    "hash": "76cc99bbaf259426ec77ccf444997b39b1b33635cff43189efd6004a5dbc582d",
+    "durationSec": 3.42
+  },
+  "c4-pre-grid-3": {
+    "file": "story/c4-pre-grid-3.mp3",
+    "hash": "c5709e201c7225f9ab8d34ae019a4aeeb75916e4d68f9cdc06722bfae662aee4",
+    "durationSec": 6.55
+  },
+  "c4-pre-grid-4": {
+    "file": "story/c4-pre-grid-4.mp3",
+    "hash": "14e234501d619837776f1b7a5cb13a6b5b4606423665f0f7b2d54cdf84911137",
+    "durationSec": 2.87
+  },
+  "c4-pre-grid-5": {
+    "file": "story/c4-pre-grid-5.mp3",
+    "hash": "5d3a21fe32cb1d465aa8fd1fa8df6341c84d29db93b652ea9257f87f6c8f0289",
+    "durationSec": 3.73
+  },
+  "c4-pre-trained-0": {
+    "file": "story/c4-pre-trained-0.mp3",
+    "hash": "3788059b40ad3d7c76e6cdc03b18dc46c7021de5a8bcedad01d14c65398e5ceb",
+    "durationSec": 5.35
+  },
+  "c4-pre-trained-1": {
+    "file": "story/c4-pre-trained-1.mp3",
+    "hash": "89a93cb6c0415d621005d21983720892df464bb3837abe2be13ac55d2a7996df",
+    "durationSec": 6.29
+  },
+  "c4-mid-sabotage-0": {
+    "file": "story/c4-mid-sabotage-0.mp3",
+    "hash": "9f4b3b62c034a833eea4bcdec1456e246c182238aca2506933270db48fb0b08d",
+    "durationSec": 6.21
+  },
+  "c4-mid-sabotage-1": {
+    "file": "story/c4-mid-sabotage-1.mp3",
+    "hash": "8f5fb9531c37e8e7ef1ef8ff0dbf0c6250109f80d65b64efb8d0f4ce63d10a61",
+    "durationSec": 4.85
+  },
+  "c4-post-win-deal-0": {
+    "file": "story/c4-post-win-deal-0.mp3",
+    "hash": "8194b3ef902e2746b271776f07800ae51c0a9017d3927345aabcf2772dc7dca8",
+    "durationSec": 6.71
+  },
+  "c4-post-win-deal-1": {
+    "file": "story/c4-post-win-deal-1.mp3",
+    "hash": "51d6a3e8a631f5db84ed487ed468715d1ff85faebfce7e2f9dba03ebc6600d73",
+    "durationSec": 4.31
+  },
+  "c4-post-win-deal-2": {
+    "file": "story/c4-post-win-deal-2.mp3",
+    "hash": "0231b3028989f05d50fc5059dee1c3fa0d5ba7595e80a7547d0fd6e20a27c5b2",
+    "durationSec": 6.87
+  },
+  "c4-post-win-free-0": {
+    "file": "story/c4-post-win-free-0.mp3",
+    "hash": "3e611f3c75d369c231551b3aca1e5ce4e65d6371d90887c289bf4c385d115d21",
+    "durationSec": 7.1
+  },
+  "c4-post-win-free-1": {
+    "file": "story/c4-post-win-free-1.mp3",
+    "hash": "2508b7461a9acec6683d8c4ca3ab3987b52b65dbf0c2ceb97242dfe133e884d2",
+    "durationSec": 3.73
+  },
+  "c4-post-win-free-2": {
+    "file": "story/c4-post-win-free-2.mp3",
+    "hash": "350cfc3abc90ef8a86d9de54677bef3c6c14e3601fdbf42d2bf747552321b886",
+    "durationSec": 5.09
+  },
+  "c4-post-podium-deal-0": {
+    "file": "story/c4-post-podium-deal-0.mp3",
+    "hash": "c07ecdef791538919d59fcf15d424d7a871a3340f427504138bba2e7fc9edd1b",
+    "durationSec": 5.74
+  },
+  "c4-post-podium-deal-1": {
+    "file": "story/c4-post-podium-deal-1.mp3",
+    "hash": "e55e1f70e478a80ba8adac47072830d1dc3809f5f47b508bf26650341371ee67",
+    "durationSec": 4.7
+  },
+  "c4-post-podium-deal-2": {
+    "file": "story/c4-post-podium-deal-2.mp3",
+    "hash": "372fda78b59853c35e83402a74d1822b8a71a8db0534854abee6f69a0d479145",
+    "durationSec": 6.79
+  },
+  "c4-post-podium-free-0": {
+    "file": "story/c4-post-podium-free-0.mp3",
+    "hash": "ff2d5a4752261ffe45cf1e7d3b9a8343ce4938e3ea9bf426aaf98904ae73ec33",
+    "durationSec": 6.37
+  },
+  "c4-post-podium-free-1": {
+    "file": "story/c4-post-podium-free-1.mp3",
+    "hash": "a8b4da451250732ba931f1f1d238a8bfa57fc92b1312ee3abb72ba9dd976697a",
+    "durationSec": 3.5
+  },
+  "c4-post-podium-free-2": {
+    "file": "story/c4-post-podium-free-2.mp3",
+    "hash": "51391c7d7ef0b470f086dff61bd4767ccaf599b89564a0825dcab35c173e6412",
+    "durationSec": 2.95
+  },
+  "c4-post-loss-deal-0": {
+    "file": "story/c4-post-loss-deal-0.mp3",
+    "hash": "26621ba7a8ce02f9a9df2b4830351da9ee830cbaaf274e3f9c70de0f7bfc2441",
+    "durationSec": 6.47
+  },
+  "c4-post-loss-deal-1": {
+    "file": "story/c4-post-loss-deal-1.mp3",
+    "hash": "7b0a3d1282c5c5f1feb496ad62aaa7137dedf73e64c658b2bb84c50fe02294f0",
+    "durationSec": 3.42
+  },
+  "c4-post-loss-deal-2": {
+    "file": "story/c4-post-loss-deal-2.mp3",
+    "hash": "2f8e5c49253b2300da27c39fdb897b2848908f57a5a6875b4173f816fd64bb7c",
+    "durationSec": 5.27
+  },
+  "c4-post-loss-free-0": {
+    "file": "story/c4-post-loss-free-0.mp3",
+    "hash": "2e584144e11cc2c6cb3b55a23bd210d7e74752afc396e3bb5c755b61a9688d9c",
+    "durationSec": 5.9
+  },
+  "c4-post-loss-free-1": {
+    "file": "story/c4-post-loss-free-1.mp3",
+    "hash": "c9f9725787c77e6ff1d56c0c56ef6f431008b648901ca5b96d42eb292e0e94eb",
+    "durationSec": 6.29
+  },
+  "c4-post-loss-free-2": {
+    "file": "story/c4-post-loss-free-2.mp3",
+    "hash": "e78891e74c456d575cd0979be31f0b2f245410d9a7baf706469ac89059d67ecf",
+    "durationSec": 5.43
+  },
+  "c4-outro-pitlane-0": {
+    "file": "story/c4-outro-pitlane-0.mp3",
+    "hash": "cd3ba104aca4db81b9a6cc25c407b557b672563b0b26bf65e6f6acb522ce76ad",
+    "durationSec": 5.9
+  },
+  "c4-outro-pitlane-1": {
+    "file": "story/c4-outro-pitlane-1.mp3",
+    "hash": "12390562bb1f4726aa9b829f21b747004b8862b31974b097881741f7cd68fb7f",
+    "durationSec": 5.35
+  },
+  "c4-outro-pitlane-2": {
+    "file": "story/c4-outro-pitlane-2.mp3",
+    "hash": "846ff6659679917c11152f13432f5c8059a1395395731436f2a5250ff8a72ee3",
+    "durationSec": 6.47
+  },
+  "c4-outro-pitlane-3": {
+    "file": "story/c4-outro-pitlane-3.mp3",
+    "hash": "1649c3921b07f05d8c75d34ee31353a62df4411c1ec7f3d15bdd311aa8fbc441",
+    "durationSec": 5.9
+  },
+  "c4-outro-pitlane-4": {
+    "file": "story/c4-outro-pitlane-4.mp3",
+    "hash": "4fa086f36d88d65b8aa63d7d90b8da60efbbd75f547aa836dcc4f0840670a26a",
+    "durationSec": 5.74
+  },
+  "c4-outro-sabotage-0": {
+    "file": "story/c4-outro-sabotage-0.mp3",
+    "hash": "a370af7e0aeebaf876f745b12348e24342b45d1e2151ce81ae306ebe59a6d050",
+    "durationSec": 5.19
+  },
+  "c4-outro-sabotage-1": {
+    "file": "story/c4-outro-sabotage-1.mp3",
+    "hash": "4869692e91cf13a4c428094c66ce588c30dee61d2c139a9c08789aaf917c172b",
+    "durationSec": 6.87
+  },
+  "c4-outro-sabotage-2": {
+    "file": "story/c4-outro-sabotage-2.mp3",
+    "hash": "7a2c1632391c8dc67acf44617666b5dc3401d2300fdefde31e7d1866137f9da9",
+    "durationSec": 5.98
+  },
+  "c4-outro-zapp-trust-0": {
+    "file": "story/c4-outro-zapp-trust-0.mp3",
+    "hash": "695a9c6dafdca6e7a273e3f2f8a2bb19e2965f010b43b902dde9a5fe707d3891",
+    "durationSec": 3.65
+  },
+  "c4-outro-zapp-trust-1": {
+    "file": "story/c4-outro-zapp-trust-1.mp3",
+    "hash": "93d8d881d4c47ba4573e8ba70858e6cb2fb932e8a7368f0838966f88213632e9",
+    "durationSec": 3.65
+  },
+  "c4-outro-zapp-trust-2": {
+    "file": "story/c4-outro-zapp-trust-2.mp3",
+    "hash": "8ecae761fcf3ea15e74bdc8ab3345a5919aae954b1e5d34eb03c8c9b8cddbe07",
+    "durationSec": 9.11
+  },
+  "c4-outro-zapp-blame-0": {
+    "file": "story/c4-outro-zapp-blame-0.mp3",
+    "hash": "11e6fe50c8c59f118bbdc9c6c5c4bab86c37fb5ed18602f56d463a471cf37f90",
+    "durationSec": 3.99
+  },
+  "c4-outro-zapp-blame-1": {
+    "file": "story/c4-outro-zapp-blame-1.mp3",
+    "hash": "3ce815bd0866240e44071cef57ba5c9a1044804e702ddc23c36e3548a5f7a3ed",
+    "durationSec": 3.26
+  },
+  "c4-outro-zapp-blame-2": {
+    "file": "story/c4-outro-zapp-blame-2.mp3",
+    "hash": "4e5b5ffdf38fbaf8342f06033b0006d078ac163e81888efbc0954a6b83a78600",
+    "durationSec": 4.7
+  },
+  "c5-intro-mine-known-0": {
+    "file": "story/c5-intro-mine-known-0.mp3",
+    "hash": "f8a868be0d3d59cc9a1e89230a1d480f38030ccafe1dfa6e783b1a096fcddb7d",
+    "durationSec": 6.37
+  },
+  "c5-intro-mine-known-1": {
+    "file": "story/c5-intro-mine-known-1.mp3",
+    "hash": "8fd483d1f9ec6bc104a9f66e1ac0cef3475d110967964ed12f27f4222d12ca36",
+    "durationSec": 4.7
+  },
+  "c5-intro-mine-0": {
+    "file": "story/c5-intro-mine-0.mp3",
+    "hash": "f0310680ab88786af582207980df8f97468528b2b5bd1517386ee3bef9e10715",
+    "durationSec": 6.29
+  },
+  "c5-intro-mine-1": {
+    "file": "story/c5-intro-mine-1.mp3",
+    "hash": "8c0c07e48a544f7639ec76bb476e29540f37e75a3109471d2345037a23d5d831",
+    "durationSec": 4.07
+  },
+  "c5-intro-mine-2": {
+    "file": "story/c5-intro-mine-2.mp3",
+    "hash": "58a8098f83eb6a5f4e455bfb4a9f8449df6c5e4571e04c6dc1dfa4ea70b82f94",
+    "durationSec": 7.34
+  },
+  "c5-intro-mine-3": {
+    "file": "story/c5-intro-mine-3.mp3",
+    "hash": "92a784049f1a150c1c6f77523eb92f5e3681c65a969538dca6e70ae5da0d6f0f",
+    "durationSec": 6.63
+  },
+  "c5-intro-mine-4": {
+    "file": "story/c5-intro-mine-4.mp3",
+    "hash": "1834813286c0d4b6666e5a76cd8198d91378cab9ae7137612505d989b1931a28",
+    "durationSec": 6.21
+  },
+  "c5-intro-mine-5": {
+    "file": "story/c5-intro-mine-5.mp3",
+    "hash": "ad8d0bceea63e98c016c1e77fd9d4c2e4674f90ce72830bd71fe66417d05a30b",
+    "durationSec": 6.29
+  },
+  "c5-intro-mine-6": {
+    "file": "story/c5-intro-mine-6.mp3",
+    "hash": "d0a8256cd7fc3f152a45b34ba779285c433e75080c4e6316d7f4b23a05be4eb5",
+    "durationSec": 6.79
+  },
+  "c5-intro-mine-7": {
+    "file": "story/c5-intro-mine-7.mp3",
+    "hash": "069ae17e7d956bbe21ffaa28f5f5641239597ed9628ace3ab3b793054bdb70f7",
+    "durationSec": 5.9
+  },
+  "c5-pre-crash-0": {
+    "file": "story/c5-pre-crash-0.mp3",
+    "hash": "7fef402100dc6b26a136d90dccef164a6eb4432b84a2db61545e3cc764f6a790",
+    "durationSec": 6.13
+  },
+  "c5-pre-crash-1": {
+    "file": "story/c5-pre-crash-1.mp3",
+    "hash": "1b87aa924570010ed9e17eed12c53966b9be55ec1d4b854defac3be54ac93e04",
+    "durationSec": 4.54
+  },
+  "c5-pre-ally-0": {
+    "file": "story/c5-pre-ally-0.mp3",
+    "hash": "27265dc65706b9cc7f9b181d19a4475fcad53c3ba181f004aaa25b6b95f70a8c",
+    "durationSec": 6.13
+  },
+  "c5-pre-ally-1": {
+    "file": "story/c5-pre-ally-1.mp3",
+    "hash": "380df62df651433c7ef4a9f3b76885eb8a469e8df692717426070f366ba6e45c",
+    "durationSec": 5.09
+  },
+  "c5-pre-ally-2": {
+    "file": "story/c5-pre-ally-2.mp3",
+    "hash": "7b31dd23cb732b46e73a64971ea63859bdc0c3ed5c12cccf9d77488ed84ad326",
+    "durationSec": 5.35
+  },
+  "c5-pre-ally-3": {
+    "file": "story/c5-pre-ally-3.mp3",
+    "hash": "6c5ce33bc751da73428923511336ddf33cde0097d82b47c7c02d41a8b6345aac",
+    "durationSec": 7.83
+  },
+  "c5-pre-ally-4": {
+    "file": "story/c5-pre-ally-4.mp3",
+    "hash": "44ffb64b2d69ba53cd4fedbf2c18e50da6a960ed6affc0ddad56906aba83a79c",
+    "durationSec": 7.34
+  },
+  "c5-pre-grid-0": {
+    "file": "story/c5-pre-grid-0.mp3",
+    "hash": "c5de6bb23b656e6de5adc05fa5104a8331cea4080e5e2ea9b915c34289ae21d8",
+    "durationSec": 5.43
+  },
+  "c5-pre-grid-1": {
+    "file": "story/c5-pre-grid-1.mp3",
+    "hash": "e71d3b77fd198ebe95d22be4aa1d7a82cfc03ed7ec889208bafa5a8e7879a235",
+    "durationSec": 5.98
+  },
+  "c5-pre-grid-2": {
+    "file": "story/c5-pre-grid-2.mp3",
+    "hash": "0544ea1f4f9465ca69448553ec617f3722619b5fae8699e10ba3b2e08a7d28ca",
+    "durationSec": 2.63
+  },
+  "c5-mid-mine-0": {
+    "file": "story/c5-mid-mine-0.mp3",
+    "hash": "a63a3949bbdcd3ea1d47d4618e65ae69e721317801b28355cc1693904f0bd4cf",
+    "durationSec": 6.06
+  },
+  "c5-mid-ally-0": {
+    "file": "story/c5-mid-ally-0.mp3",
+    "hash": "07e83e380bc74eb198b1a37e116fedfb05b915f5ba39b2e41b50a019c438488d",
+    "durationSec": 3.57
+  },
+  "c5-post-win-0": {
+    "file": "story/c5-post-win-0.mp3",
+    "hash": "6b8166f3f52cb26fc284edca49cad147d15b3690aff5a690478f73e314c02ba3",
+    "durationSec": 7.34
+  },
+  "c5-post-win-1": {
+    "file": "story/c5-post-win-1.mp3",
+    "hash": "0901641b744c35f596248e7ec6f62fc10e52a224efb876e5d73e46afa2fbec99",
+    "durationSec": 5.98
+  },
+  "c5-post-win-2": {
+    "file": "story/c5-post-win-2.mp3",
+    "hash": "65c5f2b0ed6c49ef6551b659fbe5b26dc2ac3a5f897b458a113f65f3606bc0b8",
+    "durationSec": 4.7
+  },
+  "c5-post-podium-0": {
+    "file": "story/c5-post-podium-0.mp3",
+    "hash": "772faf08b9c1c4b2d372319b5e39059981ec45d5076725436600a37c659c8504",
+    "durationSec": 5.35
+  },
+  "c5-post-podium-1": {
+    "file": "story/c5-post-podium-1.mp3",
+    "hash": "bc564cafe3156a817ec44a7d173a6b35b311932b2b3579b292ce463171c068ea",
+    "durationSec": 4.93
+  },
+  "c5-post-podium-2": {
+    "file": "story/c5-post-podium-2.mp3",
+    "hash": "8756b3bb34cbd48bcd6c437b6fd921a752c30b332986ae6cbb4944d777e1d1d4",
+    "durationSec": 5.19
   }
 }
