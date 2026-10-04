@@ -44,13 +44,14 @@ export default function RulesDialog({ onClose }: { onClose: () => void }) {
     if (saved) saveStory(completeTutorial(saved));
     setPlayingTutorial(false);
   };
-  if (playingTutorial) {
-    return <TutorialRace driver={tutorialDriver} subtitle="HOW TO PLAY · TRAINING GROUNDS" onDone={endTutorial} onSkip={endTutorial} />;
-  }
   useEffect(() => subscribeVoice(() => { setVoice(getVoiceSettings()); setSpoken(currentVoice()); }), []);
   // The caption strip lives in this dialog, so closing it has to cut the line: audio talking
   // with no caption on screen is the one thing the player must never do.
   useEffect(() => stopVoice, []);
+  // After every hook: returning before them crashed React ("Rendered fewer hooks") on Play the tutorial.
+  if (playingTutorial) {
+    return <TutorialRace driver={tutorialDriver} subtitle="HOW TO PLAY · TRAINING GROUNDS" onDone={endTutorial} onSkip={endTutorial} />;
+  }
   const samples = voiceLines('samples');
   const playSamples = async () => {
     for (const line of samples) await playVoice('samples', line.id);
