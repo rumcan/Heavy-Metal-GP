@@ -393,6 +393,12 @@ export default function StoryMode({ driver, account, onAccount, onLevelUp, onSho
     leaveToHub();
   };
 
+  // The race's profile and grid keep their identity between renders: RaceScreen rebuilds its race whenever they change,
+  // and this screen re-renders on every inventory change (picking up an item box used to restart the heat).
+  const raceChapter = stage.kind === 'race' ? stage.chapter : 0;
+  const raceProfile = useMemo(() => setup?.profile ?? (raceChapter ? storyProfile(raceChapter) : null), [setup, raceChapter]);
+  const raceGrid = useMemo(() => setup?.grid ?? gridOrder(state.season), [setup, state.season]);
+
   switch (stage.kind) {
     case 'prologue':
       return <TutorialPrologue
@@ -459,8 +465,8 @@ export default function StoryMode({ driver, account, onAccount, onLevelUp, onSho
         key={`story-${stage.chapter}-${stage.heat}-${setup?.seed ?? 0}`}
         seed={setup?.seed ?? storyRaceSeed(state, stage.chapter)}
         roster={setup?.roster ?? roster}
-        profile={setup?.profile ?? storyProfile(stage.chapter)}
-        gridOrder={setup?.grid ?? gridOrder(state.season)}
+        profile={raceProfile ?? storyProfile(stage.chapter)}
+        gridOrder={raceGrid}
         title={gp.name}
         subtitle={`STORY · CHAPTER ${String(stage.chapter).padStart(2, '0')} / HEAT ${stage.heat} OF ${HEATS_PER_GP}`}
         championship

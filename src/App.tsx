@@ -54,7 +54,7 @@ import { loadAccount, saveAccount, purchaseItem, onlineRaceId, settleOnlineRace,
 import type { RacerAccount, RacePayout } from './game/economy';
 import { loadTracksSync } from './game/tracks';
 import type { TrackDef } from './game/trackdef';
-import type { Inventory, ItemType } from './game/types';
+import type { Inventory, ItemType, TrackProfile } from './game/types';
 import LoadoutScreen from './components/loadout/LoadoutScreen';
 import { mergeRaceKit } from './game/loadout';
 import { RIVALS, PLAYER_PORTRAIT_COUNT, preRaceBanter } from './game/characters';
@@ -94,6 +94,18 @@ function makeRivals(seed: number): MarbleInfo[] {
 }
 
 type Phase = 'menu' | 'retune' | 'hub' | 'race' | 'quick' | 'story' | 'lobby' | 'online' | 'editor' | 'community' | 'infinity';
+
+/**
+ * The race profile for a platformer course: ONE object per course. RaceScreen rebuilds its race whenever its
+ * `profile` prop changes identity, and App re-renders on every inventory change: an inline object here made picking
+ * up an item box restart the race.
+ */
+const platformerProfiles = new Map<string, TrackProfile>();
+function platformerProfile(course: string): TrackProfile {
+  let profile = platformerProfiles.get(course);
+  if (!profile) { profile = { ...CALENDAR[0].profile, generator: 'platformer', course, theme: TRACK_THEMES.forest }; platformerProfiles.set(course, profile); }
+  return profile;
+}
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>('menu');
@@ -941,7 +953,7 @@ export default function App() {
         key={raceKey}
         seed={online.seed}
         roster={onlineRoster}
-        profile={onlinePlatformer ? { ...CALENDAR[0].profile, generator: 'platformer' as const, course: onlinePlatformer.id, theme: TRACK_THEMES.forest } : gp.profile}
+        profile={onlinePlatformer ? platformerProfile(onlinePlatformer.id) : gp.profile}
         // Calendar circuits race their official archives online too — never a generated layout.
         trackDef={onlinePlatformer ? null : isCustomOnline ? onlineCustomDef : officialTrack(circuitIndexOf(online.settings)) ?? onlineCustomDef}
         gridOrder={onlineGrid}
@@ -979,7 +991,7 @@ export default function App() {
   const platformerPick = !!quickPick;
   const platformer = platformerCourse(quickPick);
   const quickDef = platformerPick ? null : customTrackDef ?? officialTrack(circuitIndex);
-  const quickProfile = platformerPick ? { ...CALENDAR[0].profile, generator: 'platformer' as const, course: platformer.id, theme: TRACK_THEMES.forest } : customTrackDef ? CALENDAR[0].profile : CALENDAR[circuitIndex].profile;
+  const quickProfile = platformerPick ? platformerProfile(platformer.id) : customTrackDef ? CALENDAR[0].profile : CALENDAR[circuitIndex].profile;
   const quickTitle = platformerPick ? platformer.name : customTrackDef ? customTrackDef.name : CALENDAR[circuitIndex].name;
   const quickSubtitle = platformerPick ? 'QUICK RACE / PLATFORMER' : customTrackDef ? `QUICK RACE / CUSTOM // ${customTrackDef.pieces.length} PCS` : "QUICK RACE / SINGLE HEAT";
   return withShop(
