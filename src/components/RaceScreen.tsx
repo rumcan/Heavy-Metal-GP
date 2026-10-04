@@ -16,6 +16,8 @@ import { render } from '../game/render';
 import { marbleDepth, platformScreenPoint, renderPlatformer } from '../game/platformer/render';
 import { W } from '../game/track';
 import type { Track } from '../game/track';
+import { blendPoses, rememberPoses } from '../game/interpolate';
+import { RenderScale } from '../game/render-scale';
 import { HEAT_TIME_LIMIT, PHYSICS_STEP, formatTime } from '../game/physics';
 import { teamOf, ITEM_TYPES, emptyInventory, normalizeInventory } from '../game/types';
 import type { MarbleInfo, ItemType, TrackProfile, HeatResult, Inventory } from '../game/types';
@@ -382,10 +384,11 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
     const lightsOutAt = 4200 + game.rng() * 1000;
     const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+    const renderScale = new RenderScale();
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
       width = rect.width; height = rect.height;
-      const dpr = Math.min(2, devicePixelRatio || 1);
+      const dpr = renderScale.ratio(devicePixelRatio); // perf: softer when frames keep arriving late
       canvas.width = Math.round(width * dpr); canvas.height = Math.round(height * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
@@ -493,6 +496,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
     };
 
     const loop = (now: number) => {
+      if (renderScale.observe(now - last)) resize();
       const dt = Math.max(0, Math.min(now - last, 50));
       last = now;
       if (!pausedRef.current && !doneRef.current) {
@@ -514,12 +518,14 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
         game.nudge = nudgeOf(controls.current);
         game.engineHeld = controls.current.engine;
         accumulator += dt * (game.player.finishedAt !== null ? fastRef.current : 1);
-        while (accumulator >= PHYSICS_STEP) { game.step(PHYSICS_STEP); accumulator -= PHYSICS_STEP; }
+        while (accumulator >= PHYSICS_STEP) { rememberPoses(game); game.step(PHYSICS_STEP); accumulator -= PHYSICS_STEP; }
         if (game.allFinished()) { finishHold += dt; if (finishHold > 750) finish(); }
         else if (game.player.dnf) { finishHold += dt; if (finishHold > 2200) finish(); } // P2-07: out of the race: on to the results
         else if (game.raceTime() >= HEAT_TIME_LIMIT) finish();
         }
       }
+      // Perf: draw every marble between its last two physics steps (see game/interpolate.ts); undone before the next step.
+      const unblend = !sessionRef.current && !pausedRef.current && !doneRef.current ? blendPoses(game, accumulator / PHYSICS_STEP) : () => {};
       // The light bank: 0..5 while the lights count, -1 the moment they are out.
       if (sessionRef.current) lights = sessionRef.current.lightStage;
       const ranking = game.ranking();
@@ -616,6 +622,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
           finished: game.player.finishedAt !== null, paused: pausedRef.current,
         });
       }
+      unblend();
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);

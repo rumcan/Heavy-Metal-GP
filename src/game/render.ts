@@ -1,4 +1,5 @@
 import Matter from 'matter-js';
+import { drawImg } from './mip';
 import { Game, Marble } from './engine';
 import { hingeTimerState, hingeIsOpen, trapdoorWarn, pistonState, beltDir } from './elements';
 import { meta, W, T, cannonAim } from './track';
@@ -85,8 +86,8 @@ function drawAirships(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, cw
       // art faces right; mirror ships heading left
       ctx.translate(x + w, y);
       ctx.scale(-1, 1);
-      ctx.drawImage(ship, 0, 0, w, h);
-    } else ctx.drawImage(ship, x, y, w, h);
+      drawImg(ctx, ship, 0, 0, w, h);
+    } else drawImg(ctx, ship, x, y, w, h);
     ctx.restore();
   }
 }
@@ -146,8 +147,8 @@ function drawBackdrop(ctx: CanvasRenderingContext2D, cam: Camera, cw: number, ch
     const v = cam.y * 0.18;
     const x = (cw - tw) / 2;
     const tile = tintedTile(skinTile, `skin:${skin}`, tw * dpr, 'rgba(20,10,6,0.45)');
-    for (let row = Math.floor(v / th); row * th - v < ch; row++) ctx.drawImage(tile, x, row * th - v, tw, th + 1);
-    ctx.drawImage(vignetteFor(cw, ch), 0, 0, cw, ch);
+    for (let row = Math.floor(v / th); row * th - v < ch; row++) drawImg(ctx, tile, x, row * th - v, tw, th + 1);
+    drawImg(ctx, vignetteFor(cw, ch), 0, 0, cw, ch);
     return;
   }
   if (!ready(skyBg)) return;
@@ -164,7 +165,7 @@ function drawBackdrop(ctx: CanvasRenderingContext2D, cam: Camera, cw: number, ch
     const tile = !haveMine || row < 1
       ? tintedTile(skyBg, 'sky', tw * dpr, 'rgba(8,24,56,0.55)')
       : row === 1 ? tintedTile(entranceBg!, 'entrance', tw * dpr, 'rgba(20,16,20,0.55)') : tintedTile(mineBg!, 'mine', tw * dpr, 'rgba(24,14,8,0.55)');
-    ctx.drawImage(tile, x, y, tw, th + 1);
+    drawImg(ctx, tile, x, y, tw, th + 1);
   }
   const seam = th - v;
   if (haveMine && seam > -80 && seam < ch + 80) {
@@ -176,7 +177,7 @@ function drawBackdrop(ctx: CanvasRenderingContext2D, cam: Camera, cw: number, ch
     ctx.fillStyle = fog;
     ctx.fillRect(0, seam - 70, cw, 140);
   }
-  ctx.drawImage(vignetteFor(cw, ch), 0, 0, cw, ch);
+  drawImg(ctx, vignetteFor(cw, ch), 0, 0, cw, ch);
 }
 
 /** Apply a Workshop piece transform (rotation + size about the piece pivot) to the context. */
@@ -433,6 +434,8 @@ export function drawMarble(ctx: CanvasRenderingContext2D, game: Game, m: Marble,
 
 export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, cw: number, ch: number, t: number, options: { minimap?: boolean; shake?: boolean; workshopPreview?: boolean } = {}) {
   ctx.clearRect(0, 0, cw, ch);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
 
   const theme = game.track.theme;
   // Art themes swap in their own sprites; everything else draws the goblin art.
@@ -541,7 +544,7 @@ export function drawBodies(ctx: CanvasRenderingContext2D, game: Game, bodies: re
         const img = sprite('fire-hoop');
         const flicker = 0.75 + 0.25 * Math.sin(t / 90 + b.position.y) * Math.sin(t / 37);
         ctx.globalAlpha = flicker;
-        ctx.drawImage(glowSprite(), b.position.x - 90, b.position.y - 90, 180, 180);
+        drawImg(ctx, glowSprite(), b.position.x - 90, b.position.y - 90, 180, 180);
         ctx.globalAlpha = 1;
         if (img) {
           // hole centre sits at (200, 269) in the 400x593 art; hole diameter 251
@@ -549,7 +552,7 @@ export function drawBodies(ctx: CanvasRenderingContext2D, game: Game, bodies: re
           // Just the flaming ring: the base art's wooden stand starts below its bottom bracket (row 418 of 593),
           // so crop it off. Themed rings (other sizes) are their own art and draw whole.
           const srcH = img.naturalHeight === 593 ? 418 : img.naturalHeight;
-          ctx.drawImage(img, 0, 0, img.naturalWidth, srcH, b.position.x - 200 * k, b.position.y - 269 * k, img.naturalWidth * k, srcH * k);
+          drawImg(ctx, img, 0, 0, img.naturalWidth, srcH, b.position.x - 200 * k, b.position.y - 269 * k, img.naturalWidth * k, srcH * k);
         } else {
           ctx.beginPath();
           ctx.arc(b.position.x, b.position.y, 38, 0, Math.PI * 2);
@@ -591,7 +594,7 @@ export function drawBodies(ctx: CanvasRenderingContext2D, game: Game, bodies: re
           ctx.save();
           ctx.translate(b.position.x, b.position.y);
           ctx.rotate(-Math.atan2(dx, dy));
-          ctx.drawImage(ballImg, -bw / 2, -bh * 0.62, bw, bh);
+          drawImg(ctx, ballImg, -bw / 2, -bh * 0.62, bw, bh);
           ctx.restore();
         } else {
           ctx.beginPath();
@@ -639,16 +642,16 @@ export function drawBodies(ctx: CanvasRenderingContext2D, game: Game, bodies: re
         const pulse = hit ? Math.max(0.3, 1 - age / 210) : col === 'green' ? 1 + Math.sin(t / 330 + b.position.x) * 0.06 : 1;
         const gem = sprite(`gem-${col === 'green' && md.itemDrop ? 'purple' : col}`);
         if (hit || col === 'green') {
-          ctx.drawImage(colorGlow(base), b.position.x - r * 2.2, b.position.y - r * 2.2, r * 4.4, r * 4.4);
+          drawImg(ctx, colorGlow(base), b.position.x - r * 2.2, b.position.y - r * 2.2, r * 4.4, r * 4.4);
         }
         if (gem) {
           const size = r * 2.5 * pulse;
-          ctx.drawImage(gem, b.position.x - size / 2, b.position.y - size / 2, size, size);
+          drawImg(ctx, gem, b.position.x - size / 2, b.position.y - size / 2, size, size);
           if (hit) {
             // brighten with an additive second pass; canvas filters are far slower
             ctx.globalCompositeOperation = 'lighter';
             ctx.globalAlpha = 0.8;
-            ctx.drawImage(gem, b.position.x - size / 2, b.position.y - size / 2, size, size);
+            drawImg(ctx, gem, b.position.x - size / 2, b.position.y - size / 2, size, size);
             ctx.globalAlpha = 1;
             ctx.globalCompositeOperation = 'source-over';
           }
@@ -704,7 +707,7 @@ export function drawBodies(ctx: CanvasRenderingContext2D, game: Game, bodies: re
           ctx.save();
           ctx.translate(x, y + 22);
           ctx.rotate(vx * 0.06);
-          ctx.drawImage(cart, -w / 2, -h + rattle, w, h);
+          drawImg(ctx, cart, -w / 2, -h + rattle, w, h);
           ctx.restore();
           break;
         }
@@ -781,7 +784,7 @@ export function drawBodies(ctx: CanvasRenderingContext2D, game: Game, bodies: re
         const ratio = (md.hp ?? 1) / (md.maxHp ?? 1);
         const { min, max } = b.bounds;
         const crate = sprite('crate-tall');
-        if (crate) ctx.drawImage(crate, min.x - (max.x - min.x) * 0.3, min.y - 6, (max.x - min.x) * 1.6, (max.y - min.y) + 12);
+        if (crate) drawImg(ctx, crate, min.x - (max.x - min.x) * 0.3, min.y - 6, (max.x - min.x) * 1.6, (max.y - min.y) + 12);
         else if (!drawStrip(ctx, b, 'crate', { tile: 40 })) {
           polygon(ctx, b);
           ctx.fillStyle = '#b45309';
@@ -848,7 +851,7 @@ export function drawBodies(ctx: CanvasRenderingContext2D, game: Game, bodies: re
           // squash about the base of the art (84% below the pad surface) so the base stays planted and the top bobs
           ctx.translate(0, h * 0.84);
           ctx.scale(face, squash);
-          ctx.drawImage(sheep, -w * 0.42, -h, w, h);
+          drawImg(ctx, sheep, -w * 0.42, -h, w, h);
           ctx.restore();
           break;
         }
@@ -888,7 +891,7 @@ export function drawBodies(ctx: CanvasRenderingContext2D, game: Game, bodies: re
           ctx.globalAlpha = 0.9;
           for (let r = 0; r < rows; r++) {
             const cy = -lh / 2 + (r + 0.5) * lh / rows - ph / 2;
-            ctx.drawImage(chevron, -lw / 2, cy, lw, ph);
+            drawImg(ctx, chevron, -lw / 2, cy, lw, ph);
           }
           ctx.globalAlpha = 1;
           const sweep = ((t / 700) % 1) * lw * 1.4 - lw * 0.7;
@@ -902,7 +905,7 @@ export function drawBodies(ctx: CanvasRenderingContext2D, game: Game, bodies: re
           break;
         }
         const redStrip = sprite('strip-red');
-        if (redStrip) ctx.drawImage(redStrip, -lw / 2, -lh / 2, lw, lh);
+        if (redStrip) drawImg(ctx, redStrip, -lw / 2, -lh / 2, lw, lh);
         ctx.fillStyle = 'rgba(249,115,22,0.18)';
         ctx.fillRect(-lw / 2, -lh / 2, lw, lh);
         ctx.strokeStyle = 'rgba(251,146,60,0.5)';
@@ -1172,7 +1175,7 @@ function drawDecor(ctx: CanvasRenderingContext2D, game: Game, viewTop: number, v
     // The ring's hole (131x135 px, centred at 127,121.5 in the 255x242 art) is scaled onto the physics running surface.
     const inner = d.r * 2 + 4;
     const kx = inner / 131, ky = inner / 135;
-    ctx.drawImage(img, d.x - 127 * kx, d.y - 121.5 * ky, img.naturalWidth * kx, img.naturalHeight * ky);
+    drawImg(ctx, img, d.x - 127 * kx, d.y - 121.5 * ky, img.naturalWidth * kx, img.naturalHeight * ky);
   }
 }
 
@@ -1254,7 +1257,7 @@ function drawForeground(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, 
       if (sy > ch || sy + h < 0) continue;
       // alternate section art so the column does not look copy-pasted
       const part = tall ? blurredSprite(TOWERS[Math.floor(hash01(seed, i * 7 + k, 36) * TOWERS.length)]) ?? img : img;
-      ctx.drawImage(part, 0, sy, h * part.width / part.height, h);
+      drawImg(ctx, part, 0, sy, h * part.width / part.height, h);
     }
     ctx.restore();
   }
@@ -1305,9 +1308,9 @@ function drawSidesStatic(ctx: CanvasRenderingContext2D, game: Game, viewTop: num
         // the right-hand art already faces left; undo the mirror for it
         ctx.save();
         ctx.scale(-1, 1);
-        ctx.drawImage(cliffR, -10, y, cw, chh);
+        drawImg(ctx, cliffR, -10, y, cw, chh);
         ctx.restore();
-      } else ctx.drawImage(cliffL, -cw + 10, y, cw, chh);
+      } else drawImg(ctx, cliffL, -cw + 10, y, cw, chh);
     }
     // scaffold towers
     const th = 540;
@@ -1316,7 +1319,7 @@ function drawSidesStatic(ctx: CanvasRenderingContext2D, game: Game, viewTop: num
       const img = sprite(name);
       if (!img) continue;
       const tw = th * img.naturalWidth / img.naturalHeight;
-      ctx.drawImage(img, -tw + 22, i * th, tw, th);
+      drawImg(ctx, img, -tw + 22, i * th, tw, th);
     }
     // goblin balconies at sector starts, alternating sides
     game.track.segments.forEach((seg, i) => {
@@ -1326,7 +1329,7 @@ function drawSidesStatic(ctx: CanvasRenderingContext2D, game: Game, viewTop: num
       const img = sprite(name);
       if (!img) return;
       const bh = 150, bw = bh * img.naturalWidth / img.naturalHeight;
-      ctx.drawImage(img, -bw - 60, seg.y + 30, bw, bh);
+      drawImg(ctx, img, -bw - 60, seg.y + 30, bw, bh);
     });
     ctx.restore();
     if (viewBottom > ug && currentSkin() && sprite('cliff-column')) {
@@ -1337,11 +1340,11 @@ function drawSidesStatic(ctx: CanvasRenderingContext2D, game: Game, viewTop: num
       for (let k = Math.max(0, Math.floor((viewTop - ug) / mh)); ug + k * mh < viewBottom; k++) {
         // mostly miners and skeleton guards, sometimes bare rock
         const img = sprite(hash01(seed, k, side + 21) < 0.7 ? 'mine-wall' : 'mine-edge');
-        if (img) ctx.drawImage(img, -300 + 14, ug + k * mh, 300, mh + 1);
+        if (img) drawImg(ctx, img, -300 + 14, ug + k * mh, 300, mh + 1);
       }
     }
     const torch = sprite('torch');
-    if (torch) for (const y of torchRows(seed, side, viewTop, viewBottom)) ctx.drawImage(torch, -8, y - 40, 42, 78);
+    if (torch) for (const y of torchRows(seed, side, viewTop, viewBottom)) drawImg(ctx, torch, -8, y - 40, 42, 78);
     ctx.restore();
   }
 }
@@ -1363,7 +1366,7 @@ function drawSkinRock(ctx: CanvasRenderingContext2D, fromX: number, top: number,
   if (img) {
     const h = CLIFF_W * img.naturalHeight / img.naturalWidth;
     for (let x = -CLIFF_W; x + CLIFF_W > Math.max(fromX, FADE_FAR - CLIFF_W); x -= CLIFF_W - 1) {
-      for (let y = Math.floor(top / h) * h; y < bottom; y += h) ctx.drawImage(img, x, y, CLIFF_W, h + 1);
+      for (let y = Math.floor(top / h) * h; y < bottom; y += h) drawImg(ctx, img, x, y, CLIFF_W, h + 1);
     }
   }
   const g = ctx.createLinearGradient(FADE_NEAR, 0, FADE_FAR, 0);
@@ -1385,7 +1388,7 @@ function drawSkinColumn(ctx: CanvasRenderingContext2D, top: number, bottom: numb
   const coreRight = ({ worg: 0.81, dwarven: 0.85 } as Record<string, number>)[currentSkin() ?? ''] ?? 0.86;
   const w = 440, h = w * img.naturalHeight / img.naturalWidth;
   const x = 18 - w * coreRight;
-  for (let y = Math.floor(top / h) * h; y < bottom; y += h) ctx.drawImage(img, x, y, w, h + 1);
+  for (let y = Math.floor(top / h) * h; y < bottom; y += h) drawImg(ctx, img, x, y, w, h + 1);
 }
 
 /** Beyond the baked static layer (zoomed far out): keep the rock face going instead of flat darkness. */
@@ -1456,7 +1459,7 @@ function drawTorchGlows(ctx: CanvasRenderingContext2D, game: Game, viewTop: numb
       const r = 110 * flick;
       const x = side ? W - 10 : 10;
       ctx.globalAlpha = flick;
-      ctx.drawImage(glowSprite(), x - r, y - 22 - r, r * 2, r * 2);
+      drawImg(ctx, glowSprite(), x - r, y - 22 - r, r * 2, r * 2);
     }
   }
   ctx.globalAlpha = 1;
@@ -1492,7 +1495,7 @@ function drawBlade(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType
   const len = motion.arm;
   if (img) {
     const bw = len * 0.58, bh = img.naturalHeight * (len * 1.18) / img.naturalWidth;
-    ctx.drawImage(img, -bw / 2, 0, bw, len * 1.18 > bh ? bh : len * 1.18);
+    drawImg(ctx, img, -bw / 2, 0, bw, len * 1.18 > bh ? bh : len * 1.18);
   } else {
     // iron arm
     ctx.fillStyle = '#4b5563';
@@ -1551,7 +1554,7 @@ function drawSaw(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<t
     ctx.save();
     ctx.translate(b.position.x, b.position.y);
     ctx.rotate(spin);
-    ctx.drawImage(img, -r * 1.25, -r * 1.25, r * 2.5, r * 2.5);
+    drawImg(ctx, img, -r * 1.25, -r * 1.25, r * 2.5, r * 2.5);
     ctx.restore();
     return;
   }
@@ -1610,7 +1613,7 @@ function drawCrusher(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnTy
   // housing: iron cylinder the piston drops out of
   const houseImg = sprite('crusher-house');
   if (houseImg) {
-    ctx.drawImage(houseImg, min.x - 10, motion.top.y - 58, w + 20, 60);
+    drawImg(ctx, houseImg, min.x - 10, motion.top.y - 58, w + 20, 60);
   } else {
     ctx.fillStyle = '#3f4653';
     ctx.fillRect(min.x - 8, motion.top.y - 56, w + 16, 58);
@@ -1624,7 +1627,7 @@ function drawCrusher(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnTy
   const img = sprite('crusher');
   const warn = st.warn ? 0.5 + 0.5 * Math.sin(t / 90) : 0;
   if (img) {
-    ctx.drawImage(img, min.x - 6, min.y - 8, w + 12, (max.y - min.y) + 16);
+    drawImg(ctx, img, min.x - 6, min.y - 8, w + 12, (max.y - min.y) + 16);
   } else {
     ctx.fillStyle = '#57534e';
     ctx.fillRect(min.x, min.y, w, max.y - min.y);
@@ -1660,7 +1663,7 @@ function drawBoulder(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnTy
   ctx.translate(b.position.x, b.position.y);
   ctx.rotate(b.angle);
   if (img) {
-    ctx.drawImage(img, -r * 1.12, -r * 1.12, r * 2.24, r * 2.24);
+    drawImg(ctx, img, -r * 1.12, -r * 1.12, r * 2.24, r * 2.24);
   } else {
     ctx.beginPath();
     ctx.arc(0, 0, r, 0, Math.PI * 2);
@@ -1716,7 +1719,7 @@ function drawMace(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<
     ctx.save();
     ctx.translate(b.position.x, b.position.y);
     ctx.rotate(t * 0.002);
-    ctx.drawImage(img, -r * 1.35, -r * 1.35, r * 2.7, r * 2.7);
+    drawImg(ctx, img, -r * 1.35, -r * 1.35, r * 2.7, r * 2.7);
     ctx.restore();
   } else {
     ctx.save();
@@ -1796,7 +1799,7 @@ function drawBarricade(ctx: CanvasRenderingContext2D, b: Matter.Body, md: Return
   const ratio = (md.hp ?? 1) / (md.maxHp ?? 1);
   const img = sprite('barricade');
   if (img) {
-    ctx.drawImage(img, min.x - w * 0.06, min.y - h * 0.08, w * 1.12, h * 1.16);
+    drawImg(ctx, img, min.x - w * 0.06, min.y - h * 0.08, w * 1.12, h * 1.16);
   } else {
     // planks: three crossed boards over a dark opening
     ctx.fillStyle = 'rgba(5,8,14,0.85)';
@@ -1862,7 +1865,7 @@ function drawCrumble(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnTy
   const tile = md.crumbleTile ?? { row: 0, col: 0, rows: 1, cols: 1 };
   if (img) {
     const sw = img.naturalWidth / tile.cols, sh = img.naturalHeight / tile.rows;
-    ctx.drawImage(img, tile.col * sw, tile.row * sh, sw, sh, min.x, min.y, w, h);
+    drawImg(ctx, img, tile.col * sw, tile.row * sh, sw, sh, min.x, min.y, w, h);
   } else {
     ctx.fillStyle = tile.row % 2 ? '#7d7466' : '#8d8474';
     ctx.fillRect(min.x, min.y, w, h);
@@ -1885,7 +1888,7 @@ function drawTunnelHole(ctx: CanvasRenderingContext2D, x: number, y: number, r: 
     const gr = r * (1.7 + 0.25 * pulse);
     ctx.save();
     ctx.globalAlpha = 0.35 + 0.2 * pulse;
-    ctx.drawImage(colorGlow('#f6bf63'), x - gr, y - gr, gr * 2, gr * 2);
+    drawImg(ctx, colorGlow('#f6bf63'), x - gr, y - gr, gr * 2, gr * 2);
     ctx.restore();
   }
   const img = sprite('tunnel');
@@ -1895,7 +1898,7 @@ function drawTunnelHole(ctx: CanvasRenderingContext2D, x: number, y: number, r: 
     ctx.translate(x, y);
     ctx.rotate(rot);
     const s = r * 3.1;
-    ctx.drawImage(img, -s / 2, -s / 2, s, s);
+    drawImg(ctx, img, -s / 2, -s / 2, s, s);
     ctx.restore();
   } else {
     // rubble ring
@@ -1961,8 +1964,8 @@ function drawTrapdoor(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnT
     // The trapdoor graphic has transparent padding on its sides.
     // By shifting it left by ~25% of len, the visual metal hinge aligns with x=0.
     const pad = len * 0.25;
-    if (dirX === 1) ctx.drawImage(img, -pad, -thick * 1.2, len + pad * 2, thick * 2.4);
-    else { ctx.scale(-1, 1); ctx.drawImage(img, -pad, -thick * 1.2, len + pad * 2, thick * 2.4); ctx.scale(-1, 1); }
+    if (dirX === 1) drawImg(ctx, img, -pad, -thick * 1.2, len + pad * 2, thick * 2.4);
+    else { ctx.scale(-1, 1); drawImg(ctx, img, -pad, -thick * 1.2, len + pad * 2, thick * 2.4); ctx.scale(-1, 1); }
   } else {
     // grating floor: frame + bars
     const x0 = dirX === 1 ? 0 : -len;
@@ -2028,7 +2031,7 @@ function drawTrapdoor(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnT
     const glow = isOpen ? '#4ade80' : warn && Math.sin(t / 90) > 0 ? '#facc15' : '#93a1b3';
     ctx.fillStyle = '#39424f';
     ctx.fillRect(lx - 3, ly - 2, 7, 14);
-    ctx.drawImage(colorGlow(glow), lx - 12, ly - 22, 26, 26);
+    drawImg(ctx, colorGlow(glow), lx - 12, ly - 22, 26, 26);
     ctx.fillStyle = glow;
     ctx.beginPath();
     ctx.arc(lx + 0.5, ly - 8, 4.5, 0, Math.PI * 2);
@@ -2292,7 +2295,7 @@ function drawStaticLayer(ctx: CanvasRenderingContext2D, game: Game, viewTop: num
     // draw only the core of each chunk (the padding just gives clean edge sampling), so semi-transparent fills never double up
     const canvas = get(i);
     const k = canvas.height / (CHUNK_H + STATIC_PAD * 2);
-    ctx.drawImage(canvas, 0, STATIC_PAD * k, canvas.width, CHUNK_H * k, STATIC_X0, i * CHUNK_H, STATIC_W, CHUNK_H);
+    drawImg(ctx, canvas, 0, STATIC_PAD * k, canvas.width, CHUNK_H * k, STATIC_X0, i * CHUNK_H, STATIC_W, CHUNK_H);
   }
   // pre-bake the next chunk below the camera (the field only ever travels down)
   const ahead = last + 1;
@@ -2428,7 +2431,7 @@ function drawCatapult(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: Return
   ctx.scale(mirror, 1);
   if (base) {
     const k = ct.len / 600;
-    ctx.drawImage(base, -CATAPULT_BASE.pivotX * k, -CATAPULT_BASE.pivotY * k, CATAPULT_BASE.width * k, CATAPULT_BASE.height * k);
+    drawImg(ctx, base, -CATAPULT_BASE.pivotX * k, -CATAPULT_BASE.pivotY * k, CATAPULT_BASE.width * k, CATAPULT_BASE.height * k);
   } else {
     ctx.strokeStyle = '#78350f';
     ctx.lineWidth = 7;
@@ -2445,7 +2448,7 @@ function drawCatapult(ctx: CanvasRenderingContext2D, _b: Matter.Body, md: Return
   if (arm) {
     const k = (ct.len / CATAPULT_ARM_LENGTH) * CATAPULT_ARM_DRAW;
     ctx.rotate(-CATAPULT_ARM_AXIS);
-    ctx.drawImage(arm, -CATAPULT_ARM.pivotX * k, -CATAPULT_ARM.pivotY * k, CATAPULT_ARM.width * k, CATAPULT_ARM.height * k);
+    drawImg(ctx, arm, -CATAPULT_ARM.pivotX * k, -CATAPULT_ARM.pivotY * k, CATAPULT_ARM.width * k, CATAPULT_ARM.height * k);
   } else {
     ctx.fillStyle = '#92610f';
     ctx.fillRect(0, -5, ct.len, 10);
@@ -2971,7 +2974,7 @@ function drawWheel(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType
   if (img) {
     ctx.save();
     ctx.globalAlpha = 1;
-    ctx.drawImage(img, -r - 8, -r - 8, (r + 8) * 2, (r + 8) * 2);
+    drawImg(ctx, img, -r - 8, -r - 8, (r + 8) * 2, (r + 8) * 2);
     ctx.restore();
   }
   ctx.restore();

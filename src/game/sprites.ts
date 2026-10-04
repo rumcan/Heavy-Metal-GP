@@ -1,4 +1,5 @@
 import type Matter from 'matter-js';
+import { drawImg } from './mip';
 
 /** Gameplay sprites sliced from the "game graphics kit" sheet (see assets/ui), plus placeholder PNGs. */
 const files = import.meta.glob<string>('../assets/game/*.{webp,png}', { eager: true, import: 'default' });
@@ -158,11 +159,11 @@ export function drawRail(ctx: CanvasRenderingContext2D, body: Matter.Body, name:
   const tileW = mid.width * scale;
   for (let x = x0; x < x1; x += tileW) {
     const w = Math.min(tileW, x1 - x);
-    ctx.drawImage(mid, 0, 0, w / scale, mid.height, x, cy, w + 0.5, thick);
+    drawImg(ctx, mid, 0, 0, w / scale, mid.height, x, cy, w + 0.5, thick);
   }
   const srcCap = img.naturalWidth * RAIL_CAP;
-  if (capL) ctx.drawImage(img, 0, 0, srcCap, img.naturalHeight, minU - capW * 0.4, cy, capW, thick);
-  if (capR) ctx.drawImage(img, img.naturalWidth - srcCap, 0, srcCap, img.naturalHeight, maxU - capW * 0.6, cy, capW, thick);
+  if (capL) drawImg(ctx, img, 0, 0, srcCap, img.naturalHeight, minU - capW * 0.4, cy, capW, thick);
+  if (capR) drawImg(ctx, img, img.naturalWidth - srcCap, 0, srcCap, img.naturalHeight, maxU - capW * 0.6, cy, capW, thick);
   ctx.restore();
   return true;
 }
@@ -235,10 +236,10 @@ export function drawSprite(ctx: CanvasRenderingContext2D, name: string, x: numbe
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(angle);
-    ctx.drawImage(img, -w / 2, -h / 2, w, h);
+    drawImg(ctx, img, -w / 2, -h / 2, w, h);
     ctx.restore();
   } else {
-    ctx.drawImage(img, x - w / 2, y - h / 2, w, h);
+    drawImg(ctx, img, x - w / 2, y - h / 2, w, h);
   }
   return true;
 }

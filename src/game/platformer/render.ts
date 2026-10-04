@@ -3,13 +3,14 @@
 // blurred (src/game/lanes.ts). Blur is cheap on phones: a lane behind is drawn into a half-size canvas and
 // scaled back up. Art is a skin only: the physics bodies are the plain quads from build.ts.
 import type { Game, Marble } from '../engine';
+import { drawImg } from '../mip';
 import { meta } from '../track';
 import { laneFocus, laneView, visibleLanes, LANE_SWITCH_MS, LANE_MIDDLE } from '../lanes';
 import { drawBodies, drawMarble } from '../render';
 import { drawSkillWorld } from '../skills/draw';
 import { SPRING_W, floorAt } from './course';
 import type { CoursePlan, Floor, Lane, LaneGate } from './course';
-import { drawCoasterLane } from './coaster';
+import { coasterReady, drawCoasterLane } from './coaster';
 import { drawRoutes } from './routes';
 import { LEDGE_H } from './build';
 import earthUrl from '../../assets/game/platformer/earth.webp';
@@ -98,7 +99,7 @@ function sky(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch:
       const w = (img.naturalWidth / img.naturalHeight) * h;
       let x = -(((cam.x * 0.03) + row * w * 0.37) % w);
       if (x > 0) x -= w;
-      for (; x < cw; x += w) ctx.drawImage(img, x, y, w + 1, h + 1);
+      for (; x < cw; x += w) drawImg(ctx, img, x, y, w + 1, h + 1);
     }
     for (let row = Math.max(1, first); top + row * h - h * 0.1 < ch; row++) {
       const y = top + row * h;
@@ -117,7 +118,7 @@ function sky(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch:
       const w = (img.naturalWidth / img.naturalHeight) * h;
       let x = -((cam.x * parallax) % w);
       if (x > 0) x -= w;
-      for (; x < cw; x += w) ctx.drawImage(img, x, bottom - h, w + 1, h);
+      for (; x < cw; x += w) drawImg(ctx, img, x, bottom - h, w + 1, h);
     };
     strip(ART.far, 0.04, ch * 0.95, ch * 0.98);
     ctx.fillStyle = 'rgba(190,206,214,0.25)';
@@ -186,7 +187,7 @@ function drawFloor(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: nu
     ctx.beginPath();
     ctx.rect(-6, -GRASS_UP - 4, len + 12, GRASS_H + 8);
     ctx.clip();
-    for (let u = -6 - ((x0 % tw) + tw) % tw; u < len + 6; u += tw) ctx.drawImage(img, u, -GRASS_UP, tw + 0.5, GRASS_H);
+    for (let u = -6 - ((x0 % tw) + tw) % tw; u < len + 6; u += tw) drawImg(ctx, img, u, -GRASS_UP, tw + 0.5, GRASS_H);
     ctx.restore();
     return;
   }
@@ -233,7 +234,7 @@ function drawBump(ctx: CanvasRenderingContext2D, x: number, y: number, w: number
   if (ready(ART.crate)) {
     const n = Math.max(1, Math.round(w / h));
     const cw = w / n;
-    for (let i = 0; i < n; i++) ctx.drawImage(ART.crate, x + i * cw, y, cw, h + 4);
+    for (let i = 0; i < n; i++) drawImg(ctx, ART.crate, x + i * cw, y, cw, h + 4);
     return;
   }
   ctx.fillStyle = '#8a6a3e';
@@ -256,7 +257,7 @@ function drawGate(ctx: CanvasRenderingContext2D, g: LaneGate, t: number, near: b
     const cx = g.x + g.w / 2;
     const h = 150;
     const w = (ART.door.naturalWidth / ART.door.naturalHeight) * h;
-    ctx.drawImage(ART.door, cx - w / 2, g.y - h + 6, w, h);
+    drawImg(ctx, ART.door, cx - w / 2, g.y - h + 6, w, h);
     // the glow that says "press ↑ here"
     const glow = ctx.createRadialGradient(cx, g.y - h * 0.45, 4, cx, g.y - h * 0.45, h * 0.7);
     glow.addColorStop(0, `rgba(255,190,90,${(near ? 0.35 : 0.15) * pulse})`);
@@ -294,7 +295,7 @@ function drawGate(ctx: CanvasRenderingContext2D, g: LaneGate, t: number, near: b
       const w = (ART.sign.naturalWidth / ART.sign.naturalHeight) * h;
       const sx = g.x - w * 0.55;
       const sy = g.y - h + 8;
-      ctx.drawImage(ART.sign, sx, sy, w, h);
+      drawImg(ctx, ART.sign, sx, sy, w, h);
       ctx.fillStyle = back ? '#bfe6ff' : '#ffd2a1';
       ctx.font = 'bold 15px sans-serif';
       ctx.textAlign = 'center';
@@ -363,14 +364,23 @@ function drawFinish(ctx: CanvasRenderingContext2D, x: number, y: number) {
 }
 
 /** Draw one lane's world (floors, bumps, gates, the finish) in world coordinates. */
-function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, left: number, right: number, bottom: number, t: number) {
+/** Perf: a lane's unchanging scenery is cached ('static'); what moves is drawn every frame ('dynamic'). */
+type LanePart = 'all' | 'static' | 'dynamic';
+
+function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, left: number, right: number, bottom: number, t: number, part: LanePart = 'all') {
   const info = game.track.platformer!;
   const flow = info.plan.style === 'flow';
+  if (part === 'static') {
+    // only ever asked for once the coaster art is loaded (see laneCache)
+    drawCoasterLane(ctx, info.plan, lane as Lane, left, right, bottom, t, () => false, [], 'static');
+    if (info.plan.finishX > left && info.plan.finishX < right) drawFinish(ctx, info.plan.finishX, info.plan.finishY);
+    return;
+  }
   // Flow courses: the coaster skin (track on trestles over cliffs) once its art is loaded; until then the
   // slope as whole runs of earth and grass. Either way never thousands of little blocks.
   const fired = (sx: number) => game.marbles.some((m) => m.springAt !== undefined && game.time - m.springAt < 220 && (m.lane ?? 1) === lane && Math.abs(m.body.position.x - sx - SPRING_W / 2) < 80);
   const pieces = flow ? game.track.bodies.filter((b) => { const k = meta(b).kind; return (k === 'wrecker' || k === 'itembox' || k === 'boost' || k === 'bridge') && meta(b).lane === lane; }) : [];
-  const coaster = flow && drawCoasterLane(ctx, info.plan, lane as Lane, left, right, bottom, t, fired, pieces);
+  const coaster = flow && drawCoasterLane(ctx, info.plan, lane as Lane, left, right, bottom, t, fired, pieces, part === 'dynamic' ? 'dynamic' : 'all');
   if (flow && !coaster) { drawFlowGround(ctx, info.plan, lane, left, right, bottom); drawRoutes(ctx, info.plan.loops, pieces, lane, left, right); }
   for (const body of game.track.bodies) {
     const md = meta(body);
@@ -396,7 +406,60 @@ function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, 
     if (g.lane !== lane || g.x + g.w < left || g.x > right) continue;
     drawGate(ctx, g, t, Math.abs(player.body.position.x - (g.x + g.w / 2)) < 260);
   }
-  if (info.plan.finishX > left && info.plan.finishX < right) drawFinish(ctx, info.plan.finishX, info.plan.finishY);
+  if (part === 'all' && info.plan.finishX > left && info.plan.finishX < right) drawFinish(ctx, info.plan.finishX, info.plan.finishY);
+}
+
+/**
+ * Perf: each lane's static scenery (cliffs, towers, trestles, the beam, crates, ledges, the finish) rendered once into
+ * an off-screen canvas a little larger than the view, at the lane's current zoom, and copied to the screen every
+ * frame. It is redrawn only when the camera nears its edge, the zoom drifts more than a few per cent, or the course
+ * changes. Redrawing all of it every frame cost ~7 ms per lane (up to three lanes).
+ */
+interface LaneCache { cv: HTMLCanvasElement; plan: CoursePlan; ox: number; oy: number; wx: number; wy: number; px: number; want: number; w: number; h: number }
+const laneCaches = new WeakMap<CanvasRenderingContext2D, Map<number, LaneCache>>();
+/** One early refresh per frame at most, so lanes never all rebuild on the same frame (that was a 30 ms hitch). */
+const refreshedAt = new WeakMap<CanvasRenderingContext2D, number>();
+let frameNo = 0;
+const CACHE_MAX_PX = 3072;
+
+function cachedLane(ctx: CanvasRenderingContext2D, game: Game, lane: number, view: { x0: number; x1: number; y0: number; y1: number }, pxWanted: number, t: number): LaneCache | null {
+  if (typeof document === 'undefined') return null;
+  const plan = game.track.platformer!.plan;
+  let byLane = laneCaches.get(ctx);
+  if (!byLane) { byLane = new Map(); laneCaches.set(ctx, byLane); }
+  const c = byLane.get(lane);
+  // Compare with the resolution asked for when it was drawn (a big screen caps the cache below it: that is fine).
+  const ratio = c ? pxWanted / c.want : 0;
+  const inside = (pad: number) => !!c && view.x0 - (view.x1 - view.x0) * pad >= c.ox && view.x1 + (view.x1 - view.x0) * pad <= c.ox + c.wx
+    && view.y0 - (view.y1 - view.y0) * pad >= c.oy && view.y1 + (view.y1 - view.y0) * pad <= c.oy + c.wy;
+  const usable = !!c && c.plan === plan && ratio > 0.9 && ratio < 1.1 && inside(0);
+  // Comfortably inside and at the right zoom: use it. Getting close to an edge (or the zoom drifting): refresh it
+  // early, but only if no other lane refreshed this frame. Outside it: it has to be redrawn now.
+  if (usable && (inside(0.06) && ratio > 0.96 && ratio < 1.04 || refreshedAt.get(ctx) === frameNo)) return c!;
+  refreshedAt.set(ctx, frameNo);
+  // Rebuild: margins around the view, wider ahead (the race runs left to right).
+  const vw = view.x1 - view.x0, vh = view.y1 - view.y0;
+  const ox = view.x0 - vw * 0.1, oy = view.y0 - vh * 0.15;
+  const wx = vw * 1.5, wy = vh * 1.3;
+  const px = Math.min(pxWanted, CACHE_MAX_PX / wx, CACHE_MAX_PX / wy);
+  const cv = c?.cv ?? document.createElement('canvas');
+  const w = Math.ceil(wx * px), h = Math.ceil(wy * px);
+  // Keep the canvas's size whenever it is big enough (and not wastefully big): resizing a canvas throws its GPU
+  // texture away, and reallocating one every refresh cost 200 ms hitches on big screens.
+  if (cv.width < w || cv.height < h || cv.width > w * 1.5 || cv.height > h * 1.5) {
+    cv.width = Math.min(CACHE_MAX_PX, Math.ceil(w / 256) * 256);
+    cv.height = Math.min(CACHE_MAX_PX, Math.ceil(h / 256) * 256);
+  }
+  const cc = cv.getContext('2d');
+  if (!cc) return null;
+  cc.setTransform(1, 0, 0, 1, 0, 0);
+  cc.clearRect(0, 0, cv.width, cv.height);
+  cc.imageSmoothingQuality = 'high';
+  cc.setTransform(px, 0, 0, px, -ox * px, -oy * px);
+  drawLaneWorld(cc, game, lane, ox - 200, ox + wx + 200, oy + wy + 40, t, 'static');
+  const next = { cv, plan, ox, oy, wx, wy, px, want: pxWanted, w, h };
+  byLane.set(lane, next);
+  return next;
 }
 
 /**
@@ -427,7 +490,7 @@ function drawCannons(ctx: CanvasRenderingContext2D, game: Game, lane: number, t:
       // the painted barrel sits between x 43 and 150 of the 192 px image: land it from breech to muzzle
       const img = ART.cannon;
       const sx = img.naturalWidth * (43 / 192), sw = img.naturalWidth * (107 / 192);
-      ctx.drawImage(img, sx, 0, sw, img.naturalHeight, -16, -16, CANNON_LEN + 22, 32);
+      drawImg(ctx, img, sx, 0, sw, img.naturalHeight, -16, -16, CANNON_LEN + 22, 32);
     } else {
       ctx.fillStyle = '#4b4b52';
       ctx.fillRect(-12, -11, CANNON_LEN + 14, 22);
@@ -516,7 +579,7 @@ function drawFlowGround(ctx: CanvasRenderingContext2D, plan: CoursePlan, lane: n
           let at = (u + done) % tw;
           if (tw - at < 0.5) at = 0;
           const piece = Math.max(0.5, Math.min(len - done, tw - at));
-          ctx.drawImage(img, at * srcPerPx, 0, Math.max(1, piece * srcPerPx), img.naturalHeight, done - 0.5, -GRASS_UP, piece + 1, GRASS_H);
+          drawImg(ctx, img, at * srcPerPx, 0, Math.max(1, piece * srcPerPx), img.naturalHeight, done - 0.5, -GRASS_UP, piece + 1, GRASS_H);
           done += piece;
         }
         ctx.restore();
@@ -535,6 +598,9 @@ function drawFlowGround(ctx: CanvasRenderingContext2D, plan: CoursePlan, lane: n
 
 /** Render the race. `followed` is the marble the camera is on (never hidden behind a layer). */
 export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam: PlatformCamera, cw: number, ch: number, t: number, followed: Marble = game.player) {
+  frameNo++;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high'; // backgrounds are stretched on big screens: the best filter is least grainy
   ctx.setTransform(ctx.getTransform().a, 0, 0, ctx.getTransform().d, 0, 0);
   const dpr = ctx.getTransform().a;
   sky(ctx, cam, cw, ch, game.track.platformer!.plan.startY);
@@ -558,7 +624,16 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
     target.translate(cw / 2, ch / 2 + v.lift * cam.scale);
     target.scale(s, s);
     target.translate(-cam.x, -cam.y);
-    drawLaneWorld(target, game, lane, left, right, bottom, t);
+    const flowArt = game.track.platformer!.plan.style === 'flow' && coasterReady();
+    const lift = v.lift * cam.scale;
+    const cache = flowArt && target === ctx
+      ? cachedLane(ctx, game, lane, { x0: cam.x - cw / 2 / s, x1: cam.x + cw / 2 / s, y0: cam.y + (-ch / 2 - lift) / s, y1: cam.y + (ch / 2 - lift) / s }, s * dpr, t)
+      : null;
+    if (cache) {
+      target.imageSmoothingQuality = 'high';
+      target.drawImage(cache.cv, 0, 0, cache.w, cache.h, cache.ox, cache.oy, cache.wx, cache.wy);
+      drawLaneWorld(target, game, lane, left, right, bottom, t, 'dynamic');
+    } else drawLaneWorld(target, game, lane, left, right, bottom, t);
     // Marbles settled on this layer (a ball mid-change is drawn between layers, below).
     for (const { m, z } of depths) if (z === lane) drawBall(target, game, m, t);
     target.restore();
@@ -567,7 +642,7 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
     if (k < 1 && offscreen) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.imageSmoothingEnabled = true;
-      ctx.drawImage(offscreen, 0, 0, cw * dpr, ch * dpr);
+      drawImg(ctx, offscreen, 0, 0, cw * dpr, ch * dpr);
     }
     ctx.restore();
     if (v.fog > 0.01) {
@@ -644,7 +719,7 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
   const { x: scroll, y: sway } = foregroundScroll(cam);
   let x = -(((scroll % w) + w) % w);
   const y = ch - h * 0.82 + sway;
-  for (; x < cw; x += w) ctx.drawImage(img, x, y, w + 1, h);
+  for (; x < cw; x += w) drawImg(ctx, img, x, y, w + 1, h);
 }
 
 function drawBall(ctx: CanvasRenderingContext2D, game: Game, m: Marble, t: number) {
