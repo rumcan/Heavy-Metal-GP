@@ -203,11 +203,10 @@ export default function SetupScreen(props: SetupScreenProps) {
   const paneIds: PaneId[] = ['event', 'garage', 'field'];
 
   const header = <header className="app-header home-header">
-      {!menu && !seasonMode && <button className="icon-button home-back" onClick={backToMenu} aria-label="Back to the main menu" title="Main menu"><ArrowLeft size={20} /></button>}
       <Brand />
       {seasonMode
         ? <div className="home-retune"><span className="eyebrow accent"><LockKeyhole size={13} aria-hidden="true" /> RETUNE</span><strong>{season ? roundName(season, seasonRound) : 'Championship'}</strong></div>
-        : !menu && <div className="home-mode"><span className="eyebrow">MODE</span><strong>{TAB_META[tab].label}</strong></div>}
+        : null}
       <div className="header-tools">
         <button className="text-button help-link" onClick={() => setDialog('rules')} aria-label="How to play" title="How to play"><CircleHelp size={17} /><span>How to play</span></button>
         {/* RK-05: the rank badge and rating live in the header — the one row every player sees before they pick a
@@ -233,7 +232,14 @@ export default function SetupScreen(props: SetupScreenProps) {
   }
 
   return <div className="app-shell home-page garage-page fit-shell" data-pane={pane} data-tab={tab}>
-    {header}
+    <div className="home-top">
+      {header}
+      {/* A second row under the logo: the red Back button to the main menu and the mode's name. */}
+      {!seasonMode && <div className="home-subbar">
+        <button className="home-back-button" onClick={backToMenu} aria-label="Back to the main menu"><ArrowLeft size={16} aria-hidden="true" />Back</button>
+        <strong className="home-mode-name">{TAB_META[tab].label}</strong>
+      </div>}
+    </div>
 
     <main className="fit-main home-main garage-fit" aria-label={`${TAB_META[tab].label} mode`}>
       {tab === 'story' && story && <StoryTab

@@ -473,7 +473,27 @@ export default function EditorCanvas(props: Props) {
       return best;
     };
 
+    // Hold Space to pan: the cursor becomes a hand and a drag moves the view (like most design tools).
+    let spaceHeld = false;
+    const typing = (t: EventTarget | null) => { const el = t as HTMLElement | null; return !!el && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA' || el.isContentEditable); };
+    const spaceDown = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' || typing(e.target) || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      e.preventDefault();
+      if (!spaceHeld) { spaceHeld = true; if (!pan) canvas.style.cursor = 'grab'; }
+    };
+    const spaceUp = (e: KeyboardEvent) => { if (e.code === 'Space') { spaceHeld = false; if (!pan) canvas.style.cursor = ''; } };
+    const spaceLost = () => { spaceHeld = false; };
+    window.addEventListener('keydown', spaceDown);
+    window.addEventListener('keyup', spaceUp);
+    window.addEventListener('blur', spaceLost);
+
     const pointerDown = (event: PointerEvent) => {
+      if (spaceHeld) {
+        pan = { from: { x: event.clientX, y: event.clientY }, camX: camera().x, camY: camera().y };
+        canvas.style.cursor = 'grabbing';
+        canvas.setPointerCapture?.(event.pointerId);
+        return;
+      }
       if (event.button !== 0 && event.pointerType === 'mouse') return;
       const local = localPoint(event.clientX, event.clientY);
       const worldRaw = toWorldRaw(local);
@@ -1371,6 +1391,9 @@ export default function EditorCanvas(props: Props) {
       observer.disconnect();
       canvas.removeEventListener('wheel', wheel);
       canvas.removeEventListener('pointerdown', pointerDown);
+      window.removeEventListener('keydown', spaceDown);
+      window.removeEventListener('keyup', spaceUp);
+      window.removeEventListener('blur', spaceLost);
       canvas.removeEventListener('pointermove', pointerMove);
       canvas.removeEventListener('pointerup', pointerUp);
       canvas.removeEventListener('pointercancel', pointerUp);
@@ -1388,6 +1411,7 @@ export default function EditorCanvas(props: Props) {
         <span>DRAG / SCROLL · PAN</span>
         <span>PINCH / ⌘·CTRL + SCROLL · ZOOM</span>
         <span>SHIFT+DRAG · BOX SELECT</span>
+        <span>SPACE+DRAG · PAN</span>
       </div>
     </div>
   );
