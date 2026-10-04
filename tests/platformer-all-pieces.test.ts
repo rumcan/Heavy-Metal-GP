@@ -26,7 +26,7 @@ const field = (): MarbleInfo[] => {
 
 test('every drop-track tile is also a platformer tile', () => {
   const side = new Set(PLATFORMER_PALETTE.flatMap((g) => g.tiles.map((t) => t.t)));
-  const missing = PALETTE.flatMap((g) => g.tiles.map((t) => t.t)).filter((t) => !side.has(t));
+  const missing = PALETTE.flatMap((g) => g.tiles.map((t) => t.t)).filter((t) => !side.has(t) && t !== 'bucket'); // the minecart has no sideways meaning
   assert.deepEqual([...new Set(missing)], []);
   const ids = PLATFORMER_PALETTE.flatMap((g) => g.tiles.map((t) => t.id));
   assert.equal(new Set(ids).size, ids.length, 'tile ids are unique');
@@ -62,4 +62,23 @@ test('a course with every classic piece validates, survives a share code, and bu
   game.openGate();
   for (let t = 0; t < 60000; t += PHYSICS_STEP) game.step(PHYSICS_STEP);
   assert.ok(game.marbles.every((m) => Number.isFinite(m.body.position.x) && Number.isFinite(m.body.position.y)), 'every marble is still somewhere');
+});
+
+test('computer drivers get past classic hazards and solid pieces on their lane', () => {
+  const width = 9000;
+  const pieces: Piece[] = [
+    ...[0, 1, 2].map((lane) => ({ t: 'ramp', a: [PF_START_END, Y], b: [width, Y], lane } as Piece)),
+    { t: 'breakable', x: 2400, y: Y - 30, w: 50, h: 60, req: 9, lane: 1 } as Piece,
+    { ...defaultPiece('saw', { x: 3800, y: Y - 40 }), lane: 1 } as Piece,
+    { ...defaultPiece('blade', { x: 5200, y: Y - 200 }), lane: 1 } as Piece,
+  ];
+  const check = validateTrackDef({ ...newPlatformerDef('Hazards', width), pieces });
+  assert.ok(check.ok, check.ok ? '' : check.error);
+  if (!check.ok) return;
+  const game = new Game(4, field(), { track: trackFromPlan(planFromTrackDef(check.def), 4, TRACK_THEMES.forest) });
+  game.start();
+  game.openGate();
+  let t = 0;
+  for (; t < 240000 && !game.allFinished(); t += PHYSICS_STEP) game.step(PHYSICS_STEP);
+  assert.ok(game.finishOrder.length >= 5, `${game.finishOrder.length}/6 finished after ${Math.round(t / 1000)} s`);
 });

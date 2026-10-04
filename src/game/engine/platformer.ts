@@ -344,8 +344,12 @@ function sense(game: Game, m: Marble, vx: number, grounded: boolean): Sense {
   }
   const dist = (xs: number[]) => xs.filter((x) => x > p.x).reduce((a, x) => Math.min(a, x - p.x), Infinity);
   const nearest = (xs: number[]) => { const d = dist(xs); return Number.isFinite(d) ? d : null; };
-  const crateAt = nearest(plan.bumps.filter((b) => b.lane === lane).map((b) => b.x));
-  const dangerAt = nearest(game.track.wreckers.filter((w) => meta(w).lane === lane).map((w) => w.position.x - 30));
+  // P2-26: classic pieces in this lane and near the ball's height: hazards to time or hop, solid things to jump.
+  const near = game.track.bodies.filter((b) => { const md = meta(b) as { classic?: boolean; lane?: number }; return md.classic && md.lane === lane && Math.abs(b.position.y - p.y) < 260; });
+  const classicSolid = near.filter((b) => CLASSIC_SOLID.has(meta(b).kind) && !b.isSensor).map((b) => b.bounds.min.x);
+  const classicDanger = near.filter((b) => CLASSIC_DANGER.has(meta(b).kind)).map((b) => b.bounds.min.x - 30);
+  const crateAt = nearest([...plan.bumps.filter((b) => b.lane === lane).map((b) => b.x), ...classicSolid]);
+  const dangerAt = nearest([...game.track.wreckers.filter((w) => meta(w).lane === lane).map((w) => w.position.x - 30), ...classicDanger]);
   let rivalAhead: Sense['rivalAhead'] = null;
   let rivalBehind: Sense['rivalBehind'] = null;
   for (const o of game.marbles) {
@@ -378,6 +382,10 @@ function sense(game: Game, m: Marble, vx: number, grounded: boolean): Sense {
  * The computer driver (P2-16): the pure brain in ai-brain.ts decides from what it senses; this applies it.
  * Skills and the Magic Engine are not used yet (they arrive with the skill system).
  */
+/** P2-26: classic pieces the computer drivers jump (solid) or time and hop (danger). */
+const CLASSIC_SOLID = new Set(['block', 'breakable', 'barricade', 'crumble', 'wall', 'peg', 'ppeg', 'target', 'turnstile']);
+const CLASSIC_DANGER = new Set(['blade', 'saw', 'crusher', 'boulder', 'mace', 'spinner', 'wrecker']);
+
 export function aiDrive(game: Game, m: Marble, v: Matter.Vector, s: number): Matter.Vector {
   const grounded = m.grounded < 5;
   // P2-21: with a loop just ahead the driver commits: full push all the way in, no hop, no door (the ring is ridden on speed).

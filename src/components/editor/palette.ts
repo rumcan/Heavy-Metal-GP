@@ -217,8 +217,10 @@ export const PLATFORMER_PALETTE: PaletteGroup[] = [
  * each is built by the classic Builder in the lane you are building in (src/game/platformer/build.ts buildExtras).
  */
 const PLATFORMER_OWN = new Set(PLATFORMER_PALETTE.flatMap((g) => g.tiles.map((t) => t.id)));
+// The minecart shuttles across the drop shaft's width and has no position of its own: it has no sideways meaning.
+const NOT_SIDEWAYS = new Set(['bucket']);
 for (const group of PALETTE) {
-  const tiles = group.tiles.filter((t) => !PLATFORMER_OWN.has(t.id));
+  const tiles = group.tiles.filter((t) => !PLATFORMER_OWN.has(t.id) && !NOT_SIDEWAYS.has(t.id));
   if (tiles.length) PLATFORMER_PALETTE.push({ ...group, id: `pf-${group.id}`, tiles });
 }
 
