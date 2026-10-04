@@ -21,7 +21,7 @@ import farUrl from '../../assets/game/platformer/far.webp';
 import treesUrl from '../../assets/game/platformer/trees.webp';
 import signUrl from '../../assets/game/platformer/sign.webp';
 import skyIslandsUrl from '../../assets/game/platformer/sky-islands.webp';
-import cannonUrl from '../../assets/game/cannon.png';
+import cannonUrl from '../../assets/game/cannon.webp';
 import treesFrontUrl from '../../assets/game/platformer/trees-front.webp';
 import { CANNON_LEN, CANNON_SPEED, muzzle } from '../engine/platformer';
 import skyCloudsUrl from '../../assets/game/platformer/sky-clouds.webp';
