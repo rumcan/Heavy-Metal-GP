@@ -18,6 +18,7 @@ import { W } from '../game/track';
 import type { Track } from '../game/track';
 import { blendPoses, rememberPoses } from '../game/interpolate';
 import { RenderScale } from '../game/render-scale';
+import { PerfMeter } from '../game/perf-meter';
 import { HEAT_TIME_LIMIT, PHYSICS_STEP, formatTime } from '../game/physics';
 import { teamOf, ITEM_TYPES, emptyInventory, normalizeInventory } from '../game/types';
 import type { MarbleInfo, ItemType, TrackProfile, HeatResult, Inventory } from '../game/types';
@@ -386,6 +387,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
     const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     const renderScale = new RenderScale();
+    const meter = new PerfMeter();
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
       width = rect.width; height = rect.height;
@@ -462,7 +464,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
         useItem(item);
       }
     };
-    const keyDown = (e: KeyboardEvent) => onKey(e, true);
+    const keyDown = (e: KeyboardEvent) => { if (e.code === 'F3' && !e.repeat) { e.preventDefault(); meter.toggle(); return; } onKey(e, true); };
     const keyUp = (e: KeyboardEvent) => onKey(e, false);
     const blur = () => { controls.current = { left: false, right: false, touch: 0, engine: false }; if (!doneRef.current && !onlineRef.current) setPause(true); };
     const hidden = () => { if (document.hidden) blur(); };
@@ -498,6 +500,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
 
     const loop = (now: number) => {
       if (renderScale.observe(now - last)) resize();
+      meter.frame(now, now - last);
       const dt = Math.max(0, Math.min(now - last, 50));
       last = now;
       if (!pausedRef.current && !doneRef.current) {
@@ -519,7 +522,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
         game.nudge = nudgeOf(controls.current);
         game.engineHeld = controls.current.engine;
         accumulator += dt * (game.player.finishedAt !== null ? fastRef.current : 1);
-        while (accumulator >= PHYSICS_STEP) { rememberPoses(game); game.step(PHYSICS_STEP); accumulator -= PHYSICS_STEP; }
+        meter.time('physics', () => { while (accumulator >= PHYSICS_STEP) { rememberPoses(game); game.step(PHYSICS_STEP); accumulator -= PHYSICS_STEP; } });
         if (game.allFinished()) { finishHold += dt; if (finishHold > 750) finish(); }
         else if (game.player.dnf) { finishHold += dt; if (finishHold > 2200) finish(); } // P2-07: out of the race: on to the results
         else if (game.raceTime() >= HEAT_TIME_LIMIT) finish();
@@ -555,14 +558,15 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
           camera.x += (p.x + lookAhead - camera.x) * (1 - Math.exp(-dt / 220));
           camera.y += (p.y + 10 - camera.y) * (1 - Math.exp(-dt / 260));
           camera.focus = marbleDepth(game, following);
-          renderPlatformer(ctx, game, camera, width, height, pausedRef.current || doneRef.current ? game.time : now, following);
+          meter.time('draw', () => renderPlatformer(ctx, game, camera, width, height, pausedRef.current || doneRef.current ? game.time : now, following));
         } else {
         camera.scale = scale;
         camera.x += (targetX - camera.x) * (1 - Math.exp(-dt / 150));
         camera.y += (p.y + 115 - camera.y) * (1 - Math.exp(-dt / 150));
         camera.y = halfHeight * 2 >= game.track.height ? game.track.height / 2 : Math.max(halfHeight - 15, Math.min(game.track.height - halfHeight + 15, camera.y));
-        render(ctx, game, camera, width, height, pausedRef.current || doneRef.current ? game.time : now, { shake: !reduceMotion, minimap: false });
+        meter.time('draw', () => render(ctx, game, camera, width, height, pausedRef.current || doneRef.current ? game.time : now, { shake: !reduceMotion, minimap: false }));
         }
+        meter.draw(ctx, width, `${canvas.width}x${canvas.height}px (${Math.round(renderScale.scale * 100)}%)`);
         // MP-CHAT: pin every bubble to the marble that said it, in the same
         // frame the marble was drawn in. World → screen is the camera's own
         // transform — the one `render` just used — so a bubble cannot drift
