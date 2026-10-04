@@ -7,7 +7,9 @@ import { ArrowLeft, ArrowRight, Pause, Play, Flag, ChevronRight, FastForward, Ti
 import { CHAT_BUBBLE_MS, canSay, chatMessage, MAX_CHAT_LENGTH, offCooldown, speakerOf, trimChatText } from '../net/chat';
 import type { ChatMsg } from '../net/protocol';
 import { raceAudio } from '../game/audio';
+import Matter from 'matter-js';
 import { Game } from '../game/engine';
+import { floorAt } from '../game/platformer/course';
 import { RaceSession } from '../net/session';
 import { houseInventory } from '../net/host';
 import type { RaceLink } from '../net/session';
@@ -521,7 +523,20 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
         }
         game.nudge = nudgeOf(controls.current);
         game.engineHeld = controls.current.engine;
-        accumulator += dt * (game.player.finishedAt !== null ? fastRef.current : 1);
+        // P2-13: the tutorial slows time near a lesson's spot and puts the ball back when it is missed.
+        const pace = tutorialRef.current?.pace;
+        if (pace?.rewindTo != null && game.track.platformer) {
+          const plan = game.track.platformer.plan;
+          const lane = game.player.lane ?? 1;
+          const x = pace.rewindTo;
+          const floor = floorAt(plan, lane as 0 | 1 | 2, x) ?? plan.startY;
+          Matter.Body.setPosition(game.player.body, { x, y: floor - 30 });
+          Matter.Body.setVelocity(game.player.body, { x: 0, y: 0 });
+          Matter.Body.setAngularVelocity(game.player.body, 0);
+          game.player.trail = [];
+          pace.rewindTo = null;
+        }
+        accumulator += dt * (game.player.finishedAt !== null ? fastRef.current : 1) * (pace?.timeScale ?? 1);
         meter.time('physics', () => { while (accumulator >= PHYSICS_STEP) { rememberPoses(game); game.step(PHYSICS_STEP); accumulator -= PHYSICS_STEP; } });
         if (game.allFinished()) { finishHold += dt; if (finishHold > 750) finish(); }
         else if (game.player.dnf) { finishHold += dt; if (finishHold > 2200) finish(); } // P2-07: out of the race: on to the results

@@ -13,7 +13,7 @@ import VoiceSubtitles from '../VoiceSubtitles';
 import { playVoice, preloadVoice, stopVoice } from '../../game/voice';
 import {
   TUTORIAL_LESSONS, TUTORIAL_SHORTCUT, TUTORIAL_VOICE_SET,
-  currentLesson, newTutorial, skipTutorial, tutorialStep,
+  currentLesson, newTutorial, skipTutorial, tutorialStep, tutorialPace, letThrough,
 } from '../../game/story/tutorial';
 import type { TutorialState } from '../../game/story/tutorial';
 import type { ItemType } from '../../game/types';
@@ -39,6 +39,8 @@ export interface TutorialBridge {
   onJump: () => void;
   onEngine: (held: boolean) => void;
   onSkill: (item: ItemType) => void;
+  /** Written by the overlay every frame, read by the race: slow motion and "put the ball back" (P2-13 pacing). */
+  pace?: { timeScale: number; rewindTo: number | null };
 }
 
 /** Heat rise per frame that counts as "the Magic Engine fired" (heat climbs 1/3000 per ms). */
@@ -61,6 +63,10 @@ const styles = `
 .tutorial-keys kbd { font-family: inherit; font-size: 15px; font-weight: 800; min-width: 34px; padding: 7px 10px; border-radius: 8px; background: #16222e; border: 1px solid #3d5568; border-bottom-width: 3px; color: #f8fafc; }
 .tutorial-touch { font-size: 14px; color: #bae6fd; font-weight: 600; }
 .tutorial-card .tutorial-skip { margin-top: 10px; }
+.tutorial-cue { display: block; margin-top: 8px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; font-size: 13px; }
+.tutorial-cue.is-now { color: #fde047; animation: tutorial-pulse .6s ease-in-out infinite alternate; }
+.tutorial-cue.is-retry { color: #fca5a5; }
+@keyframes tutorial-pulse { from { opacity: .55; } to { opacity: 1; } }
 .tutorial-glow { outline: 3px solid #7dd3fc !important; outline-offset: 3px; animation: tutorial-pulse 1.1s ease-in-out infinite; }
 @keyframes tutorial-pulse { 0%, 100% { outline-color: rgba(125, 211, 252, 0.95); } 50% { outline-color: rgba(125, 211, 252, 0.35); } }
 @media (max-width: 700px) { .tutorial-card { margin-top: 52px; padding: 10px 14px; } .tutorial-card p { font-size: 13.5px; } }
@@ -92,6 +98,11 @@ export default function TutorialOverlay({ bridge, onDone, onSkip }: Props) {
   /** The voice line currently talking — the finish lesson waits for it before handing off. */
   const linePromise = useRef<Promise<void> | null>(null);
   const doneNotified = useRef(false);
+  /** Misses of the lesson that is waiting (reset when a lesson completes). */
+  const tries = useRef(0);
+  const [cue, setCue] = useState<'now' | 'retry' | null>(null);
+  const cueRef = useRef<'now' | 'retry' | null>(null);
+  const retryUntil = useRef(0);
   const callbacks = useRef({ onDone, onSkip });
   callbacks.current = { onDone, onSkip };
 
@@ -139,6 +150,20 @@ export default function TutorialOverlay({ bridge, onDone, onSkip }: Props) {
       });
       p.steerLeft = p.steerRight = p.jumped = p.skillUsed = false;
       lastHeat.current = frame.heat;
+      // Pacing: slow motion near the lesson's spot, a second chance if it is missed.
+      let paced = next;
+      if (next.index !== machineRef.current.index) tries.current = 0;
+      const pace = tutorialPace(paced, { x: frame.x, y: frame.y }, tries.current);
+      if (pace.giveUp) { paced = letThrough(paced); tries.current = 0; }
+      if (pace.rewindTo !== null) { tries.current++; retryUntil.current = performance.now() + 1800; }
+      bridge.pace = { timeScale: pace.timeScale, rewindTo: pace.rewindTo };
+      const shown = performance.now() < retryUntil.current ? 'retry' : pace.cue;
+      if (shown !== cueRef.current) { cueRef.current = shown; setCue(shown); }
+      if (paced !== next) {
+        machineRef.current = paced;
+        setMachine(paced);
+        return;
+      }
       if (next !== machineRef.current) {
         machineRef.current = next;
         setMachine(next);
@@ -217,8 +242,11 @@ export default function TutorialOverlay({ bridge, onDone, onSkip }: Props) {
           {lesson.keys && (isTouch
             ? <span className="tutorial-touch">Use {lesson.keys.touch}</span>
             : <span className="tutorial-keys">{lesson.keys.keyboard.map((key) => <kbd key={key}>{key}</kbd>)}</span>)}
+          {cue === 'now' && <span className="tutorial-cue is-now">Slow motion: do it now!</span>}
+          {cue === 'retry' && <span className="tutorial-cue is-retry">Missed it. Let us try that again.</span>}
           <div className="tutorial-skip">
-            <button className="text-button" onClick={skip}><SkipForward size={14} /> Skip tutorial</button>
+            {/* Only a real click or tap skips: Space/Enter (the keys the lessons ask for) must never land on it. */}
+            <button className="text-button" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onKeyDown={(e) => e.preventDefault()} onClick={(e) => { if (e.detail > 0) skip(); }}><SkipForward size={14} /> Skip tutorial</button>
           </div>
         </div>
       )}

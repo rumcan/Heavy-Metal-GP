@@ -154,7 +154,11 @@ export default function StoryHub({ state, account, notice, onPlay, onRestart, on
               circuit={`${gp.name} · ${gp.location}`}
               status={status}
               statusKind={!unlocked ? 'locked' : done ? 'done' : isNext ? 'live' : undefined}
-              objectives={def.objectives.map((objective) => `${objective.bonus ? '★' : '◎'} ${objective.label}`)}
+              // each objective carries its own tick here (the dossier used to list the chapters a second time for it)
+              objectives={def.objectives.map((objective) => {
+                const met = chapterObjectives(state, def.chapter).find((r) => r.id === objective.id)?.met;
+                return `${met ? '✓' : objective.bonus ? '★' : '◎'} ${objective.label}`;
+              })}
               reward={{ credits: reward.credits + (earned ? 0 : reward.perfect), label: earned ? reward.unlock.label : `${reward.unlock.kind}: ${reward.unlock.label}` }}
               locked={!unlocked}
               current={isNext}
@@ -174,20 +178,6 @@ export default function StoryHub({ state, account, notice, onPlay, onRestart, on
             : <p className="story-empty">Nothing decided yet. Chapter 1 is waiting at Marblehurst.</p>}
         </section>
 
-        <section className="story-dossier">
-          <div className="section-topline"><h2>OBJECTIVES MET</h2><span className="eyebrow">PER CHAPTER</span></div>
-          <ul className="story-objective-list">
-            {CHAPTERS.map((def) => {
-              const results = chapterObjectives(state, def.chapter);
-              const met = def.objectives.filter((objective) => results.find((r) => r.id === objective.id)?.met).length;
-              return <li key={def.chapter}>
-                <span>{String(def.chapter).padStart(2, '0')}</span>
-                <b>{chapterTitle(def.chapter)}</b>
-                <em>{met}/{def.objectives.length}</em>
-              </li>;
-            })}
-          </ul>
-        </section>
 
         <section className="story-dossier">
           <div className="section-topline"><h2>THE SHELF</h2><span className="eyebrow">{unlocks.length} OF 6</span></div>
