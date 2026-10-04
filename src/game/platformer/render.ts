@@ -415,7 +415,7 @@ function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, 
  * frame. It is redrawn only when the camera nears its edge, the zoom drifts more than a few per cent, or the course
  * changes. Redrawing all of it every frame cost ~7 ms per lane (up to three lanes).
  */
-interface LaneCache { cv: HTMLCanvasElement; plan: CoursePlan; ox: number; oy: number; wx: number; wy: number; px: number }
+interface LaneCache { cv: HTMLCanvasElement; plan: CoursePlan; ox: number; oy: number; wx: number; wy: number; px: number; w: number; h: number }
 const laneCaches = new WeakMap<CanvasRenderingContext2D, Map<number, LaneCache>>();
 /** One early refresh per frame at most, so lanes never all rebuild on the same frame (that was a 30 ms hitch). */
 const refreshedAt = new WeakMap<CanvasRenderingContext2D, number>();
@@ -443,15 +443,20 @@ function cachedLane(ctx: CanvasRenderingContext2D, game: Game, lane: number, vie
   const px = Math.min(pxWanted, CACHE_MAX_PX / wx, CACHE_MAX_PX / wy);
   const cv = c?.cv ?? document.createElement('canvas');
   const w = Math.ceil(wx * px), h = Math.ceil(wy * px);
-  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  // Keep the canvas's size whenever it is big enough (and not wastefully big): resizing a canvas throws its GPU
+  // texture away, and reallocating one every refresh cost 200 ms hitches on big screens.
+  if (cv.width < w || cv.height < h || cv.width > w * 1.5 || cv.height > h * 1.5) {
+    cv.width = Math.min(CACHE_MAX_PX, Math.ceil(w / 256) * 256);
+    cv.height = Math.min(CACHE_MAX_PX, Math.ceil(h / 256) * 256);
+  }
   const cc = cv.getContext('2d');
   if (!cc) return null;
   cc.setTransform(1, 0, 0, 1, 0, 0);
-  cc.clearRect(0, 0, w, h);
+  cc.clearRect(0, 0, cv.width, cv.height);
   cc.imageSmoothingQuality = 'high';
   cc.setTransform(px, 0, 0, px, -ox * px, -oy * px);
   drawLaneWorld(cc, game, lane, ox - 200, ox + wx + 200, oy + wy + 40, t, 'static');
-  const next = { cv, plan, ox, oy, wx, wy, px };
+  const next = { cv, plan, ox, oy, wx, wy, px, w, h };
   byLane.set(lane, next);
   return next;
 }
@@ -625,7 +630,7 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
       : null;
     if (cache) {
       target.imageSmoothingQuality = 'high';
-      target.drawImage(cache.cv, cache.ox, cache.oy, cache.wx, cache.wy);
+      target.drawImage(cache.cv, 0, 0, cache.w, cache.h, cache.ox, cache.oy, cache.wx, cache.wy);
       drawLaneWorld(target, game, lane, left, right, bottom, t, 'dynamic');
     } else drawLaneWorld(target, game, lane, left, right, bottom, t);
     // Marbles settled on this layer (a ball mid-change is drawn between layers, below).
