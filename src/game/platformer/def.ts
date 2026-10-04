@@ -12,8 +12,8 @@
 // start and finish stubs, so the builder only works on the middle of the course.
 import type { Piece, TrackDef } from '../trackdef';
 import { SPRING_W } from './course';
-import type { BoostSpot, Bump, CoursePlan, Floor, ItemBoxSpot, Lane, LaneGate, Ledge, Spring, WreckerSpot } from './course';
-import { LOOP_PITCH, LOOP_R, PLANK_H } from './routes';
+import type { BoostSpot, Bump, CoursePlan, Floor, ItemBoxSpot, Kicker, Lane, LaneGate, Ledge, Spring, WreckerSpot } from './course';
+import { LOOP_R, PLANK_H } from './routes';
 import type { BridgeSpot, LoopSpot } from './routes';
 
 /** The y of the flat start platform. A platformer def is built downwards from here, with room above it to climb. */
@@ -126,25 +126,33 @@ export function planFromTrackDef(def: TrackDef): CoursePlan {
   const bumps: Bump[] = [], gates: LaneGate[] = [], ledges: Ledge[] = [], springs: Spring[] = [];
   const itemBoxes: ItemBoxSpot[] = [], wreckers: WreckerSpot[] = [], boosts: BoostSpot[] = [];
   const loops: LoopSpot[] = [], bridges: BridgeSpot[] = [];
+  const kickers: Kicker[] = [];
   const extras: NonNullable<CoursePlan['extras']> = [];
   def.pieces.forEach((p, source) => {
     const lane = laneOf(p);
     switch (p.t) {
-      case 'pad': springs.push({ lane, x: p.x - SPRING_W / 2, y: p.y }); break;
-      case 'boost': boosts.push({ lane, x: p.x - p.len / 2, w: p.len }); break;
-      case 'itembox': itemBoxes.push({ lane, x: p.x, y: p.y }); break;
-      case 'wrecker': wreckers.push({ lane, x: p.pivot[0], pivotY: p.pivot[1], chain: p.chain, amp: p.amp, speed: p.speed, phase: p.phase ?? 0 }); break;
-      case 'block': bumps.push({ lane, x: p.x - p.w / 2, w: p.w, y: p.y - p.h / 2, h: p.h }); break;
+      // Floors and the two lane pieces are the platformer's own. Every other piece is the drop-track piece itself, built
+      // by the classic Builder with its own art and behaviour (P2-26), exactly as on a pinball-style track. The drivers
+      // still need to know about some of them, so those leave a hidden note in the plan (sensed, never built or drawn).
+      case 'ramp': case 'curve': break; // floors (pieceFloors)
       case 'gate': gates.push({ kind: p.kind, lane, to: p.to, x: p.x, w: p.w, y: p.y }); break;
-      case 'ledge': ledges.push({ lane, x: p.x, w: p.w, y: p.y }); break;
-      case 'loop': loops.push({ lane, x: p.x, y: p.bottom, r: LOOP_R, pitch: LOOP_PITCH }); break;
+      case 'ledge': ledges.push({ lane, x: p.x, w: p.w, y: p.y, ...(p.cloud !== undefined ? { cloud: p.cloud } : {}) }); break;
+      case 'kicker': kickers.push({ lane, x: p.x, w: p.w, h: p.h }); break;
+      case 'ice':
+        floors.push(...slab(lane, p.a[0], p.a[1], p.b[0], p.b[1]).map((f) => ({ ...f, hidden: true })));
+        extras.push({ lane, piece: p, source });
+        break;
+      case 'block':
+        bumps.push({ lane, x: p.x - p.w / 2, w: p.w, y: p.y - p.h / 2, h: p.h, hidden: true });
+        extras.push({ lane, piece: p, source });
+        break;
       case 'bridge': {
         const [ax, ay] = p.a[0] <= p.b[0] ? p.a : p.b, [bx, by] = p.a[0] <= p.b[0] ? p.b : p.a;
-        bridges.push({ lane, x0: ax, y0: ay + PLANK_H / 2, x1: bx, y1: by + PLANK_H / 2, planks: Math.max(p.planks, Math.ceil((bx - ax) / 20)), slack: p.slack });
+        bridges.push({ lane, x0: ax, y0: ay + PLANK_H / 2, x1: bx, y1: by + PLANK_H / 2, planks: p.planks, slack: p.slack, hidden: true });
+        extras.push({ lane, piece: p, source });
         break;
       }
-      case 'ramp': case 'curve': case 'ice': break; // floors (pieceFloors)
-      default: extras.push({ lane, piece: p, source }); break; // P2-26: built by the classic Builder
+      default: extras.push({ lane, piece: p, source }); break; // the classic piece
     }
   });
   // The race line (progress is measured along it): above the middle lane's floor, holding its last height over gaps.
@@ -162,7 +170,7 @@ export function planFromTrackDef(def: TrackDef): CoursePlan {
   return {
     seed: def.seed ?? 0, style: 'flow', width, height, floors, bumps, gates, path, ...(extras.length ? { extras } : {}),
     startX: 520, startY: PF_START_Y, finishX, finishY,
-    springs, ledges, itemBoxes, wreckers, boosts, loops, bridges,
+    springs, ledges, itemBoxes, wreckers, boosts, loops, bridges, ...(kickers.length ? { kickers } : {}),
   };
 }
 
@@ -267,7 +275,8 @@ export function defFromPlan(plan: CoursePlan, name: string, theme: TrackDef['the
   for (const s of plan.springs ?? []) pieces.push({ t: 'pad', x: r(s.x + SPRING_W / 2), y: r(s.y + dy), w: SPRING_W, dir: 1, ...lanePart(s.lane) });
   for (const b of plan.bumps) pieces.push({ t: 'block', x: r(b.x + b.w / 2), y: r(b.y + b.h / 2 + dy), w: r(b.w), h: r(b.h), ...lanePart(b.lane) });
   for (const g of plan.gates) pieces.push({ t: 'gate', kind: g.kind, to: g.to, x: r(g.x), y: r(g.y + dy), w: r(g.w), ...lanePart(g.lane) });
-  for (const l of plan.ledges ?? []) pieces.push({ t: 'ledge', x: r(l.x), y: r(l.y + dy), w: r(l.w), ...lanePart(l.lane) });
+  for (const l of plan.ledges ?? []) pieces.push({ t: 'ledge', x: r(l.x), y: r(l.y + dy), w: r(l.w), ...(l.cloud !== undefined ? { cloud: l.cloud } : {}), ...lanePart(l.lane) });
+  for (const k of plan.kickers ?? []) pieces.push({ t: 'kicker', x: r(k.x), y: r((floorYAt(plan.floors, k.lane, k.x) ?? plan.startY) + dy), w: r(k.w), h: r(k.h), ...lanePart(k.lane) });
   for (const b of plan.itemBoxes ?? []) pieces.push({ t: 'itembox', x: r(b.x), y: r(b.y + dy), ...lanePart(b.lane) });
   for (const w of plan.wreckers ?? []) pieces.push({ t: 'wrecker', pivot: [r(w.x), r(w.pivotY + dy)], chain: r(w.chain), amp: Math.round(w.amp * 100) / 100, speed: Math.round(w.speed * 10000) / 10000, phase: Math.round(w.phase * 100) / 100, ...lanePart(w.lane) });
   for (const b of plan.boosts ?? []) {

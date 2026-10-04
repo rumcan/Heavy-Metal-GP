@@ -12,6 +12,7 @@ import { drawSkillWorld } from '../skills/draw';
 import { SPRING_W, floorAt } from './course';
 import type { CoursePlan, Floor, Lane, LaneGate } from './course';
 import { coasterReady, drawCoasterLane } from './coaster';
+import { drawCloudLedge, drawKicker } from './sky-art';
 import { drawRoutes } from './routes';
 import { LEDGE_H } from './build';
 import earthUrl from '../../assets/game/platformer/earth.webp';
@@ -393,9 +394,11 @@ function laneLists(game: Game, lane: number) {
   if (!per) {
     per = [0, 1, 2].map((l) => {
       const mine = game.track.bodies.filter((b) => meta(b).lane === l);
+      // A Workshop piece built by the classic Builder (md.classic) is drawn only by the classic drawer, with its own art.
+      const own = mine.filter((b) => !(meta(b) as { classic?: boolean }).classic);
       return {
-        pieces: mine.filter((b) => { const k = meta(b).kind; return k === 'wrecker' || k === 'itembox' || k === 'boost' || k === 'bridge'; }),
-        floors: mine.filter((b) => meta(b).kind === 'floor'),
+        pieces: own.filter((b) => { const k = meta(b).kind; return k === 'wrecker' || k === 'itembox' || k === 'boost' || k === 'bridge'; }),
+        floors: own.filter((b) => meta(b).kind === 'floor'),
         classic: mine.filter((b) => (meta(b) as { classic?: boolean }).classic),
       };
     });
@@ -433,7 +436,8 @@ function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, 
     else drawBump(ctx, body.bounds.min.x, body.bounds.min.y, body.bounds.max.x - body.bounds.min.x, md.depth ?? body.bounds.max.y - body.bounds.min.y);
   }
   if (!coaster) {
-    for (const l of info.plan.ledges ?? []) if (l.lane === lane && l.x + l.w > left && l.x < right) drawLedge(ctx, l.x, l.y, l.w, (px) => floorAt(info.plan, l.lane, px));
+    for (const k of info.plan.kickers ?? []) if (k.lane === lane && k.x + k.w > left && k.x < right) drawKicker(ctx, info.plan, k);
+    for (const l of info.plan.ledges ?? []) if (l.lane === lane && l.x + l.w > left && l.x < right) { if (l.cloud !== undefined) drawCloudLedge(ctx, l); else drawLedge(ctx, l.x, l.y, l.w, (px) => floorAt(info.plan, l.lane, px)); }
     for (const s of info.plan.springs ?? []) if (s.lane === lane && s.x + SPRING_W > left && s.x < right) drawSpring(ctx, s.x, s.y, fired(s.x));
   }
   // P2-26: the classic pieces in this lane, with their drop-track art.
@@ -594,7 +598,7 @@ function runsOf(plan: CoursePlan): { x: number; y: number }[][][] {
   let runs = runCache.get(plan);
   if (runs) return runs;
   runs = [0, 1, 2].map((lane) => {
-    const floors = plan.floors.filter((f) => f.lane === lane).sort((a, b) => a.x0 - b.x0);
+    const floors = plan.floors.filter((f) => f.lane === lane && !f.hidden).sort((a, b) => a.x0 - b.x0);
     const out: { x: number; y: number }[][] = [];
     let run: { x: number; y: number }[] = [];
     let last: Floor | null = null;

@@ -151,6 +151,29 @@ test('Browser: garage controls preserve budget and select the actual circuit', {
   } finally { await context.close(); }
 });
 
+test('Browser: the pause menu restarts the race from the lights', { timeout: 120000 }, async () => {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
+  const page = await context.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  try {
+    await ready(page);
+    await openTab(page, 'Quick race');
+    await page.getByRole('button', { name: 'Race', exact: true }).click();
+    await dismissGate(page);
+    await page.waitForSelector('.race-canvas');
+    const seconds = async () => { const t = (await page.locator('.race-clock strong').textContent()) ?? ''; const [m, s] = t.split(':'); return Number(m) * 60 + Number(s); };
+    await page.waitForFunction(() => { const t = document.querySelector('.race-clock strong')?.textContent ?? '0:00'; const [m, s] = t.split(':'); return Number(m) * 60 + Number(s) > 3; }, undefined, { timeout: 40000 });
+    await page.getByRole('button', { name: 'Pause race', exact: true }).click();
+    await page.getByRole('button', { name: 'Restart race' }).click();
+    await page.waitForTimeout(400);
+    assert.equal(await page.locator('#pause-title').count(), 0, 'the pause menu closed');
+    assert.ok(await seconds() < 1, 'the clock is back at the start');
+    await page.waitForFunction(() => { const t = document.querySelector('.race-clock strong')?.textContent ?? '0:00'; const [m, s] = t.split(':'); return Number(m) * 60 + Number(s) > 1; }, undefined, { timeout: 40000 });
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
 test('Browser: mobile layout stays in-bounds and controls remain usable', { timeout: 120000 }, async () => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
   const page = await context.newPage();

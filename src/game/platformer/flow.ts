@@ -2,7 +2,7 @@
 // Alto's Adventure; the art is our own), chasms to jump, crates to hop, and three parallel depth ridges.
 // Pure data (a CoursePlan), deterministic from the seed. Floors are short straight pieces along a smooth curve.
 import { mulberry32 } from '../types';
-import type { BoostSpot, Bump, CoursePlan, Floor, ItemBoxSpot, Lane, LaneGate, Ledge, Spring, WreckerSpot } from './course';
+import type { BoostSpot, Bump, CoursePlan, Floor, ItemBoxSpot, Kicker, Lane, LaneGate, Ledge, Spring, WreckerSpot } from './course';
 import { LOOP_PITCH, LOOP_R, LOOP_RUN_OUT, PLANK_H } from './routes';
 import type { BridgeSpot, LoopSpot } from './routes';
 
@@ -18,6 +18,8 @@ export interface FlowTuning {
   gateEvery: number;
   /** P2-21: plan a loop and rope bridges (default on; tests turn it off to compare). */
   routes?: boolean;
+  /** Sky runs: a boost pad, a kicker ramp and cloud platforms with item boxes above the landing (default on). */
+  sky?: boolean;
 }
 
 export const FLOW_TUNING: FlowTuning = {
@@ -222,10 +224,75 @@ export function planFlow(seed: number, t: FlowTuning = FLOW_TUNING): CoursePlan 
     }
   }
 
+  // Sky runs: a boost pad, then a kicker ramp that throws a fast ball into the air, and one or two cloud platforms
+  // above the landing (one-way: you rise through them and land on top), with power-up boxes on them. Their own random
+  // stream again, so nothing planned above moves. Never near a loop, a gate, a chasm, a spring or a ledge.
+  const kickers: Kicker[] = [];
+  // Workshop pieces on the course (built by the classic Builder, see build.ts buildExtras): Peggle pegs to fly through
+  // (orange ones pay credits at the finish) and fire hoops in the air.
+  const extras: NonNullable<CoursePlan['extras']> = [];
+  const peg = (lane: Lane, x: number, y: number, color: 'blue' | 'orange') => extras.push({ lane, piece: { t: 'ppeg', x: Math.round(x), y: Math.round(y), color, r: 10, lane } as import('../trackdef').Piece });
+  if (t.sky !== false) {
+    const sky = mulberry32(seed ^ 0x5c10d5);
+    const sameAir = (lane: Lane, x0: number, x1: number) => !loops.some((l) => l.lane === lane && x1 > l.x - 700 && x0 < l.x + LOOP_PITCH + 700)
+      && !bridges.some((b) => b.lane === lane && x1 > b.x0 - 200 && x0 < b.x1 + 200)
+      && !ledges.some((l) => l.lane === lane && x1 > l.x - 100 && x0 < l.x + l.w + 100);
+    for (let bx = START_FLAT + 1800; bx < end - 2600; bx += 2400) {
+      if (sky() > 0.75) continue;
+      // try a few spots in this stretch, in every lane, until one fits
+      const first = Math.floor(sky() * 3);
+      const spot = (() => {
+        for (let k = 0; k < 18; k++) {
+          const lane = LANES[(first + k) % 3];
+          const boostX = Math.round((bx + (k / 3 | 0) * 300) / 10) * 10;
+          const kickX = boostX + 300, lip = kickX + 150;
+          if (!clearTrack(lane, boostX - 40, lip + 60) || taken(lane, boostX - 40, lip + 60) || !sameAir(lane, lip, lip + 1400)) continue;
+          if (heightAt(lane, kickX) - heightAt(lane, boostX) < -20) continue;
+          return { lane, boostX, kickX, lip };
+        }
+        return null;
+      })();
+      if (!spot) continue;
+      const { lane, boostX, kickX, lip } = spot;
+      boosts.push({ lane, x: boostX, w: 180 });
+      kickers.push({ lane, x: kickX, w: 150, h: 80 });
+      // Clouds above where a ball comes down: a low one first, a higher one further on for the fastest.
+      const clouds = 1 + (sky() < 0.55 ? 1 : 0);
+      for (let i = 0; i < clouds; i++) {
+        const cx = lip + 260 + i * 560, w = Math.round(380 + sky() * 120);
+        let low = Infinity;
+        for (let x = cx; x <= cx + w; x += 40) low = Math.min(low, heightAt(lane, x));
+        const y = Math.round(low - 170 - i * 70);
+        ledges.push({ lane, x: cx, w, y, cloud: Math.floor(sky() * 5) });
+        const n = 1 + Math.floor(sky() * 2);
+        for (let k = 0; k < n; k++) itemBoxes.push({ lane, x: Math.round(cx + w * (k + 1) / (n + 1)), y: y - 46 });
+      }
+      // the flight: an arc of pegs along the path of a fast ball, or a fire hoop at the top of it
+      const ly = heightAt(lane, lip) - 80;
+      if (sky() < 0.6) {
+        for (let k = 0; k < 6; k++) { const d = 90 + k * 70, rise = 230 * (1 - ((d - 330) / 330) ** 2); peg(lane, lip + d, ly - 40 - Math.max(0, rise), k === 2 || k === 3 ? 'orange' : 'blue'); }
+      } else {
+        extras.push({ lane, piece: { t: 'hoop', x: lip + 330, y: Math.round(ly - 230), dir: [1, 0], lane } as import('../trackdef').Piece });
+      }
+    }
+  }
+
+  // Peg runs: a little arc of pegs over the track every so often, at jump height (roll under, or hop and collect).
+  if (t.sky !== false) {
+    const pr = mulberry32(seed ^ 0x9e66);
+    for (let bx = START_FLAT + 1400; bx < end - 1200; bx += 1700) {
+      if (pr() > 0.6) continue;
+      const lane = LANES[Math.floor(pr() * 3)];
+      const x0 = Math.round(bx + pr() * 900);
+      if (!clearTrack(lane, x0 - 40, x0 + 360) || kickers.some((k) => k.lane === lane && x0 + 360 > k.x - 200 && x0 < k.x + 1400)) continue;
+      for (let k = 0; k < 5; k++) { const x = x0 + k * 80; peg(lane, x, heightAt(lane, x) - 105 - 26 * Math.sin((k / 4) * Math.PI), k === 2 ? 'orange' : 'blue'); }
+    }
+  }
+
   const path: { x: number; y: number }[] = [];
   for (let x = 0; x <= t.length; x += 200) path.push({ x, y: heightAt(1, x) - 30 });
   const finishX = end + 360;
   const finishY = heightAt(1, finishX);
   const height = Math.max(...floors.map((f) => Math.max(f.y0, f.y1))) + 900;
-  return { seed, style: 'flow' as const, width: t.length, height, floors, bumps: rocks, gates, path, springs, ledges, itemBoxes, wreckers, boosts, loops, bridges, startX: 520, startY: t.startY, finishX, finishY };
+  return { seed, style: 'flow' as const, width: t.length, height, floors, bumps: rocks, gates, path, springs, ledges, itemBoxes, wreckers, boosts, loops, bridges, kickers, ...(extras.length ? { extras } : {}), startX: 520, startY: t.startY, finishX, finishY };
 }

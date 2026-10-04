@@ -15,6 +15,7 @@ import type { RaceLink } from '../net/session';
 import type { RaceSettings, Seat } from '../net/protocol';
 import { render } from '../game/render';
 import { marbleDepth, platformScreenPoint, renderPlatformer } from '../game/platformer/render';
+import { WindLeaves } from '../game/platformer/wind-leaves';
 import { W } from '../game/track';
 import type { Track } from '../game/track';
 import { blendPoses, rememberPoses } from '../game/interpolate';
@@ -395,6 +396,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
     let finishHold = 0;
     const lightsOutAt = 4200 + game.rng() * 1000;
     const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const leaves = new WindLeaves();
 
     const renderScale = new RenderScale();
     const meter = new PerfMeter();
@@ -594,6 +596,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
           camera.y += (p.y + 10 - camera.y) * (1 - Math.exp(-dt / 260));
           camera.focus = marbleDepth(game, following);
           meter.time('draw', () => renderPlatformer(ctx, game, camera, width, height, pausedRef.current || doneRef.current ? game.time : now, following));
+          leaves.paint(ctx, camera, width, height, pausedRef.current ? 0 : dt, reduceMotion); // leaves on the wind, as in Infinity
         } else {
         camera.scale = scale;
         camera.x += (targetX - camera.x) * (1 - Math.exp(-dt / 150));

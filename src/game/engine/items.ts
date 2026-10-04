@@ -50,14 +50,14 @@ export function canUseItem(game: Game, m: Marble, item: ItemType): boolean  {
 }
 
 /** The fastest anything rolls on a platformer course (px per 1/60 s: about 23 px per 120 Hz step, a third of a floor's depth). */
-export const PLATFORMER_TOP_SPEED = 46;
+export const PLATFORMER_TOP_SPEED = 40;
 
 export function speedLimit(game: Game, m: Marble): number  {
   const base = m.maxSpeed + (game.time < m.rocketUntil ? 8 : 0) + (game.time < m.anvilUntil ? 4 : 0) + (game.time < m.aeroUntil ? 3 : 0);
   const talent = 1 + (m.tfx?.topSpeedPct ?? 0) / 100; // P2-17: Streamline
   // Platformer courses: a long downhill and a run of boost pads keep a ball picking up speed well past the drop
   // tracks' cap (the owner wants the air). Still a ceiling, so nothing outruns a floor's physics block in one step.
-  if (game.track.platformer) return Math.min(PLATFORMER_TOP_SPEED, base * 1.9 * talent);
+  if (game.track.platformer) return Math.min(PLATFORMER_TOP_SPEED, base * 1.6 * talent);
   return Math.min(32, base * talent);
 }
 

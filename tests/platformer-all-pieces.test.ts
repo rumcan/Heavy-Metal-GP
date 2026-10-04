@@ -34,7 +34,7 @@ test('every drop-track tile is also a platformer tile', () => {
 
 /** One of every classic piece, spaced along a long flat course, alternating lanes. */
 function allPieces(): Piece[] {
-  const own = new Set(['ramp', 'curve', 'ice', 'loop', 'bridge', 'ledge', 'gate', 'pad', 'boost', 'itembox', 'block', 'wrecker']);
+  const own = new Set(['ramp', 'curve', 'ice', 'loop', 'bridge', 'ledge', 'gate', 'kicker', 'pad', 'boost', 'itembox', 'block', 'wrecker']);
   const types = [...new Set(PLATFORMER_PALETTE.flatMap((g) => g.tiles.map((t) => t.t)))].filter((t) => !own.has(t));
   return types.map((t, i) => ({ ...defaultPiece(t, { x: 1600 + i * 700, y: Y - 160 }), lane: ((i % 3) as 0 | 1 | 2) } as Piece));
 }

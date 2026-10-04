@@ -35,7 +35,8 @@ export function sideBounds(p: Piece): Bounds {
     case 'bridge': return box(p.a[0], Math.min(p.a[1], p.b[1]) - 10, p.b[0], Math.max(p.a[1], p.b[1]) + p.slack + PLANK_H + 6);
     case 'loop': return box(p.x - LOOP_R - 40, p.bottom - LOOP_R * 2 - 24, p.x + LOOP_PITCH + LOOP_R + 40, p.bottom + 20);
     case 'gate': return box(p.x, p.y - 110, p.x + p.w, p.y + 14);
-    case 'ledge': return box(p.x, p.y - 8, p.x + p.w, p.y + 18);
+    case 'ledge': return p.cloud !== undefined ? box(p.x - p.w * 0.1, p.y - 40, p.x + p.w * 1.1, p.y + 40) : box(p.x, p.y - 8, p.x + p.w, p.y + 18);
+    case 'kicker': return box(p.x, p.y - p.h - 6, p.x + p.w, p.y + 6);
     case 'sign': return box(p.x - p.w / 2, p.y - p.w * 0.21, p.x + p.w / 2, p.y + p.w * 0.21);
     default: {
       const x = 'x' in p ? (p as { x: number }).x : 0, y = 'y' in p ? (p as { y: number }).y : 0;

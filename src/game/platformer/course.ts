@@ -73,9 +73,10 @@ export function planOfficial(course: PlatformerCourse): CoursePlan {
 }
 
 /** One stretch of floor: its top edge runs from (x0, y0) to (x1, y1). */
-export interface Floor { lane: Lane; x0: number; y0: number; x1: number; y1: number }
+/** `hidden`: ground a classic Workshop piece (an ice rail) provides: drivers and the planner sense it, but it is built and drawn by that piece. */
+export interface Floor { lane: Lane; x0: number; y0: number; x1: number; y1: number; hidden?: boolean }
 /** A raised block on a floor: jump it (its top is `y`, it sits on the floor below). */
-export interface Bump { lane: Lane; x: number; w: number; y: number; h: number }
+export interface Bump { lane: Lane; x: number; w: number; y: number; h: number; /** a classic block builds and draws it */ hidden?: boolean }
 /**
  * A way between two lanes, `x`..`x + w` along the course.
  * - `ramp`: rolling through it on the ground takes you to `to` (jump over it to stay).
@@ -85,7 +86,10 @@ export interface LaneGate { kind: 'ramp' | 'door'; lane: Lane; to: Lane; x: numb
 /** A spring pad on the floor (`x`..`x + SPRING_W`, top at `y`): rolling or landing on it launches you up. */
 export interface Spring { lane: Lane; x: number; y: number }
 /** A one-way ledge: jump up through it from below, land and roll on top (`y` is its top). */
-export interface Ledge { lane: Lane; x: number; w: number; y: number }
+/** `cloud` (an index into the cloud art) makes the ledge a cloud platform in the sky: the same one-way physics, drawn as a cloud. */
+export interface Ledge { lane: Lane; x: number; w: number; y: number; cloud?: number }
+/** A kicker: a short wooden ramp on the floor (`x`..`x + w`, rising `h` at its lip) that throws a fast ball into the air. */
+export interface Kicker { lane: Lane; x: number; w: number; h: number }
 export const SPRING_W = 60;
 /** A power-up box hovering over the track (centre `x`, `y`): roll through it for an item (respawns, see the engine). */
 export interface ItemBoxSpot { lane: Lane; x: number; y: number }
@@ -120,6 +124,8 @@ export interface CoursePlan {
   /** P2-21: loops (a ring a fast ball rides over) and rope bridges over chasms (absent = none). */
   loops?: LoopSpot[];
   bridges?: BridgeSpot[];
+  /** Kicker ramps (absent = none). */
+  kickers?: Kicker[];
   /**
    * P2-26: every other Workshop piece (spinners, saws, cannons, flippers, pegs, fields, set pieces...), built by the
    * classic Builder exactly as on a drop track and placed in its lane's collision layer (absent = none).

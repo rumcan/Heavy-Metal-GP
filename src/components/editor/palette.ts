@@ -185,6 +185,8 @@ export const PLATFORMER_PALETTE: PaletteGroup[] = [
       { id: 'ice', t: 'ice', label: 'Ice floor', sprite: 'strip-ice', hint: 'Almost frictionless: carry speed, lose control.' },
       { id: 'bridge', t: 'bridge', label: 'Rope bridge', sprite: 'bridge', hint: 'A sagging plank bridge over a chasm. It sways a little and holds weight.' },
       { id: 'loop', t: 'loop', label: 'Loop', sprite: 'loop-ring', hint: 'A loop ring. A marble with enough speed rides over the top; a slow one rolls back. Put a boost in the run-up.' },
+      { id: 'cloud', t: 'ledge', label: 'Cloud platform', sprite: null, preset: { cloud: 0 } as Partial<Piece>, hint: 'A cloud in the sky you can land on: jump or fly up through it from below and roll on top. Put item boxes on it.' },
+      { id: 'kicker', t: 'kicker', label: 'Kicker ramp', sprite: 'rail-wood', hint: 'A short steep ramp that throws a fast ball into the air. Put a boost before it and a cloud above the landing.' },
       { id: 'ledge', t: 'ledge', label: 'Ledge', sprite: 'strip-metal', hint: 'A one-way ledge: jump up through it from below and land on top. A shortcut over a chasm.' },
     ],
   },
@@ -205,7 +207,7 @@ export const PLATFORMER_PALETTE: PaletteGroup[] = [
     note: 'Items, crates and hazards',
     tiles: [
       { id: 'itembox', t: 'itembox', label: 'Item box', sprite: 'crate', hint: 'Roll through it for a skill item. It comes back after a while.' },
-      { id: 'block', t: 'block', label: 'Crate', sprite: 'tile-metal', hint: 'A crate to jump. It sits on the floor of its lane.' },
+      { id: 'block', t: 'block', label: 'Block', sprite: 'tile-metal', hint: 'A solid steel block. Nothing breaks it. Jump it: it sits on the floor of its lane.' },
       { id: 'wrecker', t: 'wrecker', label: 'Wrecking ball', sprite: 'wrecking-ball', hint: 'A swinging ball on a chain. Time it or jump it.' },
       { id: 'sign', t: 'sign', label: 'Sign', sprite: null, hint: 'A wooden sign with your own words. Decoration only.' },
     ],
