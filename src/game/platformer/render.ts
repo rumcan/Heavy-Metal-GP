@@ -311,7 +311,7 @@ function drawGate(ctx: CanvasRenderingContext2D, g: LaneGate, t: number, near: b
     for (let i = 0; i < 3; i++) {
       const x = g.x + 26 + i * ((g.w - 52) / 2);
       const a = ((t / 140 + i) % 3) / 3;
-      const base = g.y - 22, tip = g.y - 54;
+      const base = g.y - 6, tip = g.y - 38;
       ctx.beginPath();
       if (back) { ctx.moveTo(x - 22, base); ctx.lineTo(x, tip); ctx.lineTo(x + 22, base); ctx.lineTo(x, base - 12); }
       else { ctx.moveTo(x - 22, tip); ctx.lineTo(x, base); ctx.lineTo(x + 22, tip); ctx.lineTo(x, tip + 12); }
