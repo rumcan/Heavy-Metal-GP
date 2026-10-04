@@ -415,7 +415,7 @@ function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, 
  * frame. It is redrawn only when the camera nears its edge, the zoom drifts more than a few per cent, or the course
  * changes. Redrawing all of it every frame cost ~7 ms per lane (up to three lanes).
  */
-interface LaneCache { cv: HTMLCanvasElement; plan: CoursePlan; ox: number; oy: number; wx: number; wy: number; px: number; w: number; h: number }
+interface LaneCache { cv: HTMLCanvasElement; plan: CoursePlan; ox: number; oy: number; wx: number; wy: number; px: number; want: number; w: number; h: number }
 const laneCaches = new WeakMap<CanvasRenderingContext2D, Map<number, LaneCache>>();
 /** One early refresh per frame at most, so lanes never all rebuild on the same frame (that was a 30 ms hitch). */
 const refreshedAt = new WeakMap<CanvasRenderingContext2D, number>();
@@ -428,7 +428,8 @@ function cachedLane(ctx: CanvasRenderingContext2D, game: Game, lane: number, vie
   let byLane = laneCaches.get(ctx);
   if (!byLane) { byLane = new Map(); laneCaches.set(ctx, byLane); }
   const c = byLane.get(lane);
-  const ratio = c ? pxWanted / c.px : 0;
+  // Compare with the resolution asked for when it was drawn (a big screen caps the cache below it: that is fine).
+  const ratio = c ? pxWanted / c.want : 0;
   const inside = (pad: number) => !!c && view.x0 - (view.x1 - view.x0) * pad >= c.ox && view.x1 + (view.x1 - view.x0) * pad <= c.ox + c.wx
     && view.y0 - (view.y1 - view.y0) * pad >= c.oy && view.y1 + (view.y1 - view.y0) * pad <= c.oy + c.wy;
   const usable = !!c && c.plan === plan && ratio > 0.9 && ratio < 1.1 && inside(0);
@@ -456,7 +457,7 @@ function cachedLane(ctx: CanvasRenderingContext2D, game: Game, lane: number, vie
   cc.imageSmoothingQuality = 'high';
   cc.setTransform(px, 0, 0, px, -ox * px, -oy * px);
   drawLaneWorld(cc, game, lane, ox - 200, ox + wx + 200, oy + wy + 40, t, 'static');
-  const next = { cv, plan, ox, oy, wx, wy, px, w, h };
+  const next = { cv, plan, ox, oy, wx, wy, px, want: pxWanted, w, h };
   byLane.set(lane, next);
   return next;
 }
