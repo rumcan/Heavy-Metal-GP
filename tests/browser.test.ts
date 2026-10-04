@@ -26,6 +26,9 @@ before(async () => {
   await mkdir(artifacts, { recursive: true });
   server = await createServer({
     configFile: false, root, plugins: [react(), tailwindcss()], logLevel: 'error',
+    // Its own dependency cache: sharing node_modules/.vite with a running dev server made that server re-bundle and
+    // reload the page someone was playing on.
+    cacheDir: join(root, 'node_modules/.vite-browser-test'),
     css: { postcss: { plugins: [] } },
     server: { port: 0, host: '127.0.0.1' },
   });
@@ -717,8 +720,8 @@ for (const { label, options } of SCREEN_VIEWPORTS) {
     try {
       await ready(page);
       await openTab(page, 'Workshop');
+      // New track opens straight on the platformer starts (the drop tracks are retired).
       await page.locator('.home-actions').getByRole('button', { name: /New track/ }).click();
-      await page.getByTestId('kind-platformer').click();
       await page.getByTestId('new-platformer').click();
       const lanes = page.getByRole('group', { name: 'Lane being edited' });
       await lanes.waitFor({ timeout: 60000 });
@@ -748,6 +751,62 @@ for (const { label, options } of SCREEN_VIEWPORTS) {
       if (await leave.first().isVisible({ timeout: 3000 }).catch(() => false)) await leave.first().click();
       await page.getByRole('group', { name: 'Lane being edited' }).waitFor({ timeout: 60000 });
       assert.equal(await pieces(), before + 1, 'the floor is still there');
+      assert.deepEqual(errors, []);
+    } finally { await context.close(); }
+  });
+}
+
+// Story (2026-10-04): starting Act 1 showed a blank screen (a hook after an early return in StoryMode threw the moment
+// the first scene began), and every chapter had to be picked twice (the home Story tab, then story mode's own chapter
+// list). One pick now starts the chapter, and its scenes, the loading screen and the race all render.
+for (const { label, options } of SCREEN_VIEWPORTS) {
+  const slug = label.replace(/\s+/g, '-');
+
+  test(`Browser: Story starts the picked chapter in one click and Act 1 plays through to the race (${label})`, { timeout: 240000 }, async () => {
+    const context = await browser.newContext(options);
+    const page = await context.newPage();
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    const notBlank = async (where: string) => assert.ok((await page.locator('#root').innerHTML()).length > 200, `the page went blank at ${where}: ${errors.join(' | ')}`);
+    const card = page.getByRole('button', { name: /^Chapter 1, / });
+    const lights = page.getByRole('button', { name: /Lights out/ });
+    try {
+      await ready(page);
+      await openTab(page, 'Story');
+      // A fresh save: the big button, the tutorial offer (the only screen in between), then chapter 1's title card.
+      await page.locator('.home-actions').getByRole('button', { name: /Start the story/ }).click();
+      await page.getByRole('button', { name: 'Skip tutorial' }).click();
+      await card.waitFor();
+      assert.equal(await page.locator('.story-tile').count(), 0, 'story mode must not show a second chapter list');
+      await card.click();
+      // The first scene: this is where the page used to go blank.
+      await page.locator('.story-scene').waitFor();
+      await notBlank('the first scene');
+      // Skip stays on screen, on a phone too (a long heading used to push it off the right edge).
+      const skip = await page.locator('.story-top-actions .story-toggle').last().boundingBox();
+      assert.ok(skip && skip.x >= 0 && skip.x + skip.width <= (page.viewportSize()?.width ?? 0), 'the Skip button is on screen');
+      await page.screenshot({ path: `${artifacts}/story-act1-scene-${slug}.png` });
+      // Skip the scenes (Escape) to the loading screen, then lights out.
+      for (let i = 0; i < 40 && !(await lights.isVisible().catch(() => false)); i++) {
+        if (await page.locator('.story-scene').isVisible().catch(() => false)) await page.keyboard.press('Escape');
+        await page.waitForTimeout(250);
+      }
+      await lights.click();
+      await page.waitForSelector('.race-canvas');
+      await notBlank('the race');
+      // Leave the heat: back on the home Story tab, the one chapter list.
+      await page.getByRole('button', { name: /^Exit/ }).click();
+      await page.getByRole('button', { name: 'Leave heat' }).click();
+      await page.getByRole('main', { name: 'Story mode' }).waitFor();
+      // One pick on a chapter card goes straight to that chapter (the tutorial is behind us now).
+      const chapters = page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Chapters' });
+      if (await chapters.isVisible().catch(() => false)) await chapters.click();
+      await page.locator('.story-tile').first().click();
+      await card.waitFor();
+      assert.equal(await page.locator('.story-tile').count(), 0, 'still no second chapter list');
+      await card.click();
+      await page.locator('.story-scene').or(lights).first().waitFor();
+      await notBlank('the second start');
       assert.deepEqual(errors, []);
     } finally { await context.close(); }
   });

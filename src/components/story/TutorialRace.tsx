@@ -25,8 +25,10 @@ interface Props {
   subtitle?: string;
   /** Every lesson completed, or the race finished after the last lesson. */
   onDone: () => void;
-  /** The player skipped mid-ride (or bailed from the pause dialog). */
+  /** The player pressed Skip mid-ride. */
   onSkip: () => void;
+  /** The player bailed from the pause dialog (defaults to `onSkip`). */
+  onQuit?: () => void;
 }
 
 /** A starter kit for the skills lesson: three Speed Boost charges, nothing else to fuss with. */
@@ -34,7 +36,7 @@ function starterInventory() {
   return { ...emptyInventory(), rocket: 3 };
 }
 
-export default function TutorialRace({ driver, subtitle = 'PROLOGUE · LEARN TO RACE', onDone, onSkip }: Props) {
+export default function TutorialRace({ driver, subtitle = 'PROLOGUE · LEARN TO RACE', onDone, onSkip, onQuit = onSkip }: Props) {
   const roster = useMemo<MarbleInfo[]>(() => tutorialRoster(driver), [driver]);
   const gridOrder = useMemo(() => roster.map((m) => m.id), [roster]);
   const profile = useMemo<TrackProfile>(
@@ -56,7 +58,7 @@ export default function TutorialRace({ driver, subtitle = 'PROLOGUE · LEARN TO 
       gridOrder={gridOrder}
       title="Training Grounds"
       subtitle={subtitle}
-      onExit={onSkip}
+      onExit={onQuit}
       onFinished={onDone}
       actions={actions}
       inventory={inventory}

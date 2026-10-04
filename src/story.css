@@ -30,14 +30,15 @@
   display: flex; align-items: flex-start; justify-content: space-between; gap: 14px;
   padding: 14px 18px 0;
 }
-.story-heading { display: grid; gap: 5px; }
+/* The heading wraps on a phone; Auto and Skip never get pushed off the right edge. */
+.story-heading { display: grid; gap: 5px; min-width: 0; justify-items: start; }
 .story-chip {
   font-family: var(--mono); font-size: 8.5px; letter-spacing: 1.6px; text-transform: uppercase;
   color: #9fadb9; background: rgba(5, 10, 16, .72); border: 1px solid rgba(255, 255, 255, .1);
-  padding: 4px 8px; width: max-content;
+  padding: 4px 8px; width: max-content; max-width: 100%;
 }
 .story-chip b { color: #e7edf2; font-weight: 500; }
-.story-top-actions { display: flex; align-items: center; gap: 8px; }
+.story-top-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .story-toggle {
   font-family: var(--mono); font-size: 8.5px; letter-spacing: 1.3px; text-transform: uppercase;
   color: #94a2af; background: rgba(5, 10, 16, .72); border: 1px solid rgba(255, 255, 255, .1);
@@ -250,7 +251,6 @@
 
 /* ---------------------------------------------------------------- hub */
 
-.story-fit { grid-template-columns: minmax(0, 1.55fr) minmax(300px, 380px); }
 .story-chapters-pane { gap: 12px; }
 .story-intro h1 { font-family: var(--display); font-style: italic; font-weight: 750; font-size: clamp(28px, 3.4vw, 44px); line-height: .98; text-transform: uppercase; margin: 0 0 6px; color: #f4f7f9; }
 .story-intro p { margin: 0; font-size: 12.5px; line-height: 1.5; color: #93a2af; max-width: 74ch; }
@@ -287,12 +287,7 @@
 .story-cast-list strong { display: block; font-family: var(--display); font-style: italic; font-size: 13px; letter-spacing: .4px; text-transform: uppercase; color: #eef3f7; }
 .story-cast-list div > span { display: block; font-size: 10.5px; line-height: 1.35; color: #8593a0; }
 
-@media (max-width: 1180px) {
-  .story-fit { grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); }
-}
 @media (max-width: 760px) {
-  .story-page[data-pane='chapters'] [data-pane-id='chapters'],
-  .story-page[data-pane='dossier'] [data-pane-id='dossier'] { display: flex !important; }
   .story-tiles { grid-template-columns: minmax(0, 1fr); }
 }
 

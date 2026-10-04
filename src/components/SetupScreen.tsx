@@ -33,7 +33,9 @@ import PhysicsLab from './PhysicsLab';
 import RankChip from './RankChip';
 import RulesDialog from './RulesDialog';
 import WalletButton from './WalletButton';
-import { storyPrimary } from './story/StoryHub';
+import { storyPrimary } from '../game/story/opening';
+import type { StoryPick } from '../game/story/opening';
+import type { StoryNotice } from './story/StoryHub';
 import ChampionshipTab from './home/ChampionshipTab';
 import { TAB_META } from './home/HomeTabs';
 import MainMenu from './home/MainMenu';
@@ -73,8 +75,10 @@ export interface SetupScreenProps {
   customTrackId?: string | null;
   onSelectCustom?: (id: string | null) => void;
 
-  /** Story mode (ST-08). Omitted when the story is not available. */
-  onStartStory?: () => void;
+  /** Story mode (ST-08): start this chapter (the big button starts the next one). Omitted when the story is not available. */
+  onStartStory?: (pick?: StoryPick) => void;
+  /** Banner for the chapter story mode just banked, shown on the Story tab. */
+  storyNotice?: StoryNotice | null;
 
   /** MP-06: the online doors — host, join by code, quick race (MP-07) — and the race a returning player can rejoin (MP-08). */
   mpBusy?: boolean;
@@ -127,7 +131,7 @@ interface Primary { label: string; onClick: () => void; disabled?: boolean; hint
 
 export default function SetupScreen(props: SetupScreenProps) {
   const { garages, onGarage, season, onStartSeason, onContinueSeason, onRetune, onBackToSeason, rivals, onRerollRivals, seed, onNewSeed, onStart, circuitIndex, onCircuit } = props;
-  const { account, onShop, onStartStory, onHostGame, onJoinGame, onQuickGame, rank = null, onRank, onWorkshop } = props;
+  const { account, onShop, onStartStory, storyNotice = null, onHostGame, onJoinGame, onQuickGame, rank = null, onRank, onWorkshop } = props;
   const { mpBusy = false, mpError = null, searching = false, windows = 0, rejoin = null } = props;
   const customTrackId = props.customTrackId ?? null;
   const onSelectCustom = props.onSelectCustom ?? (() => undefined);
@@ -179,7 +183,7 @@ export default function SetupScreen(props: SetupScreenProps) {
     switch (tab) {
       case 'story': {
         const next = story ? storyPrimary(story) : null;
-        return { label: next?.label ?? 'Start the story', onClick: onStartStory ?? (() => undefined), disabled: !onStartStory, hint: 'Story mode keeps its own save.' };
+        return { label: next?.label ?? 'Start the story', onClick: () => onStartStory?.(next ? { chapter: next.chapter, replay: next.replay } : undefined), disabled: !onStartStory, hint: 'Story mode keeps its own save.' };
       }
       case 'championship':
         if (season && !season.complete) return { label: 'Continue season', onClick: onContinueSeason ?? (() => undefined), disabled: !onContinueSeason, hint: `Round ${seasonRound + 1} of ${CALENDAR.length} · ${roundName(season, seasonRound)}` };
@@ -246,7 +250,8 @@ export default function SetupScreen(props: SetupScreenProps) {
         story={story}
         garage={garages.story}
         onGarage={(g) => onGarage('story', g)}
-        onPlay={onStartStory ?? (() => undefined)}
+        onPlay={(pick) => onStartStory?.(pick)}
+        notice={storyNotice}
         onRestarted={() => setStoryVersion((v) => v + 1)}
         account={account}
         onShop={onShop}
