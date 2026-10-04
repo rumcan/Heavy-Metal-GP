@@ -2,36 +2,36 @@
   "tutorial-welcome": {
     "file": "tutorial/tutorial-welcome.mp3",
     "hash": "f61d7f322f648f03187d802f68ff99d58556fb2304f909f3443ff4c479452374",
-    "durationSec": 4.8
+    "durationSec": 8.3
   },
   "tutorial-steer": {
     "file": "tutorial/tutorial-steer.mp3",
     "hash": "637c8248e7daf4878097f76e99ef180fb9667db2a47ec80af642c37b8653bb29",
-    "durationSec": 1.1
+    "durationSec": 1.82
   },
   "tutorial-engine": {
     "file": "tutorial/tutorial-engine.mp3",
     "hash": "e8ba6c1d95773ba429f2a90a577f486256264a9114129ee15f4ac9d7ca3db360",
-    "durationSec": 2.34
+    "durationSec": 3.99
   },
   "tutorial-skills": {
     "file": "tutorial/tutorial-skills.mp3",
     "hash": "1385f4562d849c35d819b016c83bf3f876077aea304633bac0ff4165d77d8c1a",
-    "durationSec": 3.52
+    "durationSec": 6.06
   },
   "tutorial-jump": {
     "file": "tutorial/tutorial-jump.mp3",
     "hash": "70d3f8cb50eacede23bde416f4ee34423ec630e75b74a2f69842635aa6139ffc",
-    "durationSec": 1.41
+    "durationSec": 2.37
   },
   "tutorial-shortcut": {
     "file": "tutorial/tutorial-shortcut.mp3",
     "hash": "85af62d51a4233c84e4b28a3c3de389e1f0ecbdaba0cc8f950022d0553627869",
-    "durationSec": 2.52
+    "durationSec": 4.31
   },
   "tutorial-finish": {
     "file": "tutorial/tutorial-finish.mp3",
     "hash": "fcbdc236a2ff83c8039beedb3c2a52b727acef3bb611b483fcf57d5176c9466a",
-    "durationSec": 2.47
+    "durationSec": 4.23
   }
 }

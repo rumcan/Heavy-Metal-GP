@@ -365,7 +365,16 @@ export function playVoice(set: string, id: string): Promise<void> {
       }
       entry.audio = audio;
       audio.addEventListener('ended', () => { if (active === entry) endActive(); });
-      fallback();                                // hard stop even if 'ended' never fires
+      // A hard stop in case 'ended' never fires, but never before the line can finish: the stored length is a hint
+      // (it was once 40% short and cut lines off), so wait for the real one from the file plus a margin.
+      const safety = (ms: number) => {
+        if (entry.timer) clearTimeout(entry.timer);
+        entry.timer = setTimeout(() => { if (active === entry) endActive(); }, ms);
+      };
+      safety(plan.holdMs * 2 + 4000);
+      audio.addEventListener('loadedmetadata', () => {
+        if (active === entry && Number.isFinite(audio.duration) && audio.duration > 0) safety(Math.max(plan.holdMs, audio.duration * 1000) + 1500);
+      });
       void audio.play().catch(() => { /* autoplay blocked: the caption still runs */ });
       entry.watcher = setInterval(() => {
         if (active !== entry) { if (entry.watcher) clearInterval(entry.watcher); return; }

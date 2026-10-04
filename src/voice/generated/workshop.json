@@ -2,46 +2,46 @@
   "tour-new": {
     "file": "workshop/tour-new.mp3",
     "hash": "58f0e7f3f48f3a9b67e42773819bcefe262eaba2e6dae0910e2f5fc918de50f1",
-    "durationSec": 5.95
+    "durationSec": 10.31
   },
   "tour-palette": {
     "file": "workshop/tour-palette.mp3",
     "hash": "c0a17d038e7168e8c939c3d6d91fb6bef4e703e0cd97c22c66e70f6924b141d2",
-    "durationSec": 5.22
+    "durationSec": 9.03
   },
   "tour-edit": {
     "file": "workshop/tour-edit.mp3",
     "hash": "9a1cd1be699417ea034c1a83d163200a7cfabf64df94b095284f5d77107a76fd",
-    "durationSec": 9.42
+    "durationSec": 16.37
   },
   "tour-settings": {
     "file": "workshop/tour-settings.mp3",
     "hash": "08215e9189c83f468704b9e7ea73f682f3887ad7a8b9f9704d8f45361ac9a624",
-    "durationSec": 2.7
+    "durationSec": 4.62
   },
   "tour-test": {
     "file": "workshop/tour-test.mp3",
     "hash": "e2fcabe4bf08ed57b5bf1312b7b6f38d50e5a4771fe5769060d0de15da77e11d",
-    "durationSec": 5.53
+    "durationSec": 9.58
   },
   "tour-validate": {
     "file": "workshop/tour-validate.mp3",
     "hash": "1e54a9e40406bf0b26e2ea1db31e0df9304301b7aecec24eb1e1488aab4e565a",
-    "durationSec": 6.31
+    "durationSec": 10.94
   },
   "tour-save": {
     "file": "workshop/tour-save.mp3",
     "hash": "1e07146a2daaa22f4dd85cfa8dc09b1ceba9c42725c3b9a0f8902ff5e5072078",
-    "durationSec": 4.94
+    "durationSec": 8.54
   },
   "tour-publish": {
     "file": "workshop/tour-publish.mp3",
     "hash": "6b5cbeed56e6013e0ec81c70c11d1c0606977742e4dc9f9c4ac3403de1015638",
-    "durationSec": 5.16
+    "durationSec": 8.93
   },
   "tour-play": {
     "file": "workshop/tour-play.mp3",
     "hash": "1959ce32c5c2f24b037bcfc2d666c9e232e53cad6b2012e8f1124dc80f1917aa",
-    "durationSec": 6.91
+    "durationSec": 11.99
   }
 }

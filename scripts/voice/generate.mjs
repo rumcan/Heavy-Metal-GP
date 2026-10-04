@@ -314,6 +314,17 @@ function ffmpegPath() {
   return null;
 }
 
+/** The true length of an audio file: decode it to nowhere and read ffmpeg's last time stamp. */
+export function decodedSeconds(ffmpeg, file) {
+  const run = spawnSync(ffmpeg, ['-hide_banner', '-i', file, '-f', 'null', '-'], { encoding: 'utf8' });
+  if (run.error) return 0;
+  const times = [...String(run.stderr).matchAll(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/g)];
+  const last = times[times.length - 1];
+  if (!last) return 0;
+  const seconds = Number(last[1]) * 3600 + Number(last[2]) * 60 + Number(last[3]);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
+}
+
 function ffprobeSeconds(cli, file) {
   const probe = spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', file], { encoding: 'utf8' });
   if (probe.error || probe.status !== 0) return 0;
@@ -513,7 +524,9 @@ export async function main(argv = process.argv.slice(2), log = console.log) {
           copyFileSync(tmp, target);
         }
         rmSync(tmp, { force: true });
-        const durationSec = round(told.durationSec || (convert ? ffprobeSeconds(args.cli, target) : 0) || mp3DurationSec(readFileSync(target)));
+        // Measure the file we ship by decoding it: the CLI's reported length and the frame parser both came out ~40%
+        // short, and the player used to cut every line off at that length.
+        const durationSec = round((convert ? decodedSeconds(convert, target) : 0) || told.durationSec || mp3DurationSec(readFileSync(target)));
         next[line.id] = { file: `${entry.set}/${line.id}.mp3`, hash: line.hash, durationSec };
         // Save progress after every line, so a failure later in the run never re-bills this one.
         if (!args.dryRun) {
