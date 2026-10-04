@@ -1,9 +1,5 @@
-import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { ArrowRight, RotateCcw, Sparkles, Trophy } from 'lucide-react';
-import Brand from '../Brand';
-import ConfirmDialog from '../ConfirmDialog';
-import WalletButton from '../WalletButton';
+import { Sparkles, Trophy } from 'lucide-react';
 import { CHAPTERS, chapterDef } from '../../game/story/outline';
 import { chapterTitle, chaptersForAct } from '../../game/story/engine';
 import {
@@ -12,12 +8,13 @@ import {
 import type { StoryState } from '../../game/story/state';
 import { earnedUnlocks, rewardEarned, rewardForChapter } from '../../game/story/rewards';
 import type { StoryUnlock } from '../../game/story/rewards';
+import { chapterCleared as isCleared, storyPrimary } from '../../game/story/opening';
+import type { StoryPick } from '../../game/story/opening';
 import { CAST, STORY_GRID } from '../../game/story/cast';
 import { castPortrait } from '../../game/story/portraits';
 import { ENDING_TITLE } from '../../game/story/types';
 import type { ChapterNumber } from '../../game/story/types';
 import { HEATS_PER_GP } from '../../game/types';
-import type { RacerAccount } from '../../game/economy';
 import { ChapterTile } from './ChapterCard';
 import '../../story.css';
 
@@ -55,60 +52,34 @@ export interface StoryNotice {
 
 export interface StoryHubProps {
   state: StoryState;
-  account: RacerAccount;
   /** Banner for a chapter just finished. */
   notice?: StoryNotice | null;
-  onPlay: (chapter: ChapterNumber, replay: boolean) => void;
-  onRestart: () => void;
-  onShop: () => void;
-  onExit: () => void;
-  /**
-   * The home screen's Story tab (P2-04): just the two panes — no page shell, header, footer or pane switcher.
-   * `children` (the garage) are drawn between the chapters and the dossier. The home owns the one big button;
-   * `storyPrimary()` says what it reads and opens.
-   */
-  embedded?: boolean;
+  /** A chapter card was picked: story mode starts that chapter straight away. */
+  onPlay: (pick: StoryPick) => void;
+  /** The garage, drawn between the chapters and the dossier. */
   children?: ReactNode;
 }
 
-/** What the hub's one big button reads and opens: a chapter, whether that is a replay, and the label. */
-export function storyPrimary(state: StoryState): { chapter: ChapterNumber; replay: boolean; label: string } {
-  const finished = state.season.complete;
-  const current = Math.min(6, Math.max(1, state.chapter)) as ChapterNumber;
-  const chapter = (finished ? 1 : CHAPTERS.find((def) => chapterUnlocked(state, def.chapter) && !isCleared(state, def.chapter))?.chapter ?? current) as ChapterNumber;
-  const label = finished ? 'Replay a chapter' : chaptersCleared(state) ? `Continue · ${chapterTitle(chapter)}` : 'Start the story';
-  return { chapter, replay: isCleared(state, chapter), label };
-}
+/** The home screen's one big Story button: what it reads and starts (src/game/story/opening.ts). */
+export { storyPrimary };
+
 
 /**
- * The story hub (ST-08): chapter select over the six chapters, the story so far, and the cast. Cleared
- * chapters can be replayed; a replay never writes to the save.
+ * The story hub (ST-08), on the home screen's Story tab (P2-04): the six chapters, the story so far, and the cast.
+ * This is the ONE chapter list: picking a card starts that chapter (story mode has no list of its own). Cleared
+ * chapters can be replayed; a replay never writes to the save. The home owns the one big button and the pane switcher.
  */
-export default function StoryHub({ state, account, notice, onPlay, onRestart, onShop, onExit, embedded = false, children }: StoryHubProps) {
-  const [pane, setPane] = useState<'chapters' | 'dossier'>('chapters');
-  // In-game confirmation: RUN.world's frame blocks window.confirm(), which answered "no" there.
-  const [confirmRestart, setConfirmRestart] = useState(false);
+export default function StoryHub({ state, notice, onPlay, children }: StoryHubProps) {
   const position = storyPosition(state);
   const cleared = chaptersCleared(state);
   const flags = activeFlags(state);
   const unlocks = earnedUnlocks(state);
   const finished = state.season.complete;
   const ending = state.ending;
-  const { chapter: nextChapter, replay: nextIsReplay, label: primaryLabel } = storyPrimary(state);
+  const { chapter: nextChapter } = storyPrimary(state);
 
-  return <div className={embedded ? 'story-embedded' : 'app-shell story-page fit-shell'} data-pane={pane}>
-    {!embedded && <header className="app-header">
-      <Brand onClick={onExit} />
-      <nav className="main-nav" aria-label="Main navigation">
-        <button onClick={onExit}>Garage</button>
-        <button className="active" aria-current="page">Story</button>
-      </nav>
-      <div className="header-tools">
-        <WalletButton credits={account.credits} onClick={onShop} />
-      </div>
-    </header>}
-
-    <main className={embedded ? 'story-embedded-main' : 'fit-main story-fit'}>
+  return <div className="story-embedded">
+    <main className="story-embedded-main">
       <div className="fit-pane story-chapters-pane" data-pane-id="chapters">
         <div className="section-topline">
           <span className="eyebrow"><Sparkles size={14} /> DOWN WE GO · {cleared} OF 6 CHAPTERS</span>
@@ -162,13 +133,13 @@ export default function StoryHub({ state, account, notice, onPlay, onRestart, on
               reward={{ credits: reward.credits + (earned ? 0 : reward.perfect), label: earned ? reward.unlock.label : `${reward.unlock.kind}: ${reward.unlock.label}` }}
               locked={!unlocked}
               current={isNext}
-              onSelect={() => onPlay(def.chapter as ChapterNumber, replay)}
+              onSelect={() => onPlay({ chapter: def.chapter as ChapterNumber, replay })}
             />;
           })}
         </div>
       </div>
 
-      {embedded && children}
+      {children}
 
       <div className="fit-pane story-dossier-pane" data-pane-id="dossier">
         <section className="story-dossier">
@@ -203,29 +174,7 @@ export default function StoryHub({ state, account, notice, onPlay, onRestart, on
         </section>
       </div>
     </main>
-
-    {!embedded && <footer className="fit-actions">
-      <div className="mode-switch">
-        <button onClick={onExit}>Garage</button>
-        <button onClick={() => setConfirmRestart(true)}>
-          <RotateCcw size={14} />Restart story
-        </button>
-      </div>
-      <button className="button-primary launch-button" onClick={() => onPlay(nextChapter, nextIsReplay)}>
-        {primaryLabel}<ArrowRight size={18} />
-      </button>
-    </footer>}
-    {!embedded && confirmRestart && <ConfirmDialog title="Start the story again?" message="Chapters, flags and unlocks are wiped. Your championship save is untouched." confirmLabel="Restart story" onConfirm={() => { setConfirmRestart(false); onRestart(); }} onCancel={() => setConfirmRestart(false)} />}
-
-    {!embedded && <nav className="pane-tabs" aria-label="Story panes">
-      <button className={pane === 'chapters' ? 'selected' : ''} onClick={() => setPane('chapters')}>Chapters</button>
-      <button className={pane === 'dossier' ? 'selected' : ''} onClick={() => setPane('dossier')}>Dossier</button>
-    </nav>}
   </div>;
-}
-
-function isCleared(state: StoryState, chapter: number): boolean {
-  return (state.season.results[chapter - 1]?.length ?? 0) >= HEATS_PER_GP;
 }
 
 /** Which chapters an act banner should slam in for. */

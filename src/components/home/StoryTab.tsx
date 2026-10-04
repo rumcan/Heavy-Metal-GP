@@ -5,9 +5,11 @@ import { storyRunStarted } from '../../game/garages';
 import { clearStory } from '../../game/story/state';
 import type { StoryState } from '../../game/story/state';
 import type { RacerAccount } from '../../game/economy';
+import type { StoryPick } from '../../game/story/opening';
 import type { RankChipModel } from '../../game/rank-view';
 import ConfirmDialog from '../ConfirmDialog';
 import StoryHub from '../story/StoryHub';
+import type { StoryNotice } from '../story/StoryHub';
 import GaragePanel from './GaragePanel';
 
 interface Props {
@@ -15,8 +17,10 @@ interface Props {
   story: StoryState;
   garage: Garage;
   onGarage: (garage: Garage) => void;
-  /** Open story mode. The story keeps its own save and opens on its own hub, where a chapter is picked. */
-  onPlay: () => void;
+  /** Start story mode on this chapter (a chapter card was picked). This tab is the only chapter list. */
+  onPlay: (pick: StoryPick) => void;
+  /** Banner for the chapter story mode just banked. */
+  notice?: StoryNotice | null;
   /** The save was wiped: read it again. */
   onRestarted: () => void;
   account: RacerAccount;
@@ -25,21 +29,19 @@ interface Props {
   onRank?: () => void;
 }
 
-const noop = () => undefined;
-
 /**
  * Story: the story hub itself (chapters on the left, the dossier on the right) with the story goblin between them.
  * A run that has started keeps the setup it started with — the story ignores the garage after that — so the garage
  * shows that setup, read-only, until the story is restarted.
  */
-export default function StoryTab({ story, garage, onGarage, onPlay, onRestarted, account, onShop, rank, onRank }: Props) {
+export default function StoryTab({ story, garage, onGarage, onPlay, notice = null, onRestarted, account, onShop, rank, onRank }: Props) {
   const [confirmRestart, setConfirmRestart] = useState(false);
   const started = storyRunStarted(story);
   // What the run is racing with, not what the garage would give a new run.
   const shown: Garage = started ? { stats: story.driver.stats, color: story.driver.color, portrait: story.driver.portrait } : garage;
 
   return <>
-    <StoryHub embedded state={story} account={account} onPlay={onPlay} onRestart={noop} onShop={onShop} onExit={noop}>
+    <StoryHub state={story} notice={notice} onPlay={onPlay}>
       <GaragePanel
         mode="story"
         garage={shown}

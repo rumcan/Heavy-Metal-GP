@@ -17,16 +17,17 @@ import type { StoryHookHandle } from '../../game/story/modifiers';
 import { applyChapterReward, rewardForChapter } from '../../game/story/rewards';
 import type { ChapterPayout } from '../../game/story/rewards';
 import {
-  applyChoice, chapterObjectives, chapterUnlocked, clearStory, completeTutorial, loadStory,
-  newStory, saveStory, startReplay, storyGrandPrix, storyPosition, storyProfile, storyRaceSeed,
+  applyChoice, chapterObjectives, chapterUnlocked, completeTutorial, loadStory,
+  newStory, saveStory, storyGrandPrix, storyPosition, storyProfile, storyRaceSeed,
   storyRoster,
 } from '../../game/story/state';
 import type { StoryDriver, StoryState } from '../../game/story/state';
+import { checkedPick, enterChapter, openStory } from '../../game/story/opening';
+import type { StoryPick } from '../../game/story/opening';
 import { ENDING_TITLE } from '../../game/story/types';
 import type { ChapterNumber, ChoiceOption, RaceCounters, Scene, StoryOutcome, Trigger } from '../../game/story/types';
 import ChapterCard from './ChapterCard';
 import { ChapterComplete } from './ChapterComplete';
-import StoryHub from './StoryHub';
 import type { StoryNotice } from './StoryHub';
 import { actStarts } from './StoryHub';
 import StoryScene from './StoryScene';
@@ -37,8 +38,9 @@ import '../../story.css';
 
 /** Stages of the story flow. Scene playback lives in `playing`, on top of whichever stage queued it. */
 type Stage =
-  | { kind: 'hub' }
-  /** P2-13: a fresh save opens here; Skip goes straight to Chapter 1. */
+  /** Back to the home screen's Story tab: the one chapter list (story mode never shows a second one). */
+  | { kind: 'home' }
+  /** P2-13: a fresh save opens here; both buttons end in the picked chapter. */
   | { kind: 'prologue' }
   /** P2-13: the Training Grounds tutorial race (player + 2 slow AI, no damage). */
   | { kind: 'tutorial' }
@@ -77,7 +79,13 @@ export interface StoryModeProps {
    */
   onLevelUp?: (from: number, to: number, xp: number) => void;
   onShop: () => void;
-  onExit: () => void;
+  /**
+   * The chapter picked on the home screen's Story tab. Story mode starts it straight away (after the tutorial
+   * prologue on a save that has not learned to race); without one it starts the next chapter to play.
+   */
+  start?: StoryPick | null;
+  /** Back to the home screen's Story tab, with the banner for a chapter just banked. */
+  onExit: (notice?: StoryNotice | null) => void;
 }
 
 /** A fresh run gets its own seed without `Math.random()`: the sim derives everything from it. */
@@ -91,32 +99,28 @@ function runSeed(driver: StoryDriver): number {
 }
 
 /**
- * Story mode orchestrator (ST-08): hub → chapter card → scenes → loading screen → race → scenes →
- * next chapter. Owns the story save end to end; the championship save and the wallet's paid-race ledger
- * are the only things it shares with the rest of the game.
+ * Story mode orchestrator (ST-08): chapter card → scenes → loading screen → race → scenes → next chapter. The chapter
+ * is picked on the home screen's Story tab and every way out goes back there. Owns the story save end to end; the
+ * championship save and the wallet's paid-race ledger are the only things it shares with the rest of the game.
  */
-export default function StoryMode({ driver, account, onAccount, onLevelUp, onShop, onExit }: StoryModeProps) {
-  const [state, setState] = useState<StoryState>(() => loadStory() ?? newStory(runSeed(driver), driver, Date.now()));
+export default function StoryMode({ driver, account, onAccount, onLevelUp, onShop, start = null, onExit }: StoryModeProps) {
+  // P2-13: a save with no tutorial and no progress yet opens on the prologue — the first race of the campaign IS the
+  // tutorial. Anything else goes straight into the picked chapter (its title card).
+  const [opening] = useState(() => openStory(loadStory(), start, () => newStory(runSeed(driver), driver, Date.now())));
+  const [state, setState] = useState<StoryState>(opening.state);
   const stateRef = useRef(state);
   const accountRef = useRef(account);
   accountRef.current = account;
   /** The untouched save while a chapter-select replay is running. */
-  const baseRef = useRef<StoryState | null>(null);
+  const baseRef = useRef<StoryState | null>(opening.base);
   const handleRef = useRef<StoryHookHandle | null>(null);
   const settlementRef = useRef<HeatSettlement | null>(null);
-  const heatRef = useRef(1);
+  const heatRef = useRef(opening.heat);
 
-  // P2-13: a save with no tutorial and no progress yet opens on the prologue — the first
-  // race of the campaign IS the tutorial. Anything with history goes to the hub as before.
-  const [stage, setStage] = useState<Stage>(() => {
-    const saved = loadStory();
-    const fresh = !saved || (!saved.tutorialDone && !saved.seenScenes.length && !saved.season.results.some((heats) => heats.length));
-    return fresh ? { kind: 'prologue' } : { kind: 'hub' };
-  });
+  const [stage, setStage] = useState<Stage>(opening.tutorial ? { kind: 'prologue' } : { kind: 'card', chapter: opening.pick.chapter });
   const [playing, setPlaying] = useState<Playback | null>(null);
   const [setup, setSetup] = useState<RaceSetup | null>(null);
   const [payout, setPayout] = useState<RacePayout | null>(null);
-  const [notice, setNotice] = useState<StoryNotice | null>(null);
   const [liveCounters, setLiveCounters] = useState<RaceCounters>(emptyStoryCounters());
   const [autoAdvance, setAutoAdvance] = useState(false);
 
@@ -136,8 +140,10 @@ export default function StoryMode({ driver, account, onAccount, onLevelUp, onSho
     return next;
   };
 
-  const chapter = stage.kind === 'hub' || stage.kind === 'prologue' || stage.kind === 'tutorial' ? state.chapter : stage.chapter;
+  const chapter = stage.kind === 'home' || stage.kind === 'prologue' || stage.kind === 'tutorial' ? state.chapter : stage.chapter;
   const def = chapterDef(chapter);
+  // Every hook stays above the first `return` below: a hook after it ran on some renders and not others, and React
+  // threw the whole page away the moment the first scene started ("Rendered fewer hooks than expected", a blank screen).
   const roster = useMemo(() => storyRoster(state.driver), [state.driver]);
   // Mid-race bubbles play in the first race of a chapter only; they used to repeat in every race.
   const beatHeat = stage.kind === 'race' ? stage.heat : 1;
@@ -152,6 +158,11 @@ export default function StoryMode({ driver, account, onAccount, onLevelUp, onSho
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [beats, objectives, stage],
   );
+  // The race's profile and grid keep their identity between renders: RaceScreen rebuilds its race whenever they change,
+  // and this screen re-renders on every inventory change (picking up an item box used to restart the heat).
+  const raceChapter = stage.kind === 'race' ? stage.chapter : 0;
+  const raceProfile = useMemo(() => setup?.profile ?? (raceChapter ? storyProfile(raceChapter) : null), [setup, raceChapter]);
+  const raceGrid = useMemo(() => setup?.grid ?? gridOrder(state.season), [setup, state.season]);
 
   /** Chapter hooks are built once per heat: the game captures them when it is constructed. */
   const makeHandle = (forChapter: number, heat: number, from: StoryState): StoryHookHandle => {
@@ -218,7 +229,9 @@ export default function StoryMode({ driver, account, onAccount, onLevelUp, onSho
   function run(next: Stage) {
     setPlaying(null);
     switch (next.kind) {
-      case 'hub':
+      case 'home':
+        leaveToHome();
+        return;
       case 'card':
       case 'prologue':
       case 'tutorial':
@@ -240,7 +253,7 @@ export default function StoryMode({ driver, account, onAccount, onLevelUp, onSho
       case 'outro':
         enqueue('outro', next.chapter, null, next.settlement
           ? { kind: 'complete', chapter: next.chapter as ChapterNumber, payout: bankChapter(next.chapter, next.settlement), last: next.settlement.storyDone }
-          : { kind: 'hub' });
+          : { kind: 'home' });
         return;
       case 'complete':
         setStage(next);
@@ -248,46 +261,24 @@ export default function StoryMode({ driver, account, onAccount, onLevelUp, onSho
     }
   }
 
-  const beginChapter = (forChapter: ChapterNumber, replay: boolean) => {
-    setNotice(null);
-    if (!replay && !chapterUnlocked(stateRef.current, forChapter)) return;
-    const next = mutate((previous) => {
-      if (replay) {
-        baseRef.current = previous;
-        return startReplay(previous, forChapter);
-      }
-      baseRef.current = null;
-      return { ...previous, chapter: forChapter, replaying: false };
-    });
-    heatRef.current = (replay ? 0 : (next.season.results[forChapter - 1]?.length ?? 0)) + 1;
-    run({ kind: 'card', chapter: forChapter });
+  const beginChapter = (pick: StoryPick) => {
+    const chosen = checkedPick(stateRef.current, pick);
+    const entered = enterChapter(stateRef.current, chosen);
+    baseRef.current = entered.base;
+    mutate(() => entered.state);
+    heatRef.current = entered.heat;
+    run({ kind: 'card', chapter: chosen.chapter });
   };
 
-  const leaveToHub = () => {
-    if (stateRef.current.replaying && baseRef.current) {
-      stateRef.current = baseRef.current;
-      setState(baseRef.current);
-    }
+  /** Back to the home screen's Story tab. A replay never touched the save (`saveStory` skips it), so nothing to undo there. */
+  const leaveToHome = (notice: StoryNotice | null = null) => {
+    if (stateRef.current.replaying && baseRef.current) stateRef.current = baseRef.current;
     baseRef.current = null;
     handleRef.current = null;
     settlementRef.current = null;
-    setSetup(null);
-    setPayout(null);
     setPlaying(null);
-    setStage({ kind: 'hub' });
-  };
-
-  const restart = () => {
-    clearStory();
-    const fresh = newStory(runSeed(driver), driver, Date.now());
-    stateRef.current = fresh;
-    baseRef.current = null;
-    setState(fresh);
-    setNotice(null);
-    setPlaying(null);
-    setSetup(null);
-    // P2-13: a restarted save is a fresh save, so it learns to race again.
-    setStage({ kind: 'prologue' });
+    setStage({ kind: 'home' });
+    onExit(notice);
   };
 
   const onSceneDone = (choice: ChoiceOption | null) => {
@@ -345,7 +336,7 @@ export default function StoryMode({ driver, account, onAccount, onLevelUp, onSho
   const continueAfterRace = () => {
     const settlement = settlementRef.current;
     setPayout(null);
-    if (!settlement) { leaveToHub(); return; }
+    if (!settlement) { leaveToHome(); return; }
     const raced = settlement.chapterRaced as ChapterNumber;
     if (!settlement.chapterDone && heatRef.current < HEATS_PER_GP) {
       run({ kind: 'pre', chapter: raced, heat: heatRef.current + 1 });
@@ -356,14 +347,14 @@ export default function StoryMode({ driver, account, onAccount, onLevelUp, onSho
 
   const afterComplete = (forChapter: ChapterNumber, last: boolean, paid: ChapterPayout) => {
     const replay = stateRef.current.replaying;
-    setNotice({
+    const notice: StoryNotice = {
       chapter: forChapter, credits: paid.credits, perfect: paid.perfect,
       unlock: paid.unlock, unlocked: paid.unlocked, replay,
-    });
-    if (last || replay) { leaveToHub(); return; }
+    };
+    if (last || replay) { leaveToHome(notice); return; }
     const next = Math.min(6, forChapter + 1) as ChapterNumber;
-    if (!chapterUnlocked(stateRef.current, next)) { leaveToHub(); return; }
-    beginChapter(next, false);
+    if (!chapterUnlocked(stateRef.current, next)) { leaveToHome(notice); return; }
+    beginChapter({ chapter: next, replay: false });
   };
 
   // ---- render ----
@@ -382,48 +373,35 @@ export default function StoryMode({ driver, account, onAccount, onLevelUp, onSho
     />;
   }
 
-  // P2-13: leaving the tutorial banks `tutorialDone` either way — finishing teaches every
-  // lesson, skipping is a choice the save remembers too. Both roads lead to Chapter 1.
-  const finishTutorial = () => {
+  // P2-13: leaving the tutorial banks `tutorialDone` either way — finishing teaches every lesson, skipping is a choice
+  // the save remembers too. Finishing and Skip both go on into the picked chapter; quitting from the pause menu goes home.
+  const tutorialThenChapter = () => {
     mutate(completeTutorial);
-    beginChapter(1, false);
+    beginChapter(opening.pick);
   };
-  const skipTutorial = () => {
+  const quitTutorial = () => {
     mutate(completeTutorial);
-    leaveToHub();
+    leaveToHome();
   };
-
-  // The race's profile and grid keep their identity between renders: RaceScreen rebuilds its race whenever they change,
-  // and this screen re-renders on every inventory change (picking up an item box used to restart the heat).
-  const raceChapter = stage.kind === 'race' ? stage.chapter : 0;
-  const raceProfile = useMemo(() => setup?.profile ?? (raceChapter ? storyProfile(raceChapter) : null), [setup, raceChapter]);
-  const raceGrid = useMemo(() => setup?.grid ?? gridOrder(state.season), [setup, state.season]);
 
   switch (stage.kind) {
     case 'prologue':
       return <TutorialPrologue
         onPlay={() => setStage({ kind: 'tutorial' })}
-        onSkip={() => { mutate(completeTutorial); beginChapter(1, false); }}
+        onSkip={tutorialThenChapter}
       />;
 
     case 'tutorial':
       return <TutorialRace
         driver={state.driver}
         subtitle="PROLOGUE · LEARN TO RACE"
-        onDone={finishTutorial}
-        onSkip={skipTutorial}
+        onDone={tutorialThenChapter}
+        onSkip={tutorialThenChapter}
+        onQuit={quitTutorial}
       />;
 
-    case 'hub':
-      return <StoryHub
-        state={state}
-        account={account}
-        notice={notice}
-        onPlay={beginChapter}
-        onRestart={restart}
-        onShop={onShop}
-        onExit={onExit}
-      />;
+    case 'home':
+      return null;
 
     case 'card': {
       const gp = storyGrandPrix(stage.chapter);
@@ -471,7 +449,7 @@ export default function StoryMode({ driver, account, onAccount, onLevelUp, onSho
         subtitle={`STORY · CHAPTER ${String(stage.chapter).padStart(2, '0')} / HEAT ${stage.heat} OF ${HEATS_PER_GP}`}
         championship
         loadoutMode="story"
-        onExit={leaveToHub}
+        onExit={() => leaveToHome()}
         onFinished={onRaceFinished}
         actions={actions}
         inventory={account.inventory}

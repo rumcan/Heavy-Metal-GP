@@ -61,6 +61,8 @@ import { RIVALS, PLAYER_PORTRAIT_COUNT, preRaceBanter } from './game/characters'
 import type { Line } from './game/characters';
 import LoadingScreen from './components/LoadingScreen';
 import StoryMode from './components/story/StoryMode';
+import type { StoryNotice } from './components/story/StoryHub';
+import type { StoryPick } from './game/story/opening';
 import TrackEditor from './components/TrackEditor';
 import InfinityScreen from './components/infinity/InfinityScreen';
 import { loadRecords, saveRecords, seedTextFor } from './game/infinity-store';
@@ -109,6 +111,9 @@ function platformerProfile(course: string): TrackProfile {
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>('menu');
+  // Story: the chapter picked on the home Story tab (story mode starts it straight away), and the banner it brings back.
+  const [storyPick, setStoryPick] = useState<StoryPick | null>(null);
+  const [storyNotice, setStoryNotice] = useState<StoryNotice | null>(null);
   // What's new: once per version, over the garage after the splash screen.
   const [whatsNew, setWhatsNew] = useState(() => storage.getItem(SEEN_VERSION_KEY) !== APP_VERSION);
   const closeWhatsNew = () => { storage.setItem(SEEN_VERSION_KEY, APP_VERSION); setWhatsNew(false); };
@@ -792,7 +797,8 @@ export default function App() {
         onSelectCustom={setCustomTrackId}
         account={account}
         onShop={openShop}
-        onStartStory={() => setPhase('story')}
+        onStartStory={(pick) => { setStoryPick(pick ?? null); setStoryNotice(null); setPhase('story'); }}
+        storyNotice={storyNotice}
         onStartInfinity={() => { setInfinitySeed(seedTextFor(loadRecords())); setPhase('infinity'); }}
         onWorkshop={() => setPhase('editor')}
         mpBusy={mpBusy}
@@ -879,7 +885,8 @@ export default function App() {
         onAccount={publishAccount}
         onLevelUp={(from, to, xp) => setLevelUp({ from, to, xp })}
         onShop={openShop}
-        onExit={() => setPhase('menu')}
+        start={storyPick}
+        onExit={(notice) => { setStoryNotice(notice ?? null); setPhase('menu'); }}
       />
     );
   }
