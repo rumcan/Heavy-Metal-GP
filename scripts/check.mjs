@@ -9,6 +9,8 @@ const commands = [
   ['--import', 'tsx', '--test', '--test-concurrency=3', '--test-reporter=tap', '--test-reporter-destination=stdout', '--test-reporter=tap', '--test-reporter-destination=tests/artifacts/latest-test-run.tap', 'tests/physics.test.ts', 'tests/economy.test.ts', 'tests/multiplayer.test.ts', 'tests/protocol.test.ts', 'tests/room.test.ts', 'tests/host.test.ts', 'tests/guest.test.ts', 'tests/lobby.test.ts', 'tests/session.test.ts', 'tests/matchmake.test.ts', 'tests/presence.test.ts', 'tests/lobby-ui.test.ts', 'tests/browser.test.ts',
     // Story mode (ST-01..ST-08): schema, engine and chapter modifiers. Pure node — they stub their own DOM.
     'tests/story-schema.test.ts', 'tests/story-engine.test.ts', 'tests/story-modifiers.test.ts',
+    // One pick on the home Story tab starts the chapter; every component calls its hooks on every render (the blank screen).
+    'tests/story-opening.test.ts', 'tests/hooks-order.test.ts',
     // Map builder (MB-01): the track definition format — recording, rebuild identity, validation.
     'tests/trackdef.test.ts', 'tests/course-generator.test.ts',
     // #99: the retired pieces (track switch lever, scoop, skipping pond) drop out of old saves and codes.
