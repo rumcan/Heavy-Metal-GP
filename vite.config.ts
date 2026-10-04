@@ -133,7 +133,9 @@ export default defineConfig({
   // (the sandbox live preview uses the dev server). Vite 7 rejects unknown Host
   // headers on both unless allowedHosts permits them — localhost is always
   // allowed, tunnelled/sandboxed hosts are not.
-  server: { host: true, allowedHosts: ['.e2b.app'] },
+  // warmup: transform the game's module graph as soon as the dev server starts, so the first page load after a
+  // restart does not sit for a minute while ~500 modules and ~350 images are prepared on demand.
+  server: { host: true, allowedHosts: ['.e2b.app'], warmup: { clientFiles: ['./src/main.tsx', './src/App.tsx'] } },
   preview: { host: true, allowedHosts: ['.e2b.app'] },
   plugins: [
             // rundot-import:vite-plugins:begin
