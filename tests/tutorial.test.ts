@@ -198,3 +198,28 @@ test('tutorial: the grid is the player plus exactly two slow rivals', () => {
   }
   assert.ok(Number.isInteger(TUTORIAL_SEED) && TUTORIAL_SEED > 0, 'the tutorial seed is fixed');
 });
+
+// ───────────── pacing: slow motion near a lesson's spot, a second chance, never a soft-lock ─────────────
+import { LESSON_ZONES, MAX_TRIES, SLOW_MO, letThrough, tutorialPace } from '../src/game/story/tutorial';
+
+test('pacing: normal speed early, slow motion near the spot, a rewind when missed, let through after MAX_TRIES', () => {
+  let s = newTutorial();
+  // steer lesson waiting
+  assert.equal(tutorialPace(s, { x: 100, y: 600 }, 0).timeScale, 1);
+  const zone = LESSON_ZONES.steer!;
+  const slow = tutorialPace(s, { x: zone.slowFrom + 10, y: 600 }, 0);
+  assert.equal(slow.timeScale, SLOW_MO);
+  assert.equal(slow.cue, 'now');
+  const miss = tutorialPace(s, { x: zone.deadline + 5, y: 600 }, 0);
+  assert.equal(miss.rewindTo, zone.retryFrom);
+  assert.equal(tutorialPace(s, { x: zone.deadline + 5, y: 600 }, MAX_TRIES - 1).giveUp, true);
+  s = letThrough(s);
+  assert.equal(s.index, 1, 'a lesson missed too often lets the learner through');
+});
+
+test('pacing: falling into the gap on the jump lesson is a miss', () => {
+  let s = newTutorial();
+  while (TUTORIAL_LESSONS[s.index].id !== 'jump') s = letThrough(s);
+  const fell = tutorialPace(s, { x: 1950, y: 900 }, 0);
+  assert.equal(fell.rewindTo, LESSON_ZONES.jump!.retryFrom);
+});

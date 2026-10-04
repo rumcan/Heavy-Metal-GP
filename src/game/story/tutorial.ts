@@ -225,3 +225,54 @@ export function tutorialRoster(driver: StoryDriver): MarbleInfo[] {
     ...slow.map((ai, i) => ({ id: i + 1, name: ai.name, color: AI_COLORS[i], stats: { ...ai.stats }, isPlayer: false, character: i })),
   ];
 }
+
+// ───────────────────────────── pacing: slow motion and second chances ─────────────────────────────
+
+/**
+ * Where each lesson gives the learner time. As the ball nears the spot a lesson is about (`slowFrom`), the race runs
+ * in slow motion until the action happens; ride past the last moment (`deadline`) without doing it, or fall into the
+ * gap, and the ball is put back at `retryFrom` for another go. After `MAX_TRIES` misses the lesson lets you through
+ * (the tutorial never soft-locks). Geometry follows `planTutorial()`: crate at 1300, gap 1900..2040, the shortcut
+ * ledge from 4080.
+ */
+export const LESSON_ZONES: Partial<Record<LessonId, { slowFrom: number; deadline: number; retryFrom: number }>> = {
+  steer: { slowFrom: 520, deadline: 840, retryFrom: 300 },
+  engine: { slowFrom: 1000, deadline: 1250, retryFrom: 850 },
+  skills: { slowFrom: 1120, deadline: 1260, retryFrom: 900 },
+  jump: { slowFrom: 1700, deadline: 1960, retryFrom: 1500 },
+  shortcut: { slowFrom: 3860, deadline: 4120, retryFrom: 3650 },
+};
+export const MAX_TRIES = 3;
+/** How slow slow motion is. */
+export const SLOW_MO = 0.3;
+/** Below the tutorial's start floor by this much = fell into the gap. */
+const FELL_BELOW = 600 + 160;
+
+export interface TutorialPace {
+  /** Multiplier on race time this frame (1 = normal). */
+  timeScale: number;
+  /** Put the ball back at this course x (then clear it). */
+  rewindTo: number | null;
+  /** Let the current lesson through: it was missed MAX_TRIES times. */
+  giveUp: boolean;
+  /** What the card says: 'now' while in slow motion, 'retry' just after a rewind. */
+  cue: 'now' | 'retry' | null;
+}
+
+/** Pure: what the race should do this frame for the lesson that is waiting, given how often it was missed. */
+export function tutorialPace(state: TutorialState, frame: { x: number; y: number }, tries: number): TutorialPace {
+  const none: TutorialPace = { timeScale: 1, rewindTo: null, giveUp: false, cue: null };
+  const lesson = currentLesson(state);
+  const zone = lesson ? LESSON_ZONES[lesson.id] : undefined;
+  if (!lesson || !zone || frame.x < lesson.enterAt) return none;
+  const missed = frame.x >= zone.deadline || (lesson.id === 'jump' && frame.x > 1880 && frame.y > FELL_BELOW);
+  if (missed) return tries + 1 >= MAX_TRIES ? { ...none, giveUp: true } : { ...none, rewindTo: zone.retryFrom, cue: 'retry' };
+  if (frame.x >= zone.slowFrom) return { ...none, timeScale: SLOW_MO, cue: 'now' };
+  return none;
+}
+
+/** Complete the waiting lesson without its action (it was missed too often). */
+export function letThrough(state: TutorialState): TutorialState {
+  if (state.done) return state;
+  return complete(state, state.index);
+}
