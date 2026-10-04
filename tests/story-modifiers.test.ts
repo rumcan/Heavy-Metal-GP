@@ -329,10 +329,12 @@ test('Story hooks: the whole grid still finishes the modified finale', async () 
   try {
     game.openGate();
     await simulate(game, 540000, true);
-    const stuck = game.marbles.filter((marble) => marble.finishedAt === null);
+    // a marble knocked out (DNF, health) is out of the race, not left on track
+    const stuck = game.marbles.filter((marble) => marble.finishedAt === null && !marble.dnf);
     assert.deepEqual(stuck.map((marble) => `${marble.info.name}@${Math.round(marble.body.position.y)}`), [],
       'the finale with every modifier on left marbles on track');
-    assert.equal(new Set(game.finishOrder.map((marble) => marble.info.id)).size, 10, 'finish entries are missing or duplicated');
+    assert.equal(new Set(game.finishOrder.map((marble) => marble.info.id)).size, game.finishOrder.length, 'finish entries are duplicated');
+    assert.equal(game.finishOrder.length + game.marbles.filter((marble) => marble.dnf && marble.finishedAt === null).length, 10, 'every marble finished or was knocked out');
     assert.equal(handle.counters.eventsFired.length, 2, 'both scripted finale events should have fired');
     assert.ok(handle.counters.sectors > 10, 'the winner should have reached the mine');
   } finally { game.destroy(); }

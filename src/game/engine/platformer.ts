@@ -185,6 +185,7 @@ export function laneStep(game: Game, m: Marble): void {
   loopStep(game, m);
   applyLaneMask(game, m);
   bridgeGround(game, m);
+  keepAboveFloor(game, m);
   const springs = game.track.platformer!.plan.springs;
   if (!springs?.length || game.time < (m.springAt ?? -Infinity) + 400) return;
   const lane = m.lane ?? LANE_MIDDLE;
@@ -200,6 +201,27 @@ export function laneStep(game: Game, m: Marble): void {
   }
 }
 
+/**
+ * Safety net: a ball must never be inside or just under its own lane's track (lanes sit at different heights, and a
+ * lane change in mid-air could slip it under the next stretch). If it is, it goes back on top, moving no faster
+ * downward than it was.
+ */
+export function keepAboveFloor(game: Game, m: Marble): void {
+  if (m.hold || (m.cannon && !m.cannon.fired) || (m.fx?.drillUntil ?? 0) > game.time) return;
+  if ((m.loopPhase ?? 0) === 1) return; // riding a loop ring
+  const p = m.body.position;
+  const plan = game.track.platformer!.plan;
+  const lane = m.lane ?? LANE_MIDDLE;
+  // rope bridges sag below the line between their anchors, and loops have their own rings: leave those alone
+  if (plan.bridges?.some((b) => b.lane === lane && p.x >= b.x0 - 20 && p.x <= b.x1 + 20)) return;
+  if (plan.loops?.some((l) => l.lane === lane && p.x >= l.x - l.r - 40 && p.x <= l.x + l.pitch + l.r + 40)) return;
+  const floor = floorAt(plan, lane as Lane, p.x);
+  if (floor === null || p.y <= floor - MARBLE_RADIUS + 6 || p.y > floor + 160) return;
+  Body.setPosition(m.body, { x: p.x, y: floor - MARBLE_RADIUS - 1 });
+  const v = Body.getVelocity(m.body);
+  if (v.y > 0) Body.setVelocity(m.body, { x: v.x, y: 0 });
+}
+
 /** Move a marble to another lane: a small hop, and the camera/skin dolly runs off `laneAt`. */
 export function switchLane(game: Game, m: Marble, to: Lane): void {
   if ((m.lane ?? LANE_MIDDLE) === to) return;
@@ -207,8 +229,11 @@ export function switchLane(game: Game, m: Marble, to: Lane): void {
   m.lane = to;
   m.laneAt = game.time;
   applyLaneMask(game, m);
-  // Lanes have their own hills: if the new lane's floor is above the ball, the ball goes on top of it.
-  const floor = floorAt(game.track.platformer!.plan, to, m.body.position.x);
+  // Lanes have their own hills: if the new lane's floor is above the ball, the ball goes on top of it. Over a chasm in
+  // the new lane, its next stretch just ahead counts (else the ball would slide in underneath it).
+  const plan = game.track.platformer!.plan;
+  let floor = floorAt(plan, to, m.body.position.x);
+  for (let ahead = 20; floor === null && ahead <= 300; ahead += 20) floor = floorAt(plan, to, m.body.position.x + ahead);
   if (floor !== null && m.body.position.y > floor - MARBLE_RADIUS - 2) Body.setPosition(m.body, { x: m.body.position.x, y: floor - MARBLE_RADIUS - 2 });
   const v = Body.getVelocity(m.body);
   Body.setVelocity(m.body, { x: v.x, y: Math.min(v.y, -4) });

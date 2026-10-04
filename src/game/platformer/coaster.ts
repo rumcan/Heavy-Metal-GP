@@ -79,7 +79,9 @@ function runsOf(plan: CoursePlan): Pt[][][] {
     let run: Pt[] = [];
     let last: Floor | null = null;
     for (const f of floors) {
-      if (!last || Math.abs(f.x0 - last.x1) > 0.5) {
+      // a new run after a chasm, and also at a STEP (the floor jumps up or down): joining across a step drew it as a
+      // long gentle slope, so the painted track sat far above or below where the ball actually rolls
+      if (!last || Math.abs(f.x0 - last.x1) > 0.5 || Math.abs(f.y0 - last.y1) > 1) {
         if (run.length) out.push(run);
         run = [{ x: f.x0, y: f.y0 }];
       }
