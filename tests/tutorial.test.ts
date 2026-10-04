@@ -1,225 +1,141 @@
-// P2-13 (#119) — the tutorial lesson state machine (src/game/story/tutorial.ts) and its
-// voice manifest. Covers: advance-on-action, NO advance without the action, zone gating,
-// the full lesson order, skip, replay, the training roster, and every spoken line.
+// P2-13, rebuilt casual-game style (src/game/story/tutorial.ts). The race freezes on each lesson's spot and only the
+// asked-for key goes through; between lessons the ball drives itself at a steady speed. Covered: the step order, the
+// freeze rules, input gating, skip, the voice script, the grid, and a full self-driving ride on the Training Grounds
+// where every lesson's action (pressed the moment the race freezes) actually clears its obstacle.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import Matter from 'matter-js';
 
 import {
-  TUTORIAL_LESSONS, TUTORIAL_SEED, TUTORIAL_SHORTCUT, TUTORIAL_VOICE_SET,
-  currentLesson, newTutorial, replayTutorial, skipTutorial, tutorialRoster, tutorialStep,
+  TUTORIAL_SEED, TUTORIAL_STEPS, TUTORIAL_VOICE_SET, CRUISE_SPEED,
+  allows, autopilot, currentStep, newTutorial, replayTutorial, skipTutorial, speedCap, tutorialFrame, tutorialInput, tutorialRoster,
 } from '../src/game/story/tutorial';
-import type { TutorialFrame, TutorialState } from '../src/game/story/tutorial';
-import { planOfficial, PLATFORMER_COURSES } from '../src/game/platformer/course';
+import type { TutorialState } from '../src/game/story/tutorial';
+import { Game } from '../src/game/engine';
+import { PHYSICS_STEP } from '../src/game/physics';
+import { TRACK_THEMES, emptyInventory } from '../src/game/types';
+import { buildPlatformerTrack } from '../src/game/platformer/build';
 import { subtitleText } from '../src/game/voice';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const MANIFEST = JSON.parse(readFileSync(path.join(ROOT, 'src/voice/manifests/tutorial.json'), 'utf8')) as
-  { id: string; speaker: string; text: string }[];
+const MANIFEST = JSON.parse(readFileSync(path.join(ROOT, 'src/voice/manifests/tutorial.json'), 'utf8')) as { id: string; speaker: string; text: string }[];
 const CAST = JSON.parse(readFileSync(path.join(ROOT, 'src/voice/cast.json'), 'utf8')) as Record<string, unknown>;
-
 const driver = { name: 'Sprocket', color: '#d63e2e', portrait: 3, stats: { weight: 5, speed: 5, bounce: 5 } };
+const frame = (x: number, more: Partial<{ vx: number; lane: number; gateOpen: boolean; finished: boolean }> = {}) => ({ x, vx: 0, lane: 1, gateOpen: true, finished: false, ...more });
 
-/** Drive the machine to the lesson with `id`, asserting every lesson before it completes. */
-function advanceTo(id: string): TutorialState {
-  let state = newTutorial();
-  const order = TUTORIAL_LESSONS.map((lesson) => lesson.id);
-  for (const next of order) {
-    if (next === id) return state;
-    state = tutorialStep(state, actionFor(next));
+test('steps in course order: fire, roll, engine, skill, crate, gap, lane, door, shortcut, finish', () => {
+  assert.deepEqual(TUTORIAL_STEPS.map((s) => s.id), ['fire', 'roll', 'engine', 'skill', 'crate', 'gap', 'lane', 'door', 'shortcut', 'finish']);
+  for (const s of TUTORIAL_STEPS) {
+    if (s.keys) assert.ok(s.prompt && s.keys.keyboard.length && s.keys.codes.length && s.keys.touch, `${s.id} shows its key`);
+    else assert.ok(s.expect === 'lane' || s.expect === 'finish', `${s.id} needs no key`);
   }
-  throw new Error(`no lesson called ${id}`);
-}
+});
 
-/** One frame that performs the action a lesson teaches, deep into its trigger zone. */
-function actionFor(id: string): TutorialFrame {
-  const enter = TUTORIAL_LESSONS.find((lesson) => lesson.id === id)!.enterAt;
-  const x = Math.max(enter + 40, 100);
-  switch (id) {
-    case 'steer': return { x, steerLeft: true, steerRight: true };
-    case 'engine': return { x, engineFired: true };
-    case 'skills': return { x, skillUsed: true };
-    case 'jump': return { x, jumped: true };
-    case 'shortcut': return { x, shortcutTaken: true };
-    default: return { x: 6000, finished: true };
+test('the race freezes on the spot, only the asked-for key goes through, and it unfreezes on it', () => {
+  let s = newTutorial();
+  assert.equal(autopilot(s), true);
+  s = tutorialFrame(s, frame(400, { gateOpen: false }));
+  assert.equal(s.frozen, false, 'nothing before the lights go out');
+  s = tutorialFrame(s, frame(400));
+  assert.equal(s.frozen, true, 'the cannon lesson freezes the moment the gate opens');
+  assert.equal(autopilot(s), false, 'frozen: nothing moves');
+  for (const wrong of ['right', 'left', 'engine', 'skill'] as const) {
+    assert.equal(allows(s, wrong), false, `${wrong} is refused`);
+    assert.equal(tutorialInput(s, wrong), s, `${wrong} changes nothing`);
   }
-}
+  assert.equal(allows(s, 'jump'), true);
+  s = tutorialInput(s, 'jump');
+  assert.equal(currentStep(s)?.id, 'roll');
+  assert.equal(s.frozen, false);
+  assert.equal(allows(s, 'right'), false, 'not frozen yet: the ball is driving itself');
+  s = tutorialFrame(s, frame(705));
+  assert.ok(s.frozen && allows(s, 'right'));
+});
 
-test('tutorial: six lessons in teaching order, each with a voice line and a key prompt', () => {
-  assert.deepEqual(TUTORIAL_LESSONS.map((lesson) => lesson.id), ['steer', 'engine', 'skills', 'jump', 'shortcut', 'finish']);
-  for (const lesson of TUTORIAL_LESSONS) {
-    assert.ok(lesson.line.startsWith(`${TUTORIAL_VOICE_SET}-`), `${lesson.id} speaks a line from the tutorial set`);
-    assert.ok(lesson.text.trim(), `${lesson.id} has caption text`);
-    if (lesson.id !== 'finish') {
-      assert.ok(lesson.keys, `${lesson.id} shows a key prompt`);
-      assert.ok(lesson.keys!.keyboard.length > 0, `${lesson.id} names keyboard keys`);
-      assert.ok(lesson.keys!.touch.trim(), `${lesson.id} names the touch control`);
+test('jump lessons freeze earlier at speed (the same number of steps before the obstacle)', () => {
+  let s = newTutorial();
+  while (currentStep(s)?.id !== 'crate') { s = tutorialFrame(s, frame(5000, { lane: 0 })); if (s.frozen) s = tutorialInput(s, currentStep(s)!.expect as 'jump'); }
+  const slow = tutorialFrame(s, frame(1240, { vx: 4 }));
+  const fast = tutorialFrame(s, frame(1120, { vx: 20 }));
+  assert.equal(slow.frozen, false);
+  assert.equal(fast.frozen, true, 'a fast ball is stopped further back');
+});
+
+test('no-key steps complete on their own: the back lane, and the chequered flag', () => {
+  let s: TutorialState = { index: TUTORIAL_STEPS.findIndex((x) => x.id === 'lane'), frozen: false, done: false, skipped: false };
+  assert.equal(tutorialFrame(s, frame(3000, { lane: 1 })).index, s.index);
+  s = tutorialFrame(s, frame(3000, { lane: 0 }));
+  assert.equal(currentStep(s)?.id, 'door');
+  s = { index: TUTORIAL_STEPS.length - 1, frozen: false, done: false, skipped: false };
+  s = tutorialFrame(s, frame(6000, { finished: true }));
+  assert.equal(s.done, true);
+});
+
+test('skip ends it at once; replay is a fresh ride', () => {
+  const skipped = skipTutorial(tutorialFrame(newTutorial(), frame(10)));
+  assert.ok(skipped.done && skipped.skipped && !skipped.frozen && !autopilot(skipped));
+  assert.deepEqual(replayTutorial(), newTutorial());
+});
+
+test('the self-driving ball cruises, with a taste of speed after the boosts', () => {
+  assert.equal(speedCap(1000, null), CRUISE_SPEED);
+  assert.ok(speedCap(1500, 1000) > CRUISE_SPEED);
+  assert.equal(speedCap(9000, 1000), CRUISE_SPEED);
+});
+
+test('a full ride on the Training Grounds: every action, pressed when the race freezes, clears its obstacle', () => {
+  const rival = { id: 1, name: 'Rival', color: '#0f0', stats: { weight: 9, speed: 2, bounce: 4 }, isPlayer: false, character: 1 };
+  const g = new Game(TUTORIAL_SEED, [{ id: 0, name: 'You', color: '#d63e2e', stats: { weight: 5, speed: 5, bounce: 5 }, isPlayer: true, character: 0 }, rival],
+    { track: buildPlatformerTrack(TUTORIAL_SEED, TRACK_THEMES.forest, 'training'), inventory: { ...emptyInventory(), rocket: 3 }, aiItems: false });
+  g.healthOn = false;
+  g.start();
+  const m = g.player;
+  let s = newTutorial();
+  let boostedAt: number | null = null, engineUntil = -1, onLedge = false, everBack = false;
+  const frozenAt: Record<string, number> = {};
+  for (let i = 0; i < 20000 && !s.done; i++) {
+    if (i === 300) g.openGate();
+    s = tutorialFrame(s, { x: m.body.position.x, vx: m.body.velocity.x, lane: m.lane ?? 1, gateOpen: g.gateOpen, finished: m.finishedAt !== null });
+    if (s.frozen) {
+      const step = currentStep(s)!;
+      frozenAt[step.id] = Math.round(m.body.position.x);
+      if (step.expect === 'jump') g.jumpPressed = true;
+      if (step.expect === 'engine') { engineUntil = g.time + 600; boostedAt = g.time; }
+      if (step.expect === 'skill') { g.useItem(m, 'rocket'); boostedAt = g.time; }
+      s = tutorialInput(s, step.expect as 'jump');
     }
+    g.nudge = autopilot(s) ? 1 : 0;
+    g.engineHeld = g.time < engineUntil;
+    g.step(PHYSICS_STEP);
+    if (autopilot(s)) { const v = m.body.velocity, cap = speedCap(g.time, boostedAt); if (v.x > cap) Matter.Body.setVelocity(m.body, { x: cap, y: v.y }); }
+    const p = m.body.position;
+    if (p.x > 4130 && p.x < 5000 && p.y < 640) onLedge = true;
+    if (m.lane === 0) everBack = true;
   }
-  assert.equal(TUTORIAL_LESSONS[TUTORIAL_LESSONS.length - 1].keys, null, 'the finish lesson waits for the race, not a key');
+  assert.equal(s.done, true, `the ride ends (stuck at ${currentStep(s)?.id})`);
+  assert.equal(m.recoveries, 0, 'no crate, gap or ledge was missed (no rescue)');
+  assert.ok(m.finishedAt !== null, 'the learner crossed the line');
+  assert.ok(everBack, 'the green arrows took the ball to the back lane');
+  assert.ok(onLedge, 'the shortcut jump landed on the ledge');
+  for (const id of ['fire', 'roll', 'engine', 'skill', 'crate', 'gap', 'door', 'shortcut']) assert.ok(frozenAt[id] !== undefined, `froze for ${id}`);
 });
 
-test('tutorial: the trigger zones line up with the Training Grounds course, in order', () => {
-  const course = PLATFORMER_COURSES.find((c) => c.id === 'training');
-  assert.ok(course?.tutorial, 'the tutorial races the Training Grounds');
-  const plan = planOfficial(course!);
-  for (const lesson of TUTORIAL_LESSONS) {
-    assert.ok(lesson.enterAt >= 0 && lesson.enterAt < plan.finishX, `${lesson.id} arms before the finish line`);
+test('voice script: a welcome plus one line per step, the caption is the step text, all in a cast voice', () => {
+  assert.ok(MANIFEST.some((l) => l.id === 'tutorial-welcome'));
+  for (const s of TUTORIAL_STEPS) {
+    const line = MANIFEST.find((l) => l.id === s.line);
+    assert.ok(line, `${s.id} has its line ${s.line}`);
+    assert.equal(subtitleText(line!.text), s.text);
   }
-  for (let i = 1; i < TUTORIAL_LESSONS.length; i++) {
-    assert.ok(TUTORIAL_LESSONS[i].enterAt > TUTORIAL_LESSONS[i - 1].enterAt, 'zones advance along the course');
-  }
-  assert.ok(TUTORIAL_SHORTCUT.x0 > TUTORIAL_LESSONS.find((l) => l.id === 'jump')!.enterAt, 'the shortcut sits after the gap');
-  assert.ok(TUTORIAL_SHORTCUT.x1 < plan.finishX, 'the shortcut ends before the finish');
+  for (const l of MANIFEST) { assert.ok(CAST[l.speaker]); assert.ok(l.id.startsWith(`${TUTORIAL_VOICE_SET}-`)); }
 });
 
-test('tutorial: nothing advances without the action', () => {
-  let state = newTutorial();
-  for (let i = 0; i < 40; i++) state = tutorialStep(state, { x: 300 + i * 100 });
-  assert.equal(currentLesson(state)?.id, 'steer', 'coasting through the course teaches nothing');
-  assert.equal(state.completed.length, 0);
-  assert.equal(state.done, false);
-});
-
-test('tutorial: steering wants BOTH directions before it counts', () => {
-  let state = newTutorial();
-  state = tutorialStep(state, { x: 600, steerLeft: true });
-  assert.equal(currentLesson(state)?.id, 'steer', 'left alone is not steering');
-  state = tutorialStep(state, { x: 620 });
-  assert.equal(currentLesson(state)?.id, 'steer', 'the progress survives a quiet frame');
-  state = tutorialStep(state, { x: 640, steerRight: true });
-  assert.equal(currentLesson(state)?.id, 'engine');
-  assert.deepEqual([...state.completed], ['steer']);
-});
-
-test('tutorial: each lesson advances exactly when its action happens', () => {
-  const cases: [string, TutorialFrame][] = [
-    ['engine', { x: 900, engineFired: true }],
-    ['skills', { x: 1050, skillUsed: true }],
-    ['jump', { x: 1600, jumped: true }],
-  ];
-  for (const [id, frame] of cases) {
-    const before = advanceTo(id);
-    assert.equal(tutorialStep(before, { x: frame.x }), before, `${id} ignores a frame without the action`);
-    const after = tutorialStep(before, frame);
-    assert.equal(currentLesson(after)?.id, TUTORIAL_LESSONS[TUTORIAL_LESSONS.findIndex((l) => l.id === id) + 1].id, `${id} completes on its action`);
-    assert.equal(after.completed.at(-1), id);
-  }
-});
-
-test('tutorial: actions before a lesson arms are ignored (zone gating)', () => {
-  const state = advanceTo('engine'); // arms at x = 850
-  const early = tutorialStep(state, { x: 500, engineFired: true, skillUsed: true, jumped: true });
-  assert.equal(early, state, 'signals ahead of the zone do not count');
-  const late = tutorialStep(state, { x: 950, engineFired: true });
-  assert.equal(currentLesson(late)?.id, 'skills');
-});
-
-test('tutorial: the shortcut passes when taken — or when the long way rolls past it', () => {
-  const viaLedge = tutorialStep(advanceTo('shortcut'), { x: 4300, shortcutTaken: true });
-  assert.equal(currentLesson(viaLedge)?.id, 'finish', 'jumping into the tunnel completes the lesson');
-
-  const longWay = tutorialStep(advanceTo('shortcut'), { x: TUTORIAL_SHORTCUT.x1 + 20 });
-  assert.equal(currentLesson(longWay)?.id, 'finish', 'the long way round must not soft-lock the tutorial');
-
-  const waiting = tutorialStep(advanceTo('shortcut'), { x: TUTORIAL_SHORTCUT.x0 + 10 });
-  assert.equal(currentLesson(waiting)?.id, 'shortcut', 'inside the section without the ledge, the lesson keeps waiting');
-});
-
-test('tutorial: the finish lesson waits for the chequered flag, then the ride is done', () => {
-  let state = advanceTo('finish');
-  state = tutorialStep(state, { x: 5600 });
-  assert.equal(currentLesson(state)?.id, 'finish');
-  assert.equal(state.done, false);
-  state = tutorialStep(state, { x: 6000, finished: true });
-  assert.equal(state.done, true);
-  assert.equal(currentLesson(state), null);
-  assert.deepEqual([...state.completed], TUTORIAL_LESSONS.map((lesson) => lesson.id));
-});
-
-test('tutorial: a finished machine ignores every later frame', () => {
-  let state = advanceTo('finish');
-  state = tutorialStep(state, { x: 6000, finished: true });
-  assert.equal(tutorialStep(state, { x: 200, steerLeft: true, jumped: true, skillUsed: true }), state);
-});
-
-test('tutorial: skip completes every lesson at once and is final', () => {
-  const skipped = skipTutorial(newTutorial());
-  assert.equal(skipped.done, true);
-  assert.equal(skipped.skipped, true);
-  assert.equal(currentLesson(skipped), null);
-  assert.deepEqual([...skipped.completed], TUTORIAL_LESSONS.map((lesson) => lesson.id));
-  assert.equal(skipTutorial(skipped), skipped, 'skipping twice changes nothing');
-  assert.equal(tutorialStep(skipped, { x: 700, steerLeft: true }), skipped, 'a skipped ride never starts again');
-});
-
-test('tutorial: replay hands back a brand-new machine', () => {
-  const finished = skipTutorial(newTutorial());
-  const replay = replayTutorial();
-  assert.deepEqual(replay, newTutorial());
-  assert.notDeepEqual(replay, finished);
-  assert.equal(currentLesson(replay)?.id, 'steer');
-});
-
-test('tutorial manifest: every line has an id, a text and a cast speaker', () => {
-  assert.ok(Array.isArray(MANIFEST) && MANIFEST.length >= 7, 'welcome + one line per lesson');
-  const seen = new Set<string>();
-  for (const line of MANIFEST) {
-    assert.match(line.id, /^[a-z0-9-]+$/, `${line.id ?? 'line'} id is kebab-case`);
-    assert.ok(!seen.has(line.id), `${line.id} appears once`);
-    seen.add(line.id);
-    assert.ok(typeof line.speaker === 'string' && CAST[line.speaker], `${line.id} speaks with a cast voice`);
-    assert.ok(typeof line.text === 'string' && line.text.trim(), `${line.id} says something`);
-    assert.ok(line.text.length <= 400, `${line.id} stays one speakable breath`);
-    assert.ok(line.id.startsWith(`${TUTORIAL_VOICE_SET}-`), `${line.id} belongs to the tutorial set`);
-  }
-});
-
-test('tutorial manifest: every lesson speaks its own line, and the captions match', () => {
-  for (const lesson of TUTORIAL_LESSONS) {
-    const line = MANIFEST.find((entry) => entry.id === lesson.line);
-    assert.ok(line, `lesson ${lesson.id} has a voice line (${lesson.line})`);
-    assert.equal(subtitleText(line!.text), lesson.text, `the ${lesson.id} caption is what the narrator says`);
-  }
-  assert.ok(MANIFEST.some((entry) => entry.id === 'tutorial-welcome'), 'the ride opens with a welcome line');
-});
-
-test('tutorial: the grid is the player plus exactly two slow rivals', () => {
+test('the grid is the player plus exactly two slow rivals', () => {
   const roster = tutorialRoster(driver);
-  assert.equal(roster.length, 3, 'a learner races two rivals, not ten');
+  assert.equal(roster.length, 3);
   assert.equal(roster[0].isPlayer, true);
-  assert.deepEqual(roster.map((m) => m.id), [0, 1, 2], 'grid ids stay unique and in order');
-  for (const rival of roster.slice(1)) {
-    assert.equal(rival.isPlayer, false);
-    assert.equal(rival.stats.weight + rival.stats.speed + rival.stats.bounce, 15, 'AI stats stay on budget');
-    assert.ok(rival.stats.speed <= 3, `${rival.name} is slow enough to learn behind`);
-  }
-  assert.ok(Number.isInteger(TUTORIAL_SEED) && TUTORIAL_SEED > 0, 'the tutorial seed is fixed');
-});
-
-// ───────────── pacing: slow motion near a lesson's spot, a second chance, never a soft-lock ─────────────
-import { LESSON_ZONES, MAX_TRIES, SLOW_MO, letThrough, tutorialPace } from '../src/game/story/tutorial';
-
-test('pacing: normal speed early, slow motion near the spot, a rewind when missed, let through after MAX_TRIES', () => {
-  let s = newTutorial();
-  // steer lesson waiting
-  assert.equal(tutorialPace(s, { x: 100, y: 600 }, 0).timeScale, 1);
-  const zone = LESSON_ZONES.steer!;
-  const slow = tutorialPace(s, { x: zone.slowFrom + 10, y: 600 }, 0);
-  assert.equal(slow.timeScale, SLOW_MO);
-  assert.equal(slow.cue, 'now');
-  const miss = tutorialPace(s, { x: zone.deadline + 5, y: 600 }, 0);
-  assert.equal(miss.rewindTo, zone.retryFrom);
-  assert.equal(tutorialPace(s, { x: zone.deadline + 5, y: 600 }, MAX_TRIES - 1).giveUp, true);
-  s = letThrough(s);
-  assert.equal(s.index, 1, 'a lesson missed too often lets the learner through');
-});
-
-test('pacing: falling into the gap on the jump lesson is a miss', () => {
-  let s = newTutorial();
-  while (TUTORIAL_LESSONS[s.index].id !== 'jump') s = letThrough(s);
-  const fell = tutorialPace(s, { x: 1950, y: 900 }, 0);
-  assert.equal(fell.rewindTo, LESSON_ZONES.jump!.retryFrom);
+  for (const rival of roster.slice(1)) assert.ok(rival.stats.speed <= 3);
 });

@@ -2,36 +2,56 @@
   {
     "id": "tutorial-welcome",
     "speaker": "sprocket",
-    "text": "[excited] Welcome to the Training Grounds! Six quick lessons between you and your first race, and nobody can hurt you here. Let's roll!"
+    "text": "[excited] Welcome to the Training Grounds! A few quick lessons and you are ready to race. I will tell you exactly what to press."
   },
   {
-    "id": "tutorial-steer",
+    "id": "tutorial-fire",
     "speaker": "sprocket",
-    "text": "Press left and right to steer."
+    "text": "[excited] You start in a cannon. Press Space to fire it!"
+  },
+  {
+    "id": "tutorial-roll",
+    "speaker": "sprocket",
+    "text": "Press right to roll forward."
   },
   {
     "id": "tutorial-engine",
     "speaker": "sprocket",
-    "text": "Hold down to fire your Magic Engine. Watch the heat bar."
+    "text": "Hold down to fire your Magic Engine for a burst of speed. Watch the heat bar!"
   },
   {
     "id": "tutorial-skills",
     "speaker": "sprocket",
-    "text": "Your skills live on Q W E R and A S D F."
+    "text": "Press Q to use your Speed Boost. Your skills live on Q W E R and A S D F."
+  },
+  {
+    "id": "tutorial-crate",
+    "speaker": "sprocket",
+    "text": "[excited] A crate! Press Space to jump over it."
   },
   {
     "id": "tutorial-jump",
     "speaker": "sprocket",
-    "text": "Press up or Space to jump the gap."
+    "text": "[excited] Mind the gap! Press Space to jump it."
+  },
+  {
+    "id": "tutorial-lane",
+    "speaker": "sprocket",
+    "text": "See the green arrows? Roll through them and you switch to the back lane."
+  },
+  {
+    "id": "tutorial-door",
+    "speaker": "sprocket",
+    "text": "A door back to the middle lane. Press up to go through it."
   },
   {
     "id": "tutorial-shortcut",
     "speaker": "sprocket",
-    "text": "See that tunnel in the cliff? Jump into it to skip a whole section."
+    "text": "[excited] A shortcut ledge! Jump onto it to skip the long way round."
   },
   {
     "id": "tutorial-finish",
     "speaker": "sprocket",
-    "text": "[laughs] That is it. Now let us go racing."
+    "text": "[laughs] That is it. Roll to the finish and let us go racing!"
   }
 ]

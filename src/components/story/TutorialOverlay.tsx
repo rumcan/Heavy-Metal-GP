@@ -1,255 +1,190 @@
-// P2-13 (#119) — the tutorial overlay.
-//
-// Mounted OVER a RaceScreen (by `TutorialRace`), fed by a `TutorialBridge` the race screen
-// calls into. It owns the lesson state machine (src/game/story/tutorial.ts), speaks each
-// lesson through the voice player with captions, shows the big key prompt (keyboard keys
-// on desktop, the on-screen button highlighted on touch), and reports when the ride is
-// done or skipped. Everything renders through a portal so the race HUD underneath is
-// untouched, and pointer events pass through except on the card itself.
+// P2-13, rebuilt casual-game style. The race drives the ball itself between lessons; at each lesson's spot it freezes,
+// the screen dims and one big key (or the on-screen button on a phone) says exactly what to press. Only that key does
+// anything. Pressing it lights the key up and the race carries on with the action at exactly the right place.
+// The rules live in src/game/story/tutorial.ts; this file is the screen and the wiring to the race (the bridge).
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { SkipForward } from 'lucide-react';
-import VoiceSubtitles from '../VoiceSubtitles';
-import { playVoice, preloadVoice, stopVoice } from '../../game/voice';
 import {
-  TUTORIAL_LESSONS, TUTORIAL_SHORTCUT, TUTORIAL_VOICE_SET,
-  currentLesson, newTutorial, skipTutorial, tutorialStep, tutorialPace, letThrough,
+  TUTORIAL_STEPS, TUTORIAL_VOICE_SET, allows, autopilot, currentStep, newTutorial, skipTutorial, speedCap, tutorialFrame, tutorialInput,
 } from '../../game/story/tutorial';
-import type { TutorialState } from '../../game/story/tutorial';
-import type { ItemType } from '../../game/types';
+import type { TutorialInput, TutorialState } from '../../game/story/tutorial';
+import { playVoice, preloadVoice, stopVoice } from '../../game/voice';
+import VoiceSubtitles from '../VoiceSubtitles';
 
-/** One snapshot of the race, pushed into the overlay on the HUD tick. */
-export interface TutorialFrameData {
-  x: number;
-  y: number;
-  /** Magic Engine heat 0..1 — a climbing heat bar is how the engine lesson is detected. */
-  heat: number;
-  gateOpen: boolean;
-  finished: boolean;
-  paused: boolean;
-}
+/** What the race tells the tutorial each physics step. */
+export interface TutorialStepFrame { x: number; vx: number; lane: number; gateOpen: boolean; finished: boolean; time: number }
 
-/**
- * The hook the RaceScreen gets for a tutorial race: it reports input and frames, the
- * overlay does everything else. The overlay assigns the callbacks onto this object.
- */
+/** The one object the race and the tutorial share. The race reads the fields; the overlay assigns the functions. */
 export interface TutorialBridge {
-  onFrame: (frame: TutorialFrameData) => void;
-  onSteer: (dir: -1 | 1) => void;
-  onJump: () => void;
-  onEngine: (held: boolean) => void;
-  onSkill: (item: ItemType) => void;
-  /** Written by the overlay every frame, read by the race: slow motion and "put the ball back" (P2-13 pacing). */
-  pace?: { timeScale: number; rewindTo: number | null };
+  /** Each physics step (may freeze the race on a lesson's spot). */
+  step: (f: TutorialStepFrame) => void;
+  /** Once a frame: the pause dialog, and the chequered flag. */
+  onFrame: (f: { paused: boolean; finished: boolean }) => void;
+  /** May this input reach the race right now? */
+  allow: (input: TutorialInput) => boolean;
+  /** The race acted on an allowed input. */
+  press: (input: TutorialInput, time: number) => void;
+  /** The race is frozen on a lesson (no physics until the key is pressed). */
+  frozen: boolean;
+  /** The ball drives itself (full right) between lessons. */
+  autopilot: boolean;
+  /** The self-driving ball's top speed at race time `t`. */
+  cap: (t: number) => number;
 }
 
-/** Heat rise per frame that counts as "the Magic Engine fired" (heat climbs 1/3000 per ms). */
-const ENGINE_FIRED_DELTA = 0.004;
-
-/** Touch controls the overlay highlights, by lesson id (aria-labels RaceScreen already uses). */
-const TOUCH_TARGETS: Partial<Record<string, string[]>> = {
-  steer: ['[aria-label="Nudge left"]', '[aria-label="Nudge right"]'],
-  engine: ['[aria-label="Magic Engine (hold)"]'],
-  jump: ['[aria-label="Jump"]'],
-  shortcut: ['[aria-label="Jump"]'],
-};
+export function newBridge(): TutorialBridge {
+  return { step: () => undefined, onFrame: () => undefined, allow: () => true, press: () => undefined, frozen: false, autopilot: false, cap: () => Infinity };
+}
 
 const styles = `
-.tutorial-layer { position: fixed; inset: 0; z-index: 60; pointer-events: none; display: flex; flex-direction: column; align-items: center; }
-.tutorial-card { pointer-events: auto; margin-top: 64px; max-width: min(560px, calc(100vw - 24px)); background: rgba(10, 15, 21, 0.92); border: 1px solid rgba(125, 211, 252, 0.35); border-radius: 14px; padding: 12px 18px 14px; box-shadow: 0 10px 34px rgba(0,0,0,0.45); text-align: center; }
-.tutorial-eyebrow { display: block; font-size: 11px; letter-spacing: 0.14em; color: #7dd3fc; font-weight: 700; margin-bottom: 4px; }
-.tutorial-card p { margin: 2px 0 10px; font-size: 15px; line-height: 1.35; color: #e8eef4; }
-.tutorial-keys { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
-.tutorial-keys kbd { font-family: inherit; font-size: 15px; font-weight: 800; min-width: 34px; padding: 7px 10px; border-radius: 8px; background: #16222e; border: 1px solid #3d5568; border-bottom-width: 3px; color: #f8fafc; }
-.tutorial-touch { font-size: 14px; color: #bae6fd; font-weight: 600; }
-.tutorial-card .tutorial-skip { margin-top: 10px; }
-.tutorial-cue { display: block; margin-top: 8px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; font-size: 13px; }
-.tutorial-cue.is-now { color: #fde047; animation: tutorial-pulse .6s ease-in-out infinite alternate; }
-.tutorial-cue.is-retry { color: #fca5a5; }
-@keyframes tutorial-pulse { from { opacity: .55; } to { opacity: 1; } }
-.tutorial-glow { outline: 3px solid #7dd3fc !important; outline-offset: 3px; animation: tutorial-pulse 1.1s ease-in-out infinite; }
-@keyframes tutorial-pulse { 0%, 100% { outline-color: rgba(125, 211, 252, 0.95); } 50% { outline-color: rgba(125, 211, 252, 0.35); } }
-@media (max-width: 700px) { .tutorial-card { margin-top: 52px; padding: 10px 14px; } .tutorial-card p { font-size: 13.5px; } }
+.tutorial-layer { position: fixed; inset: 0; z-index: 70; pointer-events: none; font-family: var(--sans, system-ui); }
+.tutorial-scrim { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 55%, rgba(4,8,14,0.25), rgba(4,8,14,0.72)); animation: tut-in .18s ease-out; }
+.tutorial-prompt { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 18px;
+  padding: 22px 28px 18px; max-width: min(560px, 92vw); text-align: center; color: #fff; pointer-events: none; animation: tut-pop .22s cubic-bezier(.2,1.4,.4,1); }
+.tutorial-step { font: 700 12px var(--mono, monospace); letter-spacing: 2px; color: #fde68a; text-transform: uppercase; }
+.tutorial-text { margin: 0; font: 600 clamp(17px, 2.4vw, 22px)/1.35 var(--sans, system-ui); text-shadow: 0 2px 8px #000; }
+.tutorial-keys { display: flex; gap: 14px; align-items: center; justify-content: center; flex-wrap: wrap; }
+.tutorial-key { min-width: 86px; height: 86px; padding: 0 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: 16px;
+  background: linear-gradient(180deg, #fff, #d6dde6); color: #111827; font: 800 32px var(--display, Impact, sans-serif); letter-spacing: 1px;
+  box-shadow: 0 8px 0 #7d8896, 0 12px 24px rgba(0,0,0,.5); animation: tut-bob 1.1s ease-in-out infinite; transition: transform .08s, box-shadow .08s, background .12s; }
+.tutorial-key.is-pressed { transform: translateY(7px) scale(.96); box-shadow: 0 1px 0 #15803d, 0 4px 12px rgba(0,0,0,.4); background: linear-gradient(180deg, #86efac, #22c55e); color: #052e16; animation: none; }
+.tutorial-or { font: 700 13px var(--mono, monospace); color: #cbd5e1; }
+.tutorial-call { font: 800 clamp(20px, 3vw, 28px) var(--display, Impact, sans-serif); letter-spacing: 1px; text-transform: uppercase; color: #fde047; text-shadow: 0 2px 10px #000; }
+.tutorial-banner { position: absolute; left: 50%; top: 84px; transform: translateX(-50%); max-width: min(560px, 92vw); padding: 10px 18px; border-radius: 10px;
+  background: rgba(10,16,24,.88); border: 1px solid #2a3a52; color: #fff; font: 600 15px/1.35 var(--sans, system-ui); text-align: center; animation: tut-in .2s; }
+.tutorial-skip { position: absolute; right: 16px; bottom: 16px; pointer-events: auto; }
+.tutorial-skip button { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 8px; border: 1px solid #334155; background: rgba(10,16,24,.85); color: #cbd5e1; font: 700 12px var(--mono, monospace); letter-spacing: 1px; text-transform: uppercase; cursor: pointer; }
+.tutorial-glow { position: relative; z-index: 71; box-shadow: 0 0 0 4px #fde047, 0 0 26px 8px rgba(253,224,71,.8) !important; animation: tut-glow .8s ease-in-out infinite alternate; }
+@keyframes tut-in { from { opacity: 0 } to { opacity: 1 } }
+@keyframes tut-pop { from { transform: translate(-50%, -46%) scale(.9); opacity: 0 } to { transform: translate(-50%, -50%) scale(1); opacity: 1 } }
+@keyframes tut-bob { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-5px) } }
+@keyframes tut-glow { from { box-shadow: 0 0 0 3px #fde047, 0 0 14px 4px rgba(253,224,71,.6) } to { box-shadow: 0 0 0 5px #fde047, 0 0 30px 10px rgba(253,224,71,.95) } }
+@media (max-height: 520px) { .tutorial-key { min-width: 64px; height: 64px; font-size: 24px; } .tutorial-prompt { gap: 10px; } .tutorial-banner { top: 56px; } }
 `;
 
 interface Props {
-  /** The bridge object handed to the RaceScreen; the overlay assigns its callbacks here. */
   bridge: TutorialBridge;
-  /** Every lesson completed — the finish line dropped and the last line was spoken. */
+  /** Every step done and the last line spoken. */
   onDone: () => void;
-  /** The player skipped — the parent decides what "straight to Chapter 1" means. */
+  /** The player skipped (a real click on Skip). */
   onSkip: () => void;
 }
 
 export default function TutorialOverlay({ bridge, onDone, onSkip }: Props) {
   const [machine, setMachine] = useState<TutorialState>(newTutorial);
-  const [started, setStarted] = useState(false);
   const machineRef = useRef(machine);
-  machineRef.current = machine;
-  const startedRef = useRef(false);
-  const pausedRef = useRef(false);
-  /** Input flags collected since the last frame snapshot (one lesson signal per action). */
-  const pending = useRef({ steerLeft: false, steerRight: false, jumped: false, skillUsed: false });
-  const lastHeat = useRef(0);
-  /** The welcome line has been spoken once the gate opens. */
-  const welcomed = useRef(false);
-  /** Index of the lesson whose voice line already started (so a line is never played twice). */
-  const spokenIndex = useRef(-1);
-  /** The voice line currently talking — the finish lesson waits for it before handing off. */
+  const [pressed, setPressed] = useState<string | null>(null);
+  const boostedAt = useRef<number | null>(null);
+  const spoken = useRef(-1);
   const linePromise = useRef<Promise<void> | null>(null);
   const doneNotified = useRef(false);
-  /** Misses of the lesson that is waiting (reset when a lesson completes). */
-  const tries = useRef(0);
-  const [cue, setCue] = useState<'now' | 'retry' | null>(null);
-  const cueRef = useRef<'now' | 'retry' | null>(null);
-  const retryUntil = useRef(0);
   const callbacks = useRef({ onDone, onSkip });
   callbacks.current = { onDone, onSkip };
+  const isTouch = useMemo(() => typeof matchMedia !== 'undefined' && (matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window), []);
 
-  const isTouch = useMemo(
-    () => typeof matchMedia !== 'undefined' && (matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window),
-    [],
-  );
-
-  const speakLesson = (index: number) => {
-    const lesson = TUTORIAL_LESSONS[index];
-    if (!lesson) return;
-    spokenIndex.current = index;
-    linePromise.current = playVoice(TUTORIAL_VOICE_SET, lesson.line);
-    const next = TUTORIAL_LESSONS[index + 1];
-    if (next) preloadVoice(TUTORIAL_VOICE_SET, next.line);
+  const commit = (next: TutorialState) => {
+    if (next === machineRef.current) return;
+    machineRef.current = next;
+    bridge.frozen = next.frozen;
+    bridge.autopilot = autopilot(next);
+    setMachine(next);
   };
 
-  // Wire the bridge: input callbacks set one-frame flags; the frame tick feeds the machine.
+  // The bridge: the race calls these synchronously, so a freeze lands on the exact physics step.
   useMemo(() => {
-    bridge.onSteer = (dir) => { if (dir < 0) pending.current.steerLeft = true; else pending.current.steerRight = true; };
-    bridge.onJump = () => { pending.current.jumped = true; };
-    bridge.onSkill = () => { pending.current.skillUsed = true; };
-    bridge.onEngine = () => { /* the engine lesson reads the heat bar in the frame */ };
-    bridge.onFrame = (frame) => {
-      if (!frame.gateOpen) return;             // lights still counting: no lessons yet
-      if (!startedRef.current) { startedRef.current = true; setStarted(true); }
-      if (frame.paused) {
-        // The pause dialog owns the screen: cut the line, and say it again on the way back.
-        if (!pausedRef.current) { pausedRef.current = true; stopVoice(); }
-        return;
-      }
-      if (pausedRef.current) {
-        pausedRef.current = false;
-        if (!doneNotified.current) speakLesson(machineRef.current.index);
-      }
-      if (doneNotified.current) return;
-      const p = pending.current;
-      const engineFired = frame.heat > lastHeat.current + ENGINE_FIRED_DELTA;
-      const shortcutTaken = frame.x >= TUTORIAL_SHORTCUT.x0 && frame.x <= TUTORIAL_SHORTCUT.x1 && frame.y <= TUTORIAL_SHORTCUT.aboveY;
-      const next = tutorialStep(machineRef.current, {
-        x: frame.x,
-        steerLeft: p.steerLeft, steerRight: p.steerRight,
-        engineFired, skillUsed: p.skillUsed, jumped: p.jumped,
-        shortcutTaken, finished: frame.finished,
-      });
-      p.steerLeft = p.steerRight = p.jumped = p.skillUsed = false;
-      lastHeat.current = frame.heat;
-      // Pacing: slow motion near the lesson's spot, a second chance if it is missed.
-      let paced = next;
-      if (next.index !== machineRef.current.index) tries.current = 0;
-      const pace = tutorialPace(paced, { x: frame.x, y: frame.y }, tries.current);
-      if (pace.giveUp) { paced = letThrough(paced); tries.current = 0; }
-      if (pace.rewindTo !== null) { tries.current++; retryUntil.current = performance.now() + 1800; }
-      bridge.pace = { timeScale: pace.timeScale, rewindTo: pace.rewindTo };
-      const shown = performance.now() < retryUntil.current ? 'retry' : pace.cue;
-      if (shown !== cueRef.current) { cueRef.current = shown; setCue(shown); }
-      if (paced !== next) {
-        machineRef.current = paced;
-        setMachine(paced);
-        return;
-      }
-      if (next !== machineRef.current) {
-        machineRef.current = next;
-        setMachine(next);
-        if (next.done && !next.skipped) {
-          // The finish lesson just completed: hand off once its line has finished talking.
-          doneNotified.current = true;
-          const line = linePromise.current ?? Promise.resolve();
-          void line.then(() => callbacks.current.onDone());
-        }
+    bridge.frozen = false;
+    bridge.autopilot = true;
+    bridge.cap = (t) => speedCap(t, boostedAt.current);
+    bridge.allow = (input) => allows(machineRef.current, input);
+    bridge.press = (input, time) => {
+      if (input === 'engine' || input === 'skill') boostedAt.current = time;
+      commit(tutorialInput(machineRef.current, input));
+    };
+    bridge.step = (f) => commit(tutorialFrame(machineRef.current, f));
+    bridge.onFrame = (f) => {
+      if (f.paused) stopVoice();
+      if (machineRef.current.done && !doneNotified.current && !machineRef.current.skipped) {
+        doneNotified.current = true;
+        void (linePromise.current ?? Promise.resolve()).then(() => callbacks.current.onDone());
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bridge]);
 
-  // The voice track: a welcome line the tick the gate opens, then one line per lesson.
-  // Advancing mid-line interrupts the old line — the lesson waits for the ACTION, not the audio.
+  // Speak each step once: the moment it freezes, or when a no-key step comes up.
+  const step = currentStep(machine);
   useEffect(() => {
-    if (!started || machine.skipped) return;
-    if (!welcomed.current) {
-      welcomed.current = true;
-      const welcome = playVoice(TUTORIAL_VOICE_SET, 'tutorial-welcome');
-      linePromise.current = welcome;
-      preloadVoice(TUTORIAL_VOICE_SET, TUTORIAL_LESSONS[0].line);
-      // Once the welcome is done (or cut short by an early advance), say whichever lesson
-      // is current — unless an advance already started that line itself.
-      void welcome.then(() => {
-        if (pausedRef.current || doneNotified.current || machineRef.current.skipped) return;
-        if (spokenIndex.current !== machineRef.current.index) speakLesson(machineRef.current.index);
-      });
-      return;
-    }
-    if (spokenIndex.current !== machine.index) speakLesson(machine.index);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [started, machine]);
-
-  // On touch, pulse the on-screen control the current lesson is teaching.
+    if (!step || machine.skipped) return;
+    const speakNow = machine.frozen || step.keys === null;
+    if (!speakNow || spoken.current === machine.index) return;
+    spoken.current = machine.index;
+    linePromise.current = playVoice(TUTORIAL_VOICE_SET, step.line);
+    const next = TUTORIAL_STEPS[machine.index + 1];
+    if (next) preloadVoice(TUTORIAL_VOICE_SET, next.line);
+  }, [machine, step]);
+  // a welcome while the lights count
   useEffect(() => {
-    if (!isTouch) return;
-    const lesson = currentLesson(machine);
-    const selectors = lesson ? TOUCH_TARGETS[lesson.id] : undefined;
-    if (!selectors) return;
-    const nodes: Element[] = [];
-    const timer = window.setTimeout(() => {
-      for (const selector of selectors) {
-        for (const node of Array.from(document.querySelectorAll(selector))) {
-          node.classList.add('tutorial-glow');
-          nodes.push(node);
-        }
-      }
-    }, 350); // wait for the race UI to settle so the buttons exist
-    return () => {
-      window.clearTimeout(timer);
-      for (const node of nodes) node.classList.remove('tutorial-glow');
-    };
-  }, [machine, isTouch]);
+    const id = window.setTimeout(() => { if (spoken.current < 0) linePromise.current = playVoice(TUTORIAL_VOICE_SET, 'tutorial-welcome'); }, 400);
+    preloadVoice(TUTORIAL_VOICE_SET, TUTORIAL_STEPS[0].line);
+    return () => window.clearTimeout(id);
+  }, []);
 
-  // Leaving the race cuts the line: captions and audio must never outlive the tutorial.
+  // The key lights up the moment it goes down (the race acts on it through the bridge).
+  useEffect(() => {
+    if (!machine.frozen || !step?.keys) return;
+    const codes = step.keys.codes;
+    const down = (e: KeyboardEvent) => { if (codes.includes(e.code)) setPressed(e.code); };
+    window.addEventListener('keydown', down, true);
+    return () => window.removeEventListener('keydown', down, true);
+  }, [machine.frozen, step]);
+  useEffect(() => { if (!machine.frozen) { const id = window.setTimeout(() => setPressed(null), 250); return () => window.clearTimeout(id); } }, [machine.frozen]);
+
+  // On a phone, the real on-screen button glows while its lesson waits.
+  useEffect(() => {
+    if (!machine.frozen || !step?.keys) return;
+    const nodes = Array.from(document.querySelectorAll(step.keys.touchSelector)).slice(0, step.keys.touchSelector === '.loadout-slot' ? 1 : 4);
+    nodes.forEach((n) => n.classList.add('tutorial-glow'));
+    return () => nodes.forEach((n) => n.classList.remove('tutorial-glow'));
+  }, [machine.frozen, step]);
+
   useEffect(() => () => stopVoice(), []);
 
-  const lesson = currentLesson(machine);
   const skip = () => {
     stopVoice();
-    machineRef.current = skipTutorial(machineRef.current);
-    setMachine(machineRef.current);
+    commit(skipTutorial(machineRef.current));
+    bridge.frozen = false;
+    bridge.autopilot = false;
     callbacks.current.onSkip();
   };
 
-  if (typeof document === 'undefined') return null;
+  if (typeof document === 'undefined' || machine.skipped) return null;
+  const keyLabel = (k: string, i: number) => {
+    const code = step?.keys?.codes[i];
+    const lit = pressed !== null && (code === pressed || (step?.keys?.codes.includes(pressed) && i === 0));
+    return <kbd key={k} className={`tutorial-key${lit ? ' is-pressed' : ''}`}>{k}</kbd>;
+  };
   return createPortal(
     <div className="tutorial-layer">
       <style>{styles}</style>
-      {lesson && !machine.skipped && (
-        <div className="tutorial-card" role="status">
-          <span className="tutorial-eyebrow">LEARN TO RACE · {String(machine.index + 1).padStart(2, '0')} / {String(TUTORIAL_LESSONS.length).padStart(2, '0')}</span>
-          <p>{lesson.text}</p>
-          {lesson.keys && (isTouch
-            ? <span className="tutorial-touch">Use {lesson.keys.touch}</span>
-            : <span className="tutorial-keys">{lesson.keys.keyboard.map((key) => <kbd key={key}>{key}</kbd>)}</span>)}
-          {cue === 'now' && <span className="tutorial-cue is-now">Slow motion: do it now!</span>}
-          {cue === 'retry' && <span className="tutorial-cue is-retry">Missed it. Let us try that again.</span>}
-          <div className="tutorial-skip">
-            {/* Only a real click or tap skips: Space/Enter (the keys the lessons ask for) must never land on it. */}
-            <button className="text-button" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onKeyDown={(e) => e.preventDefault()} onClick={(e) => { if (e.detail > 0) skip(); }}><SkipForward size={14} /> Skip tutorial</button>
+      {step && machine.frozen && step.keys && <>
+        <div className="tutorial-scrim" />
+        <div className="tutorial-prompt" role="dialog" aria-label={step.prompt ?? step.text}>
+          <span className="tutorial-step">Lesson {machine.index + 1} of {TUTORIAL_STEPS.length}</span>
+          <p className="tutorial-text">{step.text}</p>
+          <div className="tutorial-keys">
+            {isTouch
+              ? <kbd className={`tutorial-key${pressed ? ' is-pressed' : ''}`}>{step.keys.touch}</kbd>
+              : step.keys.keyboard.flatMap((k, i) => (i === 0 ? [keyLabel(k, i)] : [<span key={`or${i}`} className="tutorial-or">OR</span>, keyLabel(k, i)]))}
           </div>
+          <span className="tutorial-call">{isTouch ? `Tap ${step.keys.touch}` : step.prompt}</span>
         </div>
-      )}
+      </>}
+      {step && !step.keys && <div className="tutorial-banner" role="status">{step.text}</div>}
+      {!machine.done && <div className="tutorial-skip">
+        {/* Only a real click or tap skips: Space/Enter (the keys the lessons ask for) must never land on it. */}
+        <button tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onKeyDown={(e) => e.preventDefault()} onClick={(e) => { if (e.detail > 0) skip(); }}><SkipForward size={14} /> Skip tutorial</button>
+      </div>}
       <VoiceSubtitles />
     </div>,
     document.body,

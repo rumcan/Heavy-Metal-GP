@@ -1,15 +1,13 @@
-// P2-13 (#119): the tutorial lesson state machine.
+// P2-13 (#119), rebuilt: the tutorial, casual-game style.
 //
-// The first race of the campaign is a short, skippable ride on the Training Grounds
-// (`planTutorial()` in src/game/platformer/course.ts). Six lessons run in order and EACH
-// ONE WAITS FOR THE PLAYER: the voice line plays, a big key prompt shows up, and the
-// lesson only advances when the action it teaches actually happens.
+// The first race of the campaign is a short ride on the Training Grounds (`planTutorial()` in
+// src/game/platformer/course.ts). Between lessons the ball drives itself (the learner cannot stop, roll back or miss a
+// spot). At each lesson's spot the race FREEZES, the screen dims, and one big key (the on-screen button on a phone)
+// says exactly what to press. Only that key does anything; pressing it lights it up and the race carries on with the
+// action at exactly the right place (the jump happens at the gap). Two steps need no key: rolling through the green
+// arrows to the back lane, and the finish.
 //
-// This module is the pure heart of that: no React, no Matter, no DOM — just a reducer the
-// overlay feeds frames into (`tutorialStep`) and the lesson table the voice manifest and
-// the key prompts both read from. Detection is deliberately forgiving (trigger zones are
-// x-ranges, every signal is a plain boolean), so the wiring in RaceScreen/the overlay can
-// stay tiny.
+// This module is the pure heart of it: the step table and a tiny state machine the overlay and the race read.
 
 import { AI_COLORS, AI_NAMES } from '../types';
 import type { MarbleInfo } from '../types';
@@ -24,190 +22,102 @@ export const TUTORIAL_COURSE_ID = 'training';
 /** Deterministic seed: the tutorial course is hand-built, so one seed is the only seed. */
 export const TUTORIAL_SEED = 20260213;
 
-export type LessonId = 'steer' | 'engine' | 'skills' | 'jump' | 'shortcut' | 'finish';
+/** What the learner can press. `left` exists only so it can be refused. */
+export type TutorialInput = 'jump' | 'right' | 'left' | 'engine' | 'skill';
 
-export interface LessonDef {
-  id: LessonId;
-  /** Voice line id inside the `tutorial` manifest — one spoken line per lesson. */
+export type StepId = 'fire' | 'roll' | 'engine' | 'skill' | 'crate' | 'gap' | 'lane' | 'door' | 'shortcut' | 'finish';
+
+export interface StepDef {
+  id: StepId;
+  /** Voice line id inside the `tutorial` manifest. */
   line: string;
-  /** The caption text (what the narrator says, without performance tags). */
+  /** What the narrator says (the caption, without performance tags). */
   text: string;
+  /** The big call to action on the frozen screen, e.g. "Press SPACE". Null for the steps that need no key. */
+  prompt: string | null;
+  /** The key(s) shown, the KeyboardEvent codes that count, and the on-screen button for touch. */
+  keys: { keyboard: string[]; codes: string[]; touch: string; touchSelector: string } | null;
+  /** The input that completes the step; `lane` = reach the back lane, `finish` = the chequered flag. */
+  expect: TutorialInput | 'lane' | 'finish';
+  /** Freeze here (course x); 'gate' = the moment the lights go out; null = never freeze. */
+  freezeAt: number | 'gate' | null;
   /**
-   * The key prompt shown while the lesson waits. `keyboard` is the kbd labels on desktop;
-   * `touch` names the on-screen control the overlay highlights on phones. `null` for the
-   * finish lesson, which waits for the race itself.
+   * For a jump at an obstacle: freeze `lead` physics steps before the ball reaches x `before`, at whatever speed it
+   * is going (a boosted ball is three times faster: a fixed spot was too late and it hit the crate).
    */
-  keys: { keyboard: string[]; touch: string } | null;
-  /** The lesson arms once the player's course x reaches this (0 = from the start). */
-  enterAt: number;
+  obstacle?: { before: number; lead: number };
 }
 
+const JUMP_KEYS = { keyboard: ['SPACE', '↑'], codes: ['Space', 'ArrowUp', 'KeyW'], touch: 'JUMP', touchSelector: '[aria-label="Jump"]' };
+
 /**
- * The six lessons, in the order the course teaches them: one of each thing, matching the
- * Training Grounds layout (start flat → crate → gap → ramp/door → slope → climb → finish).
+ * The steps, in course order. Spots follow `planTutorial()`: crate at x 1300, the gap 1900..2040, the lane ramp to the
+ * back lane at 2900, the door back to the middle at 3700..3870, the shortcut ledge from 4120 (60 above the floor).
+ * Each freeze spot is where the self-driving ball's jump clears the obstacle (checked in tests/tutorial.test.ts).
  */
-export const TUTORIAL_LESSONS: readonly LessonDef[] = [
-  {
-    id: 'steer',
-    line: 'tutorial-steer',
-    text: 'Press left and right to steer.',
-    keys: { keyboard: ['←', '→'], touch: 'the ◀ and ▶ buttons' },
-    enterAt: 0,
-  },
-  {
-    id: 'engine',
-    line: 'tutorial-engine',
-    text: 'Hold down to fire your Magic Engine. Watch the heat bar.',
-    keys: { keyboard: ['↓'], touch: 'the ENGINE button' },
-    enterAt: 850,
-  },
-  {
-    id: 'skills',
-    line: 'tutorial-skills',
-    text: 'Your skills live on Q W E R and A S D F.',
-    keys: { keyboard: ['Q', 'W', 'E', 'R', 'A', 'S', 'D', 'F'], touch: 'a skill on your toolbar' },
-    enterAt: 1000,
-  },
-  {
-    id: 'jump',
-    line: 'tutorial-jump',
-    text: 'Press up or Space to jump the gap.',
-    keys: { keyboard: ['↑', 'SPACE'], touch: 'the JUMP button' },
-    enterAt: 1450,
-  },
-  {
-    id: 'shortcut',
-    line: 'tutorial-shortcut',
-    text: 'See that tunnel in the cliff? Jump into it to skip a whole section.',
-    keys: { keyboard: ['↑', 'SPACE'], touch: 'the JUMP button' },
-    enterAt: 3950,
-  },
-  {
-    id: 'finish',
-    line: 'tutorial-finish',
-    text: 'That is it. Now let us go racing.',
-    keys: null,
-    enterAt: 5100,
-  },
+export const TUTORIAL_STEPS: readonly StepDef[] = [
+  { id: 'fire', line: 'tutorial-fire', text: 'You start in a cannon. Press Space to fire it!', prompt: 'Press SPACE to fire', keys: JUMP_KEYS, expect: 'jump', freezeAt: 'gate' },
+  { id: 'roll', line: 'tutorial-roll', text: 'Press right to roll forward.', prompt: 'Press → to roll', keys: { keyboard: ['→'], codes: ['ArrowRight', 'KeyD'], touch: '▶', touchSelector: '[aria-label="Nudge right"]' }, expect: 'right', freezeAt: 700 },
+  { id: 'engine', line: 'tutorial-engine', text: 'Hold down to fire your Magic Engine for a burst of speed. Watch the heat bar!', prompt: 'Hold ↓ for a boost', keys: { keyboard: ['↓'], codes: ['ArrowDown', 'KeyS'], touch: 'ENGINE', touchSelector: '[aria-label="Magic Engine (hold)"]' }, expect: 'engine', freezeAt: 900 },
+  { id: 'skill', line: 'tutorial-skills', text: 'Press Q to use your Speed Boost. Your skills live on Q W E R and A S D F.', prompt: 'Press Q for a Speed Boost', keys: { keyboard: ['Q'], codes: ['KeyQ'], touch: 'SPEED BOOST', touchSelector: '.loadout-slot' }, expect: 'skill', freezeAt: 1030 },
+  { id: 'crate', line: 'tutorial-crate', text: 'A crate! Press Space to jump over it.', prompt: 'Press SPACE to jump', keys: JUMP_KEYS, expect: 'jump', freezeAt: null, obstacle: { before: 1300, lead: 10 } },
+  { id: 'gap', line: 'tutorial-jump', text: 'Mind the gap! Press Space to jump it.', prompt: 'Press SPACE to jump the gap', keys: JUMP_KEYS, expect: 'jump', freezeAt: null, obstacle: { before: 1895, lead: 3 } },
+  { id: 'lane', line: 'tutorial-lane', text: 'See the green arrows? Roll through them and you switch to the back lane.', prompt: null, keys: null, expect: 'lane', freezeAt: null },
+  { id: 'door', line: 'tutorial-door', text: 'A door back to the middle lane. Press up to go through it.', prompt: 'Press ↑ to go through the door', keys: { keyboard: ['↑'], codes: ['ArrowUp', 'KeyW', 'Space'], touch: 'JUMP', touchSelector: '[aria-label="Jump"]' }, expect: 'jump', freezeAt: 3725 },
+  { id: 'shortcut', line: 'tutorial-shortcut', text: 'A shortcut ledge! Jump onto it to skip the long way round.', prompt: 'Press SPACE to jump on the ledge', keys: JUMP_KEYS, expect: 'jump', freezeAt: null, obstacle: { before: 4120, lead: 11 } },
+  { id: 'finish', line: 'tutorial-finish', text: 'That is it. Roll to the finish and let us go racing!', prompt: null, keys: null, expect: 'finish', freezeAt: null },
 ];
 
-/**
- * The shortcut piece of the Training Grounds (the lesson-5 ledge). Geometry mirrors
- * `planTutorial()`: the ledge runs over the long slope, and a marble counts as having
- * taken the shortcut while it is inside the x-range and above the slope floor.
- */
-export const TUTORIAL_SHORTCUT = { x0: 4080, x1: 5060, aboveY: 665 } as const;
-
-/** A frame of what the player is doing, pushed in by the race wiring. */
-export interface TutorialFrame {
-  /** The player marble's course x (the trigger zones are x-ranges). */
-  x: number;
-  /** Left/right steering happened since the last frame (both are needed for lesson 1). */
-  steerLeft?: boolean;
-  steerRight?: boolean;
-  /** The Magic Engine actually fired (heat climbed), since the last frame. */
-  engineFired?: boolean;
-  /** A skill was used since the last frame. */
-  skillUsed?: boolean;
-  /** A jump happened since the last frame. */
-  jumped?: boolean;
-  /** The player is on the shortcut ledge right now. */
-  shortcutTaken?: boolean;
-  /** The player crossed the finish line. */
-  finished?: boolean;
-}
-
 export interface TutorialState {
-  /** Index of the lesson currently waiting for its action. */
+  /** Index of the step that is waiting. */
   index: number;
-  /** True once the finish lesson completed or the player skipped. */
+  /** The race is frozen on this step until its key is pressed. */
+  frozen: boolean;
   done: boolean;
-  /** True when the player skipped instead of riding the lessons out. */
   skipped: boolean;
-  /** Lesson ids completed so far, in order. */
-  completed: readonly LessonId[];
-  /** Lesson-1 progress: steering wants BOTH directions before it counts. */
-  steerLeftDone: boolean;
-  steerRightDone: boolean;
 }
 
-export function newTutorial(): TutorialState {
-  return { index: 0, done: false, skipped: false, completed: [], steerLeftDone: false, steerRightDone: false };
+export const newTutorial = (): TutorialState => ({ index: 0, frozen: false, done: false, skipped: false });
+export const replayTutorial = newTutorial;
+
+export function currentStep(state: TutorialState): StepDef | null {
+  return state.done ? null : TUTORIAL_STEPS[state.index] ?? null;
 }
 
-/** Restart the machine (replaying the tutorial from How to play is a fresh ride). */
-export function replayTutorial(): TutorialState {
-  return newTutorial();
+function advance(state: TutorialState): TutorialState {
+  const index = state.index + 1;
+  return { ...state, index, frozen: false, done: index >= TUTORIAL_STEPS.length };
 }
 
-/** The lesson the machine is waiting on right now, or null when the ride is over. */
-export function currentLesson(state: TutorialState): LessonDef | null {
-  if (state.done) return null;
-  return TUTORIAL_LESSONS[state.index] ?? null;
+/** A frame of where the learner is. Freezes on the step's spot; completes the steps that need no key. */
+export function tutorialFrame(state: TutorialState, f: { x: number; vx?: number; lane: number; gateOpen: boolean; finished: boolean }): TutorialState {
+  const step = currentStep(state);
+  if (!step || state.frozen) return state;
+  if (step.expect === 'lane') return f.lane === 0 ? advance(state) : state;
+  if (step.expect === 'finish') return f.finished ? advance(state) : state;
+  const at = step.freezeAt;
+  const reach = step.obstacle ? f.x + Math.max(3, f.vx ?? 0) * step.obstacle.lead >= step.obstacle.before : false;
+  if (reach || (at === 'gate' ? f.gateOpen : at !== null && f.x >= at)) return { ...state, frozen: true };
+  return state;
 }
 
-/** Skip every remaining lesson at once (the big Skip button and mid-race bail both land here). */
+/** May this input reach the race right now? Only the waiting step's key, and only while frozen on it. */
+export function allows(state: TutorialState, input: TutorialInput): boolean {
+  const step = currentStep(state);
+  return !!step && state.frozen && step.expect === input;
+}
+
+/** The learner pressed something: the frozen step's key completes it (the race unfreezes and does the action). */
+export function tutorialInput(state: TutorialState, input: TutorialInput): TutorialState {
+  return allows(state, input) ? advance(state) : state;
+}
+
+/** Between lessons the ball drives itself; frozen, nothing moves. */
+export const autopilot = (state: TutorialState): boolean => !state.done && !state.frozen;
+
+/** Skip the rest (a real click on Skip, or leaving the race). */
 export function skipTutorial(state: TutorialState): TutorialState {
-  if (state.done) return state;
-  return {
-    ...state,
-    index: TUTORIAL_LESSONS.length,
-    done: true,
-    skipped: true,
-    completed: TUTORIAL_LESSONS.map((lesson) => lesson.id),
-  };
-}
-
-function complete(state: TutorialState, at: number): TutorialState {
-  const lesson = TUTORIAL_LESSONS[at];
-  const index = at + 1;
-  return {
-    ...state,
-    index,
-    completed: [...state.completed, lesson.id],
-    done: index >= TUTORIAL_LESSONS.length,
-  };
-}
-
-/**
- * Advance the machine with one frame of player input. Pure: the same state + frame always
- * yields the same next state. Rules:
- *  - a finished or skipped machine never moves again;
- *  - a lesson only arms once the player reaches its `enterAt` x — actions before that are
- *    ignored (jumping the crate early does not pass the gap lesson);
- *  - only the CURRENT lesson consumes signals, in order, one completion per lesson;
- *  - steering needs both directions; the shortcut also passes when the player rolls the
- *    long way past the section (the tutorial must never soft-lock);
- *  - the finish lesson completes on the chequered flag.
- */
-export function tutorialStep(state: TutorialState, frame: TutorialFrame): TutorialState {
-  if (state.done) return state;
-  const lesson = TUTORIAL_LESSONS[state.index];
-  if (!lesson || frame.x < lesson.enterAt) return state;
-
-  switch (lesson.id) {
-    case 'steer': {
-      const steerLeftDone = state.steerLeftDone || !!frame.steerLeft;
-      const steerRightDone = state.steerRightDone || !!frame.steerRight;
-      if (!steerLeftDone || !steerRightDone) {
-        if (steerLeftDone === state.steerLeftDone && steerRightDone === state.steerRightDone) return state;
-        return { ...state, steerLeftDone, steerRightDone };
-      }
-      return complete({ ...state, steerLeftDone, steerRightDone }, state.index);
-    }
-    case 'engine':
-      return frame.engineFired ? complete(state, state.index) : state;
-    case 'skills':
-      return frame.skillUsed ? complete(state, state.index) : state;
-    case 'jump':
-      return frame.jumped ? complete(state, state.index) : state;
-    case 'shortcut':
-      return frame.shortcutTaken || frame.x >= TUTORIAL_SHORTCUT.x1 ? complete(state, state.index) : state;
-    case 'finish':
-      return frame.finished ? complete(state, state.index) : state;
-    default:
-      return state;
-  }
+  return state.done ? state : { ...state, index: TUTORIAL_STEPS.length, frozen: false, done: true, skipped: true };
 }
 
 /**
@@ -226,53 +136,13 @@ export function tutorialRoster(driver: StoryDriver): MarbleInfo[] {
   ];
 }
 
-// ───────────────────────────── pacing: slow motion and second chances ─────────────────────────────
+/** The self-driving ball's top speed (px per step): steady and predictable, so every lesson spot comes up right. */
+export const CRUISE_SPEED = 9;
+/** Just after the engine and boost lessons, a taste of the speed they give. */
+export const BOOSTED_SPEED = 15;
+export const BOOST_TASTE_MS = 1500;
 
-/**
- * Where each lesson gives the learner time. As the ball nears the spot a lesson is about (`slowFrom`), the race runs
- * in slow motion until the action happens; ride past the last moment (`deadline`) without doing it, or fall into the
- * gap, and the ball is put back at `retryFrom` for another go. After `MAX_TRIES` misses the lesson lets you through
- * (the tutorial never soft-locks). Geometry follows `planTutorial()`: crate at 1300, gap 1900..2040, the shortcut
- * ledge from 4080.
- */
-export const LESSON_ZONES: Partial<Record<LessonId, { slowFrom: number; deadline: number; retryFrom: number }>> = {
-  steer: { slowFrom: 520, deadline: 840, retryFrom: 300 },
-  engine: { slowFrom: 1000, deadline: 1250, retryFrom: 850 },
-  skills: { slowFrom: 1120, deadline: 1260, retryFrom: 900 },
-  jump: { slowFrom: 1700, deadline: 1960, retryFrom: 1500 },
-  shortcut: { slowFrom: 3860, deadline: 4120, retryFrom: 3650 },
-};
-export const MAX_TRIES = 3;
-/** How slow slow motion is. */
-export const SLOW_MO = 0.3;
-/** Below the tutorial's start floor by this much = fell into the gap. */
-const FELL_BELOW = 600 + 160;
-
-export interface TutorialPace {
-  /** Multiplier on race time this frame (1 = normal). */
-  timeScale: number;
-  /** Put the ball back at this course x (then clear it). */
-  rewindTo: number | null;
-  /** Let the current lesson through: it was missed MAX_TRIES times. */
-  giveUp: boolean;
-  /** What the card says: 'now' while in slow motion, 'retry' just after a rewind. */
-  cue: 'now' | 'retry' | null;
-}
-
-/** Pure: what the race should do this frame for the lesson that is waiting, given how often it was missed. */
-export function tutorialPace(state: TutorialState, frame: { x: number; y: number }, tries: number): TutorialPace {
-  const none: TutorialPace = { timeScale: 1, rewindTo: null, giveUp: false, cue: null };
-  const lesson = currentLesson(state);
-  const zone = lesson ? LESSON_ZONES[lesson.id] : undefined;
-  if (!lesson || !zone || frame.x < lesson.enterAt) return none;
-  const missed = frame.x >= zone.deadline || (lesson.id === 'jump' && frame.x > 1880 && frame.y > FELL_BELOW);
-  if (missed) return tries + 1 >= MAX_TRIES ? { ...none, giveUp: true } : { ...none, rewindTo: zone.retryFrom, cue: 'retry' };
-  if (frame.x >= zone.slowFrom) return { ...none, timeScale: SLOW_MO, cue: 'now' };
-  return none;
-}
-
-/** Complete the waiting lesson without its action (it was missed too often). */
-export function letThrough(state: TutorialState): TutorialState {
-  if (state.done) return state;
-  return complete(state, state.index);
+/** The speed cap for the self-driving ball right now (`boostedAt` = race time the engine/boost lesson was done). */
+export function speedCap(time: number, boostedAt: number | null): number {
+  return boostedAt !== null && time - boostedAt < BOOST_TASTE_MS ? BOOSTED_SPEED : CRUISE_SPEED;
 }

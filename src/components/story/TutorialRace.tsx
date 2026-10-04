@@ -7,6 +7,7 @@ import { useMemo, useRef } from 'react';
 import RaceScreen from '../RaceScreen';
 import type { RaceAction } from '../RaceScreen';
 import TutorialOverlay from './TutorialOverlay';
+import { newBridge } from './TutorialOverlay';
 import type { TutorialBridge } from './TutorialOverlay';
 import { CALENDAR } from '../../game/season';
 import { TRACK_THEMES, emptyInventory } from '../../game/types';
@@ -43,10 +44,7 @@ export default function TutorialRace({ driver, subtitle = 'PROLOGUE · LEARN TO 
   const inventory = useMemo(starterInventory, []);
   // One stable object for the whole race: the overlay assigns the callbacks, RaceScreen
   // calls them. The RaceScreen effect must never rebuild the game because of the tutorial.
-  const bridge = useRef<TutorialBridge>({
-    onFrame: () => undefined, onSteer: () => undefined, onJump: () => undefined,
-    onEngine: () => undefined, onSkill: () => undefined,
-  }).current;
+  const bridge = useRef<TutorialBridge>(newBridge()).current;
   const actions: RaceAction[] = [{ label: 'Continue', onClick: onDone, primary: true }];
 
   return <>
