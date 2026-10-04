@@ -2,17 +2,25 @@
 // drops frames, and dropped frames are what stutter feels like. This watches the real frame interval: when frames
 // keep arriving late it renders a little softer (fewer pixels, scaled up smoothly by the browser), and when there is
 // room again it goes back up. It never goes above the screen's own density (capped at 2) or below 60 % of it.
+//
+// It only steps in for a real slowdown (under ~45 frames a second, held for a while). An earlier version took the
+// display's refresh from the SHORTEST frame gap it saw; browsers sometimes deliver two frames a couple of ms apart,
+// so on a fast screen every normal frame then looked late, the game dropped itself to 60 % (blurry) and kept
+// resizing its canvas (a hitch each time).
 
 export const MIN_SCALE = 0.6;
 const STEP = 0.15;
-/** How long frames must be late (or comfortably on time) before the resolution moves. */
-const SLOW_MS = 1200;
-const FAST_MS = 4000;
+/** Frames this slow on average (ms) count as late: below ~45 FPS. */
+const LATE_MS = 22;
+/** Room to go back up: frames comfortably under 60 FPS pace. */
+const EASY_MS = 15;
+/** How long frames must be late (or easy) before the resolution moves. */
+const SLOW_MS = 2000;
+const FAST_MS = 6000;
 
 export class RenderScale {
   /** Multiplier on the device pixel ratio (1 = full sharpness). */
   scale = 1;
-  private refresh = 1000 / 60;
   private avg = 1000 / 60;
   private slowFor = 0;
   private fastFor = 0;
@@ -23,14 +31,9 @@ export class RenderScale {
    */
   observe(dt: number): boolean {
     if (!(dt > 0) || dt > 250) return false;
-    // The display's own refresh interval: the shortest interval seen lately (drifts up slowly so a 120 Hz screen that
-    // drops to 60 Hz on battery is followed).
-    this.refresh = Math.min(dt, this.refresh * 1.0005 + 0.0005);
-    this.avg += (dt - this.avg) * 0.1;
-    const late = this.avg > this.refresh * 1.35;
-    const easy = this.avg < this.refresh * 1.08;
-    this.slowFor = late ? this.slowFor + dt : 0;
-    this.fastFor = easy ? this.fastFor + dt : 0;
+    this.avg += (dt - this.avg) * 0.05;
+    this.slowFor = this.avg > LATE_MS ? this.slowFor + dt : 0;
+    this.fastFor = this.avg < EASY_MS ? this.fastFor + dt : 0;
     if (this.slowFor > SLOW_MS && this.scale > MIN_SCALE) {
       this.scale = Math.max(MIN_SCALE, Math.round((this.scale - STEP) * 100) / 100);
       this.slowFor = 0;

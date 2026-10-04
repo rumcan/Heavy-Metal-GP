@@ -46,12 +46,16 @@ test('the resolution drops when frames keep arriving late and comes back when th
   for (let i = 0; i < 30; i++) r.observe(16.7);
   assert.equal(r.scale, 1);
   let changed = false;
-  for (let i = 0; i < 60; i++) changed = r.observe(33) || changed;
+  for (let i = 0; i < 200; i++) changed = r.observe(33) || changed;
   assert.ok(changed && r.scale < 1, `late frames lower it (now ${r.scale})`);
   for (let i = 0; i < 400; i++) r.observe(33);
   assert.ok(r.scale >= MIN_SCALE);
-  for (let i = 0; i < 2000; i++) r.observe(16.7);
+  for (let i = 0; i < 4000; i++) r.observe(8.3);
   assert.equal(r.scale, 1, 'back to full sharpness');
   assert.equal(r.observe(5000), false, 'a pause is ignored');
+  // a fast screen whose frames sometimes arrive a couple of ms apart is NOT slow
+  const fast = new RenderScale();
+  for (let i = 0; i < 3000; i++) fast.observe(i % 7 === 0 ? 2 : i % 11 === 0 ? 14 : 8.3);
+  assert.equal(fast.scale, 1, 'a 120 Hz screen with uneven frame gaps keeps full sharpness');
   assert.equal(r.ratio(3), 2, 'capped at 2x');
 });

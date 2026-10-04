@@ -437,13 +437,38 @@ function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, 
  * frame. It is redrawn only when the camera nears its edge, the zoom drifts more than a few per cent, or the course
  * changes. Redrawing all of it every frame cost ~7 ms per lane (up to three lanes).
  */
-interface LaneCache { cv: HTMLCanvasElement; plan: CoursePlan; ox: number; oy: number; wx: number; wy: number; px: number; want: number; w: number; h: number }
+interface LaneCache { cv: HTMLCanvasElement; spare: HTMLCanvasElement; plan: CoursePlan; ox: number; oy: number; wx: number; wy: number; px: number; want: number; w: number; h: number }
 const laneCaches = new WeakMap<CanvasRenderingContext2D, Map<number, LaneCache>>();
 /** One early refresh per frame at most, so lanes never all rebuild on the same frame (that was a 30 ms hitch). */
 const refreshedAt = new WeakMap<CanvasRenderingContext2D, number>();
 let frameNo = 0;
 const CACHE_MAX_PX = 3072;
 
+function sized(cv: HTMLCanvasElement, w: number, h: number) {
+  // Keep a canvas's size whenever it is big enough (and not wastefully big): resizing throws its GPU texture away.
+  if (cv.width < w || cv.height < h || cv.width > w * 1.5 || cv.height > h * 1.5) {
+    cv.width = Math.min(CACHE_MAX_PX, Math.ceil(w / 256) * 256);
+    cv.height = Math.min(CACHE_MAX_PX, Math.ceil(h / 256) * 256);
+  }
+}
+
+/** Draw the lane's static scenery into `cc` (origin ox, oy at `px` device px per unit), clipped to a world strip. */
+function paintStatic(cc: CanvasRenderingContext2D, game: Game, lane: number, c: { ox: number; oy: number; wy: number; px: number }, x0: number, x1: number, t: number) {
+  cc.save();
+  cc.setTransform(c.px, 0, 0, c.px, -c.ox * c.px, -c.oy * c.px);
+  cc.beginPath();
+  cc.rect(x0, c.oy, x1 - x0, c.wy);
+  cc.clip();
+  cc.imageSmoothingQuality = 'high';
+  drawLaneWorld(cc, game, lane, x0 - 200, x1 + 200, c.oy + c.wy + 40, t, 'static');
+  cc.restore();
+}
+
+/**
+ * The lane's static scenery, cached. When the view nears the cache's edge the picture is SHIFTED (copied over by a whole
+ * number of device pixels, so nothing blurs) and only the newly revealed strip is drawn: about a third of a full
+ * redraw, done early and at most one lane per frame, so a fast screen (8 ms a frame) never hitches on it.
+ */
 function cachedLane(ctx: CanvasRenderingContext2D, game: Game, lane: number, view: { x0: number; x1: number; y0: number; y1: number }, pxWanted: number, t: number): LaneCache | null {
   if (typeof document === 'undefined') return null;
   const plan = game.track.platformer!.plan;
@@ -452,34 +477,53 @@ function cachedLane(ctx: CanvasRenderingContext2D, game: Game, lane: number, vie
   const c = byLane.get(lane);
   // Compare with the resolution asked for when it was drawn (a big screen caps the cache below it: that is fine).
   const ratio = c ? pxWanted / c.want : 0;
-  const inside = (pad: number) => !!c && view.x0 - (view.x1 - view.x0) * pad >= c.ox && view.x1 + (view.x1 - view.x0) * pad <= c.ox + c.wx
-    && view.y0 - (view.y1 - view.y0) * pad >= c.oy && view.y1 + (view.y1 - view.y0) * pad <= c.oy + c.wy;
-  const usable = !!c && c.plan === plan && ratio > 0.9 && ratio < 1.1 && inside(0);
-  // Comfortably inside and at the right zoom: use it. Getting close to an edge (or the zoom drifting): refresh it
-  // early, but only if no other lane refreshed this frame. Outside it: it has to be redrawn now.
-  if (usable && (inside(0.06) && ratio > 0.96 && ratio < 1.04 || refreshedAt.get(ctx) === frameNo)) return c!;
-  refreshedAt.set(ctx, frameNo);
-  // Rebuild: margins around the view, wider ahead (the race runs left to right).
   const vw = view.x1 - view.x0, vh = view.y1 - view.y0;
-  const ox = view.x0 - vw * 0.1, oy = view.y0 - vh * 0.15;
-  const wx = vw * 1.5, wy = vh * 1.3;
+  const inside = (padX: number, padY: number) => !!c && view.x0 - vw * padX >= c.ox && view.x1 + vw * padX <= c.ox + c.wx
+    && view.y0 - vh * padY >= c.oy && view.y1 + vh * padY <= c.oy + c.wy;
+  const sameZoom = !!c && c.plan === plan && ratio > 0.9 && ratio < 1.1;
+  const usable = sameZoom && inside(0, 0);
+  if (usable && (inside(0.12, 0.08) && ratio > 0.96 && ratio < 1.04 || refreshedAt.get(ctx) === frameNo)) return c!;
+  refreshedAt.set(ctx, frameNo);
+
+  // Where the cache should sit now: a little behind, plenty ahead (the race runs to the right), roomy above and below.
+  let ox = view.x0 - vw * 0.15, oy = view.y0 - vh * 0.3;
+  const wx = vw * 1.7, wy = vh * 1.6;
   const px = Math.min(pxWanted, CACHE_MAX_PX / wx, CACHE_MAX_PX / wy);
-  const cv = c?.cv ?? document.createElement('canvas');
   const w = Math.ceil(wx * px), h = Math.ceil(wy * px);
-  // Keep the canvas's size whenever it is big enough (and not wastefully big): resizing a canvas throws its GPU
-  // texture away, and reallocating one every refresh cost 200 ms hitches on big screens.
-  if (cv.width < w || cv.height < h || cv.width > w * 1.5 || cv.height > h * 1.5) {
-    cv.width = Math.min(CACHE_MAX_PX, Math.ceil(w / 256) * 256);
-    cv.height = Math.min(CACHE_MAX_PX, Math.ceil(h / 256) * 256);
+
+  // Shift: same zoom, same size, only moved sideways (vertical drift is small: the margins absorb it).
+  if (c && sameZoom && Math.abs(px - c.px) < 1e-9 && w === c.w && h === c.h && Math.abs(oy - c.oy) < vh * 0.2) {
+    const dxPx = Math.round((ox - c.ox) * px);
+    if (dxPx !== 0 && Math.abs(dxPx) < w * 0.8) {
+      ox = c.ox + dxPx / px;
+      oy = c.oy; // keep the vertical placement (no resample)
+      const next: LaneCache = { ...c, cv: c.spare, spare: c.cv, ox, oy };
+      const cc = next.cv.getContext('2d');
+      if (cc) {
+        sized(next.cv, w, h);
+        cc.setTransform(1, 0, 0, 1, 0, 0);
+        cc.clearRect(0, 0, next.cv.width, next.cv.height);
+        cc.drawImage(c.cv, 0, 0, w, h, -dxPx, 0, w, h);
+        // the revealed strip (with a little overlap so its seam is drawn whole)
+        const pad = 2 / px;
+        if (dxPx > 0) paintStatic(cc, game, lane, next, c.ox + c.wx - pad, ox + wx, t);
+        else paintStatic(cc, game, lane, next, ox, c.ox + pad, t);
+        byLane.set(lane, next);
+        return next;
+      }
+    }
   }
+
+  // Full redraw: first time, a zoom change, or a big jump.
+  const cv = c?.cv ?? document.createElement('canvas');
+  const spare = c?.spare ?? document.createElement('canvas');
+  sized(cv, w, h);
   const cc = cv.getContext('2d');
   if (!cc) return null;
   cc.setTransform(1, 0, 0, 1, 0, 0);
   cc.clearRect(0, 0, cv.width, cv.height);
-  cc.imageSmoothingQuality = 'high';
-  cc.setTransform(px, 0, 0, px, -ox * px, -oy * px);
-  drawLaneWorld(cc, game, lane, ox - 200, ox + wx + 200, oy + wy + 40, t, 'static');
-  const next = { cv, plan, ox, oy, wx, wy, px, want: pxWanted, w, h };
+  const next: LaneCache = { cv, spare, plan, ox, oy, wx, wy, px, want: pxWanted, w, h };
+  paintStatic(cc, game, lane, next, ox, ox + wx, t);
   byLane.set(lane, next);
   return next;
 }

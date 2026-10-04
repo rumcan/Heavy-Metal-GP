@@ -101,10 +101,14 @@ function yOn(run: Pt[], x: number): number {
 }
 
 /** Lay a strip image along a polyline, `up` px above it and `thick` tall, continuing the texture piece to piece. */
-function stripAlong(ctx: CanvasRenderingContext2D, img: CanvasImageSource & { width: number; height: number }, pts: Pt[], up: number, thick: number) {
+/**
+ * `u0`: where the texture starts, as a distance along the track. Taken from the run (not from wherever this drawing
+ * happens to begin), so two drawings of neighbouring stretches meet without a seam (the scenery cache draws strips).
+ */
+function stripAlong(ctx: CanvasRenderingContext2D, img: CanvasImageSource & { width: number; height: number }, pts: Pt[], up: number, thick: number, u0?: number) {
   const tw = (img.width / img.height) * thick;
   const srcPerPx = img.width / tw;
-  let u = (((pts[0].x % tw) + tw) % tw);
+  let u = u0 === undefined ? (((pts[0].x % tw) + tw) % tw) : (((u0 % tw) + tw) % tw);
   for (let i = 0; i < pts.length - 1; i++) {
     const a = pts[i], b = pts[i + 1];
     const len = Math.hypot(b.x - a.x, b.y - a.y);
@@ -122,6 +126,24 @@ function stripAlong(ctx: CanvasRenderingContext2D, img: CanvasImageSource & { wi
     ctx.restore();
     u = (u + len) % tw;
   }
+}
+
+/** Distance along a run to each of its points (cached per run). */
+const arcCache = new WeakMap<Pt[], number[]>();
+function arcOf(run: Pt[]): number[] {
+  let arc = arcCache.get(run);
+  if (!arc) {
+    arc = [0];
+    for (let i = 1; i < run.length; i++) arc.push(arc[i - 1] + Math.hypot(run[i].x - run[i - 1].x, run[i].y - run[i - 1].y));
+    arcCache.set(run, arc);
+  }
+  return arc;
+}
+/** Index in its run of the first point `clip` keeps. */
+function clipStart(run: Pt[], left: number): number {
+  let i0 = 0;
+  while (i0 < run.length - 1 && run[i0 + 1].x < left) i0++;
+  return i0;
 }
 
 function clip(run: Pt[], left: number, right: number): Pt[] {
@@ -203,6 +225,7 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
   for (const run of runs) {
     if (run[run.length - 1].x < left || run[0].x > right) continue;
     const pts = clip(run, left, right);
+    const u0 = arcOf(run)[clipStart(run, left)];
     if (!statics) { torches(ctx, run, pts, lane, time); continue; }
     const cliff = pts.map((p) => ({ x: p.x, y: p.y + clearance(p.x) }));
     // the cliff under this stretch of track: rock, darker lower down, moss on top
@@ -214,7 +237,8 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
     ctx.closePath();
     ctx.fillStyle = rock ?? '#6b6258';
     ctx.fill();
-    const top = Math.min(...cliff.map((p) => p.y));
+    // from the whole run (not this stretch), so strips drawn separately shade the same
+    const top = runTop(run);
     const g = ctx.createLinearGradient(0, top, 0, top + 500);
     g.addColorStop(0, 'rgba(30,24,20,0)');
     g.addColorStop(1, 'rgba(18,14,12,0.6)');
@@ -222,7 +246,7 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
     ctx.fill();
     if (pts[0] === run[0]) { ctx.fillStyle = 'rgba(20,14,10,0.55)'; ctx.fillRect(cliff[0].x, cliff[0].y, 10, bottom - cliff[0].y); }
     if (pts[pts.length - 1] === run[run.length - 1]) { const e = cliff[cliff.length - 1]; ctx.fillStyle = 'rgba(20,14,10,0.55)'; ctx.fillRect(e.x - 10, e.y, 10, bottom - e.y); }
-    stripAlong(ctx, ART.moss!, cliff, 14, 30);
+    stripAlong(ctx, ART.moss!, cliff, 14, 30, u0);
     // goblin watchtowers on the cliffs, now and then (behind the track)
     for (let x = Math.floor(pts[0].x / 1800) * 1800 + 900; x < pts[pts.length - 1].x; x += 1800) {
       const r = hash(Math.round(x), lane + 11);
@@ -235,7 +259,7 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
     }
     trestle(ctx, run, pts[0].x - SUPPORT_EVERY, pts[pts.length - 1].x + SUPPORT_EVERY, (x) => yOn(run, x) + clearance(x));
     // the track: a plain wooden beam (no chevron rail, per the owner)
-    stripAlong(ctx, middle(ART.wood!), pts, RAIL_UP, TRACK_T);
+    stripAlong(ctx, middle(ART.wood!), pts, RAIL_UP, TRACK_T, u0);
     if (dynamics) torches(ctx, run, pts, lane, time);
   }
   if (statics) staticProps(ctx, plan, runs, lane, left, right);
@@ -385,4 +409,12 @@ function drawMapPieces(ctx: CanvasRenderingContext2D, pieces: Matter.Body[], lan
       ctx.restore();
     }
   }
+}
+
+/** The highest cliff edge along a whole run (cached): where its darkening gradient starts. */
+const topCache = new WeakMap<Pt[], number>();
+function runTop(run: Pt[]): number {
+  let top = topCache.get(run);
+  if (top === undefined) { top = Math.min(...run.map((p) => p.y + clearance(p.x))); topCache.set(run, top); }
+  return top;
 }
