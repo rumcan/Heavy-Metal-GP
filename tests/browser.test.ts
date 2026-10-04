@@ -715,6 +715,7 @@ for (const { label, options } of SCREEN_VIEWPORTS) {
       await ready(page);
       await openTab(page, 'Workshop');
       await page.locator('.home-actions').getByRole('button', { name: /New track/ }).click();
+      await page.getByTestId('kind-platformer').click();
       await page.getByTestId('new-platformer').click();
       const lanes = page.getByRole('group', { name: 'Lane being edited' });
       await lanes.waitFor({ timeout: 60000 });

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { X, Sparkles, Map, LayoutGrid, Zap, Target, ShoppingCart, Dices, Flag, ArrowRight } from 'lucide-react';
+import { X, Sparkles, LayoutGrid, Zap, Target, ShoppingCart, Dices, Flag, ArrowRight, ArrowLeft, MoveRight, MoveDown } from 'lucide-react';
 import { CALENDAR } from '../../game/season';
 import { officialTrack } from '../../game/official-tracks';
 import { generateExperimentalTrackDef } from '../../game/trackdef';
@@ -8,6 +8,7 @@ import { TEMPLATES, blankTemplate } from '../../game/templates';
 import TrackThumbnail from './TrackThumbnail';
 import { defFromPlan, newPlatformerDef } from '../../game/platformer/def';
 import { PLATFORMER_COURSES, planOfficial } from '../../game/platformer/course';
+import { planFlow } from '../../game/platformer/flow';
 
 interface Props {
   onClose: () => void;
@@ -18,177 +19,161 @@ function randomSeed(): number {
   return Math.floor(Math.random() * 0xffffffff) >>> 0;
 }
 
-type Tab = 'start' | 'generate';
+/** The two kinds of track. The player picks one first, so nobody lands in the wrong editor by accident. */
+export type TrackKind = 'platformer' | 'drop';
+
+export const KIND_INFO: Record<TrackKind, { title: string; tagline: string; points: string[] }> = {
+  platformer: {
+    title: 'Platformer course',
+    tagline: 'Side-scrolling. You build sideways and down.',
+    points: ['Marbles race left to right, downhill', 'Three lanes, front to back', 'Floors, curves, springs, loops, bridges'],
+  },
+  drop: {
+    title: 'Drop track',
+    tagline: 'The classic marble run. You build top to bottom.',
+    points: ['Marbles fall down a tall shaft', 'Pegs, ramps, rails, ferries', 'Like the championship circuits'],
+  },
+};
+
+/** Little pictures of each kind: the shape of the track tells the player what they will be building. */
+function KindArt({ kind }: { kind: TrackKind }) {
+  if (kind === 'platformer') {
+    return <svg viewBox="0 0 200 110" aria-hidden="true" className="new-track-kind-art">
+      <path d="M8 26 H48 L86 46 C104 56 118 56 134 48 L192 76" fill="none" stroke="#e4b86a" strokeWidth="2.5" opacity="0.6" />
+      <path d="M8 40 H48 L86 60 C104 70 118 70 134 62 L192 90" fill="none" stroke="#cfe0ef" strokeWidth="4" />
+      <path d="M8 54 H48 L86 74 C104 84 118 84 134 76 L192 104" fill="none" stroke="#4c6a86" strokeWidth="2.5" opacity="0.7" />
+      <circle cx="30" cy="33" r="6" fill="#d63e2e" />
+      <path d="M150 18 h34 m-8 -6 l8 6 l-8 6" fill="none" stroke="#ffb347" strokeWidth="2.5" />
+    </svg>;
+  }
+  return <svg viewBox="0 0 200 110" aria-hidden="true" className="new-track-kind-art">
+    <rect x="62" y="4" width="76" height="102" rx="4" fill="none" stroke="#2a3a52" strokeWidth="2" />
+    <path d="M70 20 L118 34 M130 48 L82 62 M70 76 L118 90" stroke="#cfe0ef" strokeWidth="4" strokeLinecap="round" />
+    {[[92, 44], [108, 70], [86, 96], [124, 20]].map(([x, y]) => <circle key={`${x}-${y}`} cx={x} cy={y} r="3" fill="#ff7a3d" />)}
+    <circle cx="80" cy="12" r="6" fill="#d63e2e" />
+    <path d="M168 18 v34 m-6 -8 l6 8 l6 -8" fill="none" stroke="#ffb347" strokeWidth="2.5" />
+  </svg>;
+}
 
 /**
- * New track: either START FROM something that exists (a blank canvas, a copy of a championship circuit, a
- * hand-made starter) or GENERATE a fresh random layout in the hazard style of one of the circuits.
- * Every card says what clicking it does, so it is clear where to click.
+ * New track, in two steps. First WHAT KIND: a platformer course (built sideways) or a drop track (built top to
+ * bottom), as two big pictures. Then WHERE TO START for that kind: blank, a copy of an official track, a starter,
+ * or a generated layout. The second step always says which kind it is making and has a Back link.
  */
 export default function NewTrackDialog({ onClose, onCreate }: Props) {
-  const [tab, setTab] = useState<Tab>('start');
-  const [seedStr, setSeedStr] = useState<string>('');
-  const [style, setStyle] = useState<number>(0);
-
-  const blank = useMemo(() => blankTemplate(), []);
-  const handMade = useMemo(() => TEMPLATES.filter((t) => t.id !== 'blank').map((t) => ({ ...t, preview: t.build() })), []);
-  const circuits = useMemo(() => CALENDAR.map((gp) => ({ gp, def: officialTrack(gp.id) })).filter((c): c is { gp: typeof CALENDAR[number]; def: TrackDef } => !!c.def), []);
-
+  const [kind, setKind] = useState<TrackKind | null>(null);
   const use = (def: TrackDef) => { onCreate(def); onClose(); };
-
-  const handleGenerate = () => {
-    const gp = CALENDAR[style];
-    if (!gp) return;
-    const seed = seedStr.trim() === '' ? randomSeed() : Number(seedStr);
-    const def = generateExperimentalTrackDef(seed, gp.profile, `${gp.short} style #${seed % 10000}`);
-    def.name = def.name.slice(0, 48);
-    use(def);
-  };
-
-  const generatedPreview = useMemo(() => {
-    if (tab !== 'generate') return blank;
-    const gp = CALENDAR[style];
-    if (!gp) return blank;
-    const seed = seedStr.trim() === '' ? 0xC0FFEE : Number(seedStr);
-    return generateExperimentalTrackDef(seed, gp.profile, gp.short);
-  }, [tab, style, seedStr, blank]);
-
-  const card = (key: string, def: TrackDef, title: React.ReactNode, desc: string, onPick: () => void, cta = 'Use this') => (
-    <button key={key} className="new-track-card" onClick={onPick}>
-      <TrackThumbnail def={def} />
-      <strong>{title}</strong>
-      <span>{desc}</span>
-      <em className="new-track-cta">{cta} <ArrowRight size={12} /></em>
-    </button>
-  );
 
   return (
     <div className="new-track-overlay" role="dialog" aria-modal="true" aria-labelledby="new-track-title" onClick={onClose}>
       <div className="new-track-sheet" onClick={(e) => e.stopPropagation()}>
         <header className="new-track-head">
-          <h2 id="new-track-title">New track</h2>
-          <p>Start from a blank canvas, a championship circuit or a starter — or generate a brand-new layout.</p>
+          {kind && <button className="text-button new-track-back" onClick={() => setKind(null)}><ArrowLeft size={13} /> Track type</button>}
+          <h2 id="new-track-title">{kind ? `New ${KIND_INFO[kind].title.toLowerCase()}` : 'New track: pick a type'}</h2>
+          <p>{kind ? `${KIND_INFO[kind].tagline} Now choose where to start.` : 'Two kinds of track, built in the same Workshop. You can make as many of each as you like.'}</p>
           <button className="icon-button new-track-close" onClick={onClose} aria-label="Close"><X size={16} /></button>
         </header>
-
-        <div className="new-track-tabs">
-          <button className={`tab ${tab === 'start' ? 'is-active' : ''}`} onClick={() => setTab('start')}><LayoutGrid size={13} /> Start from…</button>
-          <button className={`tab ${tab === 'generate' ? 'is-active' : ''}`} onClick={() => setTab('generate')}><Dices size={13} /> Generate new</button>
-        </div>
-
-        <div className="new-track-body" style={{ minHeight: 400 }}>
-          {tab === 'start' && (
-            <>
-              <section className="new-track-section">
-                <h3><Map size={14} /> Platformer course</h3>
-                <p className="new-track-hint">A side-scrolling course with three lanes, built sideways and down. Races on it work like every other track.</p>
-                <div className="new-track-grid">
-                  <button className="new-track-card" data-testid="new-platformer" onClick={() => use(newPlatformerDef('My platformer course'))}>
-                    <svg viewBox="0 0 160 90" role="img" aria-label="A course running from left to right, sloping down" style={{ width: '100%', height: 90, background: '#0d1520', borderRadius: 4 }}>
-                      <path d="M0 30 H34 L70 44 C86 52 100 52 116 46 L160 60" fill="none" stroke="#9bb2c7" strokeWidth="3" />
-                      <path d="M0 40 H34 L70 54 C86 62 100 62 116 56 L160 70" fill="none" stroke="#4c6a86" strokeWidth="2" opacity="0.7" />
-                      <path d="M0 20 H34 L70 34 C86 42 100 42 116 36 L160 50" fill="none" stroke="#e4b86a" strokeWidth="2" opacity="0.7" />
-                    </svg>
-                    <strong>Blank platformer course</strong>
-                    <span>Just the start platform and the finish line. Build the middle: floors, springs, lanes, loops.</span>
-                    <em className="new-track-cta">Start building <ArrowRight size={12} /></em>
-                  </button>
-                  {PLATFORMER_COURSES.filter((c) => !c.tutorial).map((c) => (
-                    <button key={c.id} className="new-track-card" data-testid={`copy-${c.id}`} onClick={() => use(defFromPlan(planOfficial(c), `${c.name} copy`))}>
-                      <svg viewBox="0 0 160 90" role="img" aria-label={`${c.name}, a platformer course`} style={{ width: '100%', height: 90, background: '#0d1520', borderRadius: 4 }}>
-                        <path d="M0 40 C30 20 50 56 80 40 S130 24 160 46" fill="none" stroke="#9bb2c7" strokeWidth="3" />
-                        <path d="M0 52 C30 32 50 68 80 52 S130 36 160 58" fill="none" stroke="#4c6a86" strokeWidth="2" opacity="0.7" />
-                      </svg>
-                      <strong>{c.name} copy</strong>
-                      <span>An editable copy of this platformer course. The original is not changed.</span>
-                      <em className="new-track-cta">Open the copy <ArrowRight size={12} /></em>
-                    </button>
-                  ))}
-                </div>
-              </section>
-
-              <section className="new-track-section">
-                <h3><LayoutGrid size={14} /> Blank canvas</h3>
-                <div className="new-track-grid is-single">
-                  {card('blank', blank, 'Blank canvas', 'Just the start grid and the finish. Build anything.', () => use(blankTemplate()), 'Start blank')}
-                </div>
-              </section>
-
-              <section className="new-track-section">
-                <h3><Flag size={14} /> Championship circuits</h3>
-                <p className="new-track-hint">Opens an editable copy. The championship itself is not changed.</p>
-                <div className="new-track-grid">
-                  {circuits.map(({ gp, def }) => card(gp.id.toString(), def, <><small className="new-track-flag">{gp.flag}</small> {gp.name}</>, `${def.pieces.length} pieces · ${gp.desc}`, () => use({ ...JSON.parse(JSON.stringify(def)), name: `${gp.short} copy` }), 'Edit a copy'))}
-                </div>
-              </section>
-
-              <section className="new-track-section">
-                <h3><Sparkles size={14} /> Starter templates</h3>
-                <p className="new-track-hint">Small hand-made starters for one kind of track.</p>
-                <div className="new-track-grid">
-                  {handMade.map((e) => {
-                    const Icon = e.id === 'loop' ? Zap : e.id === 'peggle' ? Target : ShoppingCart;
-                    return card(e.id, e.preview, <><Icon size={13} /> {e.label}</>, e.desc, () => use(e.build()));
-                  })}
-                </div>
-              </section>
-            </>
-          )}
-
-          {tab === 'generate' && (
-            <div className="generator-tab">
-              <div className="generator-layout">
-                <div className="generator-controls" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 15 }}>
-                  <div>
-                    <label htmlFor="new-track-style" style={{ display: 'block', fontSize: 11, fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: 5, textTransform: 'uppercase' }}>Style</label>
-                    <select
-                      id="new-track-style"
-                      value={style}
-                      onChange={(e) => setStyle(Number(e.target.value))}
-                      style={{ width: '100%', padding: '8px', background: 'var(--surface-sunken)', border: '1px solid var(--line)', color: 'var(--text)', borderRadius: 4 }}
-                    >
-                      {CALENDAR.map((gp, i) => (
-                        <option key={gp.id} value={i}>{gp.flag} {gp.short} style</option>
-                      ))}
-                    </select>
-                    <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 5 }}>
-                      Which hazards the generator favours, borrowed from that circuit: {CALENDAR[style]?.desc}
-                    </p>
-                  </div>
-
-                  <div>
-                    <label htmlFor="new-track-seed" style={{ display: 'block', fontSize: 11, fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: 5, textTransform: 'uppercase' }}>Seed (optional)</label>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <input
-                        id="new-track-seed"
-                        type="number"
-                        value={seedStr}
-                        onChange={(e) => setSeedStr(e.target.value)}
-                        placeholder="Random"
-                        style={{ flex: 1, padding: '8px', background: 'var(--surface-sunken)', border: '1px solid var(--line)', color: 'var(--text)', borderRadius: 4 }}
-                      />
-                      <button className="button-secondary" onClick={() => setSeedStr(String(randomSeed()))} title="Pick a random seed" style={{ padding: '0 10px' }}>
-                        <Dices size={16} />
-                      </button>
-                    </div>
-                    <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 5 }}>The same seed and style always make the same track.</p>
-                  </div>
-
-                  <button className="button-primary" style={{ marginTop: 'auto', padding: '12px', fontSize: 14 }} onClick={handleGenerate}>
-                    <Map size={16} /> Generate track
-                  </button>
-                </div>
-                <div className="generator-preview" style={{ flex: 1, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 4, padding: 10, display: 'flex', flexDirection: 'column' }}>
-                  <div style={{ fontSize: 11, fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: 10, textTransform: 'uppercase' }}>Preview</div>
-                  <div style={{ flex: 1, position: 'relative' }}>
-                    <TrackThumbnail def={generatedPreview} />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+        <div className="new-track-body">
+          {!kind && <KindPicker onPick={setKind} />}
+          {kind === 'platformer' && <PlatformerStarts use={use} />}
+          {kind === 'drop' && <DropStarts use={use} />}
         </div>
       </div>
     </div>
   );
+}
+
+function KindPicker({ onPick }: { onPick: (kind: TrackKind) => void }) {
+  return <div className="new-track-kinds">
+    {(['platformer', 'drop'] as const).map((k) => {
+      const info = KIND_INFO[k];
+      const Arrow = k === 'platformer' ? MoveRight : MoveDown;
+      return <button key={k} className="new-track-kind" data-testid={`kind-${k}`} onClick={() => onPick(k)}>
+        <KindArt kind={k} />
+        <strong><Arrow size={16} /> {info.title}</strong>
+        <span className="new-track-kind-tag">{info.tagline}</span>
+        <ul>{info.points.map((p) => <li key={p}>{p}</li>)}</ul>
+        <em className="new-track-cta">Choose {info.title.toLowerCase()} <ArrowRight size={12} /></em>
+      </button>;
+    })}
+  </div>;
+}
+
+function Card({ def, title, desc, cta, onPick, testId }: { def: TrackDef; title: React.ReactNode; desc: string; cta: string; onPick: () => void; testId?: string }) {
+  return <button className="new-track-card" data-testid={testId} onClick={onPick}>
+    <TrackThumbnail def={def} wide={def.mode === 'platformer'} />
+    <strong>{title}</strong>
+    <span>{desc}</span>
+    <em className="new-track-cta">{cta} <ArrowRight size={12} /></em>
+  </button>;
+}
+
+function PlatformerStarts({ use }: { use: (def: TrackDef) => void }) {
+  const blank = useMemo(() => newPlatformerDef('My platformer course'), []);
+  const copies = useMemo(() => PLATFORMER_COURSES.filter((c) => !c.tutorial).map((c) => ({ c, def: defFromPlan(planOfficial(c), `${c.name} copy`) })), []);
+  const [seed, setSeed] = useState(() => randomSeed());
+  const generated = useMemo(() => defFromPlan(planFlow(seed), `Random course #${seed % 10000}`), [seed]);
+  return <>
+    <section className="new-track-section">
+      <h3><LayoutGrid size={14} /> Start from scratch</h3>
+      <div className="new-track-grid">
+        <Card testId="new-platformer" def={blank} title="Blank course" desc="Just the start platform and the finish line. Draw the floors yourself with Ramp and Curve: drag their handles to make them as steep as you like." cta="Start building" onPick={() => use(newPlatformerDef('My platformer course'))} />
+        <Card testId="generate-platformer" def={generated} title={<><Dices size={13} /> Random course</>} desc="Rolling hills made for you. Reshape any piece afterwards." cta="Use this one" onPick={() => use(generated)} />
+      </div>
+      <button className="text-button" onClick={() => setSeed(randomSeed())}><Dices size={13} /> Roll another random course</button>
+    </section>
+    <section className="new-track-section">
+      <h3><Flag size={14} /> Copy an official course</h3>
+      <p className="new-track-hint">An editable copy. The original is not changed.</p>
+      <div className="new-track-grid">
+        {copies.map(({ c, def }) => <Card key={c.id} testId={`copy-${c.id}`} def={def} title={c.name} desc={c.blurb} cta="Edit a copy" onPick={() => use(def)} />)}
+      </div>
+    </section>
+  </>;
+}
+
+function DropStarts({ use }: { use: (def: TrackDef) => void }) {
+  const blank = useMemo(() => blankTemplate(), []);
+  const handMade = useMemo(() => TEMPLATES.filter((t) => t.id !== 'blank').map((t) => ({ ...t, preview: t.build() })), []);
+  const circuits = useMemo(() => CALENDAR.map((gp) => ({ gp, def: officialTrack(gp.id) })).filter((c): c is { gp: typeof CALENDAR[number]; def: TrackDef } => !!c.def), []);
+  const [style, setStyle] = useState(0);
+  const [seed, setSeed] = useState(() => randomSeed());
+  const gp = CALENDAR[style] ?? CALENDAR[0];
+  const generated = useMemo(() => {
+    const def = generateExperimentalTrackDef(seed, gp.profile, `${gp.short} style #${seed % 10000}`);
+    return { ...def, name: def.name.slice(0, 48) };
+  }, [seed, gp]);
+  return <>
+    <section className="new-track-section">
+      <h3><LayoutGrid size={14} /> Start from scratch</h3>
+      <div className="new-track-grid">
+        <Card testId="new-drop" def={blank} title="Blank drop track" desc="Just the start grid and the finish. Build anything, top to bottom." cta="Start building" onPick={() => use(blankTemplate())} />
+        <Card testId="generate-drop" def={generated} title={<><Dices size={13} /> Random track</>} desc={`Generated in the style of ${gp.name}: ${gp.desc}`} cta="Use this one" onPick={() => use(generated)} />
+      </div>
+      <div className="new-track-generate">
+        <label htmlFor="new-track-style">Random track style</label>
+        <select id="new-track-style" value={style} onChange={(e) => setStyle(Number(e.target.value))}>
+          {CALENDAR.map((g, i) => <option key={g.id} value={i}>{g.flag} {g.short} style</option>)}
+        </select>
+        <button className="text-button" onClick={() => setSeed(randomSeed())}><Dices size={13} /> Roll another</button>
+      </div>
+    </section>
+    <section className="new-track-section">
+      <h3><Flag size={14} /> Copy a championship circuit</h3>
+      <p className="new-track-hint">An editable copy. The championship itself is not changed.</p>
+      <div className="new-track-grid">
+        {circuits.map(({ gp: g, def }) => <Card key={g.id} def={def} title={<><small className="new-track-flag">{g.flag}</small> {g.name}</>} desc={`${def.pieces.length} pieces · ${g.desc}`} cta="Edit a copy" onPick={() => use({ ...JSON.parse(JSON.stringify(def)), name: `${g.short} copy` })} />)}
+      </div>
+    </section>
+    <section className="new-track-section">
+      <h3><Sparkles size={14} /> Starter templates</h3>
+      <p className="new-track-hint">Small hand-made starters for one kind of drop track.</p>
+      <div className="new-track-grid">
+        {handMade.map((e) => {
+          const Icon = e.id === 'loop' ? Zap : e.id === 'peggle' ? Target : ShoppingCart;
+          return <Card key={e.id} def={e.preview} title={<><Icon size={13} /> {e.label}</>} desc={e.desc} cta="Use this" onPick={() => use(e.build())} />;
+        })}
+      </div>
+    </section>
+  </>;
 }
