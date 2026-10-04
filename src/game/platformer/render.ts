@@ -297,23 +297,35 @@ function drawGate(ctx: CanvasRenderingContext2D, g: LaneGate, t: number, near: b
       const sx = g.x - w * 0.55;
       const sy = g.y - h + 8;
       drawImg(ctx, ART.sign, sx, sy, w, h);
-      ctx.fillStyle = back ? '#bfe6ff' : '#ffd2a1';
+      ctx.fillStyle = back ? '#86efac' : '#fcd34d';
       ctx.font = 'bold 15px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(back ? '↗ BACK' : '↘ FRONT', sx + w / 2, sy + h * 0.29);
       ctx.textBaseline = 'alphabetic';
     }
+    // Big, outlined chevrons standing on the track (green = up to the back lane, amber = down to the front), sweeping
+    // in the direction they point. They used to be faint blue and half hidden by the beam.
+    ctx.save();
+    ctx.lineJoin = 'round';
     for (let i = 0; i < 3; i++) {
-      const x = g.x + 24 + i * ((g.w - 48) / 2);
+      const x = g.x + 26 + i * ((g.w - 52) / 2);
       const a = ((t / 140 + i) % 3) / 3;
-      ctx.fillStyle = back ? `rgba(120,200,255,${0.35 + 0.5 * a})` : `rgba(255,170,90,${0.35 + 0.5 * a})`;
+      const base = g.y - 6, tip = g.y - 38;
       ctx.beginPath();
-      if (back) { ctx.moveTo(x - 18, g.y - 2); ctx.lineTo(x, g.y - 22); ctx.lineTo(x + 18, g.y - 2); }
-      else { ctx.moveTo(x - 18, g.y - 22); ctx.lineTo(x, g.y - 2); ctx.lineTo(x + 18, g.y - 22); }
+      if (back) { ctx.moveTo(x - 22, base); ctx.lineTo(x, tip); ctx.lineTo(x + 22, base); ctx.lineTo(x, base - 12); }
+      else { ctx.moveTo(x - 22, tip); ctx.lineTo(x, base); ctx.lineTo(x + 22, tip); ctx.lineTo(x, tip + 12); }
       ctx.closePath();
+      ctx.shadowColor = back ? 'rgba(74,222,128,0.9)' : 'rgba(251,191,36,0.9)';
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = back ? `rgba(74,222,128,${0.6 + 0.4 * a})` : `rgba(251,191,36,${0.6 + 0.4 * a})`;
       ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(10,20,12,0.85)';
+      ctx.stroke();
     }
+    ctx.restore();
   }
 }
 
