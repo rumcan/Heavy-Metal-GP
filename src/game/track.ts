@@ -218,6 +218,11 @@ export interface Meta {
   hit?: boolean;
   hitAt?: number;
   baseY?: number;
+  /** P2-26c minecart: the rail's centre and half length (absent = the drop shaft's full-width rail). */
+  cartX?: number;
+  cartSpan?: number;
+  /** P2-26c: the seat riding this cart across, while it carries one. */
+  cartRider?: number;
   phase?: number;
   cooldownUntil?: number;
   surface?: RampSurface;
@@ -462,9 +467,9 @@ export class Builder {
   }
 
   /** Moving Peggle bucket: catching it fires you down the track. */
-  bucket(y: number, phase: number) {
-    const b = Bodies.rectangle(W / 2, y, 110, 34, { ...SENSOR_OPTS, label: 'bucket' });
-    b.plugin = { kind: 'bucket', baseY: y, phase, cooldownUntil: 0 } as Meta;
+  bucket(y: number, phase: number, x?: number, span?: number) {
+    const b = Bodies.rectangle(x ?? W / 2, y, 110, 34, { ...SENSOR_OPTS, label: 'bucket' });
+    b.plugin = { kind: 'bucket', baseY: y, phase, cooldownUntil: 0, ...(x !== undefined ? { cartX: x, cartSpan: span ?? 300 } : {}) } as Meta;
     this.bodies.push(b);
     this.buckets.push(b);
     return b;

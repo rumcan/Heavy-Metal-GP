@@ -53,6 +53,35 @@ export function tryLoadCatapult(game: Game, m: Marble, spoon: Matter.Body) {
   game.emit({ kind: 'hold', seat: m.info.id, until, of: 'catapult' });
 }
 
+/** The cart's ride speed (px per ms) and how fast its rider rolls off the end (px per step). */
+export const CART_SPEED = 0.42;
+export const CART_EXIT_SPEED = 6;
+
+/**
+ * P2-26c: a marble lands in a minecart on a platformer course. It rides inside to the end of the rail ahead (to the
+ * right, the way the race runs; the left end if the cart is already at the right end) and is let off there rolling
+ * forward. The cart travels with it, then carries on shuttling from where it stopped.
+ */
+export function boardCart(game: Game, m: Marble, cart: Matter.Body) {
+  const md = meta(cart);
+  if (m.hold || m.frozen || m.finishedAt !== null || md.cartRider !== undefined || game.time < m.tunnelSafeUntil) return;
+  const x0 = (md.cartX ?? cart.position.x) - (md.cartSpan ?? 300), x1 = (md.cartX ?? cart.position.x) + (md.cartSpan ?? 300);
+  const right = cart.position.x < x1 - 40;
+  const endX = right ? x1 : x0;
+  const y = (md.baseY ?? cart.position.y) - 16;
+  const transit = Math.max(300, Math.abs(endX - cart.position.x) / CART_SPEED);
+  md.cartRider = m.info.id;
+  m.hold = { kind: 'cart', until: game.time + transit, at: game.time, body: cart, transit, from: { x: cart.position.x, y }, exit: { x: endX + (right ? 70 : -70), y: y - 10, dir: { x: right ? 1 : -1, y: -0.15 }, speed: CART_EXIT_SPEED } };
+  m.body.isSensor = true;
+  Body.setPosition(m.body, { x: cart.position.x, y });
+  Body.setVelocity(m.body, { x: 0, y: 0 });
+  m.trail = [];
+  game.sfx('bucket', m, cart.position.x, cart.position.y);
+  game.emit({ kind: 'sound', cue: 'bucket', seat: m.info.id });
+  game.effects.push({ type: 'text', x: cart.position.x, y: cart.position.y - 30, ttl: 60, maxTtl: 60, color: '#fbbf24', text: 'ALL ABOARD!' });
+  if (m.info.isPlayer) game.onEvent?.('ALL ABOARD! Minecart express', '#fbbf24');
+}
+
 export function releaseHold(game: Game, m: Marble) {
   const hold = m.hold;
   m.hold = null;
@@ -113,6 +142,15 @@ export function releaseHold(game: Game, m: Marble) {
     if (!hold.exit) return;
     exit = hold.exit;
     if (hold.kind === 'screw') safe = 800;
+    if (hold.kind === 'cart' && hold.body) {
+      // P2-26c: the cart stays at the end of its rail and carries on shuttling from there (no jump back).
+      const cm = meta(hold.body);
+      cm.cartRider = undefined;
+      cm.cooldownUntil = game.time + 900;
+      const side = Math.sign(hold.body.position.x - (cm.cartX ?? hold.body.position.x)) || 1;
+      cm.phase = side * Math.PI / 2 - game.time * 0.0011;
+      safe = 600;
+    }
     if (hold.kind === 'loop') safe = 700;
   }
   m.body.isSensor = false;

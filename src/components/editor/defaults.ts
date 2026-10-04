@@ -126,7 +126,9 @@ function buildDefault(type: PieceType, at: Point, snap = false): Piece {
       return { t: 'itembox', x: snap ? snapVal(cx) : cx, y: snap ? snapVal(cy) : cy };
     }
     case 'bucket': {
-      // Bucket only cares about y; x is always centre. Keep y snapped.
+      // A drop-track bucket only cares about y (its rail spans the shaft). On a platformer course it gets a rail of
+      // its own centred where you click (P2-26c): drag the piece to move it, its settings set the span.
+      if (isSideWorld()) return { t: 'bucket', y: snap ? snapVal(cy) : cy, phase: 0, x: snap ? snapVal(cx) : cx, span: 300 };
       return { t: 'bucket', y: snap ? snapVal(cy) : cy, phase: 0 };
     }
     case 'wall': {

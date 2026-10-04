@@ -91,7 +91,7 @@ export function placeTemplate(template: SavedTemplate, world: { x: number; y: nu
     // Preserve the historical anchor exactly, including its incomplete type
     // fallbacks. Old saves may already be distorted: don't silently recenter them.
     const anchor = template.pieces[0];
-    dx -= 'x' in anchor ? anchor.x : ('a' in anchor ? anchor.a[0] : 0);
+    dx -= 'x' in anchor && typeof anchor.x === 'number' ? anchor.x : ('a' in anchor ? anchor.a[0] : 0);
     dy -= 'y' in anchor ? anchor.y : ('a' in anchor ? anchor.a[1] : 0);
   } else {
     return null; // A future format must not be silently treated as legacy.

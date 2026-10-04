@@ -685,6 +685,16 @@ export function drawBodies(ctx: CanvasRenderingContext2D, game: Game, bodies: re
       }
       case 'bucket': {
         const { x, y } = b.position;
+        if (md.cartX !== undefined) {
+          // P2-26c: its own rail, between the two ends
+          const x0 = md.cartX - (md.cartSpan ?? 300) - 60, x1 = md.cartX + (md.cartSpan ?? 300) + 60, ry = (md.baseY ?? y) + 24;
+          ctx.fillStyle = '#4b5563';
+          ctx.fillRect(x0, ry - 3, x1 - x0, 5);
+          ctx.fillStyle = '#9ca3af';
+          ctx.fillRect(x0, ry - 3, x1 - x0, 1.5);
+          ctx.fillStyle = '#3a2a1c';
+          for (const px of [x0, x1]) ctx.fillRect(px - 5, ry - 2, 10, 160);
+        }
         const cart = sprite('minecart');
         if (cart) {
           // minecart shuttling along its rail (the rail is part of the static layer)

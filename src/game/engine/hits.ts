@@ -2,6 +2,7 @@
 // Split out of engine.ts (P2-00a). Every function takes the Game as `game`; Game's methods delegate here.
 import Matter from 'matter-js';
 import { meta } from '../track';
+import * as holds from './holds';
 import { pendulumOmega, slideDir, rollAt, pathAt, beltDir } from '../elements';
 
 import { MAX_ITEM_STACK, LEGACY_ITEMS } from '../types';
@@ -604,6 +605,8 @@ export function marbleHits(game: Game, m: Marble, other: Matter.Body) {
     }
     case 'bucket': {
       if (game.time < (md.cooldownUntil ?? 0)) break;
+      // P2-26c: on a platformer course the cart is a shuttle over a chasm: hop in, ride to the far end, roll off.
+      if (game.track.platformer && md.cartX !== undefined) { holds.boardCart(game, m, other); break; }
       md.cooldownUntil = game.time + 250;
       Body.setPosition(m.body, { x: other.position.x, y: other.position.y + 30 });
       game.pendingLaunches.set(m.info.id, { x: 0, y: 17 });

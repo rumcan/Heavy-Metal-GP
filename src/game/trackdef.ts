@@ -83,7 +83,9 @@ export interface SignPiece extends PieceBase { t: 'sign'; x: number; y: number; 
 export interface RingPiece extends PieceBase { t: 'ring'; x: number; y: number; r: number; thick: number }
 export interface PPegPiece extends PieceBase { t: 'ppeg'; x: number; y: number; color: PegColor; r: number; item?: ItemType }
 export interface ItemBoxPiece extends PieceBase { t: 'itembox'; x: number; y: number }
-export interface BucketPiece extends PieceBase { t: 'bucket'; y: number; phase?: number }
+/** `x` and `span` (P2-26c): where the cart's rail is centred and how far it runs each way. Absent = the drop shaft's
+ *  full-width rail. On a platformer course a marble that lands in the cart rides it to the far end (across a chasm). */
+export interface BucketPiece extends PieceBase { t: 'bucket'; y: number; phase?: number; x?: number; span?: number }
 export interface WallPiece extends PieceBase { t: 'wall'; x: number; y: number; w: number; h: number }
 export interface BlockPiece extends PieceBase { t: 'block'; x: number; y: number; w: number; h: number }
 // ---- MB-10A: shortcuts and secrets ----
@@ -315,8 +317,8 @@ class DefRecorder extends Builder {
     return this.capture(() => super.itemBox(x, y), () => ({ t: 'itembox', x, y, flip: this.mirrored }));
   }
 
-  override bucket(y: number, phase: number) {
-    return this.capture(() => super.bucket(y, phase), () => ({ t: 'bucket', y, phase, flip: this.mirrored }));
+  override bucket(y: number, phase: number, x?: number, span?: number) {
+    return this.capture(() => super.bucket(y, phase, x, span), () => ({ t: 'bucket', y, phase, ...(x !== undefined ? { x, span } : {}), flip: this.mirrored }));
   }
 
   // ---- MB-10A ----
@@ -579,7 +581,7 @@ export function replayPiece(b: Builder, piece: Piece) {
       case 'sign': b.sign(piece.x, piece.y, piece.text, piece.w); break;
       case 'ppeg': b.ppeg(piece.x, piece.y, piece.color, piece.r, piece.item); break;
       case 'itembox': b.itemBox(piece.x, piece.y); break;
-      case 'bucket': b.bucket(piece.y, piece.phase ?? 0); break;
+      case 'bucket': b.bucket(piece.y, piece.phase ?? 0, piece.x, piece.span); break;
       case 'wall': b.wall(piece.x, piece.y, piece.w, piece.h); break;
       case 'block': b.block(piece.x, piece.y, piece.w, piece.h); break;
       // ---- MB-10A ----
@@ -1076,7 +1078,11 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
     case 'itembox':
       return { t: 'itembox', x: number(raw.x, `${at}.x`, -200, xMax(), problems), y: real(raw.y, `${at}.y`, problems), ...body };
     case 'bucket':
-      return { t: 'bucket', y: real(raw.y, `${at}.y`, problems), phase: raw.phase === undefined ? undefined : real(raw.phase, `${at}.phase`, problems), ...body };
+      return {
+        t: 'bucket', y: real(raw.y, `${at}.y`, problems), phase: raw.phase === undefined ? undefined : real(raw.phase, `${at}.phase`, problems),
+        ...(raw.x === undefined ? {} : { x: number(raw.x, `${at}.x`, -200, xMax(), problems), span: number(raw.span ?? 300, `${at}.span`, 60, 3000, problems) }),
+        ...body,
+      };
     case 'wall':
     case 'block':
       return {
