@@ -34,6 +34,13 @@ export class InfinityPainter {
   private stars: { x: number; y: number; r: number; tw: number }[];
   private lastCamX: number | null = null;
   private lastCamY: number | null = null;
+
+  /** The world moved by (dx, dy) (the floating origin): carry the trail and the camera memory along, so nothing jumps. */
+  shift(dx: number, dy: number): void {
+    for (const t of this.trail) { t.x += dx; t.y += dy; }
+    if (this.lastCamX !== null) this.lastCamX += dx;
+    if (this.lastCamY !== null) this.lastCamY += dy;
+  }
   private wasAirborne = false;
   private peakVy = 0;
   private lastKm = -1;

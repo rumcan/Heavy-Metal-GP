@@ -52,6 +52,8 @@ export class InfinityRun {
   /** Counters for tests. */
   chunksBuilt = 0;
   originShifts = 0;
+  /** How the world moved at the last origin shift (add it to anything that holds world positions, like a camera). */
+  lastShift = { dx: 0, dy: 0 };
   private live = new Map<number, Live>();
   private cache = new Map<number, InfinityChunk>();
   private wallBody: Matter.Body | null = null;
@@ -239,6 +241,7 @@ export class InfinityRun {
     this.origin = { x: nx, y: ny };
     this.lastChunk = -1;
     this.originShifts++;
+    this.lastShift = { dx: -dx, dy: -dy };
     this.refreshWindow();
   }
 

@@ -48,6 +48,12 @@ export interface PlatformCamera {
   scale: number;
   /** Camera depth: the lane it stands on (fractional during a lane change). */
   focus: number;
+  /**
+   * Infinity mode shifts its whole world back toward zero now and then (a floating origin). These are the world's
+   * offset, so the backdrop keeps scrolling from where it was instead of jumping. Absent = 0.
+   */
+  originX?: number;
+  originY?: number;
 }
 
 /** A marble's depth right now (fractional while its lane change runs). */
@@ -92,13 +98,13 @@ function sky(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch:
   // the sky into the clouds. A band of mist covers each join between two bands.
   if (ready(ART.skyIslands) && ready(ART.skyClouds)) {
     const h = ch * 1.12;
-    const top = -Math.max(0, cam.y - startY) * BACKDROP_DESCENT;
+    const top = -Math.max(0, cam.y + (cam.originY ?? 0) - startY) * BACKDROP_DESCENT;
     const first = Math.max(0, Math.floor(-top / h));
     for (let row = first; top + row * h < ch; row++) {
       const img = row === 0 ? ART.skyIslands : ART.skyClouds;
       const y = top + row * h;
       const w = (img.naturalWidth / img.naturalHeight) * h;
-      let x = -(((cam.x * 0.03) + row * w * 0.37) % w);
+      let x = -((((cam.x + (cam.originX ?? 0)) * 0.03) + row * w * 0.37) % w);
       if (x > 0) x -= w;
       for (; x < cw; x += w) drawImg(ctx, img, x, y, w + 1, h + 1);
     }
@@ -117,7 +123,7 @@ function sky(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch:
   if (ready(ART.far) && ready(ART.trees)) {
     const strip = (img: HTMLImageElement, parallax: number, h: number, bottom: number) => {
       const w = (img.naturalWidth / img.naturalHeight) * h;
-      let x = -((cam.x * parallax) % w);
+      let x = -(((cam.x + (cam.originX ?? 0)) * parallax) % w);
       if (x > 0) x -= w;
       for (; x < cw; x += w) drawImg(ctx, img, x, bottom - h, w + 1, h);
     };
@@ -134,7 +140,7 @@ function sky(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch:
     { p: 0.12, y: 0.62, h: 0.2, c: 'rgba(98,128,128,0.8)', step: 120, amp: 0.4 },
   ];
   for (const b of bands) {
-    const off = -((cam.x * b.p) % (b.step * 8));
+    const off = -(((cam.x + (cam.originX ?? 0)) * b.p) % (b.step * 8));
     ctx.beginPath();
     ctx.moveTo(0, ch);
     for (let x = off - b.step; x < cw + b.step; x += b.step / 4) {
@@ -794,6 +800,14 @@ export function foregroundScroll(cam: PlatformCamera): { x: number; y: number } 
  * the track (a jump lifts the ball and the camera, not the trees). The track height is eased so the line of trees
  * follows the course's slopes smoothly instead of every bump, and it holds over a chasm.
  */
+/** The world moved by (dx, dy) under this camera (Infinity's floating origin): carry the foreground's memory along. */
+export function shiftForeground(cam: PlatformCamera, dx: number, dy: number): void {
+  const st = FG.get(cam);
+  if (!st) return;
+  st.camX += dx; st.camY += dy; st.lagY += dy;
+  if (st.trackY !== undefined) st.trackY += dy;
+}
+
 export function foregroundTop(cam: PlatformCamera, plan: CoursePlan | undefined, ch: number): number {
   const st = FG.get(cam);
   const floor = plan ? floorAt(plan, LANE_MIDDLE as Lane, cam.x) : null;

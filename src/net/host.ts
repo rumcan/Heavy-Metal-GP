@@ -226,6 +226,8 @@ export class RaceHost {
       benched: benchedSlots(seats, opts.settings),
       ...(house ? { inventory: { ...house.inventory }, unlimitedItems: house.unlimited } : {}),
       gridOrder: opts.gridOrder ?? seats.map((s) => s.slot),
+      // Online, only computer drivers are cut 20 s after the most recent finish: a person always gets to finish.
+      stragglerCut: { ms: 20_000, humans: false },
     });
     this.game.start();
     this.applySeatTalents();

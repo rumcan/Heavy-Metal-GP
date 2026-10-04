@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { nudgeOf } from '../game/controls';
 import { actionForKey } from '../game/skill-keys';
-import { ArrowLeft, ArrowRight, Pause, Play, Flag, ChevronRight, FastForward, Timer, Gauge, Coins, MessageCircle, Snowflake, ZoomIn, ZoomOut, Volume2, VolumeX } from 'lucide-react';
+import { ArrowLeft, ArrowRight, RotateCcw, Pause, Play, Flag, ChevronRight, FastForward, Timer, Gauge, Coins, MessageCircle, Snowflake, ZoomIn, ZoomOut, Volume2, VolumeX } from 'lucide-react';
 import { CHAT_BUBBLE_MS, canSay, chatMessage, MAX_CHAT_LENGTH, offCooldown, speakerOf, trimChatText } from '../net/chat';
 import type { ChatMsg } from '../net/protocol';
 import { raceAudio } from '../game/audio';
@@ -126,6 +126,9 @@ interface Hud {
   viewTop: number; viewBottom: number;
 }
 
+/** A driver still out 20 s after the most recent finish is classified Did Not Finish (story, championship, quick race). */
+const STRAGGLER_CUT = { ms: 20_000, humans: true };
+
 export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef, title, subtitle, onExit, onFinished, actions, championship = false, inventory, credits, onInventoryChange, payout, onShop, isCustom = false, story, loadoutMode, online, rating = null, tutorial }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef<Game | null>(null);
@@ -154,6 +157,8 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
   const [muted, setMuted] = useState(() => raceAudio.loadPreference());
   const toggleMute = useCallback(() => { raceAudio.unlock(); raceAudio.setMuted(!raceAudio.muted); setMuted(raceAudio.muted); }, []);
   const [confirmExit, setConfirmExit] = useState(false);
+  /** Bumped by the pause menu's Restart race: the race below is built again from the lights. */
+  const [restarts, setRestarts] = useState(0);
   const [fast, setFast] = useState(1);
   const [toast, setToast] = useState<{ message: string; color: string } | null>(null);
   const [results, setResults] = useState<HeatResult[] | null>(null);
@@ -332,7 +337,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
         })
       : null;
     sessionRef.current = session;
-    const game = session ? session.game : new Game(seed, roster, { profile, gridOrder, inventory: initialInventory.current, story: story?.hooks, def: trackDef ?? undefined, dropPool: slotSkills(slotsRef.current), talents: loadAccount().talents, slots: slotsRef.current, ...(tutorialRef.current ? { aiItems: false } : {}) });
+    const game = session ? session.game : new Game(seed, roster, { profile, gridOrder, inventory: initialInventory.current, story: story?.hooks, def: trackDef ?? undefined, dropPool: slotSkills(slotsRef.current), talents: loadAccount().talents, slots: slotsRef.current, ...(tutorialRef.current ? { aiItems: false } : { stragglerCut: STRAGGLER_CUT }) });
     // P2-13: a learner cannot be hurt — health off for the whole tutorial ride.
     if (tutorialRef.current) game.healthOn = false;
     // Online, this screen does not own the wallet: the race inventory is the
@@ -671,7 +676,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       sessionRef.current = null;
       gameRef.current = null;
     };
-  }, [seed, roster, profile, trackDef, gridOrder, setPause, setZoom, toggleMute, online, useItem, openCompose, closeCompose]);
+  }, [seed, roster, profile, trackDef, gridOrder, setPause, setZoom, toggleMute, online, useItem, openCompose, closeCompose, restarts]);
 
   const byId = (id: number) => roster.find((m) => m.id === id)!;
   const preStart = hud.lights >= 0;
@@ -783,7 +788,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       <div className="race-controls"><div className="nudge-controls"><span>FIND YOUR LINE</span><div><button className="nudge-button" aria-label="Nudge left" {...nudgeButton(-1)} disabled={hud.finished || preStart || paused}><ArrowLeft size={18} /><kbd>←</kbd></button><button className="nudge-button" aria-label="Nudge right" {...nudgeButton(1)} disabled={hud.finished || preStart || paused}><ArrowRight size={18} /><kbd>→</kbd></button></div></div><div className="thumb-controls"><button className="nudge-button jump-button" aria-label="Jump" onPointerDown={(e) => { e.preventDefault(); pressJump(); }} disabled={hud.finished || preStart || paused}>JUMP<kbd>↑</kbd></button><button className="nudge-button engine-button" aria-label="Magic Engine (hold)" onPointerDown={(e) => { const tut = tutorialRef.current; if (tut && !tut.allow('engine')) return; e.currentTarget.setPointerCapture(e.pointerId); controls.current.engine = true; tut?.press('engine', gameRef.current?.time ?? 0); }} onPointerUp={() => { controls.current.engine = false; }} onPointerCancel={() => { controls.current.engine = false; }} onLostPointerCapture={() => { controls.current.engine = false; }} disabled={hud.finished || preStart || paused}>ENGINE<kbd>↓</kbd></button></div></div>
       </div><InventoryToolbar slots={slotsRef.current} unlimited={online?.settings.items} inventory={hud.inventory} remaining={hud.remaining} selected={selected} blocked={paused || hud.finished || preStart || hud.frozen || !!results} coolingDown={hud.coolingDown} onUse={deploy} />
     </footer>
-    {paused && !results && <Dialog titleId="pause-title" onClose={() => { setConfirmExit(false); setPause(false); }} className="pause-dialog"><span className="eyebrow"><Timer size={15} /> {confirmExit ? 'RACE CONTROL' : 'TIME OUT'}</span><h2 id="pause-title">{confirmExit ? 'Leaving the grid?' : 'A quick pit stop.'}</h2><p className="dialog-intro">{confirmExit ? 'This heat will not be scored or paid. Used items stay spent; unused items and pickups stay in your inventory. Previous results are safe.' : 'The clock, every marble, and all item timers are paused. Your next move can wait.'}</p><div className="pause-actions"><button className="button-primary" onClick={() => { setConfirmExit(false); setPause(false); }}><Play size={17} />Back to the race</button><button className="button-secondary" onClick={confirmExit ? onExit : () => setConfirmExit(true)}>{confirmExit ? 'Leave heat' : 'Return to paddock'}<ChevronRight size={16} /></button></div></Dialog>}
+    {paused && !results && <Dialog titleId="pause-title" onClose={() => { setConfirmExit(false); setPause(false); }} className="pause-dialog"><span className="eyebrow"><Timer size={15} /> {confirmExit ? 'RACE CONTROL' : 'TIME OUT'}</span><h2 id="pause-title">{confirmExit ? 'Leaving the grid?' : 'A quick pit stop.'}</h2><p className="dialog-intro">{confirmExit ? 'This heat will not be scored or paid. Used items stay spent; unused items and pickups stay in your inventory. Previous results are safe.' : 'The clock, every marble, and all item timers are paused. Your next move can wait.'}</p><div className="pause-actions"><button className="button-primary" onClick={() => { setConfirmExit(false); setPause(false); }}><Play size={17} />Back to the race</button>{!online && <button className="button-secondary" onClick={() => { setConfirmExit(false); setPause(false); setRestarts((n) => n + 1); }}><RotateCcw size={16} />Restart race</button>}<button className="button-secondary" onClick={confirmExit ? onExit : () => setConfirmExit(true)}>{confirmExit ? 'Leave heat' : 'Return to paddock'}<ChevronRight size={16} /></button></div></Dialog>}
     {results && <RaceResults results={results} roster={roster} title={title} subtitle={subtitle} actions={actions} championship={championship} payout={payout} credits={credits} startKit={resultStartKit.current} endKit={resultEndKit} onShop={onShop} isCustom={isCustom} rating={rating} />}
   </div>;
 }
