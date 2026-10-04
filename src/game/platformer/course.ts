@@ -280,5 +280,6 @@ export function planTutorial(): CoursePlan {
     { x: 0, y: y - 30 }, { x: 2400, y: y - 30 }, { x: 2400, y: y + 60 }, { x: 4100, y: y + 60 },
     { x: 4900, y: y + 300 }, { x: 4900, y: y + 250 }, { x: 6600, y: y + 250 },
   ];
-  return { seed: 0, width: 6600, height: y + 280 + 900, floors, bumps, gates, ledges, path, startX: 520, startY: y, finishX: 5900, finishY: y + 280 };
+  // Drawn in the painted coaster style like every other course (as 'blocks' it fell back to the old pixel tiles).
+  return { seed: 0, style: 'flow', width: 6600, height: y + 280 + 900, floors, bumps, gates, ledges, path, startX: 520, startY: y, finishX: 5900, finishY: y + 280 };
 }

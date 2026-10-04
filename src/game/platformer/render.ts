@@ -609,14 +609,38 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
  * The owner's blurred foreground pines: in front of everything along the bottom of the screen, scrolling faster
  * than the track (they are nearer than it). Kept low: their tops stop well below the middle, where your ball is.
  */
+/** Per camera: how far the pines have scrolled (screen px) and where they sit vertically. */
+const FG = new WeakMap<PlatformCamera, { camX: number; camY: number; scroll: number; lagY: number }>();
+export const FG_PARALLAX = 1.35;
+
+/**
+ * Where the foreground pines are this frame. They used to sit at cam.x * cam.scale * 1.35 (mod their width): the
+ * camera zooms out at speed, and a tiny zoom change times a world x in the tens of thousands threw them hundreds of
+ * pixels at once. Now each frame scrolls them by that frame's camera movement only (at the current zoom), so a zoom
+ * never moves them, a respawn or restart (a big jump) does not spin them, and they sway a little against vertical
+ * motion and settle back, like something close to the lens.
+ */
+export function foregroundScroll(cam: PlatformCamera): { x: number; y: number } {
+  let st = FG.get(cam);
+  if (!st) { st = { camX: cam.x, camY: cam.y, scroll: 0, lagY: cam.y }; FG.set(cam, st); }
+  const dx = cam.x - st.camX;
+  if (Math.abs(dx) < 400) st.scroll += dx * cam.scale * FG_PARALLAX; // a bigger jump is a teleport: do not spin
+  st.camX = cam.x;
+  st.camY = cam.y;
+  st.lagY += (cam.y - st.lagY) * 0.08;
+  if (Math.abs(cam.y - st.lagY) > 600) st.lagY = cam.y;
+  const y = Math.max(-24, Math.min(24, (st.lagY - cam.y) * cam.scale * 0.35));
+  return { x: st.scroll, y };
+}
+
 function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch: number) {
   const img = ART.treesFront;
   if (!ready(img)) return;
   const h = ch * 0.46;
   const w = (img.naturalWidth / img.naturalHeight) * h;
-  let x = -((cam.x * cam.scale * 1.35) % w);
-  if (x > 0) x -= w;
-  const y = ch - h * 0.82;
+  const { x: scroll, y: sway } = foregroundScroll(cam);
+  let x = -(((scroll % w) + w) % w);
+  const y = ch - h * 0.82 + sway;
   for (; x < cw; x += w) ctx.drawImage(img, x, y, w + 1, h);
 }
 
