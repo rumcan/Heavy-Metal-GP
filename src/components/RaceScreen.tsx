@@ -9,7 +9,6 @@ import type { ChatMsg } from '../net/protocol';
 import { raceAudio } from '../game/audio';
 import Matter from 'matter-js';
 import { Game } from '../game/engine';
-import { floorAt } from '../game/platformer/course';
 import { RaceSession } from '../net/session';
 import { houseInventory } from '../net/host';
 import type { RaceLink } from '../net/session';
@@ -206,19 +205,23 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
    * guest's button is a request, and the state frames are the answer.
    */
   const useItem = useCallback((item: ItemType) => {
+    // P2-13: in the tutorial only the key the frozen lesson asks for goes through.
+    const tut = tutorialRef.current;
+    if (tut && !tut.allow('skill')) return;
     const session = sessionRef.current;
     if (session) session.useItem(item);
     else gameRef.current?.usePlayerItem(item);
-    // P2-13: the skills lesson wants to know the learner fired one.
-    tutorialRef.current?.onSkill(item);
+    tut?.press('skill', gameRef.current?.time ?? 0);
   }, []);
   /** P2-01: one press of the core jump. */
   const pressJump = useCallback(() => {
+    // P2-13: keyboard, touch button and any other path all land here.
+    const tut = tutorialRef.current;
+    if (tut && !tut.allow('jump')) return;
     const session = sessionRef.current;
     if (session) session.jump();
     else if (gameRef.current) gameRef.current.jumpPressed = true;
-    // P2-13: keyboard, touch button and any other path all land here.
-    tutorialRef.current?.onJump();
+    tut?.press('jump', gameRef.current?.time ?? 0);
   }, []);
 
   /**
@@ -452,11 +455,20 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       if (!action) return;
       event.preventDefault();
       if (action.kind === 'steer') {
+        const tut = tutorialRef.current;
+        const input = action.dir < 0 ? 'left' : 'right';
+        if (down && tut && !tut.allow(input)) return; // P2-13: the ball drives itself; only the asked-for key counts
         if (action.dir < 0) controls.current.left = down; else controls.current.right = down;
-        if (down && !event.repeat) tutorialRef.current?.onSteer(action.dir); // P2-13
+        if (down && !event.repeat) tut?.press(input, gameRef.current?.time ?? 0);
         return;
       }
-      if (action.kind === 'engine') { controls.current.engine = down; tutorialRef.current?.onEngine(down); return; }
+      if (action.kind === 'engine') {
+        const tut = tutorialRef.current;
+        if (down && tut && !tut.allow('engine') && !controls.current.engine) return;
+        controls.current.engine = down;
+        if (down && !event.repeat) tut?.press('engine', gameRef.current?.time ?? 0);
+        return;
+      }
       if (action.kind === 'jump') { if (down && !event.repeat) pressJump(); return; }
       if (down && !event.repeat) {
         const item = slotsRef.current[action.slot];
@@ -521,23 +533,26 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
           lights = nextLights;
           if (formationElapsed >= lightsOutAt) { lights = -1; game.openGate(); }
         }
-        game.nudge = nudgeOf(controls.current);
+        // P2-13: the tutorial drives the ball itself between lessons and freezes the race on a lesson's spot.
+        const tut = tutorialRef.current;
+        game.nudge = tut?.autopilot ? 1 : nudgeOf(controls.current);
         game.engineHeld = controls.current.engine;
-        // P2-13: the tutorial slows time near a lesson's spot and puts the ball back when it is missed.
-        const pace = tutorialRef.current?.pace;
-        if (pace?.rewindTo != null && game.track.platformer) {
-          const plan = game.track.platformer.plan;
-          const lane = game.player.lane ?? 1;
-          const x = pace.rewindTo;
-          const floor = floorAt(plan, lane as 0 | 1 | 2, x) ?? plan.startY;
-          Matter.Body.setPosition(game.player.body, { x, y: floor - 30 });
-          Matter.Body.setVelocity(game.player.body, { x: 0, y: 0 });
-          Matter.Body.setAngularVelocity(game.player.body, 0);
-          game.player.trail = [];
-          pace.rewindTo = null;
-        }
-        accumulator += dt * (game.player.finishedAt !== null ? fastRef.current : 1) * (pace?.timeScale ?? 1);
-        meter.time('physics', () => { while (accumulator >= PHYSICS_STEP) { rememberPoses(game); game.step(PHYSICS_STEP); accumulator -= PHYSICS_STEP; } });
+        accumulator += dt * (game.player.finishedAt !== null ? fastRef.current : 1);
+        meter.time('physics', () => {
+          while (accumulator >= PHYSICS_STEP) {
+            if (tut) {
+              const pm = game.player;
+              tut.step({ x: pm.body.position.x, vx: pm.body.velocity.x, lane: pm.lane ?? 1, gateOpen: game.gateOpen, finished: pm.finishedAt !== null, time: game.time });
+              if (tut.frozen) { accumulator = 0; break; }
+              game.nudge = tut.autopilot ? 1 : nudgeOf(controls.current);
+            }
+            rememberPoses(game); game.step(PHYSICS_STEP); accumulator -= PHYSICS_STEP;
+            if (tut?.autopilot) {
+              const v = game.player.body.velocity, cap = tut.cap(game.time);
+              if (v.x > cap) Matter.Body.setVelocity(game.player.body, { x: cap, y: v.y });
+            }
+          }
+        });
         if (game.allFinished()) { finishHold += dt; if (finishHold > 750) finish(); }
         else if (game.player.dnf) { finishHold += dt; if (finishHold > 2200) finish(); } // P2-07: out of the race: on to the results
         else if (game.raceTime() >= HEAT_TIME_LIMIT) finish();
@@ -638,11 +653,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
           viewTop: camera.y - height / 2 / camera.scale, viewBottom: camera.y + height / 2 / camera.scale,
         });
         // P2-13: the tutorial overlay reads the learner's position, heat and flags here.
-        tutorialRef.current?.onFrame({
-          x: game.player.body.position.x, y: game.player.body.position.y,
-          heat: game.player.engine?.heat ?? 0, gateOpen: game.gateOpen,
-          finished: game.player.finishedAt !== null, paused: pausedRef.current,
-        });
+        tutorialRef.current?.onFrame({ finished: game.player.finishedAt !== null, paused: pausedRef.current });
       }
       unblend();
       raf = requestAnimationFrame(loop);
@@ -704,7 +715,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
     useItem(item);
   };
   const nudgeButton = (direction: number) => ({
-    onPointerDown: (event: React.PointerEvent<HTMLButtonElement>) => { event.currentTarget.setPointerCapture(event.pointerId); if (!pausedRef.current) controls.current.touch = direction; tutorialRef.current?.onSteer(direction as -1 | 1); },
+    onPointerDown: (event: React.PointerEvent<HTMLButtonElement>) => { event.currentTarget.setPointerCapture(event.pointerId); const tut = tutorialRef.current; const input = direction < 0 ? 'left' : 'right'; if (tut && !tut.allow(input)) return; if (!pausedRef.current) controls.current.touch = direction; tut?.press(input, gameRef.current?.time ?? 0); },
     onPointerUp: () => { controls.current.touch = 0; },
     onPointerCancel: () => { controls.current.touch = 0; },
     onLostPointerCapture: () => { controls.current.touch = 0; },
@@ -769,7 +780,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       <div className="speed-readout"><div className="readout-caption"><Gauge size={13} /><span>SPEED</span></div><div><strong>{Math.round(hud.speed)}</strong><span>cm/s</span></div><div className="speed-meter"><span style={{ width: `${Math.min(100, hud.speed / hud.cap * 100)}%` }} /></div></div>{hud.healthOn && <div className={`hp-meter ${hud.hp / hud.maxHp < 0.4 ? 'low' : ''}`} title="Health: 0 and you are out of the race"><span>HP {Math.ceil(hud.hp)}</span><i style={{ width: `${Math.max(0, Math.min(100, hud.hp / hud.maxHp * 100))}%` }} /></div>}<div className={`engine-heat ${hud.overheated ? 'overheated' : ''}`} title="Magic Engine heat: hold ↓ to fire, let go to cool"><span>{hud.overheated ? 'OVERHEAT' : 'ENGINE ↓'}</span><i style={{ width: `${Math.round(hud.heat * 100)}%` }} /></div>
       <div className={`marble-state ${hud.frozen ? 'is-frozen' : ''}`}><span className="readout-caption">MARBLE STATUS</span><strong>{hud.frozen && <Snowflake size={14} />}{hud.state}</strong><span className="peg-readout"><i className="orange-peg" />{hud.pegs} orange pegs</span></div>
       <div className="race-wallet"><Coins size={16} /><strong>{credits.toLocaleString()}</strong><span>CR</span></div>
-      <div className="race-controls"><div className="nudge-controls"><span>FIND YOUR LINE</span><div><button className="nudge-button" aria-label="Nudge left" {...nudgeButton(-1)} disabled={hud.finished || preStart || paused}><ArrowLeft size={18} /><kbd>←</kbd></button><button className="nudge-button" aria-label="Nudge right" {...nudgeButton(1)} disabled={hud.finished || preStart || paused}><ArrowRight size={18} /><kbd>→</kbd></button></div></div><div className="thumb-controls"><button className="nudge-button jump-button" aria-label="Jump" onPointerDown={(e) => { e.preventDefault(); pressJump(); }} disabled={hud.finished || preStart || paused}>JUMP<kbd>↑</kbd></button><button className="nudge-button engine-button" aria-label="Magic Engine (hold)" onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); controls.current.engine = true; tutorialRef.current?.onEngine(true); }} onPointerUp={() => { controls.current.engine = false; tutorialRef.current?.onEngine(false); }} onPointerCancel={() => { controls.current.engine = false; tutorialRef.current?.onEngine(false); }} onLostPointerCapture={() => { controls.current.engine = false; tutorialRef.current?.onEngine(false); }} disabled={hud.finished || preStart || paused}>ENGINE<kbd>↓</kbd></button></div></div>
+      <div className="race-controls"><div className="nudge-controls"><span>FIND YOUR LINE</span><div><button className="nudge-button" aria-label="Nudge left" {...nudgeButton(-1)} disabled={hud.finished || preStart || paused}><ArrowLeft size={18} /><kbd>←</kbd></button><button className="nudge-button" aria-label="Nudge right" {...nudgeButton(1)} disabled={hud.finished || preStart || paused}><ArrowRight size={18} /><kbd>→</kbd></button></div></div><div className="thumb-controls"><button className="nudge-button jump-button" aria-label="Jump" onPointerDown={(e) => { e.preventDefault(); pressJump(); }} disabled={hud.finished || preStart || paused}>JUMP<kbd>↑</kbd></button><button className="nudge-button engine-button" aria-label="Magic Engine (hold)" onPointerDown={(e) => { const tut = tutorialRef.current; if (tut && !tut.allow('engine')) return; e.currentTarget.setPointerCapture(e.pointerId); controls.current.engine = true; tut?.press('engine', gameRef.current?.time ?? 0); }} onPointerUp={() => { controls.current.engine = false; }} onPointerCancel={() => { controls.current.engine = false; }} onLostPointerCapture={() => { controls.current.engine = false; }} disabled={hud.finished || preStart || paused}>ENGINE<kbd>↓</kbd></button></div></div>
       </div><InventoryToolbar slots={slotsRef.current} unlimited={online?.settings.items} inventory={hud.inventory} remaining={hud.remaining} selected={selected} blocked={paused || hud.finished || preStart || hud.frozen || !!results} coolingDown={hud.coolingDown} onUse={deploy} />
     </footer>
     {paused && !results && <Dialog titleId="pause-title" onClose={() => { setConfirmExit(false); setPause(false); }} className="pause-dialog"><span className="eyebrow"><Timer size={15} /> {confirmExit ? 'RACE CONTROL' : 'TIME OUT'}</span><h2 id="pause-title">{confirmExit ? 'Leaving the grid?' : 'A quick pit stop.'}</h2><p className="dialog-intro">{confirmExit ? 'This heat will not be scored or paid. Used items stay spent; unused items and pickups stay in your inventory. Previous results are safe.' : 'The clock, every marble, and all item timers are paused. Your next move can wait.'}</p><div className="pause-actions"><button className="button-primary" onClick={() => { setConfirmExit(false); setPause(false); }}><Play size={17} />Back to the race</button><button className="button-secondary" onClick={confirmExit ? onExit : () => setConfirmExit(true)}>{confirmExit ? 'Leave heat' : 'Return to paddock'}<ChevronRight size={16} /></button></div></Dialog>}
