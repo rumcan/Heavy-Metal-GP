@@ -7,6 +7,8 @@ import { InfinityRun } from '../../game/platformer/infinity-world';
 import { marbleDepth, renderPlatformer } from '../../game/platformer/render';
 import { PHYSICS_STEP } from '../../game/physics';
 import { blendPoses, rememberPoses } from '../../game/interpolate';
+import { PerfMeter } from '../../game/perf-meter';
+import { RenderScale } from '../../game/render-scale';
 import { nudgeOf } from '../../game/controls';
 import { actionForKey } from '../../game/skill-keys';
 import { raceAudio } from '../../game/audio';
@@ -93,10 +95,12 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
     const camera = { x: game.player.body.position.x + 200, y: game.player.body.position.y - 40, scale: 0.8, focus: 1 };
     let width = 0, height = 0, raf = 0, last = performance.now(), accumulator = 0, hudTimer = 0, bankTimer = 0, banked = 0, lookAhead = 0;
 
+    const meter = new PerfMeter();
+    const renderScale = new RenderScale();
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
       width = rect.width; height = rect.height;
-      const dpr = Math.min(2, devicePixelRatio || 1);
+      const dpr = renderScale.ratio(devicePixelRatio); // perf: softer when frames keep arriving late
       canvas.width = Math.round(width * dpr); canvas.height = Math.round(height * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
@@ -111,6 +115,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
       if (down && !event.repeat && event.code === 'KeyM') { toggleMute(); return; }
       if (down && !event.repeat && (event.code === 'KeyP' || event.code === 'Escape')) { setPaused(!pausedRef.current); return; }
       if (down && !event.repeat && event.code === 'KeyH') { setUiHidden((v) => !v); return; }
+      if (down && !event.repeat && event.code === 'F3') { event.preventDefault(); meter.toggle(); return; }
       if (pausedRef.current) return;
       let code = event.code;
       if (code === 'KeyA') code = 'ArrowLeft'; else if (code === 'KeyD') code = 'ArrowRight'; else if (code === 'KeyW') code = 'ArrowUp'; else if (code === 'KeyS') code = 'ArrowDown';
@@ -134,6 +139,8 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
 
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame);
+      if (renderScale.observe(now - last)) resize();
+      meter.frame(now, now - last);
       const dt = Math.min(now - last, 100);
       last = now;
       frameMs += (dt - frameMs) * 0.05;
@@ -142,7 +149,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
         game.nudge = nudgeOf(controls.current);
         game.engineHeld = controls.current.engine;
         accumulator += dt;
-        while (accumulator >= PHYSICS_STEP) { rememberPoses(game); run.step(PHYSICS_STEP); accumulator -= PHYSICS_STEP; }
+        meter.time('physics', () => { while (accumulator >= PHYSICS_STEP) { rememberPoses(game); run.step(PHYSICS_STEP); accumulator -= PHYSICS_STEP; } });
       }
       // Perf: draw the ball between its last two physics steps (undone at the end of the frame).
       const unblend = pausedRef.current ? () => {} : blendPoses(game, accumulator / PHYSICS_STEP);
@@ -159,12 +166,13 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
         camera.x += (p.x + lookAhead - camera.x) * (1 - Math.exp(-dt / 220));
         camera.y += (p.y + 10 - camera.y) * (1 - Math.exp(-dt / 260));
         camera.focus = marbleDepth(game, game.player);
-        renderPlatformer(ctx, game, camera, width, height, pausedRef.current ? game.time : now, game.player);
+        meter.time('draw', () => renderPlatformer(ctx, game, camera, width, height, pausedRef.current ? game.time : now, game.player));
         const grounded = game.player.grounded < 5;
-        painter.paint(ctx, {
+        meter.time('fx', () => painter.paint(ctx, {
           width, height, camera, dtMs: dt, frameMs, km: run.km, elapsedMs: elapsed, reduceMotion: reduceRef.current, paused: pausedRef.current,
           ball: { x: p.x, y: p.y, vx: v.x, vy: v.y, grounded },
-        });
+        }));
+        meter.draw(ctx, width, `${canvas.width}x${canvas.height}px (${Math.round(renderScale.scale * 100)}%)`);
         const biome = biomeAt(run.km, seed);
         const music = biome.t > 0.5 ? biome.to : biome.from;
         audio.setScale(music.scale, music.root);
