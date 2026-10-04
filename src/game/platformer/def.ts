@@ -126,7 +126,8 @@ export function planFromTrackDef(def: TrackDef): CoursePlan {
   const bumps: Bump[] = [], gates: LaneGate[] = [], ledges: Ledge[] = [], springs: Spring[] = [];
   const itemBoxes: ItemBoxSpot[] = [], wreckers: WreckerSpot[] = [], boosts: BoostSpot[] = [];
   const loops: LoopSpot[] = [], bridges: BridgeSpot[] = [];
-  for (const p of def.pieces) {
+  const extras: NonNullable<CoursePlan['extras']> = [];
+  def.pieces.forEach((p, source) => {
     const lane = laneOf(p);
     switch (p.t) {
       case 'pad': springs.push({ lane, x: p.x - SPRING_W / 2, y: p.y }); break;
@@ -142,9 +143,10 @@ export function planFromTrackDef(def: TrackDef): CoursePlan {
         bridges.push({ lane, x0: ax, y0: ay + PLANK_H / 2, x1: bx, y1: by + PLANK_H / 2, planks: Math.max(p.planks, Math.ceil((bx - ax) / 20)), slack: p.slack });
         break;
       }
-      default: break;
+      case 'ramp': case 'curve': case 'ice': break; // floors (pieceFloors)
+      default: extras.push({ lane, piece: p, source }); break; // P2-26: built by the classic Builder
     }
-  }
+  });
   // The race line (progress is measured along it): above the middle lane's floor, holding its last height over gaps.
   const path: { x: number; y: number }[] = [];
   let lastY = PF_START_Y;
@@ -158,7 +160,7 @@ export function planFromTrackDef(def: TrackDef): CoursePlan {
   for (const f of floors) maxY = Math.max(maxY, f.y0, f.y1);
   const height = Math.max(def.height, maxY + 900);
   return {
-    seed: def.seed ?? 0, style: 'flow', width, height, floors, bumps, gates, path,
+    seed: def.seed ?? 0, style: 'flow', width, height, floors, bumps, gates, path, ...(extras.length ? { extras } : {}),
     startX: 520, startY: PF_START_Y, finishX, finishY,
     springs, ledges, itemBoxes, wreckers, boosts, loops, bridges,
   };

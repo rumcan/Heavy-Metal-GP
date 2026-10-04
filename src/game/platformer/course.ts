@@ -106,6 +106,11 @@ export interface CoursePlan {
   /** P2-21: loops (a ring a fast ball rides over) and rope bridges over chasms (absent = none). */
   loops?: LoopSpot[];
   bridges?: BridgeSpot[];
+  /**
+   * P2-26: every other Workshop piece (spinners, saws, cannons, flippers, pegs, fields, set pieces...), built by the
+   * classic Builder exactly as on a drop track and placed in its lane's collision layer (absent = none).
+   */
+  extras?: { lane: Lane; piece: import('../trackdef').Piece; /** Index in the def's pieces (the Workshop's selection box). */ source?: number }[];
   /** P2-00: 'flow' = rolling slopes (src/game/platformer/flow.ts); absent = the block style. */
   style?: 'blocks' | 'flow';
 }

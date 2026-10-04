@@ -20,6 +20,7 @@
  * simply leaves `flip` unset and is placed in world coordinates.
  */
 import { ITEM_TYPES, THEME_IDS, themeFor, themeIdFor } from './types';
+import { registerPieceReplay } from './platformer/build';
 import type { ItemType, ThemeId, TrackProfile } from './types';
 import { bakeWindRotation } from './wind-rotation';
 import { Builder, DEFAULT_PROFILE, FINISH_H, GATE_TOP, START_H, T, W, assembleTrack, assembleExperimentalTrack, meta, segFinish, segStart } from './track';
@@ -1452,3 +1453,6 @@ export function generateExperimentalTrackDef(seed: number, profile: TrackProfile
     pieces: recorder.pieces.map(compact),
   });
 }
+
+// P2-26: platformer courses replay classic pieces through the same function (see platformer/build.ts).
+registerPieceReplay(replayPiece);

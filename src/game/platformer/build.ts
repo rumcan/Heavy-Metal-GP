@@ -1,8 +1,9 @@
 // P2-00 (#124): turn a course plan into a Track the engine races on. Physics stays plain vector shapes:
 // every floor and bump is a static quad in its own depth lane (collision mask = that lane's bit only).
 import Matter from 'matter-js';
-import { CAT_SENSOR, CAT_WALL } from '../track';
-import type { Track } from '../track';
+import { Builder, CAT_MARBLE, CAT_SENSOR, CAT_WALL } from '../track';
+import type { Track, TargetBank } from '../track';
+import type { Piece } from '../trackdef';
 import type { TrackTheme } from '../types';
 import { laneCategory } from '../lanes';
 import { makePath } from '../course-path';
@@ -43,6 +44,37 @@ function quad(points: Matter.Vector[], lane: number | null, kind: 'floor' | 'wal
 
 function box(x: number, y: number, w: number, h: number, lane: number | null, kind: 'floor' | 'wall' | 'gate', depth = 0): Matter.Body {
   return quad([{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }], lane, kind, depth);
+}
+
+/** What the classic Builder made for a course's extra pieces: bodies plus the lists the engine steps. */
+export interface ExtraBuild { bodies: Matter.Body[]; spinners: Matter.Body[]; turnstiles: Matter.Body[]; itemBoxes: Matter.Body[]; buckets: Matter.Body[]; wreckers: Matter.Body[]; targetBanks: TargetBank[]; pegCount: { orange: number; total: number } }
+
+/**
+ * P2-26: the classic pieces on a platformer course. Each is replayed through the drop track's own Builder (same
+ * physics, same machines, same art), then moved into its lane: it only meets marbles in that lane, and is drawn with
+ * that lane. Bodies are tagged `classic` so the platformer renderer hands them to the classic body drawer.
+ */
+/** Set by trackdef.ts when it loads (importing it here would be an import cycle through track.ts). */
+let replay: ((b: Builder, piece: Piece) => void) | null = null;
+export function registerPieceReplay(fn: (b: Builder, piece: Piece) => void): void { replay = fn; }
+
+export function buildExtras(plan: CoursePlan, seed: number): ExtraBuild {
+  if (plan.extras?.length && !replay) throw new Error('platformer extras need trackdef.ts loaded');
+  const b = new Builder(seed ^ 0x26c1a55);
+  for (const { lane, piece, source } of plan.extras ?? []) {
+    const first = b.bodies.length;
+    replay!(b, piece);
+    for (const body of b.bodies.slice(first)) {
+      const f = body.collisionFilter;
+      // Any lane bit or the classic marble bit becomes this lane's bit; other bits (walls, sensors) stay.
+      f.mask = ((f.mask ?? 0xffff) & ~(ALL_LANES | CAT_MARBLE)) | laneCategory(lane);
+      const md = body.plugin as { lane?: number; classic?: boolean; source?: number };
+      md.lane = lane;
+      md.classic = true;
+      md.source = source;
+    }
+  }
+  return { bodies: b.bodies, spinners: b.spinners, turnstiles: b.turnstiles, itemBoxes: b.itemBoxes, buckets: b.buckets, wreckers: b.wreckers, targetBanks: b.targetBanks, pegCount: b.pegCount };
 }
 
 /** Build the platformer Track: an official course by id, else a course planned from the seed. */
@@ -106,6 +138,10 @@ export function planBodies(plan: CoursePlan): { bodies: Matter.Body[]; itemBoxes
 /** The Track for any course plan (an official one, a generated one, or one made by hand in a test or the Workshop). */
 export function trackFromPlan(plan: CoursePlan, seed: number, theme: TrackTheme): Track {
   const { bodies, itemBoxes, wreckers } = planBodies(plan);
+  const extra = buildExtras(plan, seed);
+  bodies.push(...extra.bodies);
+  itemBoxes.push(...extra.itemBoxes);
+  wreckers.push(...extra.wreckers);
   // Shared walls: behind the grid and after the run-out.
   bodies.push(box(-240, plan.startY - 1400, 40, 1400 + FLOOR_DEPTH, null, 'wall'));
   bodies.push(box(plan.width + 200, -400, 40, plan.height + 400, null, 'wall'));
@@ -119,13 +155,13 @@ export function trackFromPlan(plan: CoursePlan, seed: number, theme: TrackTheme)
     height: plan.height,
     // Story sectors and the HUD read `segments`; a platformer course is one long sector for now.
     segments: [{ name: 'Course', y: 0, h: plan.height }],
-    spinners: [],
-    turnstiles: [],
+    spinners: extra.spinners,
+    turnstiles: extra.turnstiles,
     itemBoxes,
     ramps: [],
-    buckets: [],
-    targetBanks: [],
-    pegCount: { orange: 0, total: 0 },
+    buckets: extra.buckets,
+    targetBanks: extra.targetBanks,
+    pegCount: extra.pegCount,
     gate,
     startY: plan.startY - 30,
     finishY: plan.finishY,
