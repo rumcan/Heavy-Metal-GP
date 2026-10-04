@@ -211,7 +211,7 @@ export interface OilSlick {
  * fields are host-side only.
  */
 export interface Hold {
-  kind: 'tunnel' | 'wheel' | 'screw' | 'cannon' | 'catapult' | 'loop';
+  kind: 'tunnel' | 'wheel' | 'screw' | 'cannon' | 'catapult' | 'loop' | 'cart';
   until: number;
   /** Clocked at `until - transit`; the glide runs from then on. Host-only on the wire. */
   transit?: number;
@@ -961,7 +961,10 @@ export class Game {
     // Peggle buckets sweep side to side
     for (const bk of this.track.buckets) {
       const md = meta(bk);
-      const x = W / 2 + Math.sin(this.time * 0.0011 + (md.phase ?? 0)) * (W / 2 - 90);
+      if (md.cartRider !== undefined) continue; // P2-26c: carrying a marble: the cart goes where its rider goes
+      const x = md.cartX !== undefined
+        ? md.cartX + Math.sin(this.time * 0.0011 + (md.phase ?? 0)) * (md.cartSpan ?? 300)
+        : W / 2 + Math.sin(this.time * 0.0011 + (md.phase ?? 0)) * (W / 2 - 90);
       Body.setPosition(bk, { x, y: md.baseY ?? bk.position.y });
     }
     // hit pegs pop away after a short glow
@@ -1025,7 +1028,13 @@ export class Game {
             let e = k * k * (3 - 2 * k);
             // MB-10C: a slipping screw rider wobbles backwards mid-tube (visible through the windows)
             if (m.hold.kind === 'screw' && m.hold.slip) e = Math.max(0, e - Math.sin(k * Math.PI * 2.5) * 0.06 * Math.sin(k * Math.PI));
-            Body.setPosition(m.body, { x: from.x + (exit.x - from.x) * e, y: from.y + (exit.y - from.y) * e });
+            if (m.hold.kind === 'cart' && m.hold.body) {
+              // P2-26c: a steady ride (no ease) to the end of the rail; the cart carries its rider.
+              const end = exit.x - Math.sign(exit.dir.x) * 70;
+              const x = from.x + (end - from.x) * k;
+              Body.setPosition(m.body, { x, y: from.y });
+              Body.setPosition(m.hold.body, { x, y: meta(m.hold.body).baseY ?? m.hold.body.position.y });
+            } else Body.setPosition(m.body, { x: from.x + (exit.x - from.x) * e, y: from.y + (exit.y - from.y) * e });
           }
           continue;
         }

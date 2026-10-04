@@ -539,7 +539,7 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
   const dpr = ctx.getTransform().a;
   sky(ctx, cam, cw, ch, game.track.platformer!.plan.startY);
   const lanes = visibleLanes(cam.focus);
-  const depths = game.marbles.filter((m) => !m.hold).map((m) => ({ m, z: marbleDepth(game, m) }));
+  const depths = game.marbles.filter((m) => !m.hold || m.hold.kind === 'cart').map((m) => ({ m, z: marbleDepth(game, m) }));
 
   for (const lane of lanes) {
     const v = laneView(lane, cam.focus);

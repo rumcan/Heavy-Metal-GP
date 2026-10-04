@@ -5,7 +5,7 @@ import { worldWidth } from './world';
 /** Map positional coordinates only: never directions, dimensions or exit timing. */
 function mapCoordinates(piece: Piece, point: (x: number, y: number) => Vec): Piece {
   const p = { ...piece };
-  if ('x' in p) {
+  if ('x' in p && typeof p.x === 'number') {
     if ('y' in p) [p.x, p.y] = point(p.x, p.y);
     else [p.x, p.bottom] = point(p.x, p.bottom);
   }

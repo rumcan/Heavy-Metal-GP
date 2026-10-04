@@ -256,8 +256,9 @@ function encodeBinary(def: TrackDef): Uint8Array {
       }
       case 'bucket': {
         writeUVarint(out, Math.round(p.y));
-        writeUVarint(out, p.phase !== undefined ? 1 : 0);
+        writeUVarint(out, (p.phase !== undefined ? 1 : 0) | (p.x !== undefined ? 2 : 0)); // bit 1: P2-26c rail position
         if (p.phase !== undefined) writeSVarint(out, Math.round(p.phase * 1000));
+        if (p.x !== undefined) { writeSVarint(out, Math.round(p.x)); writeUVarint(out, Math.round(p.span ?? 300)); }
         break;
       }
       case 'wall':
@@ -586,10 +587,12 @@ function decodeBinary(bytes: Uint8Array, version = 1): TrackDef {
       }
       case 'bucket': {
         const y = readUVarint(bytes, pos);
-        const hasPhase = readUVarint(bytes, pos);
+        const bits = readUVarint(bytes, pos);
         let phase: number | undefined;
-        if (hasPhase) phase = readSVarint(bytes, pos)/1000;
-        p = { t:'bucket', y, ...(phase!==undefined?{phase}:{}) , ...(flip?{flip}:{}) };
+        if (bits & 1) phase = readSVarint(bytes, pos)/1000;
+        let rail: { x: number; span: number } | undefined;
+        if (bits & 2) { const x = readSVarint(bytes, pos); rail = { x, span: readUVarint(bytes, pos) }; }
+        p = { t:'bucket', y, ...(phase!==undefined?{phase}:{}), ...(rail ?? {}), ...(flip?{flip}:{}) };
         break;
       }
       case 'wall': {

@@ -427,6 +427,11 @@ function baseHandles(piece: Piece): Handle[] {
       return [{ id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' }];
     }
     case 'bucket': {
+      // P2-26c: a cart with its own rail moves anywhere and drags the end of its rail; the drop-track one only moves up and down.
+      if (piece.x !== undefined) return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
+        { id: 'span', x: piece.x + (piece.span ?? 300), y: piece.y + 24, cursor: 'ew-resize', label: 'Rail length' },
+      ];
       // Only y matters; pivot is centre-x. Handle at (W/2, y).
       return [{ id: 'move', x: W / 2, y: piece.y, cursor: 'ns-resize', label: 'Height' }];
     }
@@ -927,6 +932,8 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       return piece;
     }
     case 'bucket': {
+      if (piece.x !== undefined && handleId === 'move') return { ...piece, x: withSnap(to.x, sx), y: withSnap(to.y, sx) };
+      if (piece.x !== undefined && handleId === 'span') return { ...piece, span: Math.max(60, Math.min(3000, Math.round(Math.abs(to.x - piece.x)))) };
       if (handleId === 'move') return { ...piece, y: withSnap(to.y, sx) };
       return piece;
     }
