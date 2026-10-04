@@ -135,7 +135,16 @@ export default defineConfig({
   // allowed, tunnelled/sandboxed hosts are not.
   // warmup: transform the game's module graph as soon as the dev server starts, so the first page load after a
   // restart does not sit for a minute while ~500 modules and ~350 images are prepared on demand.
-  server: { host: true, allowedHosts: ['.e2b.app'], warmup: { clientFiles: ['./src/main.tsx', './src/App.tsx'] } },
+  server: {
+    host: true,
+    allowedHosts: ['.e2b.app'],
+    warmup: { clientFiles: ['./src/main.tsx', './src/App.tsx'] },
+    // Never watch the git worktrees (.wt/), build output or test screenshots: a change in a worktree used to reload
+    // every open game page (restarting the race) and clear Vite's cache (the next load took a minute).
+    watch: { ignored: ['**/.wt/**', '**/dist/**', '**/tests/artifacts/**', '**/.claude/**'] },
+  },
+  // Only the game's own pages are scanned for dependencies (not every index.html in every worktree).
+  optimizeDeps: { entries: ['index.html', 'tests/*.html', 'scripts/*/index.html'] },
   preview: { host: true, allowedHosts: ['.e2b.app'] },
   plugins: [
             // rundot-import:vite-plugins:begin
