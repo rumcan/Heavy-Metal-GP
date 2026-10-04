@@ -212,6 +212,16 @@ export const PLATFORMER_PALETTE: PaletteGroup[] = [
   },
 ];
 
+/**
+ * P2-26: every other piece of the drop-track Workshop, on a platformer course too. They keep their groups and words;
+ * each is built by the classic Builder in the lane you are building in (src/game/platformer/build.ts buildExtras).
+ */
+const PLATFORMER_OWN = new Set(PLATFORMER_PALETTE.flatMap((g) => g.tiles.map((t) => t.id)));
+for (const group of PALETTE) {
+  const tiles = group.tiles.filter((t) => !PLATFORMER_OWN.has(t.id));
+  if (tiles.length) PLATFORMER_PALETTE.push({ ...group, id: `pf-${group.id}`, tiles });
+}
+
 /** A tile by its id, falling back to the plain tile of a piece type. */
 const SIDE_TILES = PLATFORMER_PALETTE.flatMap((group) => group.tiles);
 export const tileFor = (idOrType: string): PaletteTile | undefined =>

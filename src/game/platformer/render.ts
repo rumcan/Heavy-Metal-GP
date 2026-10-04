@@ -5,7 +5,7 @@
 import type { Game, Marble } from '../engine';
 import { meta } from '../track';
 import { laneFocus, laneView, visibleLanes, LANE_SWITCH_MS, LANE_MIDDLE } from '../lanes';
-import { drawMarble } from '../render';
+import { drawBodies, drawMarble } from '../render';
 import { drawSkillWorld } from '../skills/draw';
 import { SPRING_W, floorAt } from './course';
 import type { CoursePlan, Floor, Lane, LaneGate } from './course';
@@ -386,6 +386,9 @@ function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, 
     for (const l of info.plan.ledges ?? []) if (l.lane === lane && l.x + l.w > left && l.x < right) drawLedge(ctx, l.x, l.y, l.w, (px) => floorAt(info.plan, l.lane, px));
     for (const s of info.plan.springs ?? []) if (s.lane === lane && s.x + SPRING_W > left && s.x < right) drawSpring(ctx, s.x, s.y, fired(s.x));
   }
+  // P2-26: the classic pieces in this lane, with their drop-track art.
+  const classic = game.track.bodies.filter((b) => { const md = meta(b) as { classic?: boolean; lane?: number }; return md.classic && md.lane === lane; });
+  if (classic.length) drawBodies(ctx, game, classic, { viewTop: -1e9, viewBottom: 1e9, viewLeft: left, viewRight: right }, t, { withStatic: true });
   drawCannons(ctx, game, lane, t);
   drawSkillWorld(ctx, game, lane, t); // P2-08
   const player = game.player;

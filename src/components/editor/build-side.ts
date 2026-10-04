@@ -10,6 +10,7 @@ import { planFromTrackDef, settle } from '../../game/platformer/def';
 import { LOOP_PITCH, LOOP_R, PLANK_H } from '../../game/platformer/routes';
 import type { Track } from '../../game/track';
 import type { Bounds } from './bounds';
+import { visualBoundsForPiece } from './bounds';
 
 type Built = { track: Track | null; bodyToPiece: number[]; pieceBounds: Bounds[]; error: string | null };
 
@@ -50,7 +51,14 @@ export function buildPlatformerEditor(def: TrackDef): Built {
   try {
     const plan = planFromTrackDef(settle(check.def));
     const track = trackFromPlan(plan, check.def.seed ?? 0, themeFor(check.def.theme) ?? TRACK_THEMES.forest);
-    return { track, bodyToPiece: [], pieceBounds: check.def.pieces.map(sideBounds), error: null };
+    // P2-26: a classic piece's box is the one the drop-track Workshop draws, from the bodies it built.
+    const bySource = new Map<number, import('matter-js').Body[]>();
+    for (const b of track.bodies) {
+      const src = (b.plugin as { source?: number }).source;
+      if (src !== undefined) bySource.set(src, [...(bySource.get(src) ?? []), b]);
+    }
+    const pieceBounds = check.def.pieces.map((p, i) => { const bodies = bySource.get(i); return bodies?.length ? visualBoundsForPiece(p, bodies) : sideBounds(p); });
+    return { track, bodyToPiece: [], pieceBounds, error: null };
   } catch (error) {
     return { track: null, bodyToPiece: [], pieceBounds: [], error: error instanceof Error ? error.message : String(error) };
   }

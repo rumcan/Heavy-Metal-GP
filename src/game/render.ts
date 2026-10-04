@@ -479,7 +479,39 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
   }
 
   // static bodies
-  const bodies = game.track.bodies;
+  drawBodies(ctx, game, game.track.bodies, { viewTop, viewBottom, viewLeft, viewRight }, t, options);
+
+  // side walls: plain metal plates until the cliff skin loads (drawn in drawSides)
+  const cliff = sprite('cliff-left');
+  const plate = sprite('tile-metal');
+  const platePattern = plate ? ctx.createPattern(plate, 'repeat') : null;
+  if (platePattern) platePattern.setTransform(new DOMMatrix().scaleSelf(40 / plate!.naturalWidth, 40 / plate!.naturalWidth));
+  ctx.fillStyle = platePattern ?? '#1e2942';
+  if (!cliff) {
+    ctx.fillRect(-40, viewTop, 40, viewBottom - viewTop);
+    ctx.fillRect(W, viewTop, 40, viewBottom - viewTop);
+  }
+  if (!cliff) {
+    ctx.fillStyle = '#334155';
+    ctx.fillRect(-6, viewTop, 6, viewBottom - viewTop);
+    ctx.fillRect(W, viewTop, 6, viewBottom - viewTop);
+  }
+
+  ctx.restore();
+
+  // fast blurred foreground silhouettes; skipped for reduced motion and in static previews
+  if (options.shake !== false) drawForeground(ctx, game, cam, cw, ch);
+
+  if (options.minimap !== false && ch > 240) drawMinimap(ctx, game, cw, ch);
+}
+
+/**
+ * Draw these bodies with their classic art (every piece kind but the baked static layer). The drop track draws all
+ * of its bodies here; a platformer course draws the classic pieces of one lane here, inside that lane's transform.
+ */
+export function drawBodies(ctx: CanvasRenderingContext2D, game: Game, bodies: readonly Matter.Body[], view: { viewTop: number; viewBottom: number; viewLeft: number; viewRight: number }, t: number, options: { workshopPreview?: boolean; withStatic?: boolean } = {}) {
+  const { viewTop, viewBottom, viewLeft, viewRight } = view;
+  const theme = game.track.theme;
   for (const b of bodies) {
     ctx.save();
     try {
@@ -498,7 +530,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
       }
     }
     if (culled) continue;
-    if (md?.destroyed || STATIC_KINDS.has(md?.kind)) continue;
+    if (md?.destroyed || (!options.withStatic && STATIC_KINDS.has(md?.kind))) continue;
     if (md?.xf) applyXf(ctx, md.xf);
     switch (md?.kind) {
       case 'ramp':
@@ -1099,29 +1131,6 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
         break;
     }
   }
-
-  // side walls: plain metal plates until the cliff skin loads (drawn in drawSides)
-  const cliff = sprite('cliff-left');
-  const plate = sprite('tile-metal');
-  const platePattern = plate ? ctx.createPattern(plate, 'repeat') : null;
-  if (platePattern) platePattern.setTransform(new DOMMatrix().scaleSelf(40 / plate!.naturalWidth, 40 / plate!.naturalWidth));
-  ctx.fillStyle = platePattern ?? '#1e2942';
-  if (!cliff) {
-    ctx.fillRect(-40, viewTop, 40, viewBottom - viewTop);
-    ctx.fillRect(W, viewTop, 40, viewBottom - viewTop);
-  }
-  if (!cliff) {
-    ctx.fillStyle = '#334155';
-    ctx.fillRect(-6, viewTop, 6, viewBottom - viewTop);
-    ctx.fillRect(W, viewTop, 6, viewBottom - viewTop);
-  }
-
-  ctx.restore();
-
-  // fast blurred foreground silhouettes; skipped for reduced motion and in static previews
-  if (options.shake !== false) drawForeground(ctx, game, cam, cw, ch);
-
-  if (options.minimap !== false && ch > 240) drawMinimap(ctx, game, cw, ch);
 }
 
 /** Art skin drawn over the physics vectors. Each sprite is optional; missing art falls back to the vector look. */
