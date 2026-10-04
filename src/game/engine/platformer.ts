@@ -345,7 +345,7 @@ function sense(game: Game, m: Marble, vx: number, grounded: boolean): Sense {
   const dist = (xs: number[]) => xs.filter((x) => x > p.x).reduce((a, x) => Math.min(a, x - p.x), Infinity);
   const nearest = (xs: number[]) => { const d = dist(xs); return Number.isFinite(d) ? d : null; };
   // P2-26: classic pieces in this lane and near the ball's height: hazards to time or hop, solid things to jump.
-  const near = game.track.bodies.filter((b) => { const md = meta(b) as { classic?: boolean; lane?: number }; return md.classic && md.lane === lane && Math.abs(b.position.y - p.y) < 260; });
+  const near = classicBodies(game).filter((b) => (meta(b) as { lane?: number }).lane === lane && Math.abs(b.position.y - p.y) < 260 && Math.abs(b.position.x - p.x) < 1500);
   const classicSolid = near.filter((b) => CLASSIC_SOLID.has(meta(b).kind) && !b.isSensor).map((b) => b.bounds.min.x);
   const classicDanger = near.filter((b) => CLASSIC_DANGER.has(meta(b).kind)).map((b) => b.bounds.min.x - 30);
   const crateAt = nearest([...plan.bumps.filter((b) => b.lane === lane).map((b) => b.x), ...classicSolid]);
@@ -382,6 +382,14 @@ function sense(game: Game, m: Marble, vx: number, grounded: boolean): Sense {
  * The computer driver (P2-16): the pure brain in ai-brain.ts decides from what it senses; this applies it.
  * Skills and the Magic Engine are not used yet (they arrive with the skill system).
  */
+/** The classic pieces of a course, found once per track (every driver senses them every step). */
+const classicCache = new WeakMap<object, Matter.Body[]>();
+function classicBodies(game: Game): Matter.Body[] {
+  let list = classicCache.get(game.track.bodies);
+  if (!list) { list = game.track.bodies.filter((b) => (meta(b) as { classic?: boolean }).classic); classicCache.set(game.track.bodies, list); }
+  return list;
+}
+
 /** P2-26: classic pieces the computer drivers jump (solid) or time and hop (danger). */
 const CLASSIC_SOLID = new Set(['block', 'breakable', 'barricade', 'crumble', 'wall', 'peg', 'ppeg', 'target', 'turnstile']);
 const CLASSIC_DANGER = new Set(['blade', 'saw', 'crusher', 'boulder', 'mace', 'spinner', 'wrecker']);

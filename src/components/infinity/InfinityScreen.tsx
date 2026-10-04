@@ -91,7 +91,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
     if (import.meta.env.DEV) (window as unknown as { __infinity?: unknown }).__infinity = run;
     const game = run.game;
     const camera = { x: game.player.body.position.x + 200, y: game.player.body.position.y - 40, scale: 0.8, focus: 1 };
-    let width = 0, height = 0, raf = 0, last = performance.now(), accumulator = 0, hudTimer = 0, bankTimer = 0, banked = 0;
+    let width = 0, height = 0, raf = 0, last = performance.now(), accumulator = 0, hudTimer = 0, bankTimer = 0, banked = 0, lookAhead = 0;
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
@@ -154,9 +154,10 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
         const speed = Math.hypot(v.x, v.y);
         const target = Math.max(0.42, Math.min(1.25, Math.min(width / 1000, height / 520))) * (1 - Math.min(0.16, speed * 0.011));
         camera.scale += (target - camera.scale) * (1 - Math.exp(-dt / 180));
-        const ahead = Math.max(-160, Math.min(260, game.player.body.velocity.x * 26));
-        camera.x += (p.x + ahead - camera.x) * (1 - Math.exp(-dt / 220));
-        camera.y += (p.y + 10 - camera.y) * (1 - Math.exp(-dt / 200));
+        // a smoothed look-ahead (the raw speed jumps on every bump) and a calmer vertical follow
+        lookAhead += (Math.max(-160, Math.min(260, game.player.body.velocity.x * 26)) - lookAhead) * (1 - Math.exp(-dt / 600));
+        camera.x += (p.x + lookAhead - camera.x) * (1 - Math.exp(-dt / 220));
+        camera.y += (p.y + 10 - camera.y) * (1 - Math.exp(-dt / 260));
         camera.focus = marbleDepth(game, game.player);
         renderPlatformer(ctx, game, camera, width, height, pausedRef.current ? game.time : now, game.player);
         const grounded = game.player.grounded < 5;

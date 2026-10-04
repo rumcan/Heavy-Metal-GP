@@ -2,6 +2,7 @@
 // The camera stands on the player's lane (focus); only lanes behind it are drawn, smaller, higher, hazed and
 // blurred (src/game/lanes.ts). Blur is cheap on phones: a lane behind is drawn into a half-size canvas and
 // scaled back up. Art is a skin only: the physics bodies are the plain quads from build.ts.
+import type Matter from 'matter-js';
 import type { Game, Marble } from '../engine';
 import { drawImg } from '../mip';
 import { meta } from '../track';
@@ -364,6 +365,27 @@ function drawFinish(ctx: CanvasRenderingContext2D, x: number, y: number) {
 }
 
 /** Draw one lane's world (floors, bumps, gates, the finish) in world coordinates. */
+/** Perf: a lane's bodies by what draws them, sorted once per track instead of scanning every body every frame. */
+type LaneLists = { pieces: Matter.Body[]; floors: Matter.Body[]; classic: Matter.Body[] };
+// keyed by the body array (and its length): Infinity mode replaces the array as it adds land
+const laneListCache = new WeakMap<object, { n: number; per: LaneLists[] }>();
+function laneLists(game: Game, lane: number) {
+  const hit = laneListCache.get(game.track.bodies);
+  let per = hit && hit.n === game.track.bodies.length ? hit.per : null; // Infinity swaps the array as it builds land
+  if (!per) {
+    per = [0, 1, 2].map((l) => {
+      const mine = game.track.bodies.filter((b) => meta(b).lane === l);
+      return {
+        pieces: mine.filter((b) => { const k = meta(b).kind; return k === 'wrecker' || k === 'itembox' || k === 'boost' || k === 'bridge'; }),
+        floors: mine.filter((b) => meta(b).kind === 'floor'),
+        classic: mine.filter((b) => (meta(b) as { classic?: boolean }).classic),
+      };
+    });
+    laneListCache.set(game.track.bodies, { n: game.track.bodies.length, per });
+  }
+  return per[lane] ?? per[1];
+}
+
 /** Perf: a lane's unchanging scenery is cached ('static'); what moves is drawn every frame ('dynamic'). */
 type LanePart = 'all' | 'static' | 'dynamic';
 
@@ -379,12 +401,12 @@ function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, 
   // Flow courses: the coaster skin (track on trestles over cliffs) once its art is loaded; until then the
   // slope as whole runs of earth and grass. Either way never thousands of little blocks.
   const fired = (sx: number) => game.marbles.some((m) => m.springAt !== undefined && game.time - m.springAt < 220 && (m.lane ?? 1) === lane && Math.abs(m.body.position.x - sx - SPRING_W / 2) < 80);
-  const pieces = flow ? game.track.bodies.filter((b) => { const k = meta(b).kind; return (k === 'wrecker' || k === 'itembox' || k === 'boost' || k === 'bridge') && meta(b).lane === lane; }) : [];
+  const lists = laneLists(game, lane);
+  const pieces = flow ? lists.pieces : [];
   const coaster = flow && drawCoasterLane(ctx, info.plan, lane as Lane, left, right, bottom, t, fired, pieces, part === 'dynamic' ? 'dynamic' : 'all');
   if (flow && !coaster) { drawFlowGround(ctx, info.plan, lane, left, right, bottom); drawRoutes(ctx, info.plan.loops, pieces, lane, left, right); }
-  for (const body of game.track.bodies) {
+  for (const body of lists.floors) {
     const md = meta(body);
-    if (md.kind !== 'floor' || md.lane !== lane) continue;
     if (flow && md.depth !== undefined && (md.depth > 100 || md.depth < 0)) continue; // earth runs / loop rings are drawn whole elsewhere
     if (coaster) continue; // the coaster skin drew the crates
     if (body.bounds.max.x < left || body.bounds.min.x > right) continue;
@@ -397,7 +419,7 @@ function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, 
     for (const s of info.plan.springs ?? []) if (s.lane === lane && s.x + SPRING_W > left && s.x < right) drawSpring(ctx, s.x, s.y, fired(s.x));
   }
   // P2-26: the classic pieces in this lane, with their drop-track art.
-  const classic = game.track.bodies.filter((b) => { const md = meta(b) as { classic?: boolean; lane?: number }; return md.classic && md.lane === lane; });
+  const classic = lists.classic;
   if (classic.length) drawBodies(ctx, game, classic, { viewTop: -1e9, viewBottom: 1e9, viewLeft: left, viewRight: right }, t, { withStatic: true });
   drawCannons(ctx, game, lane, t);
   drawSkillWorld(ctx, game, lane, t); // P2-08
