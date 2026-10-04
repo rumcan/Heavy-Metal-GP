@@ -213,9 +213,6 @@
 .home-event .circuit-tabs button { flex: 1 1 auto; min-width: 0; padding-inline: 5px; font-size: 10px; letter-spacing: .2px; white-space: normal; }
 
 /* ---------- the main menu (every mode is picked here; the header's back button returns here) ---------- */
-.home-back { flex: none; width: 40px; height: 40px; margin-right: -8px; }
-.home-mode { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; }
-.home-mode strong { font: 600 20px/1 var(--display); letter-spacing: .6px; text-transform: uppercase; color: var(--kit-parchment); white-space: nowrap; }
 .main-menu-page { display: flex; flex-direction: column; min-height: 100dvh; background: #070d14 url('../../assets/bg/menu-entrance.webp') center / cover no-repeat; }
 .main-menu-page > .app-header { flex: none; }
 .main-menu-page .app-header .header-tools { margin-left: auto; }
@@ -246,8 +243,6 @@
   .main-menu-text { padding: 10px 30px 10px 10px; }
   .main-menu-text > span { display: none; }
   .main-menu-go { right: 8px; bottom: 10px; }
-  .home-mode .eyebrow { display: none; }
-  .home-mode strong { font-size: 17px; }
 }
 /* landscape phone: three across, short cards so all six fit */
 @media (max-height: 520px) and (orientation: landscape) {
@@ -269,3 +264,17 @@
   .main-menu-text strong { font-size: 16px; gap: 5px; letter-spacing: .2px; white-space: nowrap; }
   .main-menu-text strong svg { width: 15px; height: 15px; }
 }
+
+/* the second header row inside a mode: a red Back button (to the main menu) and the mode's name */
+.home-top { grid-column: 1 / -1; min-width: 0; }
+.home-subbar { display: flex; align-items: center; gap: 14px; padding: 8px 24px; border-bottom: 1px solid var(--kit-steel-line); background: #0b1622; }
+.home-back-button {
+  display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px 7px 10px; border: 2px solid #ff6b5a; border-radius: 5px;
+  background: #d63e2e; color: #fff; font: 700 15px/1 var(--display); letter-spacing: 1px; text-transform: uppercase; cursor: pointer;
+  box-shadow: 0 2px 0 #7a1d14; transition: background .15s, transform .1s;
+}
+.home-back-button:hover { background: #e9503f; }
+.home-back-button:active { transform: translateY(1px); box-shadow: 0 1px 0 #7a1d14; }
+.home-mode-name { font: 600 20px/1 var(--display); letter-spacing: .8px; text-transform: uppercase; color: var(--kit-parchment); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 760px) { .home-subbar { padding: 6px 12px; gap: 10px; } .home-mode-name { font-size: 17px; } }
+@media (max-height: 520px) and (min-width: 761px) { .home-subbar { padding: 4px 16px; } .home-back-button { padding: 4px 10px 4px 8px; font-size: 13px; } .home-mode-name { font-size: 16px; } }

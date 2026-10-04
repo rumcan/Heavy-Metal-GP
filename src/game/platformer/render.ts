@@ -680,7 +680,7 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
     ctx.restore();
   }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  foreground(ctx, cam, cw, ch);
+  foreground(ctx, cam, cw, ch, game.track.platformer?.plan);
 }
 
 /**
@@ -688,7 +688,7 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
  * than the track (they are nearer than it). Kept low: their tops stop well below the middle, where your ball is.
  */
 /** Per camera: how far the pines have scrolled (screen px) and where they sit vertically. */
-const FG = new WeakMap<PlatformCamera, { camX: number; camY: number; scroll: number; lagY: number }>();
+const FG = new WeakMap<PlatformCamera, { camX: number; camY: number; scroll: number; lagY: number; trackY?: number }>();
 export const FG_PARALLAX = 1.35;
 
 /**
@@ -711,15 +711,34 @@ export function foregroundScroll(cam: PlatformCamera): { x: number; y: number } 
   return { x: st.scroll, y };
 }
 
-function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch: number) {
+/**
+ * Where the pines stand: below the main (middle) track under the camera, so they stay at the same height relative to
+ * the track (a jump lifts the ball and the camera, not the trees). The track height is eased so the line of trees
+ * follows the course's slopes smoothly instead of every bump, and it holds over a chasm.
+ */
+export function foregroundTop(cam: PlatformCamera, plan: CoursePlan | undefined, ch: number): number {
+  const st = FG.get(cam);
+  const floor = plan ? floorAt(plan, LANE_MIDDLE as Lane, cam.x) : null;
+  let trackY = st?.trackY ?? floor ?? cam.y;
+  if (floor !== null) trackY = Math.abs(floor - trackY) > 900 ? floor : trackY + (floor - trackY) * 0.06;
+  if (st) st.trackY = trackY;
+  // the track on screen, with the pines' extra parallax (they are nearer than the track)
+  const trackScreen = ch / 2 + (trackY - cam.y) * cam.scale * FG_PARALLAX;
+  return trackScreen + ch * 0.1;
+}
+
+function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch: number, plan?: CoursePlan) {
   const img = ART.treesFront;
   if (!ready(img)) return;
   const h = ch * 0.46;
   const w = (img.naturalWidth / img.naturalHeight) * h;
-  const { x: scroll, y: sway } = foregroundScroll(cam);
+  const { x: scroll } = foregroundScroll(cam);
   let x = -(((scroll % w) + w) % w);
-  const y = ch - h * 0.82 + sway;
+  const y = foregroundTop(cam, plan, ch);
+  if (y >= ch) return; // the camera is far above the track: the pines are below the screen
   for (; x < cw; x += w) drawImg(ctx, img, x, y, w + 1, h);
+  // below the trees' feet (the track can sit high on screen): the forest floor, in their own darkest colour
+  if (y + h * 0.96 < ch) { ctx.fillStyle = '#080e0d'; ctx.fillRect(0, y + h * 0.95, cw, ch - (y + h * 0.95)); }
 }
 
 function drawBall(ctx: CanvasRenderingContext2D, game: Game, m: Marble, t: number) {

@@ -1034,11 +1034,8 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
 
-      if (e.code === 'Space') {
-        e.preventDefault();
-        enterTest();
-        return;
-      }
+      // Space is the pan tool (held, in the canvas): it no longer starts a test drive.
+      if (e.code === 'Space') { e.preventDefault(); return; }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
         e.preventDefault();
         handleUndo();
