@@ -420,7 +420,7 @@ const laneCaches = new WeakMap<CanvasRenderingContext2D, Map<number, LaneCache>>
 /** One early refresh per frame at most, so lanes never all rebuild on the same frame (that was a 30 ms hitch). */
 const refreshedAt = new WeakMap<CanvasRenderingContext2D, number>();
 let frameNo = 0;
-const CACHE_MAX_PX = 4096;
+const CACHE_MAX_PX = 3072;
 
 function cachedLane(ctx: CanvasRenderingContext2D, game: Game, lane: number, view: { x0: number; x1: number; y0: number; y1: number }, pxWanted: number, t: number): LaneCache | null {
   if (typeof document === 'undefined') return null;
@@ -434,12 +434,12 @@ function cachedLane(ctx: CanvasRenderingContext2D, game: Game, lane: number, vie
   const usable = !!c && c.plan === plan && ratio > 0.9 && ratio < 1.1 && inside(0);
   // Comfortably inside and at the right zoom: use it. Getting close to an edge (or the zoom drifting): refresh it
   // early, but only if no other lane refreshed this frame. Outside it: it has to be redrawn now.
-  if (usable && (inside(0.12) && ratio > 0.96 && ratio < 1.04 || refreshedAt.get(ctx) === frameNo)) return c!;
+  if (usable && (inside(0.06) && ratio > 0.96 && ratio < 1.04 || refreshedAt.get(ctx) === frameNo)) return c!;
   refreshedAt.set(ctx, frameNo);
   // Rebuild: margins around the view, wider ahead (the race runs left to right).
   const vw = view.x1 - view.x0, vh = view.y1 - view.y0;
-  const ox = view.x0 - vw * 0.15, oy = view.y0 - vh * 0.2;
-  const wx = vw * 1.75, wy = vh * 1.4;
+  const ox = view.x0 - vw * 0.1, oy = view.y0 - vh * 0.15;
+  const wx = vw * 1.5, wy = vh * 1.3;
   const px = Math.min(pxWanted, CACHE_MAX_PX / wx, CACHE_MAX_PX / wy);
   const cv = c?.cv ?? document.createElement('canvas');
   const w = Math.ceil(wx * px), h = Math.ceil(wy * px);
