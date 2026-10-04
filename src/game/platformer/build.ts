@@ -55,8 +55,11 @@ export interface ExtraBuild { bodies: Matter.Body[]; spinners: Matter.Body[]; tu
  * that lane. Bodies are tagged `classic` so the platformer renderer hands them to the classic body drawer.
  */
 /** Set by trackdef.ts when it loads (importing it here would be an import cycle through track.ts). */
-let replay: ((b: Builder, piece: Piece) => void) | null = null;
-export function registerPieceReplay(fn: (b: Builder, piece: Piece) => void): void { replay = fn; }
+// Kept on globalThis as well, so a dev-server hot reload of this module does not lose it.
+type Replay = (b: Builder, piece: Piece) => void;
+const REPLAY_KEY = '__hmgpPieceReplay';
+let replay: Replay | null = (globalThis as Record<string, unknown>)[REPLAY_KEY] as Replay | undefined ?? null;
+export function registerPieceReplay(fn: Replay): void { replay = fn; (globalThis as Record<string, unknown>)[REPLAY_KEY] = fn; }
 
 export function buildExtras(plan: CoursePlan, seed: number): ExtraBuild {
   if (plan.extras?.length && !replay) throw new Error('platformer extras need trackdef.ts loaded');
