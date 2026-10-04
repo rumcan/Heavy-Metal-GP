@@ -222,6 +222,7 @@ export function rotatePiece(piece: Piece, rad: number, c: Point): Piece {
     }
     case 'gate':
     case 'ledge':
+    case 'kicker':
       return piece; // floors-level pieces stay level
     case 'wind': {
       const dir = (((piece.dir + (rad * 180) / Math.PI) % 360) + 360) % 360;

@@ -75,7 +75,7 @@ export function buildLoopBodies(loop: LoopSpot): Matter.Body[] {
 }
 
 /** A rope bridge over a chasm: its deck runs from (x0, y0) to (x1, y1), both just above the floor at each end. */
-export interface BridgeSpot { lane: Lane; x0: number; y0: number; x1: number; y1: number; planks: number; slack: number }
+export interface BridgeSpot { lane: Lane; x0: number; y0: number; x1: number; y1: number; planks: number; slack: number; /** a classic rope bridge builds and draws it */ hidden?: boolean }
 /** Plank thickness. */
 export const PLANK_H = 9;
 
@@ -197,7 +197,7 @@ export function drawRoutes(ctx: CanvasRenderingContext2D, loops: LoopSpot[] | un
   const chains = new Map<number, Matter.Body[]>();
   for (const b of bodies) {
     const md = b.plugin as Meta | undefined;
-    if (md?.kind !== 'bridge' || md.lane !== lane || !md.bridge || b.bounds.max.x < left - 200 || b.bounds.min.x > right + 200) continue;
+    if (md?.kind !== 'bridge' || (md as { classic?: boolean }).classic || md.lane !== lane || !md.bridge || b.bounds.max.x < left - 200 || b.bounds.min.x > right + 200) continue;
     const key = md.bridge.anchor[0].x;
     (chains.get(key) ?? chains.set(key, []).get(key)!).push(b);
   }

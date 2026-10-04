@@ -2,9 +2,10 @@
 // rolling across a land that grows ahead of it. The HUD is one soft distance readout, a pause button, a mute button and
 // Hide UI (photo mode: only the world, tap anywhere to bring the buttons back).
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Camera, EyeOff, Pause, Play, Volume2, VolumeX } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Camera, RotateCcw, EyeOff, Pause, Play, Volume2, VolumeX } from 'lucide-react';
 import { InfinityRun } from '../../game/platformer/infinity-world';
-import { marbleDepth, renderPlatformer } from '../../game/platformer/render';
+import { marbleDepth, renderPlatformer, shiftForeground } from '../../game/platformer/render';
+import type { PlatformCamera } from '../../game/platformer/render';
 import { PHYSICS_STEP } from '../../game/physics';
 import { blendPoses, rememberPoses } from '../../game/interpolate';
 import { PerfMeter } from '../../game/perf-meter';
@@ -41,6 +42,8 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
   const pausedRef = useRef(false);
   const [paused, setPausedState] = useState(false);
   const [uiHidden, setUiHidden] = useState(false);
+  /** Bumped by Restart: the same seed from the start meadow. */
+  const [restarts, setRestarts] = useState(0);
   const [muted, setMuted] = useState(() => raceAudio.loadPreference());
   const [km, setKm] = useState(0);
   // P2-25: fewer particles and no drifting motion; remembered with the records.
@@ -83,6 +86,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
     const seed = seedFromText(seedText);
     const run = new InfinityRun(seed, driver, { effects: true });
     const painter = new InfinityPainter(seed);
+    let shiftsSeen = 0;
     const audio = new InfinityAudio(seed);
     audioRef.current = audio;
     audio.setMuted(raceAudio.muted);
@@ -92,7 +96,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
     recordStart(seedText);
     if (import.meta.env.DEV) (window as unknown as { __infinity?: unknown }).__infinity = run;
     const game = run.game;
-    const camera = { x: game.player.body.position.x + 200, y: game.player.body.position.y - 40, scale: 0.8, focus: 1 };
+    const camera: PlatformCamera = { x: game.player.body.position.x + 200, y: game.player.body.position.y - 40, scale: 0.8, focus: 1 };
     let width = 0, height = 0, raf = 0, last = performance.now(), accumulator = 0, hudTimer = 0, bankTimer = 0, banked = 0, lookAhead = 0;
 
     const meter = new PerfMeter();
@@ -150,6 +154,15 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
         game.engineHeld = controls.current.engine;
         accumulator += dt;
         meter.time('physics', () => { while (accumulator >= PHYSICS_STEP) { rememberPoses(game); run.step(PHYSICS_STEP); accumulator -= PHYSICS_STEP; } });
+        // The world was shifted back toward zero (every 4 km): move everything that remembers a world position by the
+        // same amount, so the picture carries straight on instead of sliding back across the land.
+        if (run.originShifts !== shiftsSeen) {
+          shiftsSeen = run.originShifts;
+          const { dx, dy } = run.lastShift;
+          camera.x += dx; camera.y += dy;
+          shiftForeground(camera, dx, dy);
+          painter.shift(dx, dy);
+        }
       }
       // Perf: draw the ball between its last two physics steps (undone at the end of the frame).
       const unblend = pausedRef.current ? () => {} : blendPoses(game, accumulator / PHYSICS_STEP);
@@ -166,6 +179,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
         camera.x += (p.x + lookAhead - camera.x) * (1 - Math.exp(-dt / 220));
         camera.y += (p.y + 10 - camera.y) * (1 - Math.exp(-dt / 260));
         camera.focus = marbleDepth(game, game.player);
+        camera.originX = run.origin.x; camera.originY = run.origin.y;
         meter.time('draw', () => renderPlatformer(ctx, game, camera, width, height, pausedRef.current ? game.time : now, game.player));
         const grounded = game.player.grounded < 5;
         meter.time('fx', () => painter.paint(ctx, {
@@ -205,7 +219,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
       runRef.current = null;
       run.destroy();
     };
-  }, [seedText, driver, setPaused, toggleMute, pressJump]);
+  }, [seedText, driver, setPaused, toggleMute, pressJump, restarts]);
 
   const hold = (key: 'left' | 'right') => ({
     onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => { e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); controls.current[key] = true; },
@@ -249,6 +263,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
       <label className="infinity-option"><input type="checkbox" checked={reduceMotion} onChange={(e) => { setReduceMotionState(e.target.checked); setReduceMotion(e.target.checked); }} /> Reduce motion (fewer drifting things, no twinkle)</label>
       <div className="pause-actions">
         <button className="button-primary" onClick={() => setPaused(false)} autoFocus><Play size={15} />Resume</button>
+        <button className="button-secondary" onClick={() => { setPaused(false); setKm(0); setRestarts((n) => n + 1); }}><RotateCcw size={15} />Restart</button>
         <button className="button-secondary" onClick={onNewSeed}>New seed</button>
         <button className="button-secondary" onClick={onLeave}>Leave</button>
       </div>

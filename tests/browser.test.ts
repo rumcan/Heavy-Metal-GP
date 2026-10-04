@@ -151,6 +151,29 @@ test('Browser: garage controls preserve budget and select the actual circuit', {
   } finally { await context.close(); }
 });
 
+test('Browser: the pause menu restarts the race from the lights', { timeout: 120000 }, async () => {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
+  const page = await context.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  try {
+    await ready(page);
+    await openTab(page, 'Quick race');
+    await page.getByRole('button', { name: 'Race', exact: true }).click();
+    await dismissGate(page);
+    await page.waitForSelector('.race-canvas');
+    const seconds = async () => { const t = (await page.locator('.race-clock strong').textContent()) ?? ''; const [m, s] = t.split(':'); return Number(m) * 60 + Number(s); };
+    await page.waitForFunction(() => { const t = document.querySelector('.race-clock strong')?.textContent ?? '0:00'; const [m, s] = t.split(':'); return Number(m) * 60 + Number(s) > 3; }, undefined, { timeout: 40000 });
+    await page.getByRole('button', { name: 'Pause race', exact: true }).click();
+    await page.getByRole('button', { name: 'Restart race' }).click();
+    await page.waitForTimeout(400);
+    assert.equal(await page.locator('#pause-title').count(), 0, 'the pause menu closed');
+    assert.ok(await seconds() < 1, 'the clock is back at the start');
+    await page.waitForFunction(() => { const t = document.querySelector('.race-clock strong')?.textContent ?? '0:00'; const [m, s] = t.split(':'); return Number(m) * 60 + Number(s) > 1; }, undefined, { timeout: 40000 });
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
 test('Browser: mobile layout stays in-bounds and controls remain usable', { timeout: 120000 }, async () => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
   const page = await context.newPage();
@@ -244,11 +267,15 @@ test('Browser: a complete long heat pays winnings and the saved season advances 
     for (let i = 0; i < 140 && await page.locator('.results-panel').count() === 0; i++) await page.clock.runFor(10000);
     await page.waitForSelector('.results-panel', { timeout: 5000 });
     assert.equal(await page.locator('.results-table tbody tr').count(), 10);
-    assert.equal(await page.locator('.dnf-label').count(), 0, 'Race cut off while marbles were still on track.');
+    // A driver still out 20 s after the most recent finish is classified DNF (and health can knock one out), so DNFs
+    // are allowed now; what must never happen is the race ending with nobody home.
+    assert.ok(await page.locator('.dnf-label').count() < 10, 'nobody finished the heat');
     const saved = await page.evaluate(() => JSON.parse(Object.entries(localStorage).find(([k]) => k === 'mrr-season-v1' || k.endsWith(':mrr-season-v1'))![1]));
     assert.equal(saved.results[0].length, 1, 'Finished heat was not saved immediately.');
     const paid = await page.evaluate(() => JSON.parse(Object.entries(localStorage).find(([k]) => k === 'mrr-account-v1' || k.endsWith(':mrr-account-v1'))![1]));
-    assert.ok(paid.credits > 400, 'Finishing did not pay race winnings.');
+    // The test driver never steers: it may be classified DNF (20 s after the last finisher) and then earns nothing.
+    const youDnf = (await page.locator('.results-table tbody tr', { hasText: 'You' }).innerText()).includes('DNF');
+    if (!youDnf) assert.ok(paid.credits > 400, 'Finishing did not pay race winnings.');
     assert.equal(paid.paidRaces.length, 1, 'Race payout was recorded multiple times.');
     assert.ok(await page.locator('.race-payout').isVisible());
     // The first race earns XP: a fresh driver levels up, and the card is modal until it is closed.

@@ -12,6 +12,7 @@ import { drawSkillWorld } from '../skills/draw';
 import { SPRING_W, floorAt } from './course';
 import type { CoursePlan, Floor, Lane, LaneGate } from './course';
 import { coasterReady, drawCoasterLane } from './coaster';
+import { drawCloudLedge, drawKicker } from './sky-art';
 import { drawRoutes } from './routes';
 import { LEDGE_H } from './build';
 import earthUrl from '../../assets/game/platformer/earth.webp';
@@ -48,6 +49,12 @@ export interface PlatformCamera {
   scale: number;
   /** Camera depth: the lane it stands on (fractional during a lane change). */
   focus: number;
+  /**
+   * Infinity mode shifts its whole world back toward zero now and then (a floating origin). These are the world's
+   * offset, so the backdrop keeps scrolling from where it was instead of jumping. Absent = 0.
+   */
+  originX?: number;
+  originY?: number;
 }
 
 /** A marble's depth right now (fractional while its lane change runs). */
@@ -92,13 +99,13 @@ function sky(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch:
   // the sky into the clouds. A band of mist covers each join between two bands.
   if (ready(ART.skyIslands) && ready(ART.skyClouds)) {
     const h = ch * 1.12;
-    const top = -Math.max(0, cam.y - startY) * BACKDROP_DESCENT;
+    const top = -Math.max(0, cam.y + (cam.originY ?? 0) - startY) * BACKDROP_DESCENT;
     const first = Math.max(0, Math.floor(-top / h));
     for (let row = first; top + row * h < ch; row++) {
       const img = row === 0 ? ART.skyIslands : ART.skyClouds;
       const y = top + row * h;
       const w = (img.naturalWidth / img.naturalHeight) * h;
-      let x = -(((cam.x * 0.03) + row * w * 0.37) % w);
+      let x = -((((cam.x + (cam.originX ?? 0)) * 0.03) + row * w * 0.37) % w);
       if (x > 0) x -= w;
       for (; x < cw; x += w) drawImg(ctx, img, x, y, w + 1, h + 1);
     }
@@ -117,7 +124,7 @@ function sky(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch:
   if (ready(ART.far) && ready(ART.trees)) {
     const strip = (img: HTMLImageElement, parallax: number, h: number, bottom: number) => {
       const w = (img.naturalWidth / img.naturalHeight) * h;
-      let x = -((cam.x * parallax) % w);
+      let x = -(((cam.x + (cam.originX ?? 0)) * parallax) % w);
       if (x > 0) x -= w;
       for (; x < cw; x += w) drawImg(ctx, img, x, bottom - h, w + 1, h);
     };
@@ -134,7 +141,7 @@ function sky(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch:
     { p: 0.12, y: 0.62, h: 0.2, c: 'rgba(98,128,128,0.8)', step: 120, amp: 0.4 },
   ];
   for (const b of bands) {
-    const off = -((cam.x * b.p) % (b.step * 8));
+    const off = -(((cam.x + (cam.originX ?? 0)) * b.p) % (b.step * 8));
     ctx.beginPath();
     ctx.moveTo(0, ch);
     for (let x = off - b.step; x < cw + b.step; x += b.step / 4) {
@@ -387,9 +394,11 @@ function laneLists(game: Game, lane: number) {
   if (!per) {
     per = [0, 1, 2].map((l) => {
       const mine = game.track.bodies.filter((b) => meta(b).lane === l);
+      // A Workshop piece built by the classic Builder (md.classic) is drawn only by the classic drawer, with its own art.
+      const own = mine.filter((b) => !(meta(b) as { classic?: boolean }).classic);
       return {
-        pieces: mine.filter((b) => { const k = meta(b).kind; return k === 'wrecker' || k === 'itembox' || k === 'boost' || k === 'bridge'; }),
-        floors: mine.filter((b) => meta(b).kind === 'floor'),
+        pieces: own.filter((b) => { const k = meta(b).kind; return k === 'wrecker' || k === 'itembox' || k === 'boost' || k === 'bridge'; }),
+        floors: own.filter((b) => meta(b).kind === 'floor'),
         classic: mine.filter((b) => (meta(b) as { classic?: boolean }).classic),
       };
     });
@@ -427,7 +436,8 @@ function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, 
     else drawBump(ctx, body.bounds.min.x, body.bounds.min.y, body.bounds.max.x - body.bounds.min.x, md.depth ?? body.bounds.max.y - body.bounds.min.y);
   }
   if (!coaster) {
-    for (const l of info.plan.ledges ?? []) if (l.lane === lane && l.x + l.w > left && l.x < right) drawLedge(ctx, l.x, l.y, l.w, (px) => floorAt(info.plan, l.lane, px));
+    for (const k of info.plan.kickers ?? []) if (k.lane === lane && k.x + k.w > left && k.x < right) drawKicker(ctx, info.plan, k);
+    for (const l of info.plan.ledges ?? []) if (l.lane === lane && l.x + l.w > left && l.x < right) { if (l.cloud !== undefined) drawCloudLedge(ctx, l); else drawLedge(ctx, l.x, l.y, l.w, (px) => floorAt(info.plan, l.lane, px)); }
     for (const s of info.plan.springs ?? []) if (s.lane === lane && s.x + SPRING_W > left && s.x < right) drawSpring(ctx, s.x, s.y, fired(s.x));
   }
   // P2-26: the classic pieces in this lane, with their drop-track art.
@@ -588,7 +598,7 @@ function runsOf(plan: CoursePlan): { x: number; y: number }[][][] {
   let runs = runCache.get(plan);
   if (runs) return runs;
   runs = [0, 1, 2].map((lane) => {
-    const floors = plan.floors.filter((f) => f.lane === lane).sort((a, b) => a.x0 - b.x0);
+    const floors = plan.floors.filter((f) => f.lane === lane && !f.hidden).sort((a, b) => a.x0 - b.x0);
     const out: { x: number; y: number }[][] = [];
     let run: { x: number; y: number }[] = [];
     let last: Floor | null = null;
@@ -794,6 +804,14 @@ export function foregroundScroll(cam: PlatformCamera): { x: number; y: number } 
  * the track (a jump lifts the ball and the camera, not the trees). The track height is eased so the line of trees
  * follows the course's slopes smoothly instead of every bump, and it holds over a chasm.
  */
+/** The world moved by (dx, dy) under this camera (Infinity's floating origin): carry the foreground's memory along. */
+export function shiftForeground(cam: PlatformCamera, dx: number, dy: number): void {
+  const st = FG.get(cam);
+  if (!st) return;
+  st.camX += dx; st.camY += dy; st.lagY += dy;
+  if (st.trackY !== undefined) st.trackY += dy;
+}
+
 export function foregroundTop(cam: PlatformCamera, plan: CoursePlan | undefined, ch: number): number {
   const st = FG.get(cam);
   const floor = plan ? floorAt(plan, LANE_MIDDLE as Lane, cam.x) : null;

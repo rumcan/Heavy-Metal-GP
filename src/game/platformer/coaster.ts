@@ -19,6 +19,7 @@ import tower2Url from '../../assets/game/tower-2.webp';
 import tower3Url from '../../assets/game/tower-3.webp';
 import torchUrl from '../../assets/game/torch.webp';
 import stripWoodUrl from '../../assets/game/strip-wood.webp';
+import { drawCloudLedge, drawKicker } from './sky-art';
 
 const load = (src: string) => (typeof Image !== 'undefined' ? Object.assign(new Image(), { src }) : null);
 const ART = {
@@ -74,7 +75,7 @@ function runsOf(plan: CoursePlan): Pt[][][] {
   let runs = runCache.get(plan);
   if (runs) return runs;
   runs = [0, 1, 2].map((lane) => {
-    const floors = plan.floors.filter((f) => f.lane === lane).sort((a, b) => a.x0 - b.x0);
+    const floors = plan.floors.filter((f) => f.lane === lane && !f.hidden).sort((a, b) => a.x0 - b.x0);
     const out: Pt[][] = [];
     let run: Pt[] = [];
     let last: Floor | null = null;
@@ -296,15 +297,18 @@ function torches(ctx: CanvasRenderingContext2D, run: Pt[], pts: Pt[], lane: Lane
 function staticProps(ctx: CanvasRenderingContext2D, plan: CoursePlan, runs: Pt[][], lane: Lane, left: number, right: number) {
   // crates on the track
   for (const b of plan.bumps) {
-    if (b.lane !== lane || b.x + b.w < left || b.x > right) continue;
+    if (b.hidden || b.lane !== lane || b.x + b.w < left || b.x > right) continue;
     if (ready(ART.crate)) {
       const n = Math.max(1, Math.round(b.w / b.h));
       for (let i = 0; i < n; i++) drawImg(ctx, ART.crate, b.x + (i * b.w) / n, b.y, b.w / n, b.h + 6);
     }
   }
-  // ledges: spur tracks on posts
+  // kickers: wooden ramps on the track
+  for (const k of plan.kickers ?? []) if (k.lane === lane && k.x + k.w > left && k.x < right) drawKicker(ctx, plan, k);
+  // ledges: spur tracks on posts (a cloud platform is a cloud instead)
   for (const l of plan.ledges ?? []) {
     if (l.lane !== lane || l.x + l.w < left || l.x > right) continue;
+    if (l.cloud !== undefined) { drawCloudLedge(ctx, l); continue; }
     // posts stand on the track below wherever there is track (none over the chasm itself)
     for (let px = l.x + 40; px < l.x + l.w - 30; px += 220) {
       const under = runs.find((r) => px >= r[0].x && px <= r[r.length - 1].x);

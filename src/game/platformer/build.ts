@@ -92,10 +92,11 @@ export function buildPlatformerTrack(seed: number, theme: TrackTheme, courseId?:
 export function planBodies(plan: CoursePlan): { bodies: Matter.Body[]; itemBoxes: Matter.Body[]; wreckers: Matter.Body[] } {
   const bodies: Matter.Body[] = [];
   for (const f of plan.floors) {
+    if (f.hidden) continue;
     const depth = Math.max(240, plan.height - Math.max(f.y0, f.y1));
     bodies.push(quad([{ x: f.x0, y: f.y0 }, { x: f.x1, y: f.y1 }, { x: f.x1, y: f.y1 + FLOOR_DEPTH }, { x: f.x0, y: f.y0 + FLOOR_DEPTH }], f.lane, 'floor', depth));
   }
-  for (const b of plan.bumps) bodies.push(box(b.x, b.y, b.w, b.h + 20, b.lane as Lane, 'floor', b.h));
+  for (const b of plan.bumps) if (!b.hidden) bodies.push(box(b.x, b.y, b.w, b.h + 20, b.lane as Lane, 'floor', b.h));
   // One-way ledges: their own collision category, so the engine can let a ball through from below.
   for (const l of plan.ledges ?? []) {
     const body = box(l.x, l.y, l.w, LEDGE_H, l.lane, 'floor', 0);
@@ -105,7 +106,7 @@ export function planBodies(plan: CoursePlan): { bodies: Matter.Body[]; itemBoxes
   }
   // P2-21: loop rings and rope-bridge decks.
   for (const l of plan.loops ?? []) bodies.push(...buildLoopBodies(l));
-  for (const br of plan.bridges ?? []) bodies.push(...buildBridgeBodies(br));
+  for (const br of plan.bridges ?? []) if (!br.hidden) bodies.push(...buildBridgeBodies(br));
   // The classic map pieces, each in its own lane's collision layer.
   const itemBoxes: Matter.Body[] = [];
   const wreckers: Matter.Body[] = [];
@@ -124,6 +125,13 @@ export function planBodies(plan: CoursePlan): { bodies: Matter.Body[]; itemBoxes
     body.plugin = { kind: 'wrecker', pivot, chain: w.chain, amp: w.amp, spin: w.speed, phase: w.phase, radius: 24, lane: w.lane };
     bodies.push(body);
     wreckers.push(body);
+  }
+  // Kickers: a wedge standing on the floor, its top rising to a lip (a floor body, so it is part of the lane's ground).
+  for (const k of plan.kickers ?? []) {
+    const y0 = floorAt(plan, k.lane, k.x) ?? 0, y1 = floorAt(plan, k.lane, k.x + k.w) ?? y0;
+    const body = quad([{ x: k.x, y: y0 + 2 }, { x: k.x + k.w, y: y1 - k.h }, { x: k.x + k.w, y: y1 + 24 }, { x: k.x, y: y0 + 24 }], k.lane, 'floor', k.h);
+    body.plugin = { kind: 'floor', lane: k.lane, depth: -1, kicker: true };
+    bodies.push(body);
   }
   for (const b of plan.boosts ?? []) {
     const y0 = floorAt(plan, b.lane, b.x) ?? 0, y1 = floorAt(plan, b.lane, b.x + b.w) ?? y0;

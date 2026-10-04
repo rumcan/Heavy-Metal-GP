@@ -326,6 +326,9 @@ test('Story hooks: the whole grid still finishes the modified finale', async () 
     seed: storyRaceSeed(state, 6), roster,
   });
   const game = autopilot(new Game(storyRaceSeed(state, 6), roster, { profile: storyProfile(6), effects: false, story: handle.hooks }));
+  // The scripted events follow the player down the course, so the player must not be knocked out on the way (which
+  // rivals' skills decide): make the autopilot unhurtable.
+  if (game.player.health) game.player.health = { ...game.player.health, invulnUntil: Infinity };
   try {
     game.openGate();
     await simulate(game, 540000, true);

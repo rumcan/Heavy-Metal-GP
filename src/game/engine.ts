@@ -52,6 +52,12 @@ export interface GameOptions {
    * by default, so a single-player race pays nothing for a wire it never uses.
    */
   wireEvents?: boolean;
+  /**
+   * Stragglers: once someone has crossed the line, a driver still out on the course `ms` after the most recent finish
+   * is classified Did Not Finish, so a race never waits for ever on a ball that cannot get home. `humans: false`
+   * (online) only ever does this to computer drivers. Absent = never (classic races, tests).
+   */
+  stragglerCut?: { ms: number; humans: boolean };
   /** MB-05: called each time the recovery marshal fires — lets the validator collect stuck spots off-screen. */
   onRecover?: (marbleId: number, pos: { x: number; y: number }) => void;
 }
@@ -180,6 +186,8 @@ export interface Marble {
   springAt?: number;
   /** P2-21: which half of a loop ring this marble is riding (0 = the climb, 1 = the way back down). */
   loopPhase?: 0 | 1;
+  /** When this marble got stuck at the foot of a loop ring with no speed to climb it (undefined = not stuck). */
+  loopStuckSince?: number;
   /** P2-00 platformer: the start cannon this marble is loaded in (fired = out on the course). */
   cannon?: platformer.Cannon;
   /** P2-17: this driver's talent effects (stat -> total), and max HP. Computers have none. */
@@ -301,6 +309,7 @@ export class Game {
   byId = new Map<number, Marble>();
   supports = new Map<number, RampSurface>();
   recoveryEnabled: boolean;
+  stragglerCut: { ms: number; humans: boolean } | null = null;
   effectsEnabled: boolean;
   aiItemsEnabled: boolean;
   onRecover?: (marbleId: number, pos: { x: number; y: number }) => void;
@@ -391,6 +400,7 @@ export class Game {
     // frame costs more than the whole of Matter.
     this.machines = this.track.bodies.filter((body) => !!meta(body).motion);
     this.recoveryEnabled = opts.recovery !== false;
+    this.stragglerCut = opts.stragglerCut ?? null;
     this.effectsEnabled = opts.effects !== false;
     this.aiItemsEnabled = opts.aiItems !== false;
     this.onRecover = opts.onRecover;
@@ -929,6 +939,7 @@ export class Game {
   step(dt: number) {
     const s = dt / TICK; // fraction of a 60fps tick
     this.time += dt;
+    this.cutStragglers();
     if (!this.gateOpen) {
       // P2-00: on the grid, the start cannons can already be aimed (they only fire once the lights are out).
       if (this.track.platformer) for (const m of this.marbles) if (m.cannon && !m.cannon.fired) platformer.cannonStep(this, m, s);
@@ -1269,6 +1280,26 @@ export class Game {
     if (!fx || (!fx.regenPct && !fx.regenDelayMs && !fx.maxHp)) return regen(h, this.time, dt);
     if (h.dnf || this.time - h.lastHitAt < REGEN_DELAY_MS + (fx.regenDelayMs ?? 0)) return h;
     return { ...h, hp: Math.min(m.maxHp ?? 100, h.hp + REGEN_PER_SEC * (1 + (fx.regenPct ?? 0) / 100) * dt / 1000) };
+  }
+
+/** Classifies drivers still out long after the most recent finish as Did Not Finish (see GameOptions.stragglerCut). */
+  private cutStragglers() {
+    const cut = this.stragglerCut;
+    if (!cut || !this.finishOrder.length) return;
+    const last = Math.max(...this.finishOrder.map((f) => f.finishedAt ?? 0));
+    if (this.raceTime() - last < cut.ms) return;
+    for (const m of this.marbles) {
+      if (m.finishedAt !== null || m.dnf || this.benched.has(m.info.id)) continue;
+      if (!cut.humans && this.isHuman(m)) continue;
+      m.dnf = true;
+      if (m.health) m.health = { ...m.health, dnf: true };
+      Composite.remove(this.world, m.body);
+      Body.setPosition(m.body, { x: -5000, y: -5000 });
+      Body.setVelocity(m.body, { x: 0, y: 0 });
+      m.trail = [];
+      this.emit({ kind: 'ko', seat: m.info.id, by: -1 });
+      if (m.info.isPlayer) this.onEvent?.('DID NOT FINISH: too far behind the field', '#ef4444');
+    }
   }
 
   private knockOut(m: Marble, kind: DamageKind) {

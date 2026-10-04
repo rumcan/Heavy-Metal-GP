@@ -56,7 +56,7 @@ test('ramps and curves are floors in their own lane; a curve is cut into slabs',
   assert.equal(slabs.length, 12);
 });
 
-test('every piece kind lands in its own part of the plan, in its own lane', () => {
+test('every piece is the drop-track piece itself (classic art and behaviour), except the floors and the lane pieces', () => {
   const def = course([
     ...hills,
     { t: 'pad', x: 2600, y: Y + 150, w: 60, dir: 1 },
@@ -69,21 +69,31 @@ test('every piece kind lands in its own part of the plan, in its own lane', () =
     { t: 'wrecker', pivot: [3500, Y - 200], chain: 180, amp: 0.6, speed: 0.002, phase: 1 },
     { t: 'bridge', a: [6400, Y + 300], b: [7000, Y + 300], planks: 30, slack: 12, lane: 2 },
     { t: 'loop', x: 4600, bottom: Y + 300, r: 90, lane: 1 },
+    { t: 'ice', a: [7000, Y + 300], b: [7400, Y + 300], lane: 2 },
   ]);
   const plan = planFromTrackDef(def);
-  assert.deepEqual(plan.springs, [{ lane: 1, x: 2570, y: Y + 150 }]);
-  assert.deepEqual(plan.boosts, [{ lane: 1, x: 1420, w: 160 }]);
-  assert.deepEqual(plan.itemBoxes, [{ lane: 1, x: 3000, y: Y + 80 }]);
-  assert.deepEqual(plan.bumps, [{ lane: 0, x: 4970, w: 60, y: Y + 240, h: 60 }]);
-  assert.equal(plan.gates!.length, 2);
+  // the classic pieces, each in its own lane, built by the drop-track Builder
+  const classic = (plan.extras ?? []).map((e) => [e.piece.t, e.lane]);
+  assert.deepEqual(classic.sort(), [['block', 0], ['boost', 1], ['bridge', 2], ['ice', 2], ['itembox', 1], ['loop', 1], ['pad', 1], ['wrecker', 1]].sort());
+  assert.deepEqual([plan.springs, plan.boosts, plan.itemBoxes, plan.wreckers, plan.loops].map((l) => l?.length ?? 0), [0, 0, 0, 0, 0], 'no platformer copies of them');
+  // the drivers still sense the block, the bridge and the ice; none of those is built or drawn twice
+  assert.deepEqual(plan.bumps, [{ lane: 0, x: 4970, w: 60, y: Y + 240, h: 60, hidden: true }]);
+  assert.equal(plan.bridges!.length, 1);
+  assert.ok(plan.bridges![0].hidden && plan.bridges![0].lane === 2);
+  assert.ok(plan.floors.some((f) => f.hidden && f.lane === 2 && f.x0 === 7000 && f.x1 === 7400), 'the ice is ground the drivers see');
+  // the platformer's own lane pieces
   assert.deepEqual(plan.gates!.map((g) => [g.kind, g.lane, g.to]), [['ramp', 1, 0], ['door', 0, 1]]);
   assert.deepEqual(plan.ledges, [{ lane: 2, x: 4300, w: 400, y: Y + 200 }]);
-  assert.equal(plan.wreckers!.length, 1);
-  assert.equal(plan.wreckers![0].pivotY, Y - 200);
-  assert.equal(plan.bridges!.length, 1);
-  assert.equal(plan.bridges![0].lane, 2);
-  assert.equal(plan.loops!.length, 1);
-  assert.equal(plan.loops![0].y, Y + 300);
+});
+
+test('a classic piece in a platformer course is built once, by the classic Builder, with its classic body kinds', () => {
+  const def = course([...hills, { t: 'bridge', a: [6400, Y + 300], b: [7000, Y + 300], planks: 30, slack: 12 }, { t: 'ice', a: [7000, Y + 300], b: [7400, Y + 300] }, { t: 'block', x: 5000, y: Y + 270, w: 60, h: 60 }]);
+  const track = trackFromPlan(planFromTrackDef(def), 1, TRACK_THEMES.forest);
+  const classic = track.bodies.filter((b) => (b.plugin as { classic?: boolean }).classic);
+  const kinds = new Set(classic.map((b) => (b.plugin as { kind: string }).kind));
+  assert.ok(kinds.has('bridge') && kinds.has('ice'), [...kinds].join(','));
+  const bridgePlanks = track.bodies.filter((b) => (b.plugin as { kind: string }).kind === 'bridge');
+  assert.ok(bridgePlanks.every((b) => (b.plugin as { classic?: boolean }).classic), 'no second, platformer-built bridge');
 });
 
 test('settle puts floor-bound pieces on the floor of their lane and leaves floaters alone', () => {

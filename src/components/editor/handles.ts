@@ -400,6 +400,12 @@ function baseHandles(piece: Piece): Handle[] {
         { id: 'w', x: piece.x + piece.w / 2, y: piece.y, cursor: 'ew-resize', label: 'Width' },
       ];
     }
+    case 'kicker': {
+      return [
+        { id: 'move', x: piece.x, y: piece.y, cursor: 'move', label: 'Move' },
+        { id: 'w', x: piece.x + piece.w, y: piece.y - piece.h, cursor: 'nwse-resize', label: 'Length and height' },
+      ];
+    }
     case 'gate':
     case 'ledge': {
       // Anchored at its left end; the handle on the right end sets the width.
@@ -893,6 +899,11 @@ export function applyHandle(piece: Piece, handleId: string, to: { x: number; y: 
       if (handleId === 'w') return { ...piece, w: clampNum(Math.round(Math.abs(withSnap(to.x, sx) - piece.x) * 2), 60, 600) };
       return piece;
     }
+    case 'kicker': {
+      if (handleId === 'move') return { ...piece, x: withSnap(to.x, sx), y: withSnap(to.y, sx) };
+      if (handleId === 'w') return { ...piece, w: clampNum(Math.round(withSnap(to.x, sx) - piece.x), 60, 400), h: clampNum(Math.round(piece.y - withSnap(to.y, sx)), 20, 200) };
+      return piece;
+    }
     case 'gate':
     case 'ledge': {
       if (handleId === 'move') return { ...piece, x: withSnap(to.x, sx), y: withSnap(to.y, sx) };
@@ -1083,6 +1094,7 @@ export function mirrorPiece(piece: Piece): Piece {
       return { ...piece, x: mx(piece.x) };
     case 'gate':
     case 'ledge':
+    case 'kicker':
       return piece; // a platformer course is never mirrored
     case 'itembox':
       return { ...piece, x: mx(piece.x) };

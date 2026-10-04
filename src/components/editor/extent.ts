@@ -25,6 +25,7 @@ export function pieceXs(piece: Piece): number[] {
       return [piece.x - piece.w / 2, piece.x + piece.w / 2];
     case 'gate':
     case 'ledge':
+    case 'kicker':
       return [piece.x, piece.x + piece.w];
     case 'ring':
       return [piece.x - piece.r - piece.thick / 2, piece.x + piece.r + piece.thick / 2];

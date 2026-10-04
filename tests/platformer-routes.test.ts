@@ -147,7 +147,8 @@ test('planner: at most one loop and two bridges per flow course, and every one s
 
 test('planner: routes are deterministic, switch off cleanly, and never touch the tutorial or the block courses', () => {
   assert.deepEqual(planFlow(11), planFlow(11));
-  const off = planFlow(11, { ...FLOW_TUNING, routes: false });
+  // (sky runs are switched off on both sides: they keep clear of loops, so they move when the loops do)
+  const off = planFlow(11, { ...FLOW_TUNING, routes: false, sky: false });
   assert.equal(off.loops?.length, 0);
   assert.equal(off.bridges?.length, 0);
   const tutorial = planTutorial();
@@ -159,7 +160,7 @@ test('planner: routes are deterministic, switch off cleanly, and never touch the
     assert.equal(plan.bridges, undefined, c.name);
   }
   // the hills, chasms, gates and everything else are exactly as they were without routes (apart from the flat under a loop)
-  const on = planFlow(11);
+  const on = planFlow(11, { ...FLOW_TUNING, sky: false });
   assert.deepEqual(on.gates, off.gates);
   assert.deepEqual(on.bumps, off.bumps);
   assert.deepEqual(on.springs, off.springs);

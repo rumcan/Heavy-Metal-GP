@@ -163,7 +163,8 @@ test('flow courses: smooth, descending, and the back ridge always stands above t
 test('springs and one-way ledges: a ball passes up through a ledge, lands on it, and a spring launches it', async () => {
   const { planFlow } = await import('../src/game/platformer/flow');
   const plan = planFlow(11);
-  assert.ok((plan.springs?.length ?? 0) > 0 && plan.springs!.length === plan.ledges!.length, 'a ledge for every spring');
+  const shortcuts = plan.ledges!.filter((l) => l.cloud === undefined); // cloud platforms are the sky runs' ledges
+  assert.ok((plan.springs?.length ?? 0) > 0 && plan.springs!.length === shortcuts.length, 'a ledge for every spring');
   for (const l of plan.ledges!) {
     const under = floorAt(plan, l.lane, l.x + 10);
     if (under !== null) assert.ok(l.y < under - 150, 'a ledge stands well above the ground');

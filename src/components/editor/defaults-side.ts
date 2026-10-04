@@ -18,6 +18,7 @@ export function sidePiece(type: Piece['t'], x: number, y: number): Piece | null 
     case 'loop': return { t: 'loop', x: cx, bottom: cy, r: 90 };
     case 'gate': return { t: 'gate', kind: 'ramp', to: 0, x: cx - 85, y: cy, w: 170 };
     case 'ledge': return { t: 'ledge', x: cx - 200, y: cy, w: 400 };
+    case 'kicker': return { t: 'kicker', x: cx - 75, y: cy, w: 150, h: 80 };
     default: return null;
   }
 }

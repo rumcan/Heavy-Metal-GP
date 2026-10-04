@@ -127,7 +127,9 @@ export function loopStep(game: Game, m: Marble): void {
     if (l.lane !== lane || !inLoopBox(l, p)) continue;
     const top = l.x + l.pitch / 2;
     if ((m.loopPhase ?? 0) === 1) phase = p.x > l.x + l.pitch + 24 ? 0 : 1;
-    else phase = p.y < l.y - l.r && p.x < top ? 1 : 0;
+    // Over the top means up near the top of the ring and travelling back (left). A hop inside the ring is not a ride:
+    // switching halves then would leave the ball wedged against the way down from inside.
+    else phase = p.y < l.y - l.r * 1.6 && p.x < top && m.body.velocity.x < 0.5 ? 1 : 0;
   }
   if (phase === 1 && (m.loopPhase ?? 0) === 0) game.storyCounter('loops', m); // STORY HOOK: over the top of a loop ring
   m.loopPhase = phase as 0 | 1;
@@ -299,6 +301,9 @@ export function platformRecovery(game: Game, m: Marble, dt: number): void {
     m.bestProgress = m.progress;
     m.motionAt = game.time;
   }
+  // A ball with too little speed to ride a loop sits at the foot of the ring, pushing into it for ever. After a moment
+  // (a person gets longer, they may back off and try again) the marshal lifts it out past the ring, rolling on.
+  if (loopRescue(game, m)) return;
   const fell = !Number.isFinite(p.x) || !Number.isFinite(p.y) || p.y > line.y + 420;
   // A person standing still is waiting on purpose; only a computer driver gets marshalled for stalling.
   const stalled = !game.isHuman(m) && game.time - m.motionAt > 6000;
@@ -324,6 +329,36 @@ export function platformRecovery(game: Game, m: Marble, dt: number): void {
   game.effects.push({ type: 'ring', x: spot.x, y: floor - MARBLE_RADIUS, ttl: 30, maxTtl: 30, color: '#d63e2e' });
   if (m.info.isPlayer) game.onEvent?.(fell ? 'Fell off: back on the middle lane' : 'Race marshal: back on track', '#d63e2e');
   void dt;
+}
+
+/** Lifts a marble stuck at the foot of a loop ring out past its exit. True when it did. */
+function loopRescue(game: Game, m: Marble): boolean {
+  const loops = game.track.platformer?.plan.loops;
+  if (!loops?.length) return false;
+  const lane = m.lane ?? LANE_MIDDLE;
+  const p = m.body.position, v = m.body.velocity;
+  const loop = loops.find((l) => l.lane === lane && inLoopBox(l, p));
+  if (!loop || Math.hypot(v.x, v.y) > 2.5 || p.y < loop.y - loop.r) { m.loopStuckSince = undefined; return false; }
+  m.loopStuckSince ??= game.time;
+  if (game.time - m.loopStuckSince < (game.isHuman(m) ? 4000 : 1500)) return false;
+  m.loopStuckSince = undefined;
+  const plan = game.track.platformer!.plan;
+  const x = loop.x + loop.pitch + loop.r + 90;
+  const floor = floorAt(plan, lane as Lane, x) ?? loop.y;
+  Body.setPosition(m.body, { x, y: floor - MARBLE_RADIUS - 4 });
+  Body.setVelocity(m.body, { x: 6, y: 0 });
+  Body.setAngularVelocity(m.body, 0);
+  m.loopPhase = 0;
+  applyLaneMask(game, m);
+  m.trail = [];
+  m.progress = progressAlong(game.track.platformer!.path, m.body.position, undefined);
+  m.bestProgress = m.progress;
+  m.motionAt = game.time;
+  m.recoveries++;
+  m.recoveryUntil = game.time + 1200;
+  game.effects.push({ type: 'ring', x, y: floor - MARBLE_RADIUS, ttl: 30, maxTtl: 30, color: '#d63e2e' });
+  if (m.info.isPlayer) game.onEvent?.('Race marshal: lifted over the loop', '#d63e2e');
+  return true;
 }
 
 /** Computer drivers' skill level, from their Speed stat (stronger rivals are better drivers). */

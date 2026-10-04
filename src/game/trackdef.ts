@@ -61,7 +61,10 @@ export interface PieceBase {
 /** P2-22 (platformer courses): a lane gate, `x`..`x + w` along the course with its floor at `y`. A `ramp` takes a rolling ball from `lane` to `to`; a `door` takes it when it presses jump. */
 export interface GatePiece extends PieceBase { t: 'gate'; kind: 'ramp' | 'door'; to: 0 | 1 | 2; x: number; y: number; w: number }
 /** P2-22 (platformer courses): a one-way ledge from `x` to `x + w` with its top at `y`: jump up through it, land on top. */
-export interface LedgePiece extends PieceBase { t: 'ledge'; x: number; y: number; w: number }
+/** `cloud` (an index into the cloud art) makes the ledge a cloud platform: the same one-way ledge, drawn as a cloud. */
+export interface LedgePiece extends PieceBase { t: 'ledge'; x: number; y: number; w: number; cloud?: number }
+/** Platformer courses: a kicker ramp. Its foot is at (`x`, `y`) on the floor; it rises `h` over `w` to a lip that throws a fast ball into the air. */
+export interface KickerPiece extends PieceBase { t: 'kicker'; x: number; y: number; w: number; h: number }
 
 export interface RampPiece extends PieceBase { t: 'ramp'; a: Vec; b: Vec }
 export interface CurvePiece extends PieceBase { t: 'curve'; a: Vec; c: Vec; b: Vec; n?: number }
@@ -163,7 +166,7 @@ export type Piece =
   | CannonPiece | CatapultPiece | FlipperPiece | SlingPiece
   | WindPiece | MagnetPiece | MudPiece | GeyserPiece
   | TrampolinePiece | TurnstilePiece | TargetsPiece | VortexPiece | PlatformPiece | RingPiece | SignPiece
-  | GatePiece | LedgePiece;
+  | GatePiece | LedgePiece | KickerPiece;
 
 /**
  * #99: pieces retired from the game and the Workshop (the track switch lever, the scoop and the
@@ -941,8 +944,12 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
       const to = raw.to === 0 || raw.to === 1 || raw.to === 2 ? raw.to : (problems.add(`${at}.to must be 0, 1 or 2.`), 1 as const);
       return { t: 'gate', kind, to, x: number(raw.x, `${at}.x`, -200, xMax(), problems), y: real(raw.y, `${at}.y`, problems), w: number(raw.w, `${at}.w`, 100, 400, problems), ...body };
     }
-    case 'ledge':
-      return { t: 'ledge', x: number(raw.x, `${at}.x`, -200, xMax(), problems), y: real(raw.y, `${at}.y`, problems), w: number(raw.w, `${at}.w`, 60, 4000, problems), ...body };
+    case 'ledge': {
+      const cloud = raw.cloud === undefined ? undefined : number(raw.cloud, `${at}.cloud`, 0, 9, problems);
+      return { t: 'ledge', x: number(raw.x, `${at}.x`, -200, xMax(), problems), y: real(raw.y, `${at}.y`, problems), w: number(raw.w, `${at}.w`, 60, 4000, problems), ...(cloud !== undefined ? { cloud: Math.round(cloud) } : {}), ...body };
+    }
+    case 'kicker':
+      return { t: 'kicker', x: number(raw.x, `${at}.x`, -200, xMax(), problems), y: real(raw.y, `${at}.y`, problems), w: number(raw.w, `${at}.w`, 60, 400, problems), h: number(raw.h, `${at}.h`, 20, 200, problems), ...body };
     case 'ramp':
       return { t: 'ramp', a: vec(raw.a, `${at}.a`, problems), b: vec(raw.b, `${at}.b`, problems), ...body };
     case 'ice':
@@ -1396,6 +1403,8 @@ function pieceYs(piece: Piece): number[] {
     case 'gate':
     case 'ledge':
       return [piece.y];
+    case 'kicker':
+      return [piece.y - piece.h, piece.y];
     // ---- MB-10D ----
     case 'cannon':
       return [piece.y - 40, piece.y];

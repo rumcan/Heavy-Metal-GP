@@ -78,3 +78,14 @@ test('a classic def still encodes without a trailer and decodes unchanged', asyn
   assert.equal(back.width, undefined);
   assert.deepEqual(back.pieces, classic.def.pieces);
 });
+
+test('kicker ramps and cloud platforms survive validation and a share code', async () => {
+  const base = course();
+  const check = validateTrackDef({ ...base, pieces: [...base.pieces, { t: 'kicker', x: 3300, y: 900, w: 150, h: 80 }, { t: 'ledge', x: 3700, y: 700, w: 400, cloud: 3, lane: 2 }] });
+  assert.ok(check.ok, check.ok ? '' : check.error);
+  if (!check.ok) return;
+  const back = await decodeShareCode(await encodeShareCode(check.def));
+  assert.deepEqual(back.pieces.slice(-2), [{ t: 'kicker', x: 3300, y: 900, w: 150, h: 80 }, { t: 'ledge', x: 3700, y: 700, w: 400, cloud: 3, lane: 2 }]);
+  const bad = validateTrackDef({ ...base, pieces: [{ t: 'kicker', x: 3300, y: 900, w: 150, h: 999 }] });
+  assert.ok(!bad.ok && /h is 999/.test(bad.error));
+});
