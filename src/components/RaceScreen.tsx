@@ -28,6 +28,7 @@ import type { TrackDef } from '../game/trackdef';
 import type { RacePayout } from '../game/economy';
 import { loadAccount } from '../game/economy';
 import { pointsFor } from '../game/season';
+import { outMessage, spectateTarget } from '../game/spectate';
 import Brand from './Brand';
 import Dialog from './Dialog';
 import NetStats from './NetStats';
@@ -124,6 +125,8 @@ interface Hud {
   lights: number; finished: boolean; playerTime: number | null; pegs: number;
   sector: string; sectorIndex: number; progress: number; state: string;
   frozen: boolean; field: LiveRow[]; finishedCount: number; following: string;
+  /** P2-07: why the player is out of the race (null while racing). */
+  out?: string | null;
   viewTop: number; viewBottom: number;
 }
 
@@ -544,7 +547,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
         const tut = tutorialRef.current;
         game.nudge = tut?.autopilot ? 1 : nudgeOf(controls.current);
         game.engineHeld = controls.current.engine;
-        accumulator += dt * (game.player.finishedAt !== null ? fastRef.current : 1);
+        accumulator += dt * (game.player.finishedAt !== null || game.player.dnf ? fastRef.current : 1);
         meter.time('physics', () => {
           while (accumulator >= PHYSICS_STEP) {
             if (tut) {
@@ -561,7 +564,8 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
           }
         });
         if (game.allFinished()) { finishHold += dt; if (finishHold > 750) finish(); }
-        else if (game.player.dnf) { finishHold += dt; if (finishHold > 2200) finish(); } // P2-07: out of the race: on to the results
+        // P2-07: out of the race, the player watches it play out (the camera follows whoever did it, then the leader, and
+        // fast forward is offered); drivers still out 20 s after the last finish are classified out, so it always ends.
         else if (game.raceTime() >= HEAT_TIME_LIMIT) finish();
         }
       }
@@ -570,7 +574,10 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       // The light bank: 0..5 while the lights count, -1 the moment they are out.
       if (sessionRef.current) lights = sessionRef.current.lightStage;
       const ranking = game.ranking();
-      const following = game.player.finishedAt === null && !game.player.dnf ? game.player : ranking.find((r) => !r.finished && !r.dnf)?.marble ?? game.player;
+      const spectate = game.player.dnf && game.player.finishedAt === null
+        ? spectateTarget({ now: game.time, koAt: game.player.koAt ?? game.time, koBy: game.player.koBy ?? -1, order: ranking.map((r) => ({ id: r.marble.info.id, racing: !r.finished && !r.dnf })) })
+        : null;
+      const following = game.player.finishedAt === null && !game.player.dnf ? game.player : (spectate?.follow != null ? game.byIdOrNull(spectate.follow) : null) ?? ranking.find((r) => !r.finished && !r.dnf)?.marble ?? game.player;
       const p = following.body.position;
       if (width > 0 && height > 0) {
         const sidebar = width >= 980 ? 215 : 0;
@@ -658,6 +665,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
           state: status, frozen: m.frozen, finishedCount: game.finishOrder.length,
           field: game.gateOpen ? ranking.map((r) => ({ id: r.marble.info.id, rank: r.rank, time: r.time, x: r.marble.body.position.x, y: r.marble.body.position.y })) : gridOrder.filter((id) => !game.benched.has(id)).map((id, i) => ({ id, rank: i + 1, time: null, x: game.marbles.find((m) => m.info.id === id)!.body.position.x, y: 116 })),
           following: following.info.isPlayer ? 'You' : following.info.name,
+          out: m.dnf ? outMessage(m.koBy ?? -1, (id) => game.byIdOrNull(id)?.info.name ?? 'a rival') : null,
           viewTop: camera.y - height / 2 / camera.scale, viewBottom: camera.y + height / 2 / camera.scale,
         });
         // P2-13: the tutorial overlay reads the learner's position, heat and flags here.
@@ -755,7 +763,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       {(preStart || showGo) && <div className={`start-sequence ${showGo ? 'lights-out' : ''}`}><div className="start-light-bank">{Array.from({ length: 5 }, (_, i) => <div key={i} className={`start-light-pair ${hud.lights > i ? 'lit' : ''}`}><i /><i /></div>)}</div><span>{showGo ? 'LIGHTS OUT. FULL SEND.' : hud.lights === 5 ? 'HOLD YOUR LINE.' : 'THE GRID IS SET.'}</span></div>}
       {toast && <div key={toast.message} className="race-toast" role="status" style={{ '--toast-color': toast.color } as CSSProperties}><span />{toast.message}</div>}
       {story && <StoryRaceOverlay story={story} sectorIndex={hud.sectorIndex} live={!results} />}
-      {hud.finished && !results && <div className="finish-follow"><Flag size={20} /><div><strong>P{hud.rank} secured.{championship ? ` +${pointsFor(hud.rank)} points.` : ''}</strong><span>Following {hud.following}. {roster.length - hud.finishedCount} marbles still racing.</span></div>{(!online || sessionRef.current?.canFastForward) ? <button className={`button-secondary ${fast > 1 ? 'fast-active' : ''}`} onClick={() => { const next = fast === 1 ? 2 : fast === 2 ? 4 : 1; fastRef.current = next; setFast(next); sessionRef.current?.setSpeed(next); }} aria-label={`Replay speed ${fast}x, click to change`}><FastForward size={16} />{fast === 1 ? 'Fast forward' : `${fast}x speed`}</button> : <span className="finish-follow-note">{sessionRef.current?.isHost ? 'Fast forward unlocks when every driver has finished' : 'The host can fast forward once every driver has finished'}</span>}</div>}
+      {(hud.finished || (hud.dnf && !online)) && !results && <div className="finish-follow"><Flag size={20} /><div><strong>{hud.finished ? <>P{hud.rank} secured.{championship ? ` +${pointsFor(hud.rank)} points.` : ''}</> : hud.out ?? 'Did not finish'}</strong><span>Following {hud.following}. {roster.length - hud.finishedCount} marbles still racing.</span></div>{(!online || sessionRef.current?.canFastForward) ? <button className={`button-secondary ${fast > 1 ? 'fast-active' : ''}`} onClick={() => { const next = fast === 1 ? 2 : fast === 2 ? 4 : 1; fastRef.current = next; setFast(next); sessionRef.current?.setSpeed(next); }} aria-label={`Replay speed ${fast}x, click to change`}><FastForward size={16} />{fast === 1 ? 'Fast forward' : `${fast}x speed`}</button> : <span className="finish-follow-note">{sessionRef.current?.isHost ? 'Fast forward unlocks when every driver has finished' : 'The host can fast forward once every driver has finished'}</span>}</div>}
       <div className="race-progress"><span style={{ width: `${hud.progress * 100}%` }} /></div>
       {/* MP-CHAT: bubbles live in their own layer over the canvas. The loop
           pins each one to the marble that said it; React only ever adds and

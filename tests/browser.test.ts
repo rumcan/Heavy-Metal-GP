@@ -174,6 +174,30 @@ test('Browser: the pause menu restarts the race from the lights', { timeout: 120
   } finally { await context.close(); }
 });
 
+test('Browser: knocked out, you watch whoever did it, can fast forward, and the race goes on to the results', { timeout: 180000 }, async () => {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
+  const page = await context.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  try {
+    await ready(page);
+    await openTab(page, 'Quick race');
+    await page.getByRole('button', { name: 'Race', exact: true }).click();
+    await dismissGate(page);
+    await page.waitForSelector('.race-canvas');
+    await page.waitForFunction(() => (window as any).__race?.gateOpen, undefined, { timeout: 40000 });
+    // a rival knocks the player out
+    const killer = await page.evaluate(() => { const g = (window as any).__race; const k = g.marbles[3]; g.damage(g.player, 1000, k.info.id, 'wrecker'); return k.info.name; });
+    await page.getByText(`Knocked out by ${killer}`).waitFor({ timeout: 5000 });
+    assert.equal(await page.locator('.results-panel').count(), 0, 'the race does not end the moment you are out');
+    await page.getByRole('button', { name: /Replay speed/ }).click();
+    await page.getByRole('button', { name: /Replay speed 2x/ }).waitFor();
+    await page.locator('.results-panel').waitFor({ timeout: 150000 });
+    assert.ok(await page.locator('.results-table .dnf-label').count() >= 1);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
 test('Browser: mobile layout stays in-bounds and controls remain usable', { timeout: 120000 }, async () => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
   const page = await context.newPage();
