@@ -56,6 +56,8 @@ import { loadTracksSync } from './game/tracks';
 import type { TrackDef } from './game/trackdef';
 import type { Inventory, ItemType, TrackProfile } from './game/types';
 import LoadoutScreen from './components/loadout/LoadoutScreen';
+import { askEveryRace, setAskEveryRace, shouldAskLoadout } from './game/pre-race';
+import type { LoadoutMode } from './game/loadout-store';
 import { mergeRaceKit } from './game/loadout';
 import { RIVALS, PLAYER_PORTRAIT_COUNT, preRaceBanter } from './game/characters';
 import type { Line } from './game/characters';
@@ -134,6 +136,10 @@ export default function App() {
   const [account, setAccount] = useState(loadAccount);
   const accountRef = useRef(account);
   const [shopOpen, setShopOpen] = useState(false);
+  /** P2-10b: the loadout screen before a race (the mode's bar, and what to do after). */
+  const [preRace, setPreRace] = useState<{ mode: LoadoutMode; go: () => void } | null>(null);
+  const [askLoadout, setAskLoadout] = useState(() => askEveryRace());
+  const beforeRace = (mode: LoadoutMode, go: () => void) => { if (shouldAskLoadout({ mode }, askLoadout)) setPreRace({ mode, go }); else go(); };
   const [raceId, setRaceId] = useState('');
   const [payout, setPayout] = useState<RacePayout | null>(null);
   /** P2-17: the Talents screen (opened from the garage's XP bar). */
@@ -675,6 +681,12 @@ export default function App() {
         onClose={() => setLadderOpen(false)}
       />}
       {shopOpen && <LoadoutScreen account={account} onBuy={buy} onClose={() => setShopOpen(false)} />}
+      {preRace && <LoadoutScreen account={account} onBuy={buy} mode={preRace.mode} onClose={() => setPreRace(null)} preRace={{
+        onRace: () => { const go = preRace.go; setPreRace(null); go(); },
+        onSame: () => { const go = preRace.go; setPreRace(null); go(); },
+        ask: askLoadout,
+        onAsk: (on) => { setAskLoadout(on); setAskEveryRace(on); },
+      }} />}
       {whatsNew && phase === 'menu' && <WhatsNew onClose={closeWhatsNew} />}
       {confirmNewSeason && <ConfirmDialog title="Start a new championship?" message="This replaces your saved season." confirmLabel="Start new" onConfirm={() => startSeason(true)} onCancel={() => setConfirmNewSeason(false)} />}
     </>
@@ -785,7 +797,7 @@ export default function App() {
         onRerollRivals={() => setRivalSeed(Math.floor(Math.random() * 0xffffffff))}
         seed={seed}
         onNewSeed={newSeed}
-        onStart={launchQuickRace}
+        onStart={() => beforeRace('quick', launchQuickRace)}
         onStartSeason={() => startSeason()}
         onContinueSeason={season && phase === 'menu' ? () => enterSeason(season) : undefined}
         onRetune={season && phase === 'menu' ? () => { setCircuitIndex(season.round); setPhase('retune'); } : undefined}
@@ -885,6 +897,7 @@ export default function App() {
         onAccount={publishAccount}
         onLevelUp={(from, to, xp) => setLevelUp({ from, to, xp })}
         onShop={openShop}
+        onBeforeRace={(go) => beforeRace('story', go)}
         start={storyPick}
         onExit={(notice) => { setStoryNotice(notice ?? null); setPhase('menu'); }}
       />
@@ -895,13 +908,13 @@ export default function App() {
     return withShop(
       <ChampionshipScreen
         season={season}
-        onStartHeat={() => {
+        onStartHeat={() => beforeRace('championship', () => {
           setRaceId(`champ:${season.seed}:${season.round}:${season.results[season.round].length}`);
           setPayout(null);
           setRaceKey((k) => k + 1);
           const heatNo = season.results[season.round].length + 1;
           setLoading({ eyebrow: `ROUND ${String(season.round + 1).padStart(2, '0')} / HEAT ${heatNo} OF ${HEATS_PER_GP}`, title: roundName(season, season.round).toUpperCase(), cta: 'Lights out', banter: preRaceBanter(seasonRoster, Math.random), next: 'race' });
-        }}
+        })}
         onRetune={() => { setCircuitIndex(season.round); setPhase('retune'); }}
         onAbandon={() => setPhase('menu')}
         onNewSeason={() => startSeason()}

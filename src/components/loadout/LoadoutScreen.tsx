@@ -17,7 +17,18 @@ import { ITEM_INFO, ITEM_TYPES, MAX_ITEM_STACK } from '../../game/types';
 import type { ItemType } from '../../game/types';
 import { SLOT_KEYS } from '../../game/loadout';
 
-interface Props { account: RacerAccount; onBuy: (item: ItemType) => string | undefined; onClose: () => void }
+interface Props {
+  account: RacerAccount;
+  onBuy: (item: ItemType) => string | undefined;
+  onClose: () => void;
+  /** Open on this mode's bar (default Quick). */
+  mode?: LoadoutMode;
+  /**
+   * P2-10b: shown before a race. The mode is fixed, and the footer asks: race with this loadout, the same as last time
+   * (any changes made here are put back), or never ask again.
+   */
+  preRace?: { onRace: () => void; onSame: () => void; ask: boolean; onAsk: (ask: boolean) => void };
+}
 
 const GROUPS: { id: SkillGroup; label: string }[] = [
   { id: 'movement', label: 'Movement' }, { id: 'offence', label: 'Offence' }, { id: 'defence', label: 'Defence' }, { id: 'utility', label: 'Utility' },
@@ -29,10 +40,12 @@ const CATALOG: Catalog = Object.fromEntries(ITEM_TYPES.map((id) => {
   return [id, { price: ITEM_INFO[id].price, unlockLevel: d.unlockLevel, starter: (STARTER_SKILLS as readonly string[]).includes(id) }];
 }));
 
-export default function LoadoutScreen({ account, onBuy, onClose }: Props) {
+export default function LoadoutScreen({ account, onBuy, onClose, mode: startMode = 'quick', preRace }: Props) {
   // P2-20: one bar per mode; the switch picks which one is shown and saved.
-  const [mode, setMode] = useState<LoadoutMode>('quick');
-  const [slots, setSlots] = useState<Slots>(() => loadSlots('quick'));
+  const [mode, setMode] = useState<LoadoutMode>(startMode);
+  const [slots, setSlots] = useState<Slots>(() => loadSlots(startMode));
+  // what the bar was when the screen opened ("Same as last time" puts it back)
+  const [opened] = useState<Slots>(() => loadSlots(startMode));
   const [at, setAt] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const level = progressOf(account).level;
@@ -59,9 +72,9 @@ export default function LoadoutScreen({ account, onBuy, onClose }: Props) {
 
   return <Dialog titleId="loadout-title" onClose={onClose} className="loadout-dialog">
     <div className="loadout-head"><h2 id="loadout-title">LOADOUT</h2><span className="loadout-wallet"><Coins size={14} />{account.credits.toLocaleString()} CR · LEVEL {level}</span></div>
-    <div className="mode-switch loadout-mode" role="group" aria-label="Loadout mode">
+    {!preRace && <div className="mode-switch loadout-mode" role="group" aria-label="Loadout mode">
       {LOADOUT_MODES.map((m) => <button key={m} className={m === mode ? 'selected' : ''} aria-pressed={m === mode} onClick={() => pickMode(m)}>{MODE_LABELS[m]}</button>)}
-    </div>
+    </div>}
     <p className="dialog-intro">Pick up to 8 skills for your keys in <b>{MODE_LABELS[mode]}</b> mode. Each mode keeps its own bar; charges are shared by every mode and carry between races.</p>
     {error && <p className="loadout-error" role="alert">{error}</p>}
     <div className="loadout-slots" role="group" aria-label="Your eight skill slots">
@@ -92,6 +105,10 @@ export default function LoadoutScreen({ account, onBuy, onClose }: Props) {
         </div>
       </section>)}
     </div>
-    <div className="pause-actions"><button className="button-primary" onClick={onClose} autoFocus>Done</button></div>
+    {preRace ? <div className="pause-actions loadout-prerace">
+      <button className="button-primary" onClick={preRace.onRace} autoFocus>Race with this loadout</button>
+      <button className="button-secondary" onClick={() => { saveSlots(opened, mode); preRace.onSame(); }}>Same as last time</button>
+      <label className="loadout-ask"><input type="checkbox" checked={!preRace.ask} onChange={(e) => preRace.onAsk(!e.target.checked)} /> Don't ask before every race</label>
+    </div> : <div className="pause-actions"><button className="button-primary" onClick={onClose} autoFocus>Done</button></div>}
   </Dialog>;
 }
