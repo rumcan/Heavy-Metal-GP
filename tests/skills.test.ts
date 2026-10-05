@@ -280,7 +280,9 @@ test('computer drivers use the skills they hold, through the AI brain, and the r
   let used = 0;
   game.onEvent = () => undefined;
   for (let t = 0; t < 120000 && !game.allFinished(); t += PHYSICS_STEP) game.step(PHYSICS_STEP);
-  for (const m of game.marbles) for (const id of ['bolt', 'shield', 'rocket', 'repair', 'bomb'] as const) used += held[0][id] === 0 ? 0 : (id === 'bolt' ? 3 : id === 'shield' ? 2 : id === 'rocket' ? 2 : id === 'repair' ? 2 : 2) - m.inventory[id];
+  // (each marble's inventory is its own copy of the starting kit: count what every one of them spent)
+  const start = { bolt: 3, shield: 2, rocket: 2, repair: 2, bomb: 2 } as const;
+  for (const m of game.marbles) for (const id of ['bolt', 'shield', 'rocket', 'repair', 'bomb'] as const) used += start[id] - m.inventory[id];
   assert.ok(used > 8, `computers used ${used} skills`);
   assert.ok(game.allFinished(), `everyone finished or was knocked out (${game.finishOrder.length} finished)`);
 });
