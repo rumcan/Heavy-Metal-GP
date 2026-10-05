@@ -385,7 +385,13 @@ function drawFinish(ctx: CanvasRenderingContext2D, x: number, y: number) {
 
 /** Draw one lane's world (floors, bumps, gates, the finish) in world coordinates. */
 /** Perf: a lane's bodies by what draws them, sorted once per track instead of scanning every body every frame. */
-type LaneLists = { pieces: Matter.Body[]; floors: Matter.Body[]; classic: Matter.Body[] };
+type LaneLists = { pieces: Matter.Body[]; floors: Matter.Body[]; classic: Matter.Body[]; classicStill: Matter.Body[]; classicLive: Matter.Body[] };
+
+/**
+ * Perf: classic pieces that never move, change or break are painted once into the lane's cached scenery, not every
+ * frame (a Block fills a big texture pattern: twenty of them in view took the menu preview from 130 fps to 20).
+ */
+const CLASSIC_STILL = new Set(['block', 'ice', 'ramp', 'wall', 'loop', 'sign']);
 // keyed by the body array (and its length): Infinity mode replaces the array as it adds land
 const laneListCache = new WeakMap<object, { n: number; per: LaneLists[] }>();
 function laneLists(game: Game, lane: number) {
@@ -400,6 +406,8 @@ function laneLists(game: Game, lane: number) {
         pieces: own.filter((b) => { const k = meta(b).kind; return k === 'wrecker' || k === 'itembox' || k === 'boost' || k === 'bridge'; }),
         floors: own.filter((b) => meta(b).kind === 'floor'),
         classic: mine.filter((b) => (meta(b) as { classic?: boolean }).classic),
+        classicStill: mine.filter((b) => (meta(b) as { classic?: boolean }).classic && CLASSIC_STILL.has(meta(b).kind) && b.isStatic),
+        classicLive: mine.filter((b) => (meta(b) as { classic?: boolean }).classic && !(CLASSIC_STILL.has(meta(b).kind) && b.isStatic)),
       };
     });
     laneListCache.set(game.track.bodies, { n: game.track.bodies.length, per });
@@ -416,6 +424,8 @@ function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, 
   if (part === 'static') {
     // only ever asked for once the coaster art is loaded (see laneCache)
     drawCoasterLane(ctx, info.plan, lane as Lane, left, right, bottom, t, () => false, [], 'static');
+    const still = laneLists(game, lane).classicStill;
+    if (still.length) drawBodies(ctx, game, still, { viewTop: -1e9, viewBottom: 1e9, viewLeft: left, viewRight: right }, t, { withStatic: true });
     if (info.plan.finishX > left && info.plan.finishX < right) drawFinish(ctx, info.plan.finishX, info.plan.finishY);
     return;
   }
@@ -441,7 +451,8 @@ function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, 
     for (const s of info.plan.springs ?? []) if (s.lane === lane && s.x + SPRING_W > left && s.x < right) drawSpring(ctx, s.x, s.y, fired(s.x));
   }
   // P2-26: the classic pieces in this lane, with their drop-track art.
-  const classic = lists.classic;
+  // (in the 'dynamic' part the still ones are already in the cached scenery)
+  const classic = part === 'dynamic' ? lists.classicLive : lists.classic;
   if (classic.length) drawBodies(ctx, game, classic, { viewTop: -1e9, viewBottom: 1e9, viewLeft: left, viewRight: right }, t, { withStatic: true });
   drawCannons(ctx, game, lane, t);
   drawSkillWorld(ctx, game, lane, t); // P2-08
