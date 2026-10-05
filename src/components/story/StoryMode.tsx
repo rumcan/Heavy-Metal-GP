@@ -204,7 +204,9 @@ export default function StoryMode({ driver, account, onAccount, onLevelUp, onSho
       profile: storyProfile(forChapter),
       grid: gridOrder(from.season),
     });
-    setStage({ kind: 'loading', chapter: forChapter, heat });
+    // P2-10b: the story loadout first (App asks, unless the player said not to), then the loading screen
+    const toLoading = () => setStage({ kind: 'loading', chapter: forChapter, heat });
+    if (onBeforeRace) onBeforeRace(toLoading); else toLoading();
   };
 
   const bankChapter = (forChapter: number, settlement: HeatSettlement): ChapterPayout => {
@@ -430,7 +432,7 @@ export default function StoryMode({ driver, account, onAccount, onLevelUp, onSho
         eyebrow={`STORY · CHAPTER ${String(stage.chapter).padStart(2, '0')} / HEAT ${stage.heat} OF ${HEATS_PER_GP}`}
         title={gp.name.toUpperCase()}
         cta="Lights out"
-        onContinue={() => { const go = () => run({ kind: 'race', chapter: stage.chapter, heat: stage.heat }); if (onBeforeRace) onBeforeRace(go); else go(); }}
+        onContinue={() => run({ kind: 'race', chapter: stage.chapter, heat: stage.heat })}
       />;
     }
 

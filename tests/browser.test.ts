@@ -394,6 +394,7 @@ test('Browser: shop purchases persist, number keys spend only selected items, an
     await page.clock.install({ time: new Date('2026-01-01T00:00:00Z') });
     await page.clock.pauseAt(new Date('2026-01-01T00:00:01Z'));
     await page.getByRole('button', { name: 'Race', exact: true }).click();
+    await page.getByRole('button', { name: 'Same as last time' }).click(); // P2-10b: the loadout asks first
     // The virtual clock is paused, so wind it past the loading gate's minimum duration.
     await page.clock.runFor(3400);
     await page.getByRole('button', { name: 'Lights out', exact: true }).click();
@@ -877,9 +878,10 @@ for (const { label, options } of SCREEN_VIEWPORTS) {
       const skip = await page.locator('.story-top-actions .story-toggle').last().boundingBox();
       assert.ok(skip && skip.x >= 0 && skip.x + skip.width <= (page.viewportSize()?.width ?? 0), 'the Skip button is on screen');
       await page.screenshot({ path: `${artifacts}/story-act1-scene-${slug}.png` });
-      // Skip the scenes (Escape) to the loading screen, then lights out.
+      // Skip the scenes (Escape) to the loading screen (keeping the bar when the loadout asks), then lights out.
       for (let i = 0; i < 40 && !(await lights.isVisible().catch(() => false)); i++) {
-        if (await page.locator('.story-scene').isVisible().catch(() => false)) await page.keyboard.press('Escape');
+        if (await page.getByRole('button', { name: 'Same as last time' }).isVisible().catch(() => false)) await page.getByRole('button', { name: 'Same as last time' }).click();
+        else if (await page.locator('.story-scene').isVisible().catch(() => false)) await page.keyboard.press('Escape');
         await page.waitForTimeout(250);
       }
       await lights.click();
