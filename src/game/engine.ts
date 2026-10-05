@@ -58,6 +58,8 @@ export interface GameOptions {
    * (online) only ever does this to computer drivers. Absent = never (classic races, tests).
    */
   stragglerCut?: { ms: number; humans: boolean };
+  /** P2-16b: shifts every computer driver's skill (easy -1, hard +1). Default normal. */
+  aiDifficulty?: import('./ai-personality').RaceDifficulty;
   /** MB-05: called each time the recovery marshal fires — lets the validator collect stuck spots off-screen. */
   onRecover?: (marbleId: number, pos: { x: number; y: number }) => void;
 }
@@ -313,6 +315,7 @@ export class Game {
   supports = new Map<number, RampSurface>();
   recoveryEnabled: boolean;
   stragglerCut: { ms: number; humans: boolean } | null = null;
+  aiDifficulty: import('./ai-personality').RaceDifficulty = 'normal';
   effectsEnabled: boolean;
   aiItemsEnabled: boolean;
   onRecover?: (marbleId: number, pos: { x: number; y: number }) => void;
@@ -404,6 +407,7 @@ export class Game {
     this.machines = this.track.bodies.filter((body) => !!meta(body).motion);
     this.recoveryEnabled = opts.recovery !== false;
     this.stragglerCut = opts.stragglerCut ?? null;
+    this.aiDifficulty = opts.aiDifficulty ?? 'normal';
     this.effectsEnabled = opts.effects !== false;
     this.aiItemsEnabled = opts.aiItems !== false;
     this.onRecover = opts.onRecover;
