@@ -81,6 +81,8 @@ export function newSeason(roster: MarbleInfo[]): SeasonState {
 export interface Standing {
   id: number;
   points: number;
+  /** P2-07: rivals knocked out this season. */
+  kos: number;
   wins: number;
   podiums: number;
   heatsWon: number;
@@ -93,15 +95,24 @@ export function pointsFor(rank: number): number {
   return POINTS[rank - 1] ?? 0;
 }
 
+/** P2-07: championship points for each rival a driver knocks out (paid even when the driver did not finish). */
+export const KO_POINTS = 2;
+
+/** A heat's championship points: the finishing place (none for a DNF) plus the KO points. */
+export function heatPoints(hr: Pick<HeatResult, 'time' | 'rank' | 'kos'>): number {
+  return (hr.time === null ? 0 : pointsFor(hr.rank)) + KO_POINTS * (hr.kos ?? 0);
+}
+
 export function computeStandings(s: SeasonState): Standing[] {
   const map = new Map<number, Standing>();
-  for (const m of s.roster) map.set(m.id, { id: m.id, points: 0, wins: 0, podiums: 0, heatsWon: 0, fastest: 0, best: 99, last: null });
+  for (const m of s.roster) map.set(m.id, { id: m.id, points: 0, wins: 0, podiums: 0, heatsWon: 0, fastest: 0, best: 99, last: null, kos: 0 });
   s.results.forEach((gp, r) => {
     const gpPoints = new Map<number, number>();
     gp.forEach((heat) => {
       for (const hr of heat) {
         const st = map.get(hr.id)!;
-        const p = hr.time === null ? 0 : pointsFor(hr.rank);
+        const p = heatPoints(hr);
+        st.kos += hr.kos ?? 0;
         st.points += p;
         gpPoints.set(hr.id, (gpPoints.get(hr.id) ?? 0) + p);
         if (hr.rank === 1 && hr.time !== null) st.heatsWon++;
@@ -134,7 +145,7 @@ export function gpRanking(gp: HeatResult[][], fastestId: number | null): number[
   const best = new Map<number, number>();
   for (const heat of gp)
     for (const hr of heat) {
-      pts.set(hr.id, (pts.get(hr.id) ?? 0) + (hr.time === null ? 0 : pointsFor(hr.rank)));
+      pts.set(hr.id, (pts.get(hr.id) ?? 0) + heatPoints(hr));
       best.set(hr.id, Math.min(best.get(hr.id) ?? 99, hr.rank));
     }
   if (fastestId !== null && pts.has(fastestId)) pts.set(fastestId, pts.get(fastestId)! + FASTEST_BONUS);
@@ -143,7 +154,7 @@ export function gpRanking(gp: HeatResult[][], fastestId: number | null): number[
 
 export function gpPointsTable(gp: HeatResult[][], fastestId: number | null): Map<number, number> {
   const pts = new Map<number, number>();
-  for (const heat of gp) for (const hr of heat) pts.set(hr.id, (pts.get(hr.id) ?? 0) + (hr.time === null ? 0 : pointsFor(hr.rank)));
+  for (const heat of gp) for (const hr of heat) pts.set(hr.id, (pts.get(hr.id) ?? 0) + heatPoints(hr));
   if (fastestId !== null && pts.has(fastestId)) pts.set(fastestId, pts.get(fastestId)! + FASTEST_BONUS);
   return pts;
 }

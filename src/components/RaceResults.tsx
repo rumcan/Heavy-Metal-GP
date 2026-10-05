@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, Flag, Timer, Trophy, Check } from 'lucide-react';
 import type { HeatResult, MarbleInfo, Inventory } from '../game/types';
 import { teamOf } from '../game/types';
-import { pointsFor } from '../game/season';
+import { heatPoints } from '../game/season';
 import { formatTime } from '../game/physics';
 import type { RacePayout } from '../game/economy';
 import { keptSkills, saveRaceTrophies } from '../game/economy';
@@ -57,7 +57,9 @@ export default function RaceResults({ results, roster, title, subtitle, actions,
     if (results.length < 4) return [{ speaker: byId(me.id), mood: me.time === null ? 'angry' : 'happy', text: me.time === null ? 'Next heat, I’m going full send.' : 'Chequered flag. Bring on the next heat.' }];
     return postRaceBanter(roster, [...results].sort((a, b) => a.rank - b.rank).map((r) => r.id), me.time !== null, Math.random);
   }, [roster, results, me.id, me.time]);
-  const points = championship && me.time !== null ? pointsFor(me.rank) : 0;
+  const points = championship ? heatPoints(me) : 0;
+  // P2-07: a KO column, only when this heat had a knock-out or a driver who did not finish
+  const koColumn = results.some((r) => (r.kos ?? 0) > 0 || r.time === null || r.dnf);
   const kept = useMemo(() => keptSkills(startKit, endKit), [startKit, endKit]);
   const reducedMotion = useReducedMotion();
   const [skipped, setSkipped] = useState(false);
@@ -110,7 +112,7 @@ export default function RaceResults({ results, roster, title, subtitle, actions,
         <KeptSkills kept={kept} ready={!isCounting} instant={skipped || reducedMotion} />
       </div>
       <div className="results-table-wrap"><table className="results-table"><caption className="sr-only">Final race classification</caption>
-        <thead><tr><th>POS</th><th>DRIVER / TEAM</th><th className="result-pegs">PEGS</th><th>TIME / GAP</th>{rating && <th className="result-rating-col">RATING</th>}{championship && <th>POINTS</th>}</tr></thead>
+        <thead><tr><th>POS</th><th>DRIVER / TEAM</th><th className="result-pegs">PEGS</th>{koColumn && <th className="result-kos">KO</th>}<th>TIME / GAP</th>{rating && <th className="result-rating-col">RATING</th>}{championship && <th>POINTS</th>}</tr></thead>
         <tbody>{results.map((result) => {
           const m = byId(result.id);
           const team = teamOf(m.id);
@@ -118,11 +120,12 @@ export default function RaceResults({ results, roster, title, subtitle, actions,
             <td className="classification-position">{String(result.rank).padStart(2, '0')}</td>
             <td><div className="result-driver"><span className="team-stripe" style={{ background: team.color }} /><Portrait marble={m} mood={result.rank === 1 ? 'happy' : result.time === null ? 'surprised' : 'angry'} size={36} ring={result.rank === 1 && result.time !== null ? 'spiked' : undefined} /><div><strong>{m.isPlayer ? 'You' : m.name}{m.isPlayer && <small>YOU</small>}</strong><span>{team.name}</span></div></div></td>
             <td className="result-pegs"><span className="orange-peg" />{result.pegs}</td>
+            {koColumn && <td className="result-kos">{result.kos ?? 0}</td>}
             <td className="classification-time">{result.time === null ? <span className="dnf-label">DNF</span> : <><strong>{formatTime(result.time)}</strong><span>{result.rank === 1 ? 'WINNER' : `+${((result.time - winnerTime) / 1000).toFixed(2)}s`}</span></>}</td>
             {/* RK-05: the human's rating move. An AI seat has no row and prints
                 nothing — a dash would read as "rated, no movement". */}
             {rating && <td className="result-rating-col"><RankDelta row={rating.bySeat[result.id]} /></td>}
-            {championship && <td className="classification-points">{result.time === null ? '0' : `+${pointsFor(result.rank)}`}</td>}
+            {championship && <td className="classification-points">{heatPoints(result) ? `+${heatPoints(result)}` : '0'}</td>}
           </tr>;
         })}</tbody>
       </table></div>

@@ -188,6 +188,9 @@ export interface Marble {
   loopPhase?: 0 | 1;
   /** When this marble got stuck at the foot of a loop ring with no speed to climb it (undefined = not stuck). */
   loopStuckSince?: number;
+  /** P2-07: who knocked this marble out (a marble id; -1 a hazard; -2 classified out as a straggler) and when (game time). */
+  koBy?: number;
+  koAt?: number;
   /** P2-00 platformer: the start cannon this marble is loaded in (fired = out on the course). */
   cannon?: platformer.Cannon;
   /** P2-17: this driver's talent effects (stat -> total), and max HP. Computers have none. */
@@ -1292,6 +1295,8 @@ export class Game {
       if (m.finishedAt !== null || m.dnf || this.benched.has(m.info.id)) continue;
       if (!cut.humans && this.isHuman(m)) continue;
       m.dnf = true;
+      m.koBy = -2;
+      m.koAt = this.time;
       if (m.health) m.health = { ...m.health, dnf: true };
       Composite.remove(this.world, m.body);
       Body.setPosition(m.body, { x: -5000, y: -5000 });
@@ -1306,6 +1311,8 @@ export class Game {
     m.dnf = true;
     const credit = m.health ? koCredit(m.health, this.time) : null;
     const killer = credit !== null ? this.byIdOrNull(credit) : null;
+    m.koBy = killer && killer !== m ? killer.info.id : -1;
+    m.koAt = this.time;
     if (killer && killer !== m) killer.kos = (killer.kos ?? 0) + 1;
     // P2-19: the frame's DNF bit says a marble is out; the event says WHO gets the bounty (-1 for a
     // hazard), which is the one thing a guest cannot derive from the state frame.
