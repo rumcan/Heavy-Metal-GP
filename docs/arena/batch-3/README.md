@@ -11,3 +11,5 @@ These three are what the open GitHub issues still ask for. Each file holds ONE s
 | 03-ai-personalities.md | #122 | Each rival drives like themselves (skill, aggression, caution) |
 
 When an agent says its PR is ready, tell Claude the PR number: it reviews (tsc, the ticket's tests, engine-checksum, the browser suite for UI changes) and merges.
+
+**Update 2026-10-05: all three are DONE (built directly, not by agents): #113 in PR #218, #122 in PR #219, #116 in PR #220. Do not start agents on them.**
