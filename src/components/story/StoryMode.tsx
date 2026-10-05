@@ -79,6 +79,8 @@ export interface StoryModeProps {
    */
   onLevelUp?: (from: number, to: number, xp: number) => void;
   onShop: () => void;
+  /** P2-10b: show the story loadout first (App decides whether to ask), then start the race with `go`. */
+  onBeforeRace?: (go: () => void) => void;
   /**
    * The chapter picked on the home screen's Story tab. Story mode starts it straight away (after the tutorial
    * prologue on a save that has not learned to race); without one it starts the next chapter to play.
@@ -103,7 +105,7 @@ function runSeed(driver: StoryDriver): number {
  * is picked on the home screen's Story tab and every way out goes back there. Owns the story save end to end; the
  * championship save and the wallet's paid-race ledger are the only things it shares with the rest of the game.
  */
-export default function StoryMode({ driver, account, onAccount, onLevelUp, onShop, start = null, onExit }: StoryModeProps) {
+export default function StoryMode({ driver, account, onAccount, onLevelUp, onShop, onBeforeRace, start = null, onExit }: StoryModeProps) {
   // P2-13: a save with no tutorial and no progress yet opens on the prologue — the first race of the campaign IS the
   // tutorial. Anything else goes straight into the picked chapter (its title card).
   const [opening] = useState(() => openStory(loadStory(), start, () => newStory(runSeed(driver), driver, Date.now())));
@@ -428,7 +430,7 @@ export default function StoryMode({ driver, account, onAccount, onLevelUp, onSho
         eyebrow={`STORY · CHAPTER ${String(stage.chapter).padStart(2, '0')} / HEAT ${stage.heat} OF ${HEATS_PER_GP}`}
         title={gp.name.toUpperCase()}
         cta="Lights out"
-        onContinue={() => run({ kind: 'race', chapter: stage.chapter, heat: stage.heat })}
+        onContinue={() => { const go = () => run({ kind: 'race', chapter: stage.chapter, heat: stage.heat }); if (onBeforeRace) onBeforeRace(go); else go(); }}
       />;
     }
 

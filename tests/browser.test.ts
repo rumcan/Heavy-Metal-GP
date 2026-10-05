@@ -81,6 +81,10 @@ after(async () => { await browser?.close(); await server?.close(); if (libraryDi
 
 /** Dismiss the boot loading screen if it is up (fixture pages have none). */
 async function dismissGate(page: Page, timeout = 45000) {
+  // P2-10b: a race may open on the loadout screen first; keep the bar as it is and go
+  const loadoutOrGate = page.getByRole('button', { name: /Same as last time|Enter the paddock|Lights out/ }).first();
+  await loadoutOrGate.waitFor({ timeout }).catch(() => { /* no gate on this page */ });
+  if (await page.getByRole('button', { name: 'Same as last time' }).isVisible().catch(() => false)) await page.getByRole('button', { name: 'Same as last time' }).click();
   await page.getByRole('button', { name: /Enter the paddock|Lights out/ }).click({ timeout }).catch(() => { /* no gate on this page */ });
 }
 
@@ -194,6 +198,42 @@ test('Browser: knocked out, you watch whoever did it, can fast forward, and the 
     await page.getByRole('button', { name: /Replay speed 2x/ }).waitFor();
     await page.locator('.results-panel').waitFor({ timeout: 150000 });
     assert.ok(await page.locator('.results-table .dnf-label').count() >= 1);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
+test('Browser: the loadout opens before a race; Same as last time keeps the bar; Do not ask skips it next time', { timeout: 150000 }, async () => {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
+  const page = await context.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  try {
+    await ready(page);
+    await openTab(page, 'Quick race');
+    await page.getByRole('button', { name: 'Race', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'LOADOUT' });
+    await dialog.waitFor();
+    assert.equal(await dialog.getByRole('group', { name: 'Loadout mode' }).count(), 0, 'the bar is the race mode one');
+    const before = await dialog.locator('.loadout-slot').allInnerTexts();
+    // change a slot, then Same as last time puts it back
+    await dialog.getByRole('button', { name: /Clear slot Q/ }).click().catch(() => {});
+    await dialog.getByLabel("Don't ask before every race").check();
+    await dialog.getByRole('button', { name: 'Same as last time' }).click();
+    await page.getByRole('button', { name: /Lights out/i }).click({ timeout: 45000 });
+    await page.waitForSelector('.race-canvas');
+    await page.getByRole('button', { name: 'Pause race', exact: true }).click();
+    await page.getByRole('button', { name: 'Return to paddock' }).click();
+    await page.getByRole('button', { name: 'Leave heat' }).click();
+    await openTab(page, 'Quick race');
+    await page.getByRole('button', { name: 'Pit shop' }).click().catch(() => {});
+    const shop = page.getByRole('dialog', { name: 'LOADOUT' });
+    await shop.waitFor();
+    assert.deepEqual(await shop.locator('.loadout-slot').allInnerTexts(), before, 'Same as last time kept the bar');
+    await shop.getByRole('button', { name: 'Done' }).click();
+    // asked not to: Race goes straight to the race
+    await page.getByRole('button', { name: 'Race', exact: true }).click();
+    await page.getByRole('button', { name: /Lights out/i }).waitFor({ timeout: 45000 });
+    assert.equal(await page.getByRole('dialog', { name: 'LOADOUT' }).count(), 0);
     assert.deepEqual(errors, []);
   } finally { await context.close(); }
 });
