@@ -7,6 +7,10 @@
 type Level = HTMLCanvasElement;
 const pyramids = new WeakMap<HTMLImageElement, Level[]>();
 
+/** Each smaller copy -> the picture it was made from (tests use it to name what was drawn). */
+const sources = new WeakMap<object, HTMLImageElement>();
+export const mipSource = (img: CanvasImageSource): CanvasImageSource => sources.get(img as object) ?? img;
+
 function level(img: HTMLImageElement, k: number): Level | null {
   if (typeof document === 'undefined') return null;
   let levels = pyramids.get(img);
@@ -22,6 +26,7 @@ function level(img: HTMLImageElement, k: number): Level | null {
     cx.imageSmoothingEnabled = true;
     cx.imageSmoothingQuality = 'high';
     cx.drawImage(src, 0, 0, c.width, c.height);
+    sources.set(c, img);
     levels.push(c);
   }
   return levels[k - 1] ?? null;

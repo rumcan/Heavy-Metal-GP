@@ -193,7 +193,7 @@ test('Browser: mobile layout stays in-bounds and controls remain usable', { time
     assert.ok(await page.getByRole('button', { name: 'Nudge left', exact: true }).isVisible());
     assert.ok(await page.getByRole('button', { name: 'Nudge right', exact: true }).isVisible());
     assert.equal(await page.locator('.inventory-slot').count(), 8);
-    assert.ok(await page.getByLabel('Circuit minimap', { exact: true }).isVisible());
+    assert.ok(await page.getByLabel('Course map', { exact: true }).isVisible());
     await page.getByRole('button', { name: 'Collapse minimap' }).click();
     assert.equal(await page.locator('.minimap-svg').count(), 0);
     await page.getByRole('button', { name: 'Expand minimap' }).click();
@@ -470,7 +470,7 @@ test('Browser: workshop launchers animate on the correct clock and bridge art fo
     const leftIcon = page.locator('[data-tile="flipper"] img');
     const rightIcon = page.locator('[data-tile="flipper-right"] img');
     await rightIcon.waitFor();
-    assert.match(await leftIcon.getAttribute('src') ?? '', /flipper\.png/);
+    assert.match(await leftIcon.getAttribute('src') ?? '', /flipper\.(png|webp)/);
     assert.equal(await leftIcon.getAttribute('src'), await rightIcon.getAttribute('src'));
     assert.equal(await rightIcon.evaluate(img => getComputedStyle(img).transform), 'matrix(-1, 0, 0, 1, 0, 0)');
     const rest = await page.evaluate(() => (window as any).workshopArt.frame(1000));
