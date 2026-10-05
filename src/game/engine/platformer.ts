@@ -1,6 +1,7 @@
 // P2-00 (#124): the engine side of platformer courses: depth lanes, lane gates, progress along the
 // course path, the finish line, falling off, and the baseline AI driver. Nothing here runs on a classic
 // drop (every entry point checks `game.track.platformer`), so classic races stay byte-for-byte the same.
+import { personalityOf } from '../ai-personality';
 import Matter from 'matter-js';
 import type { Game, Marble } from '../engine';
 import { laneCategory, LANE_SWITCH_MS, LANE_MIDDLE } from '../lanes';
@@ -367,9 +368,15 @@ function difficultyOf(m: Marble): Difficulty {
   return sp >= 8 ? 'hard' : sp <= 3 ? 'easy' : 'normal';
 }
 
-/** Does this lane change make sense? Into the safe middle lane always; elsewhere about half the gates (stable per gate). */
-function betterLane(g: { x: number; to: number }): boolean {
-  return g.to === LANE_MIDDLE || ((g.x / 10) | 0) % 2 === 0;
+/**
+ * Does this lane change make sense? Into the safe middle lane always. Into a risky outer lane: never for a cautious
+ * driver, always for a reckless one, about half the gates (stable per gate) for everyone else.
+ */
+function betterLane(g: { x: number; to: number }, caution = 0.5): boolean {
+  if (g.to === LANE_MIDDLE) return true;
+  if (caution >= 0.7) return false;
+  if (caution <= 0.25) return true;
+  return ((g.x / 10) | 0) % 2 === 0;
 }
 
 /** The skills a computer is holding, in a fixed order (the brain picks by index into this list). */
@@ -427,12 +434,12 @@ function sense(game: Game, m: Marble, vx: number, grounded: boolean): Sense {
       const inside = p.x >= g.x && p.x <= g.x + g.w;
       if (!inside && d < 0) continue;
       const dd = inside ? 0 : d;
-      if (!best || dd < best.dist) best = { dist: dd, better: betterLane(g) };
+      if (!best || dd < best.dist) best = { dist: dd, better: betterLane(g, personalityOf(m.info, game.aiDifficulty).caution) };
     }
     return best;
   };
   return {
-    time: game.time, difficulty: difficultyOf(m), grounded, vx, ahead, crateAt, wallAt: null, dangerAt,
+    time: game.time, difficulty: difficultyOf(m), persona: personalityOf(m.info, game.aiDifficulty), grounded, vx, ahead, crateAt, wallAt: null, dangerAt,
     heat: m.engine?.heat ?? 0, overheated: (m.engine?.lockedUntil ?? 0) > game.time, hp: m.health?.hp ?? 100,
     rivalAhead, rivalBehind, slots: heldSkills(m).map((id) => ({ charges: m.inventory[id], hint: SKILLS[id].aiHint })), lastSkillAt: m.aiSkillAt ?? -Infinity,
     door: gate('door'), ramp: gate('ramp'), rng: () => game.rng(),

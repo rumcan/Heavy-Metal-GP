@@ -274,7 +274,9 @@ test('health: a race where everyone still racing finishes ends even with a DNF i
   assert.ok(game.marbles[2].dnf);
   for (let t = 0; t < 120000 && !game.allFinished(); t += PHYSICS_STEP) game.step(PHYSICS_STEP);
   assert.ok(game.allFinished());
-  assert.equal(game.finishOrder.length, 9);
+  // everyone else finished, unless a rival's skill knocked them out on the way (aggressive drivers do)
+  assert.equal(game.finishOrder.length + game.marbles.filter((m) => m.dnf && m.finishedAt === null).length, 10);
+  assert.ok(game.finishOrder.length >= 7);
 });
 
 test('the purse: a DNF in a quick race pays the Shaman 10 %; a KO pays 75; a finish pays the placement', async () => {
