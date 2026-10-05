@@ -19,12 +19,18 @@ import tower2Url from '../../assets/game/tower-2.webp';
 import tower3Url from '../../assets/game/tower-3.webp';
 import torchUrl from '../../assets/game/torch.webp';
 import stripWoodUrl from '../../assets/game/strip-wood.webp';
+import treesGroup1Url from '../../assets/game/trees-group-1.webp';
+import treesGroup2Url from '../../assets/game/trees-group-2.webp';
+import treesGroup3Url from '../../assets/game/trees-group-3.webp';
+import crowd1Url from '../../assets/game/crowd-1.webp';
+import crowd2Url from '../../assets/game/crowd-2.webp';
 import { drawCloudLedge, drawKicker } from './sky-art';
 
 const load = (src: string) => (typeof Image !== 'undefined' ? Object.assign(new Image(), { src }) : null);
 const ART = {
   wood: load(railWoodUrl), rock: load(rockFillUrl), moss: load(mossUrl), sheep: load(sheepUrl),
   crate: load(crateUrl), ball: load(wreckingBallUrl), towers: [load(tower1Url), load(tower2Url), load(tower3Url)], torch: load(torchUrl),
+  treeGroups: [load(treesGroup1Url), load(treesGroup2Url), load(treesGroup3Url)], crowds: [load(crowd1Url), load(crowd2Url)],
 };
 const ready = (img: HTMLImageElement | null): img is HTMLImageElement => !!img && img.complete && img.naturalWidth > 0;
 const allReady = () => ready(ART.wood) && ready(ART.rock) && ready(ART.moss);
@@ -260,7 +266,9 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
       const foot = yOn(run, x) + clearance(x) + 16;
       drawImg(ctx, img, x - w / 2, foot - h, w, h);
     }
+    crowds(ctx, run, pts, lane);
     trestle(ctx, run, pts[0].x - SUPPORT_EVERY, pts[pts.length - 1].x + SUPPORT_EVERY, (x) => yOn(run, x) + clearance(x));
+    treeGroups(ctx, run, pts, lane);
     // the track: a plain wooden beam (no chevron rail, per the owner)
     stripAlong(ctx, middle(ART.wood!), pts, RAIL_UP, TRACK_T, u0);
     if (dynamics) torches(ctx, run, pts, lane, time);
@@ -278,6 +286,54 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
   drawMapPieces(ctx, pieces, lane, left, right, time);
   drawRoutes(ctx, plan.loops, pieces, lane, left, right); // P2-21: loop rings and rope bridges
   return true;
+}
+
+/** One stretch of the course per crowd: a km (the HUD's 10,000 px). */
+const CROWD_EVERY = 10_000;
+/**
+ * The goblin crowd stands (the owner's art): behind the track once a km, standing on the cliff. Sometimes one stand,
+ * sometimes two or three side by side. Static, so they are cached with the rest of the lane.
+ */
+function crowds(ctx: CanvasRenderingContext2D, run: Pt[], pts: Pt[], lane: Lane) {
+  const a = pts[0].x, b = pts[pts.length - 1].x;
+  for (let k = Math.floor((a - 3 * 1100) / CROWD_EVERY); k * CROWD_EVERY < b + 1100; k++) {
+    if (k < 1) continue;
+    const r = hash(k, lane + 31);
+    const count = r < 0.4 ? 1 : r < 0.8 ? 2 : 3;
+    const h = 330 + hash(k, lane + 32) * 60;
+    for (let i = 0; i < count; i++) {
+      const img = ART.crowds[(k + i) % 2];
+      if (!ready(img)) continue;
+      const w = (img.naturalWidth / img.naturalHeight) * h;
+      const x = k * CROWD_EVERY + i * (w - 8);
+      if (x + w < a || x > b || x < run[0].x + 60 || x + w > run[run.length - 1].x - 60) continue;
+      const foot = Math.max(yOn(run, x) + clearance(x), yOn(run, x + w) + clearance(x + w)) + 24;
+      drawImg(ctx, img, x, foot - h, w, h);
+    }
+  }
+}
+
+/** Tree groups along the cliff top: about 70% of it. */
+const TREE_STEP = 230;
+/**
+ * The owner's tree groups, standing on the cliff top in front of the scaffold feet, so the place where the scaffolding
+ * meets the rock is mostly hidden (gaps here and there). Static, cached with the lane; the beam is drawn over them.
+ */
+function treeGroups(ctx: CanvasRenderingContext2D, run: Pt[], pts: Pt[], lane: Lane) {
+  const a = pts[0].x, b = pts[pts.length - 1].x;
+  for (let k = Math.floor((a - 400) / TREE_STEP); k * TREE_STEP < b + 400; k++) {
+    const r = hash(k, lane + 41);
+    if (r > 0.72) continue;
+    const img = ART.treeGroups[Math.floor(hash(k, lane + 42) * 3)];
+    if (!ready(img)) continue;
+    const x = k * TREE_STEP + (hash(k, lane + 43) - 0.5) * 80;
+    if (x < run[0].x + 40 || x > run[run.length - 1].x - 40) continue;
+    const clear = clearance(x);
+    const h = Math.min(clear * 0.85, 150 + hash(k, lane + 44) * 90);
+    const w = (img.naturalWidth / img.naturalHeight) * h;
+    const foot = yOn(run, x) + clear + 22;
+    drawImg(ctx, img, x - w / 2, foot - h, w, h);
+  }
 }
 
 /** Torches on the beam now and then (they flicker, so they are never cached). */
