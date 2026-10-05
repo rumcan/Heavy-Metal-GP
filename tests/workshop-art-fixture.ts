@@ -1,3 +1,4 @@
+import { mipSource } from '../src/game/mip';
 import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import PiecePalette from '../src/components/editor/PiecePalette';
@@ -39,17 +40,20 @@ if (drumWind) {
 const ctx = canvas.getContext('2d')!;
 type Draw = { name: string; angle: number; opacity: number; matrix: number[]; rect: number[] };
 let calls: Draw[] = [];
-const originalDraw = ctx.drawImage.bind(ctx);
-ctx.drawImage = ((img: CanvasImageSource, ...args: number[]) => {
+// Every 2D context, not just the canvas's own: static pieces are baked into offscreen chunk canvases first.
+const originalDraw = CanvasRenderingContext2D.prototype.drawImage;
+CanvasRenderingContext2D.prototype.drawImage = function (this: CanvasRenderingContext2D, drawn: CanvasImageSource, ...args: number[]) {
+  // a sprite drawn small is drawn from one of its mipmap copies: name it by the picture it came from
+  const img = mipSource(drawn);
   if (img instanceof HTMLImageElement) {
     const name = ['flipper', 'catapult_arm', 'catapult_static', 'bridge', 'sling', 'wind', 'wind-dust'].find(n => img === sprite(n));
     if (name) {
-      const m = ctx.getTransform();
-      calls.push({ name, angle: Math.atan2(m.b, m.a), opacity: ctx.globalAlpha, matrix: [m.a, m.b, m.c, m.d, m.e, m.f], rect: args });
+      const m = this.getTransform();
+      calls.push({ name, angle: Math.atan2(m.b, m.a), opacity: this.globalAlpha, matrix: [m.a, m.b, m.c, m.d, m.e, m.f], rect: args });
     }
   }
-  (originalDraw as (...args: unknown[]) => void)(img, ...args);
-}) as typeof ctx.drawImage;
+  (originalDraw as (...args: unknown[]) => void).call(this, drawn, ...args);
+} as typeof CanvasRenderingContext2D.prototype.drawImage;
 
 function frame(time: number, preview = false) {
   game.time = time;
