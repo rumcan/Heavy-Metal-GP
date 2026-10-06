@@ -312,6 +312,17 @@ function toyHash(s: string, k: number): number {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
+/** The lane an effect belongs to: that of the ball nearest it (within 200 px), else the camera's. */
+function effectLane(game: Game, depths: { m: Marble; z: number }[], e: Game['effects'][number], focus: number): number {
+  let best = 200 * 200, lane = Math.round(focus);
+  for (const { m, z } of depths) {
+    const dx = m.body.position.x - e.x, dy = m.body.position.y - e.y, d = dx * dx + dy * dy;
+    if (d < best) { best = d; lane = Math.round(z); }
+  }
+  void game;
+  return lane;
+}
+
 /**
  * Infinity's toys (the owner): vents (an iron grate; an updraft's rising streaks, a geyser's column when it erupts),
  * fire rings (the classic fire-hoop art, flickering), smash crates (the owner's stacked SMASH crates) and the ones
@@ -926,6 +937,9 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
     } else drawLaneWorld(target, game, lane, left, right, bottom, t);
     // Marbles settled on this layer (a ball mid-change is drawn between layers, below).
     for (const { m, z } of depths) if (z === lane) drawBall(target, game, m, t);
+    // the game's effects (hits, pickups, hoop flashes, debris) that belong to this lane: the lane of the ball nearest
+    // each one (effects carry no lane), so a hit in another lane is not drawn on yours
+    drawEffects(target, game, (e) => effectLane(game, depths, e, cam.focus) === lane);
     target.restore();
     ctx.save();
     ctx.globalAlpha = v.alpha;
@@ -960,17 +974,6 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
       drawBall(ctx, game, m, t);
       ctx.restore();
     }
-  }
-  // The game's effects (ring pickups, hoop flashes, debris...), once, in the depth of the lane you are on.
-  {
-    const fv = laneView(Math.round(cam.focus), cam.focus);
-    ctx.save();
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.translate(cw / 2, ch / 2 + fv.lift * cam.scale);
-    ctx.scale(cam.scale * fv.scale, cam.scale * fv.scale);
-    ctx.translate(-cam.x, -cam.y);
-    drawEffects(ctx, game);
-    ctx.restore();
   }
   // The ball the camera follows is never hidden behind a layer: mid-dive it is drawn last, on top of everything.
   const own = depths.find((d) => d.m === followed);
