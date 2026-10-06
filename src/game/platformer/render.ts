@@ -777,6 +777,10 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
       ctx.fillRect(0, 0, cw, ch);
       ctx.restore();
     }
+    // Between this track and the next one in front: a layer of the same pines (the owner: trees between the tracks too,
+    // every layer moving at its own speed).
+    const nearer = lanes[lanes.indexOf(lane) + 1];
+    if (nearer !== undefined) betweenTrees(ctx, game, cam, cw, ch, dpr, lane, nearer);
     // Balls changing lane are drawn on top of the layer they are leaving or entering, at their own depth.
     for (const { m, z } of depths) {
       if (z <= lane || z >= lane + 1 || m === followed) continue;
@@ -812,6 +816,68 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
  * The owner's blurred foreground pines: in front of everything along the bottom of the screen, scrolling faster
  * than the track (they are nearer than it). Kept low: their tops stop well below the middle, where your ball is.
  */
+/**
+ * A layer of pines between two tracks: at a depth between them (it slides sideways faster than the far track and
+ * slower than the near one), standing just under the far track as it lies on screen (glued to it column by column, so
+ * it never moves against it), its rows reaching down behind the near track's cliff. It fades with the near track (a
+ * track in front of the camera fades out mid lane change).
+ */
+function betweenTrees(ctx: CanvasRenderingContext2D, game: Game, cam: PlatformCamera, cw: number, ch: number, dpr: number, far: number, near: number) {
+  const img = ART.treesFront;
+  const plan = game.track.platformer?.plan;
+  if (!ready(img) || !plan) return;
+  const vf = laneView(far, cam.focus), vn = laneView(near, cam.focus);
+  if (vn.alpha <= 0.01) return;
+  const p = Math.sqrt(vf.scale * vn.scale);
+  const sf = cam.scale * vf.scale, sp = cam.scale * p;
+  // sideways: its own scroll, at its depth
+  let st = BETWEEN.get(cam);
+  if (!st) { st = { camX: cam.x, scrolls: [0, 0] }; BETWEEN.set(cam, st); }
+  const dx = cam.x - st.camX;
+  if (Math.abs(dx) < 400 && far === Math.min(far, 1)) st.scrolls[far] += dx * sp;
+  if (far === lastBetweenLane(cam)) st.camX = cam.x;
+  // up and down: glued to the far track on screen
+  const COL = 24, cols = Math.ceil(cw / COL) + 2;
+  const line = new Float32Array(cols);
+  let held = ch / 2 + vf.lift * cam.scale;
+  for (let c = 0; c < cols; c++) {
+    const y = floorAt(plan, far as Lane, cam.x + (c * COL - cw / 2) / sf) ?? groundUnder(plan, far as Lane, cam.x + (c * COL - cw / 2) / sf);
+    if (y !== null) held = ch / 2 + vf.lift * cam.scale + (y - cam.y) * sf;
+    line[c] = held;
+  }
+  const lineAt = (sx: number) => { const f = Math.max(0, Math.min(cols - 1.001, sx / COL)); const c = Math.floor(f); return line[c] + (line[c + 1] - line[c]) * (f - c); };
+  const aspect = img.naturalWidth / img.naturalHeight;
+  ctx.save();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.globalAlpha = vn.alpha;
+  const rows = [{ drop: 70, h: 170 }, { drop: 120, h: 185 }, { drop: 170, h: 200 }];
+  rows.forEach((r, i) => {
+    const pines = hazePines(img, 0, (i + far) % 2 === 0);
+    const height = r.h * sp, rw = aspect * height;
+    const n = Math.max(1, Math.ceil(rw / PINE_SLICE)), sw = rw / n, srcW = pines.c.width / n;
+    const scroll = st!.scrolls[far] * (1 + i * 0.04);
+    ctx.fillStyle = pines.floor;
+    for (let rx = -(((scroll % rw) + rw) % rw); rx < cw; rx += rw) {
+      for (let k = 0; k < n; k++) {
+        const sx = rx + k * sw;
+        if (sx > cw || sx + sw < 0) continue;
+        const y = lineAt(sx + sw / 2) + r.drop * sf;
+        if (y >= ch) continue;
+        if (i === rows.length - 1) ctx.fillRect(sx, y + height * 0.8, sw + 0.6, Math.max(0, ch - (y + height * 0.8)));
+        drawImg(ctx, pines.c, k * srcW, 0, srcW, pines.c.height, sx, y, sw + 0.6, height);
+      }
+    }
+  });
+  ctx.restore();
+}
+/** Per camera: how far each between-tracks layer has scrolled (screen px), by its far lane. */
+const BETWEEN = new WeakMap<PlatformCamera, { camX: number; scrolls: number[] }>();
+/** The nearest-to-the-camera far lane that has a between layer this frame (its call moves the shared camera memory on). */
+function lastBetweenLane(cam: PlatformCamera): number {
+  const lanes = visibleLanes(cam.focus);
+  return lanes.length >= 2 ? lanes[lanes.length - 2] : -1;
+}
+
 /** Per camera: how far each row of pines has scrolled (screen px) and where they sit vertically. */
 const FG = new WeakMap<PlatformCamera, { camX: number; camY: number; scrolls: number[]; lagY: number }>();
 
