@@ -808,7 +808,7 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
  * than the track (they are nearer than it). Kept low: their tops stop well below the middle, where your ball is.
  */
 /** Per camera: how far each row of pines has scrolled (screen px) and where they sit vertically. */
-const FG = new WeakMap<PlatformCamera, { camX: number; camY: number; scrolls: number[]; lagY: number; trackY?: number }>();
+const FG = new WeakMap<PlatformCamera, { camX: number; camY: number; scrolls: number[]; lagY: number }>();
 
 /**
  * The foreground forest (the owner: many rows, bigger and lower as you zoom in): rows of the owner's pines, back to
@@ -869,36 +869,24 @@ export function shiftForeground(cam: PlatformCamera, dx: number, dy: number): vo
   const st = FG.get(cam);
   if (!st) return;
   st.camX += dx; st.camY += dy; st.lagY += dy;
-  if (st.trackY !== undefined) st.trackY += dy;
 }
 
-/**
- * The pines' anchor: the floor of the lane the camera is on (the front-most track you see: a lane in front of the
- * camera has faded out), eased so the rows follow the course's slopes and a lane change smoothly, held over a chasm.
- */
-function foregroundAnchor(cam: PlatformCamera, plan: CoursePlan | undefined): number {
-  const st = FG.get(cam);
-  const lane = Math.max(0, Math.min(2, Math.round(cam.focus ?? LANE_MIDDLE))) as Lane;
-  const floor = plan ? floorAt(plan, lane, cam.x) : null;
-  let trackY = st?.trackY ?? floor ?? cam.y;
-  if (floor !== null) trackY = Math.abs(floor - trackY) > 900 ? floor : trackY + (floor - trackY) * 0.06;
-  if (st) st.trackY = trackY;
-  return trackY;
-}
+/** Where the track sits below the screen's centre while the ball rolls (the camera frames the ball 10 px above it). */
+const FG_TRACK_BELOW = 15;
 
 /**
- * Where a row of pines stands on screen. Parallax: a layer at depth p moves p times as far on screen as the track
- * does, sideways (foregroundScroll) and up and down alike, and is p times as big: the anchor's offset from the screen
- * centre plus the row's drop, times the zoom, times p. Every row shares the one anchor, so they keep their order and
- * spacing and only spread apart (or close up) as the camera moves or zooms, like real depth. With p >= 1 and a drop
- * >= 0, a row never rises above the track while the track is below the middle of the screen.
+ * Where a row of pines stands on screen (at the camera's x). It does not ride up and down with the camera (the owner:
+ * the rows follow the slope, so they need not move otherwise): it stands at a fixed depth under the track as the ball
+ * rolls, its drop times the zoom times its parallax depth p, so zooming in still makes every row bigger and lower,
+ * the near ones most. foreground() then slopes each row with the hill.
  */
-function pineRowTop(cam: PlatformCamera, anchorY: number, ch: number, row: { p: number; drop: number }): number {
-  return ch / 2 + (anchorY + row.drop - cam.y) * cam.scale * row.p;
+function pineRowTop(cam: PlatformCamera, ch: number, row: { p: number; drop: number }): number {
+  return ch / 2 + (FG_TRACK_BELOW + row.drop) * cam.scale * row.p;
 }
 
 export function foregroundTop(cam: PlatformCamera, plan: CoursePlan | undefined, ch: number): number {
-  return pineRowTop(cam, foregroundAnchor(cam, plan), ch, PINE_ROWS[PINE_ROWS.length - 1]);
+  void plan;
+  return pineRowTop(cam, ch, PINE_ROWS[PINE_ROWS.length - 1]);
 }
 
 /**
@@ -935,7 +923,6 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
   const img = ART.treesFront;
   if (!ready(img)) return;
   const { rows: scrolls } = foregroundScroll(cam);
-  const anchor = foregroundAnchor(cam, plan);
   const aspect = img.naturalWidth / img.naturalHeight;
   // The rows follow the slope (the owner): each row is drawn in thin upright slices, each slice raised or lowered by
   // how much the track (smoothed over a few hundred px, so it is the hill and not every bump) differs there from under
@@ -961,7 +948,7 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
   let prev: { top: number; height: number } | null = null;
   for (let i = 0; i < PINE_ALL; i++) {
     const r = pineRow(i);
-    const top = pineRowTop(cam, anchor, ch, r), height = r.h * cam.scale * r.p;
+    const top = pineRowTop(cam, ch, r), height = r.h * cam.scale * r.p;
     let alpha = 1;
     if (i >= PINE_ROWS.length && prev) alpha = Math.max(0, Math.min(1, (ch - (prev.top + prev.height * 0.75)) / (ch * 0.12)));
     if (alpha <= 0) break;
