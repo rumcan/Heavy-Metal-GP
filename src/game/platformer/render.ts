@@ -9,9 +9,9 @@ import { meta } from '../track';
 import { laneFocus, laneView, visibleLanes, LANE_SWITCH_MS, LANE_MIDDLE, LANE_FRONT } from '../lanes';
 import { drawBodies, drawBridgeChain, drawMarble } from '../render';
 import { drawSkillWorld } from '../skills/draw';
-import { SPRING_W, floorAt } from './course';
+import { GATE_RAMP_H, SPRING_W, floorAt } from './course';
 import type { CoursePlan, Floor, Lane, LaneGate } from './course';
-import { coasterReady, drawCoasterLane } from './coaster';
+import { coasterReady, drawCoasterLane, drawGateRamp } from './coaster';
 import { drawCloudLedge, drawKicker } from './sky-art';
 import { drawRoutes, setBridgeArt } from './routes';
 import { LEDGE_H } from './build';
@@ -21,7 +21,6 @@ import crateUrl from '../../assets/game/platformer/crate.webp';
 import doorUrl from '../../assets/game/platformer/door.webp';
 import farUrl from '../../assets/game/platformer/far.webp';
 import treesUrl from '../../assets/game/platformer/trees.webp';
-import signUrl from '../../assets/game/platformer/sign.webp';
 import skyIslandsUrl from '../../assets/game/platformer/sky-islands.webp';
 import cannonUrl from '../../assets/game/cannon.webp';
 import treesFrontUrl from '../../assets/game/platformer/trees-front.webp';
@@ -33,7 +32,7 @@ setBridgeArt(drawBridgeChain);
 
 // Generated art (P2-00): a skin over the vector bodies. Every draw falls back to flat shapes until it loads.
 const load = (src: string) => (typeof Image !== 'undefined' ? Object.assign(new Image(), { src }) : null);
-const ART = { earth: load(earthUrl), grass: load(grassUrl), crate: load(crateUrl), door: load(doorUrl), far: load(farUrl), trees: load(treesUrl), sign: load(signUrl), skyIslands: load(skyIslandsUrl), cannon: load(cannonUrl), treesFront: load(treesFrontUrl), skyClouds: load(skyCloudsUrl) };
+const ART = { earth: load(earthUrl), grass: load(grassUrl), crate: load(crateUrl), door: load(doorUrl), far: load(farUrl), trees: load(treesUrl), skyIslands: load(skyIslandsUrl), cannon: load(cannonUrl), treesFront: load(treesFrontUrl), skyClouds: load(skyCloudsUrl) };
 const ready = (img: HTMLImageElement | null): img is HTMLImageElement => !!img && img.complete && img.naturalWidth > 0;
 const patterns = new WeakMap<CanvasRenderingContext2D, CanvasPattern>();
 function earthPattern(ctx: CanvasRenderingContext2D): CanvasPattern | null {
@@ -261,7 +260,7 @@ function drawBump(ctx: CanvasRenderingContext2D, x: number, y: number, w: number
   ctx.stroke();
 }
 
-function drawGate(ctx: CanvasRenderingContext2D, g: LaneGate, t: number, near: boolean) {
+function drawGate(ctx: CanvasRenderingContext2D, plan: CoursePlan, g: LaneGate, t: number, near: boolean) {
   const pulse = 0.55 + 0.45 * Math.sin(t / 220);
   const back = g.to < g.lane;
   if (g.kind === 'door' && ready(ART.door)) {
@@ -275,12 +274,6 @@ function drawGate(ctx: CanvasRenderingContext2D, g: LaneGate, t: number, near: b
     glow.addColorStop(1, 'rgba(255,190,90,0)');
     ctx.fillStyle = glow;
     ctx.fillRect(cx - h, g.y - h * 1.2, h * 2, h * 1.3);
-    if (near) {
-      ctx.fillStyle = `rgba(255,224,150,${0.6 + 0.4 * pulse})`;
-      ctx.font = 'bold 20px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(back ? '↑ IN' : '↑ OUT', cx, g.y - h - 8);
-    }
   } else if (g.kind === 'door') {
     const cx = g.x + g.w / 2;
     const top = g.y - 120;
@@ -295,25 +288,12 @@ function drawGate(ctx: CanvasRenderingContext2D, g: LaneGate, t: number, near: b
     ctx.strokeStyle = `rgba(255,214,102,${(near ? 0.9 : 0.5) * pulse})`;
     ctx.lineWidth = 5;
     ctx.stroke();
-    ctx.fillStyle = `rgba(255,214,102,${0.8 * pulse})`;
-    ctx.font = 'bold 22px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(back ? '↑ IN' : '↑ OUT', cx, top + 54);
   } else {
-    // A ramp: a signpost before it saying where it goes, and chevrons on the ground pointing into (or out of) the screen.
-    if (ready(ART.sign)) {
-      const h = 104;
-      const w = (ART.sign.naturalWidth / ART.sign.naturalHeight) * h;
-      const sx = g.x - w * 0.55;
-      const sy = g.y - h + 8;
-      drawImg(ctx, ART.sign, sx, sy, w, h);
-      ctx.fillStyle = back ? '#86efac' : '#fcd34d';
-      ctx.font = 'bold 15px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(back ? '↗ BACK' : '↘ FRONT', sx + w / 2, sy + h * 0.29);
-      ctx.textBaseline = 'alphabetic';
-    }
+    // A ramp is a jump ramp (the owner): the wedge in the kicker's art and chevrons up its slope pointing into (or out
+    // of) the screen. No signboards (the owner).
+    drawGateRamp(ctx, plan, g);
+    const y0 = floorAt(plan, g.lane as Lane, g.x) ?? g.y, y1 = floorAt(plan, g.lane as Lane, g.x + g.w) ?? y0;
+    const slope = (x: number) => y0 + ((y1 - GATE_RAMP_H - y0) * (x - g.x)) / g.w;
     // Big, outlined chevrons standing on the track (green = up to the back lane, amber = down to the front), sweeping
     // in the direction they point. They used to be faint blue and half hidden by the beam.
     ctx.save();
@@ -321,7 +301,7 @@ function drawGate(ctx: CanvasRenderingContext2D, g: LaneGate, t: number, near: b
     for (let i = 0; i < 3; i++) {
       const x = g.x + 26 + i * ((g.w - 52) / 2);
       const a = ((t / 140 + i) % 3) / 3;
-      const base = g.y - 6, tip = g.y - 38;
+      const base = slope(x) - 10, tip = base - 32;
       ctx.beginPath();
       if (back) { ctx.moveTo(x - 22, base); ctx.lineTo(x, tip); ctx.lineTo(x + 22, base); ctx.lineTo(x, base - 12); }
       else { ctx.moveTo(x - 22, tip); ctx.lineTo(x, base); ctx.lineTo(x + 22, tip); ctx.lineTo(x, tip + 12); }
@@ -462,7 +442,7 @@ function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, 
   const player = game.player;
   for (const g of info.plan.gates) {
     if (g.lane !== lane || g.x + g.w < left || g.x > right) continue;
-    drawGate(ctx, g, t, Math.abs(player.body.position.x - (g.x + g.w / 2)) < 260);
+    drawGate(ctx, info.plan, g, t, Math.abs(player.body.position.x - (g.x + g.w / 2)) < 260);
   }
   if (part === 'all' && info.plan.finishX > left && info.plan.finishX < right) drawFinish(ctx, info.plan.finishX, info.plan.finishY);
 }

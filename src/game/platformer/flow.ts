@@ -127,7 +127,9 @@ export function planFlow(seed: number, t: FlowTuning = FLOW_TUNING): CoursePlan 
     const x = Math.round((gx + roll(-300, 300)) / 10) * 10;
     const lane = LANES[Math.floor(rng() * 3)];
     const to = (lane === 1 ? (rng() < 0.5 ? 0 : 2) : 1) as Lane;
-    const kind = rng() < 0.5 ? 'ramp' : 'door';
+    // the owner: every lane change is a jump ramp
+    rng(); // the roll stays, so the rest of the course is unchanged
+    const kind = 'ramp' as const;
     if (clearAt(lane, x, x + 170) && clearAt(to, x, x + 170)) gates.push({ kind, lane, to, x, w: 170, y: heightAt(lane, x + 85) });
   }
 

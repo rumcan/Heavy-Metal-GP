@@ -6,7 +6,7 @@ import Matter from 'matter-js';
 import type { Game, Marble } from '../engine';
 import { laneCategory, LANE_SWITCH_MS, LANE_MIDDLE } from '../lanes';
 import { progressAlong, pointAt } from '../course-path';
-import { floorAt, SPRING_W } from '../platformer/course';
+import { GATE_RAMP_H, floorAt, SPRING_W } from '../platformer/course';
 import { CAT_ONEWAY } from '../platformer/build';
 import type { CoursePlan, Lane, LaneGate } from '../platformer/course';
 import { CAT_WALL, CAT_SENSOR, CAT_FRAGILE, CAT_DANGER, CAT_LOOP_UP, CAT_LOOP_CLOSE, meta } from '../track';
@@ -272,11 +272,43 @@ export function tryDoor(game: Game, m: Marble): boolean {
   return true;
 }
 
-/** Ramps: rolling through one on the ground takes you to its lane. */
+/**
+ * How hard a lane-change ramp's lip throws the ball up (px per step): enough to clear the other track by about 50 px
+ * (a ball thrown up at v rises about v * v / 0.58 px here, measured), at least a hop, at most a big leap.
+ */
+export function gateLaunchVy(rise: number): number {
+  return Math.max(4, Math.min(11, Math.sqrt(0.58 * Math.max(0, rise + 50))));
+}
+
+/**
+ * Lane-change ramps are jump ramps (the owner): roll up one and its lip throws you into the air and across onto the
+ * lane it leads to; you land on that track. Jump over it (or fly past it) and nothing happens.
+ */
 export function laneGates(game: Game, m: Marble): void {
   const info = game.track.platformer;
-  if (!info || switching(game, m) || m.grounded >= 5) return;
-  for (const g of info.plan.gates) if (g.kind === 'ramp' && inside(g, m)) return switchLane(game, m, g.to);
+  if (!info || switching(game, m)) return;
+  const p = m.body.position;
+  const lane = m.lane ?? LANE_MIDDLE;
+  // rolling on a ramp's slope: touching the wedge's top (it rises GATE_RAMP_H to the lip; see build.ts)
+  const g = info.plan.gates.find((gate) => {
+    if (gate.kind !== 'ramp' || gate.lane !== lane || p.x < gate.x || p.x > gate.x + gate.w) return false;
+    const y0 = floorAt(info.plan, gate.lane as Lane, gate.x) ?? gate.y, y1 = floorAt(info.plan, gate.lane as Lane, gate.x + gate.w) ?? y0;
+    const top = y0 + ((y1 - GATE_RAMP_H - y0) * (p.x - gate.x)) / gate.w;
+    return Math.abs(p.y + MARBLE_RADIUS - top) < 16;
+  });
+  if (g) m.gateRide = { gate: g, at: game.time };
+  const ride = m.gateRide;
+  if (!ride) return;
+  if (game.time - ride.at > 250 || ride.gate.lane !== lane) { m.gateRide = undefined; return; }
+  if (p.x <= ride.gate.x + ride.gate.w) return;
+  // off the lip: up and across
+  m.gateRide = undefined;
+  const vx = m.body.velocity.x;
+  // how far the other track (a little ahead, where the ball comes down) stands above the ball
+  const target = floorAt(info.plan, ride.gate.to as Lane, p.x + 120) ?? floorAt(info.plan, ride.gate.to as Lane, p.x);
+  const rise = target === null ? 0 : p.y + MARBLE_RADIUS - target;
+  switchLane(game, m, ride.gate.to);
+  Body.setVelocity(m.body, { x: vx, y: Math.min(m.body.velocity.y, -gateLaunchVy(rise)) });
 }
 
 /** Distance along the course path (a hint keeps it on its own stretch). */

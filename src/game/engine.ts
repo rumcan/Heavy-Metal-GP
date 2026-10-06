@@ -9,6 +9,7 @@ import type { Inventory } from './types';
 import { gridSlots } from './grid';
 import { assistRolling, createMarble } from './physics';
 import type { RampSurface } from './physics';
+import type { LaneGate } from './platformer/course';
 import type { SoundEvent, SoundType } from './audio';
 // STORY HOOKS (ST-07). Type-only import: `src/game/story/types.ts` pulls in no art and no SDK, and the
 // hooks themselves live in `src/game/story/modifiers.ts`, which the race screen supplies. Nothing in the
@@ -178,6 +179,8 @@ export interface Marble {
   lane?: number;
   laneFrom?: number;
   laneAt?: number;
+  /** P2-00 platformer: the lane-change ramp this marble is rolling up (its lip throws it across), and when it last touched it. */
+  gateRide?: { gate: LaneGate; at: number };
   /** P2-00 platformer: distance along the course path, and the best so far (the stall watchdog). */
   progress?: number;
   bestProgress?: number;
