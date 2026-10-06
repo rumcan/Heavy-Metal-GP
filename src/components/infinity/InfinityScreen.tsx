@@ -5,7 +5,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Camera, RotateCcw, EyeOff, Pause, Play, Volume2, VolumeX, ZoomIn, ZoomOut } from 'lucide-react';
 import { InfinityRun } from '../../game/platformer/infinity-world';
 import { RING_CREDITS } from '../../game/platformer/course';
-import { marbleDepth, renderPlatformer, shiftForeground } from '../../game/platformer/render';
+import { groundUnder, marbleDepth, renderPlatformer, shiftForeground } from '../../game/platformer/render';
+import type { Lane } from '../../game/platformer/course';
 import type { PlatformCamera } from '../../game/platformer/render';
 import { laneView } from '../../game/lanes';
 import { PHYSICS_STEP } from '../../game/physics';
@@ -137,7 +138,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed, o
     if (import.meta.env.DEV) (window as unknown as { __infinity?: unknown }).__infinity = run;
     const game = run.game;
     const camera: PlatformCamera = { x: game.player.body.position.x + 200, y: game.player.body.position.y - 40, scale: 0.8, focus: 1 };
-    let smoothSpeed = 0, shownZoom = zoomRef.current ?? autoZoom(0);
+    let smoothSpeed = 0, shownZoom = zoomRef.current ?? autoZoom(0), framed = false;
     let width = 0, height = 0, raf = 0, last = performance.now(), accumulator = 0, hudTimer = 0, bankTimer = 0, banked = 0, lookAhead = 0;
 
     const meter = new PerfMeter();
@@ -236,14 +237,27 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed, o
         const want = zoomRef.current ?? autoZoom(smoothSpeed);
         shownZoom += (want - shownZoom) * (1 - Math.exp(-dt / (zoomRef.current === null ? 900 : 120)));
         shownZoomRef.current = shownZoom;
-        const target = Math.max(0.42, Math.min(1.25, Math.min(width / 1000, height / 520))) * shownZoom;
-        camera.scale += (target - camera.scale) * (1 - Math.exp(-dt / 180));
+        const fit = Math.max(0.42, Math.min(1.25, Math.min(width / 1000, height / 520)));
+        const target = fit * shownZoom;
+        // the first frame starts at the right zoom (nothing eases into place when a run starts)
+        camera.scale = framed ? camera.scale + (target - camera.scale) * (1 - Math.exp(-dt / 180)) : target;
+        // the trees: sized by your own zoom only (the automatic speed zoom leaves them still)
+        const fgWant = fit * (zoomRef.current ?? 1);
+        camera.fgScale = framed && camera.fgScale !== undefined ? camera.fgScale + (fgWant - camera.fgScale) * (1 - Math.exp(-dt / 120)) : fgWant;
+        framed = true;
         // the land the screen shows, out to the back lane (drawn smallest, so widest): the run keeps all of it built
         run.viewHalfWidth = width / 2 / (camera.scale * laneView(0, camera.focus).scale);
         // a smoothed look-ahead (the raw speed jumps on every bump) and a calmer vertical follow
         lookAhead += (Math.max(-160, Math.min(260, game.player.body.velocity.x * 26)) - lookAhead) * (1 - Math.exp(-dt / 600));
         camera.x += (p.x + lookAhead - camera.x) * (1 - Math.exp(-dt / 220));
-        camera.y += (p.y + 10 - camera.y) * (1 - Math.exp(-dt / 260));
+        // A steady camera (the owner: nothing bobbing): it frames the smoothed ground under it, not the ball, so a jump
+        // or a bump does not shake the picture; it only rises to keep a ball high in the air (the clouds) on screen,
+        // and drops to keep a falling one.
+        const ground = groundUnder(game.track.platformer!.plan, (game.player.lane ?? 1) as Lane, camera.x);
+        const room = (height * 0.3) / camera.scale;
+        let wantY = ground === null ? p.y + 10 : ground - 15;
+        wantY = Math.max(p.y - room, Math.min(p.y + room, wantY));
+        camera.y += (wantY - camera.y) * (1 - Math.exp(-dt / 320));
         camera.focus = marbleDepth(game, game.player);
         camera.originX = run.origin.x; camera.originY = run.origin.y;
         meter.time('draw', () => renderPlatformer(ctx, game, camera, width, height, pausedRef.current ? game.time : now, game.player));
