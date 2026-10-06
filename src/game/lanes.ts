@@ -12,8 +12,11 @@ export const LANE_MIDDLE = 1;
 export const LANE_FRONT = 2;
 export const LANE_NAMES = ['back', 'middle', 'front'] as const;
 
-/** Each lane behind you is drawn this much smaller. */
-export const LANE_STEP = 0.78;
+/**
+ * Each lane behind you is drawn this much smaller, so it also slides past this much slower: depth (the owner: every
+ * layer, near to far, at its own speed; the far track clearly slower).
+ */
+export const LANE_STEP = 0.72;
 /** Each lane behind you sits this many world px higher (before zoom). */
 export const LANE_LIFT = 38;
 /** Fog added per lane behind you, capped at FOG_MAX. */

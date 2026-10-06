@@ -27,7 +27,7 @@ export interface Biome {
 export const BIOMES: readonly Biome[] = [
   { id: 'meadow', name: 'Sunrise meadow', tint: [255, 226, 196], glow: [255, 180, 120], tintAmount: 0.18, glowAmount: 0.10, haze: 0.10, particle: 'petals', density: 0.55, scale: [0, 2, 4, 7, 9], root: 60 },
   { id: 'valley', name: 'Green valley', tint: [214, 255, 210], glow: [170, 230, 160], tintAmount: 0.12, glowAmount: 0.06, haze: 0.08, particle: 'motes', density: 0.45, scale: [0, 2, 4, 7, 11], root: 62 },
-  { id: 'forest', name: 'Misty pines', tint: [190, 214, 206], glow: [200, 220, 220], tintAmount: 0.24, glowAmount: 0.08, haze: 0.42, particle: 'mist', density: 0.5, scale: [0, 2, 3, 7, 10], root: 57 },
+  { id: 'forest', name: 'Pine forest', tint: [190, 214, 206], glow: [200, 220, 220], tintAmount: 0.24, glowAmount: 0.08, haze: 0.14, particle: 'motes', density: 0.5, scale: [0, 2, 3, 7, 10], root: 57 },
   { id: 'autumn', name: 'Autumn hills', tint: [255, 196, 140], glow: [255, 140, 70], tintAmount: 0.26, glowAmount: 0.12, haze: 0.14, particle: 'leaves', density: 0.6, scale: [0, 3, 5, 7, 10], root: 55 },
   { id: 'lake', name: 'Still lake', tint: [184, 214, 255], glow: [140, 190, 255], tintAmount: 0.20, glowAmount: 0.08, haze: 0.22, particle: 'drops', density: 0.3, scale: [0, 2, 4, 7, 9], root: 64 },
   { id: 'snow', name: 'Snowfields', tint: [226, 238, 255], glow: [240, 248, 255], tintAmount: 0.22, glowAmount: 0.14, haze: 0.30, particle: 'snow', density: 0.8, scale: [0, 2, 5, 7, 9], root: 59 },
