@@ -830,13 +830,14 @@ export default function App() {
 
   // The Workshop (MB-02): the track editor, opening on a copy of the circuit the garage is showing
   // (the official archive when there is one, else a generated circuit). Fixes start from the real thing.
-  // P2-24: Infinity, an endless solo roll. Its own goblin, no rivals, no rewards.
+  // P2-24: Infinity, an endless solo roll. Its own goblin, no rivals; its gold rings pay credits into the account.
   if (phase === 'infinity') {
     return <InfinityScreen
       key={infinitySeed}
       seedText={infinitySeed}
       driver={infinityDriver}
       onLeave={() => setPhase('menu')}
+      onCredits={(credits) => publishAccount({ ...accountRef.current, credits: accountRef.current.credits + credits, totalWinnings: accountRef.current.totalWinnings + credits })}
       onNewSeed={() => {
         // A fresh random seed becomes "My seed", so the Roll button remembers it.
         const next = `roll-${Math.floor(Math.random() * 0xfffff).toString(36)}`;
