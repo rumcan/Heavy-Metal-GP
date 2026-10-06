@@ -21,10 +21,44 @@ export interface InfinityRecords {
   mySeed: string;
   /** P2-25: fewer particles and no drifting motion, for players who prefer a stiller screen. */
   reduceMotion: boolean;
+  /**
+   * Gold rings not yet counted out: banked while rolling (a closed tab keeps them), counted out arcade-style on the
+   * Infinity tab after the run (the owner), then paid as credits. `bonus` is the distance bonus, in rings.
+   */
+  pending: { rings: number; bonus: number; km: number };
+}
+
+/** The distance bonus for a run, in rings: 5 for every full km. */
+export function distanceBonus(km: number): number {
+  return Math.floor(Math.max(0, km)) * 5;
+}
+
+/** Rings collected on the road, kept until they are counted out. */
+export function bankRings(rings: number): InfinityRecords {
+  const r = loadRecords();
+  r.pending.rings += Math.max(0, Math.floor(rings));
+  saveRecords(r);
+  return r;
+}
+
+/** A run is over: its distance bonus joins the rings waiting to be counted out. */
+export function bankRunEnd(km: number): InfinityRecords {
+  const r = loadRecords();
+  if (r.pending.rings > 0 || km >= 1) { r.pending.bonus += distanceBonus(km); r.pending.km += Math.max(0, km); }
+  saveRecords(r);
+  return r;
+}
+
+/** The tally has been paid. */
+export function clearPending(): InfinityRecords {
+  const r = loadRecords();
+  r.pending = { rings: 0, bonus: 0, km: 0 };
+  saveRecords(r);
+  return r;
 }
 
 export function emptyRecords(): InfinityRecords {
-  return { bestKm: 0, totalKm: 0, runs: 0, lastSeed: '', choice: 'daily', mySeed: '', reduceMotion: false };
+  return { bestKm: 0, totalKm: 0, runs: 0, lastSeed: '', choice: 'daily', mySeed: '', reduceMotion: false, pending: { rings: 0, bonus: 0, km: 0 } };
 }
 
 const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0);
@@ -41,6 +75,8 @@ export function normalizeRecords(value: unknown): InfinityRecords {
   if (r.choice === 'daily' || r.choice === 'mine') out.choice = r.choice;
   if (typeof r.mySeed === 'string') out.mySeed = r.mySeed.slice(0, 40);
   out.reduceMotion = r.reduceMotion === true;
+  const p = r.pending as Record<string, unknown> | undefined;
+  if (p && typeof p === 'object') out.pending = { rings: Math.floor(num(p.rings)), bonus: Math.floor(num(p.bonus)), km: num(p.km) };
   return out;
 }
 

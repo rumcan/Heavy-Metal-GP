@@ -98,6 +98,8 @@ export interface SetupScreenProps {
   /** RK-05: this driver's own rank. The header prints the badge and the number; tapping either opens the ladder. */
   rank?: RankChipModel | null;
   onRank?: () => void;
+  /** Infinity's counted-out gold rings, paid as credits (the ring tally on the Infinity tab). */
+  onInfinityCredits?: (credits: number) => void;
   /** MB-02: open the full-screen Workshop (the track editor). */
   onWorkshop?: () => void;
   /** P2-24: roll an Infinity run. */
@@ -322,6 +324,7 @@ export default function SetupScreen(props: SetupScreenProps) {
         onShop={onShop}
         rank={rank}
         onRank={onRank}
+        onCredits={props.onInfinityCredits}
       />}
       {tab === 'workshop' && <WorkshopTab
         onOpenEditor={onWorkshop ?? (() => undefined)}
