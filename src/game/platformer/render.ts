@@ -787,6 +787,17 @@ const PINE_ROWS: readonly { p: number; h: number; drop: number }[] = [
   { p: 1.35, h: 290, drop: 68 },
 ];
 export const FG_PARALLAX = PINE_ROWS[PINE_ROWS.length - 1].p;
+/**
+ * Zoomed out, the forest goes on toward you: past the front row, nearer and bigger rows still, as many as it takes to
+ * reach the bottom of the screen (no black band under the trees). Row i of them all.
+ */
+const PINE_EXTRA = 12;
+function pineRow(i: number): { p: number; h: number; drop: number } {
+  if (i < PINE_ROWS.length) return PINE_ROWS[i];
+  const k = i - PINE_ROWS.length + 1, front = PINE_ROWS[PINE_ROWS.length - 1];
+  return { p: front.p + 0.08 * k, h: front.h + 35 * k, drop: front.drop + 18 * k };
+}
+const PINE_ALL = PINE_ROWS.length + PINE_EXTRA;
 
 /**
  * Where the foreground pines are this frame. They used to sit at cam.x * cam.scale * 1.35 (mod their width): the
@@ -796,15 +807,15 @@ export const FG_PARALLAX = PINE_ROWS[PINE_ROWS.length - 1].p;
  */
 export function foregroundScroll(cam: PlatformCamera): { x: number; y: number; rows: number[] } {
   let st = FG.get(cam);
-  if (!st) { st = { camX: cam.x, camY: cam.y, scrolls: PINE_ROWS.map(() => 0), lagY: cam.y }; FG.set(cam, st); }
+  if (!st) { st = { camX: cam.x, camY: cam.y, scrolls: Array.from({ length: PINE_ALL }, () => 0), lagY: cam.y }; FG.set(cam, st); }
   const dx = cam.x - st.camX;
-  if (Math.abs(dx) < 400) PINE_ROWS.forEach((r, i) => { st.scrolls[i] += dx * cam.scale * r.p; }); // a bigger jump is a teleport: do not spin
+  if (Math.abs(dx) < 400) for (let i = 0; i < PINE_ALL; i++) st.scrolls[i] += dx * cam.scale * pineRow(i).p; // a bigger jump is a teleport: do not spin
   st.camX = cam.x;
   st.camY = cam.y;
   st.lagY += (cam.y - st.lagY) * 0.08;
   if (Math.abs(cam.y - st.lagY) > 600) st.lagY = cam.y;
   const y = Math.max(-24, Math.min(24, (st.lagY - cam.y) * cam.scale * 0.35));
-  return { x: st.scrolls[st.scrolls.length - 1], y, rows: st.scrolls };
+  return { x: st.scrolls[PINE_ROWS.length - 1], y, rows: st.scrolls };
 }
 
 /**
@@ -885,11 +896,15 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
   const { rows: scrolls } = foregroundScroll(cam);
   const anchor = foregroundAnchor(cam, plan);
   const aspect = img.naturalWidth / img.naturalHeight;
-  const rows = PINE_ROWS.map((r, i) => ({
+  const rows: { pines: { c: HTMLCanvasElement; floor: string }; top: number; height: number; scroll: number }[] = [];
+  for (let i = 0; i < PINE_ALL; i++) {
+    const r = pineRow(i);
     // every other row mirrored, so neighbouring rows never line up (the front row is the art as painted)
-    pines: hazePines(img, 0, (PINE_ROWS.length - 1 - i) % 2 === 0),
-    top: pineRowTop(cam, anchor, ch, r), height: r.h * cam.scale * r.p, scroll: scrolls[i],
-  }));
+    const row = { pines: hazePines(img, 0, (PINE_ROWS.length - 1 - i) % 2 === 0), top: pineRowTop(cam, anchor, ch, r), height: r.h * cam.scale * r.p, scroll: scrolls[i] };
+    rows.push(row);
+    // the nearer rows only while the screen still shows ground below the last one
+    if (i >= PINE_ROWS.length - 1 && row.top + row.height * 0.75 >= ch) break;
+  }
   rows.forEach((row, i) => {
     if (row.top >= ch) return;
     const rw = aspect * row.height;
