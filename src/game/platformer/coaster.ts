@@ -26,7 +26,6 @@ import treesGroup2Url from '../../assets/game/trees-group-2.webp';
 import treesGroup3Url from '../../assets/game/trees-group-3.webp';
 import crowd1Url from '../../assets/game/crowd-1.webp';
 import crowd2Url from '../../assets/game/crowd-2.webp';
-import treesFrontUrl from '../../assets/game/platformer/trees-front.webp';
 import { drawCloudLedge, drawKicker } from './sky-art';
 import { LANE_BACK } from '../lanes';
 
@@ -40,12 +39,12 @@ const load = (src: string) => {
 const ART = {
   wood: load(railWoodUrl), rock: load(rockFillUrl), moss: load(mossUrl), sheep: load(sheepUrl),
   crate: load(crateUrl), ball: load(wreckingBallUrl), towers: [load(tower1Url), load(tower2Url), load(tower3Url)], torch: load(torchUrl),
-  treeGroups: [load(treesGroup1Url), load(treesGroup2Url), load(treesGroup3Url)], crowds: [load(crowd1Url), load(crowd2Url)], forest: load(treesFrontUrl),
+  treeGroups: [load(treesGroup1Url), load(treesGroup2Url), load(treesGroup3Url)], crowds: [load(crowd1Url), load(crowd2Url)],
 };
 // loops are drawn in the pinball tracks' loop-ring art (routes.ts)
 setLoopRingSource(() => sprite('loop-ring'));
 const ready = (img: HTMLImageElement | null): img is HTMLImageElement => !!img && img.complete && img.naturalWidth > 0;
-const allReady = () => ready(ART.wood) && ready(ART.rock) && ready(ART.moss) && ready(ART.forest);
+const allReady = () => ready(ART.wood) && ready(ART.rock) && ready(ART.moss);
 
 /** Rail images have iron end caps: the plank between them is what tiles along a curve. */
 const RAIL_CAP = 0.125;
@@ -265,7 +264,6 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
     trestle(ctx, run, pts[0].x - SUPPORT_EVERY, pts[pts.length - 1].x + SUPPORT_EVERY, (x) => yOn(run, x) + clearance(x));
     treeGroups(ctx, run, pts, lane);
     crowdGapTrees(ctx, run, stands, lane);
-    forest(ctx, run, pts, bottom);
     // the track: a plain wooden beam (no chevron rail, per the owner)
     stripAlong(ctx, middle(ART.wood!), pts, RAIL_UP, TRACK_T, u0);
     if (dynamics) torches(ctx, run, pts, lane, time);
@@ -359,76 +357,6 @@ function crowdGapTrees(ctx: CanvasRenderingContext2D, run: Pt[], stands: { x: nu
         drawImg(ctx, img, x - w / 2, foot - h, w, h);
       }
     }
-  }
-}
-
-/** The forest below each track: rows of the owner's pines (world px), stacked down the cliff from just under its top. */
-const FOREST_ROW_H = 230, FOREST_STEP = 85, FOREST_SLICE = 40, FOREST_ROWS = 14;
-let forestMirror: HTMLCanvasElement | null = null;
-/**
- * The forest (the owner: a layer of trees for every track, that you roll past): rows of pines standing down the cliff
- * under the track, from just below the cliff top to the bottom of the view, every other row mirrored so they never
- * line up. Part of the lane's world, drawn with the lane (its depth, its zoom, cached with its scenery), so it stays
- * put as you roll past, a nearer track's forest stands in front of the ones behind, and a lane change or a zoom moves
- * it exactly as it moves the track. Each row is drawn in upright slices, each standing on the cliff top at its x, so
- * the rows follow the hill and the trees stay upright.
- */
-function forest(ctx: CanvasRenderingContext2D, run: Pt[], pts: Pt[], bottom: number) {
-  const img = ART.forest;
-  if (!ready(img)) return;
-  if (!forestMirror) {
-    forestMirror = document.createElement('canvas');
-    forestMirror.width = img.naturalWidth; forestMirror.height = img.naturalHeight;
-    const g = forestMirror.getContext('2d')!;
-    g.translate(img.naturalWidth, 0); g.scale(-1, 1); g.drawImage(img, 0, 0);
-  }
-  const a = Math.max(pts[0].x, run[0].x + 10), b = Math.min(pts[pts.length - 1].x, run[run.length - 1].x - 10);
-  if (b <= a) return;
-  const top = (x: number) => yOn(run, x) + clearance(x);
-  let highest = Infinity;
-  for (let x = a; x <= b; x += 200) highest = Math.min(highest, top(x));
-  const aspect = img.naturalWidth / img.naturalHeight;
-  // behind the rows, the forest's dark floor from just below the first row's treetops down, so the trees read solid
-  // (the cliff shows only above them)
-  const floorAt0 = 12 + FOREST_ROW_H * 0.5;
-  ctx.fillStyle = '#0d1714';
-  ctx.beginPath();
-  ctx.moveTo(a, top(a) + floorAt0);
-  for (let x = a; x <= b; x += 60) ctx.lineTo(x, top(x) + floorAt0);
-  ctx.lineTo(b, top(b) + floorAt0);
-  ctx.lineTo(b, bottom);
-  ctx.lineTo(a, bottom);
-  ctx.closePath();
-  ctx.fill();
-  let last = -1;
-  for (let k = 0; k < FOREST_ROWS; k++) {
-    const drop = 12 + k * FOREST_STEP;
-    if (highest + drop > bottom) break;
-    const h = FOREST_ROW_H + k * 14;
-    const src = k % 2 ? forestMirror : img;
-    const tileW = aspect * h;
-    const n = Math.max(1, Math.round(tileW / FOREST_SLICE)), sw = tileW / n, srcW = img.naturalWidth / n;
-    for (let tile = Math.floor(a / tileW) * tileW; tile < b; tile += tileW) {
-      for (let j = 0; j < n; j++) {
-        const sx = tile + j * sw;
-        if (sx + sw < a || sx > b) continue;
-        drawImg(ctx, src, j * srcW, 0, srcW, img.naturalHeight, sx, top(sx + sw / 2) + drop, sw + 0.8, h);
-      }
-    }
-    last = k;
-  }
-  // under the last row, the forest floor in the trees' own darkest colour, down to the bottom of the view
-  if (last >= 0) {
-    const drop = 12 + last * FOREST_STEP + (FOREST_ROW_H + last * 14) * 0.85;
-    ctx.fillStyle = '#0b1311';
-    ctx.beginPath();
-    ctx.moveTo(a, top(a) + drop);
-    for (let x = a; x <= b; x += 60) ctx.lineTo(x, top(x) + drop);
-    ctx.lineTo(b, top(b) + drop);
-    ctx.lineTo(b, bottom);
-    ctx.lineTo(a, bottom);
-    ctx.closePath();
-    ctx.fill();
   }
 }
 
