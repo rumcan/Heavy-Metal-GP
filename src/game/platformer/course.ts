@@ -107,6 +107,14 @@ export interface BoostSpot { lane: Lane; x: number; w: number }
 export interface RingSpot { id: string; lane: Lane; x: number; y: number }
 /** Credits a ring pays (an orange peg pays the same). */
 export const RING_CREDITS = 5;
+/** A fire ring (Infinity): roll or fly through its hole (centre x, y; hole radius r) for a burst of speed. */
+export interface HoopSpot { id: string; lane: Lane; x: number; y: number; r: number; air: boolean }
+/** A smash crate (Infinity): no resistance, it bursts when a ball rolls through (centre x, standing on y). */
+export interface SmashSpot { id: string; lane: Lane; x: number; y: number }
+/** A vent on the track (Infinity): an updraft that carries a ball up, or a geyser that erupts now and then. */
+export interface VentSpot { id: string; lane: Lane; kind: 'updraft' | 'geyser'; x: number; y: number; w: number; h: number }
+/** A smash crate breaking: where, when (game time) and how fast the ball was going. */
+export interface SmashBreak { id: string; lane: Lane; x: number; y: number; at: number; vx: number }
 /**
  * A goblin stand's spot (Infinity): the level stretch of the back lane after km `id` (absolute), its track height `y`.
  * Every chunk that overlaps it carries it, so a stand never depends on which chunks are built or where the origin is.
@@ -120,6 +128,11 @@ export interface CoursePlan {
    */
   originX?: number;
   originY?: number;
+  /** Infinity: fire rings, smash crates (and the ones breaking right now), updraft and geyser vents. */
+  hoops?: HoopSpot[];
+  smashes?: SmashSpot[];
+  smashFx?: SmashBreak[];
+  vents?: VentSpot[];
   /** Infinity: the goblin stands' spots (else coaster.ts finds flat stretches itself). */
   stands?: StandSpot[];
   /** Gold rings to collect (Infinity only). */

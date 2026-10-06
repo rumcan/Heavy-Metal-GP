@@ -13,7 +13,7 @@ import { CAT_WALL } from '../track';
 import { planBodies, ALL_LANES, FLOOR_DEPTH } from './build';
 import { floorAt } from './course';
 import { applyLaneMask } from '../engine/platformer';
-import type { CoursePlan, Lane } from './course';
+import type { CoursePlan, Lane, SmashBreak } from './course';
 import { CHUNK_W, INF_START_Y, ORIGIN_STEP, PX_PER_KM, infinityChunk, shiftChunk, terrainY } from './infinity';
 import type { InfinityChunk } from './infinity';
 
@@ -66,6 +66,10 @@ export class InfinityRun {
   /** Gold rings collected this run, and the ids taken (a rebuilt chunk does not bring them back). */
   rings = 0;
   private taken = new Set<string>();
+  /** Smash crates bursting right now (drawn by the renderer from the plan; cleared once their pieces have fallen). */
+  smashFx: SmashBreak[] = [];
+  /** When each fire ring last fired (one burst per pass). */
+  private hoopAt = new Map<string, number>();
   private live = new Map<number, Live>();
   private cache = new Map<number, InfinityChunk>();
   private wallBody: Matter.Body | null = null;
@@ -122,7 +126,9 @@ export class InfinityRun {
       seed: this.seed, originX: this.origin.x, originY: this.origin.y, style: 'flow', width: right, height: Math.round(maxY + 900), floors,
       bumps: chunks.flatMap((c) => c.bumps), gates: chunks.flatMap((c) => c.gates), ledges: chunks.flatMap((c) => c.ledges), springs: chunks.flatMap((c) => c.springs),
       loops: chunks.flatMap((c) => c.loops), bridges: chunks.flatMap((c) => c.bridges), boosts: chunks.flatMap((c) => c.boosts), kickers: chunks.flatMap((c) => c.kickers), rings: chunks.flatMap((c) => c.rings).filter((r) => !this.taken.has(r.id)),
-      stands: [...new Map(chunks.flatMap((c) => c.stands).map((s) => [s.id, s])).values()], itemBoxes: [], wreckers: [],
+      stands: [...new Map(chunks.flatMap((c) => c.stands).map((s) => [s.id, s])).values()],
+      hoops: chunks.flatMap((c) => c.hoops), vents: chunks.flatMap((c) => c.vents),
+      smashes: chunks.flatMap((c) => c.smashes).filter((s) => !this.taken.has(s.id)), smashFx: this.smashFx, itemBoxes: [], wreckers: [],
       path: [{ x: left, y: INF_START_Y - 30 }, { x: right, y: INF_START_Y - 30 }],
       startX: 520, startY: INF_START_Y, finishX: 1e12, finishY: 1e12,
     };
@@ -229,6 +235,7 @@ export class InfinityRun {
         g.effects.push({ type: 'ring', x: r.x, y: r.y, ttl: 18, maxTtl: 18, color: '#ffd34a' });
       }
     }
+    this.toys(plan, lane);
     // Distance never goes backwards.
     this.distance = Math.max(this.distance, this.origin.x + p.x - this.startAbsX);
     if (this.distance > this.best) this.best = this.distance;
@@ -246,6 +253,44 @@ export class InfinityRun {
     let ground = floorAt(plan, lane, p.x);
     for (let d = 40; ground === null && d <= 800; d += 40) ground = floorAt(plan, lane, p.x - d) ?? floorAt(plan, lane, p.x + d);
     return ground !== null && p.y > ground + FALL_DEPTH;
+  }
+
+  /**
+   * The owner's toys, for the ball in its lane: a smash crate bursts (no resistance: the ball keeps its speed), a fire
+   * ring gives a burst of speed once per pass, an updraft lifts the ball up its column, a geyser throws it up while it
+   * erupts (the first 0.9 s of every 3.2 s).
+   */
+  private toys(plan: CoursePlan, lane: Lane): void {
+    const g = this.game, m = g.player, p = m.body.position, v = m.body.velocity;
+    const smashes = plan.smashes;
+    if (smashes?.length) {
+      for (let i = smashes.length - 1; i >= 0; i--) {
+        const s = smashes[i];
+        if (s.lane !== lane || Math.abs(s.x - p.x) > 26 + MARBLE_RADIUS || p.y < s.y - 59 - MARBLE_RADIUS || p.y > s.y + 10) continue;
+        smashes.splice(i, 1);
+        this.taken.add(s.id);
+        this.smashFx.push({ id: s.id, lane: s.lane, x: s.x, y: s.y, at: g.time, vx: v.x });
+        g.sfx('smash', m, s.x, s.y - 30);
+      }
+    }
+    this.smashFx = this.smashFx.filter((f) => g.time - f.at < 1400);
+    plan.smashFx = this.smashFx;
+    for (const o of plan.hoops ?? []) {
+      if (o.lane !== lane || Math.hypot(o.x - p.x, o.y - p.y) > o.r) continue;
+      if (g.time - (this.hoopAt.get(o.id) ?? -Infinity) < 700) continue;
+      this.hoopAt.set(o.id, g.time);
+      const speed = Math.hypot(v.x, v.y);
+      const boosted = Math.min(20, Math.max(speed * 1.35, speed + 5));
+      const ux = speed > 1 ? v.x / speed : 1, uy = speed > 1 ? v.y / speed : 0;
+      Matter.Body.setVelocity(m.body, { x: ux * boosted, y: uy * boosted });
+      g.sfx('hoop', m, o.x, o.y);
+      g.effects.push({ type: 'ring', x: o.x, y: o.y, ttl: 22, maxTtl: 22, color: '#fb923c' });
+    }
+    for (const vent of plan.vents ?? []) {
+      if (vent.lane !== lane || Math.abs(p.x - vent.x) > vent.w / 2 || p.y > vent.y || p.y < vent.y - vent.h) continue;
+      if (vent.kind === 'updraft') Matter.Body.setVelocity(m.body, { x: v.x * 0.99, y: Math.max(-11, v.y - 0.55) });
+      else if ((g.time % 3200) < 900) Matter.Body.setVelocity(m.body, { x: v.x * 0.9, y: Math.min(v.y, -15) });
+    }
   }
 
   /** The distance in km, as the HUD shows it. */
@@ -290,6 +335,7 @@ export class InfinityRun {
     this.lastWindow = '';
     this.originShifts++;
     this.lastShift = { dx: -dx, dy: -dy };
+    for (const f of this.smashFx) { f.x -= dx; f.y -= dy; }
     this.refreshWindow();
   }
 
