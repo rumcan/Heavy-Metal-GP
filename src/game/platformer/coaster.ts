@@ -5,7 +5,7 @@
 import type { CoursePlan, Floor, Lane } from './course';
 import { drawImg } from '../mip';
 import { SPRING_W, floorAt } from './course';
-import type { Kicker, LaneGate } from './course';
+import type { Kicker, LaneGate, StandSpot } from './course';
 import { GATE_RAMP_H } from './course';
 import type Matter from 'matter-js';
 import { LEDGE_H } from './build';
@@ -233,13 +233,14 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
   const runs = runsOf(plan)[lane];
   const statics = part !== 'dynamic', dynamics = part !== 'static';
   const rock = statics ? rockPattern(ctx) : null;
+  const drawnStands = new Set<number>(); // a stand spanning two runs is drawn once
   for (const run of runs) {
     if (run[run.length - 1].x < left || run[0].x > right) continue;
     const pts = clip(run, left, right);
     const u0 = arcOf(run)[clipStart(run, left)];
     if (!statics) { torches(ctx, run, pts, lane, time); continue; }
     // the goblin stands first: behind this lane's cliff and beam (and every nearer lane)
-    const stands = crowds(ctx, run, pts, lane);
+    const stands = plan.stands ? standsAt(ctx, plan.stands, run, pts, lane, drawnStands) : crowds(ctx, run, pts, lane);
     const cliff = pts.map((p) => ({ x: p.x, y: p.y + clearance(p.x) }));
     // the cliff under this stretch of track: rock, darker lower down, moss on top
     ctx.beginPath();
@@ -281,6 +282,38 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
   drawMapPieces(ctx, pieces, lane, left, right, time);
   drawRoutes(ctx, plan.loops, pieces, lane, left, right); // P2-21: loop rings and rope bridges
   return true;
+}
+
+/**
+ * Infinity's goblin stands, from the plan's spots (absolute km ids, the level stretch's height): as many stands as fit
+ * on the stretch, centred on it, each drawn once per lane draw (the first run that overlaps it). Nothing here depends
+ * on which chunks are built or on the world origin, so a stand never flashes out or moves (the owner).
+ */
+function standsAt(ctx: CanvasRenderingContext2D, spots: StandSpot[], run: Pt[], pts: Pt[], lane: Lane, drawn: Set<number>): { x: number; w: number; base: number }[] {
+  const placed: { x: number; w: number; base: number }[] = [];
+  const a = pts[0].x, b = pts[pts.length - 1].x;
+  for (const s of spots) {
+    if (s.lane !== lane || drawn.has(s.id) || s.x + s.w < a || s.x > b) continue;
+    const img0 = ART.crowds[s.id % 2];
+    if (!ready(img0) || !ready(ART.crowds[(s.id + 1) % 2])) continue;
+    drawn.add(s.id);
+    const r = hash(s.id, lane + 31);
+    const want = r < 0.4 ? 1 : r < 0.8 ? 2 : 3;
+    const h = 300 + hash(s.id, lane + 32) * 60;
+    const one = (img0.naturalWidth / img0.naturalHeight) * h - 8;
+    const count = Math.max(1, Math.min(want, Math.floor(s.w / one)));
+    let x = s.x + (s.w - count * one) / 2;
+    const base = s.y + TRACK_T - RAIL_UP;
+    for (let i = 0; i < count; i++) {
+      const img = ART.crowds[(s.id + i) % 2]!;
+      const w = (img.naturalWidth / img.naturalHeight) * h;
+      drawImg(ctx, img, x, base - h, w, h);
+      placed.push({ x, w, base });
+      x += w - 8;
+    }
+  }
+  void run;
+  return placed;
 }
 
 /** One stretch of the course per crowd: a km (the HUD's 10,000 px). */

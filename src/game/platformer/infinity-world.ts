@@ -121,7 +121,8 @@ export class InfinityRun {
     return {
       seed: this.seed, style: 'flow', width: right, height: Math.round(maxY + 900), floors,
       bumps: chunks.flatMap((c) => c.bumps), gates: chunks.flatMap((c) => c.gates), ledges: chunks.flatMap((c) => c.ledges), springs: chunks.flatMap((c) => c.springs),
-      loops: chunks.flatMap((c) => c.loops), bridges: chunks.flatMap((c) => c.bridges), boosts: chunks.flatMap((c) => c.boosts), kickers: chunks.flatMap((c) => c.kickers), rings: chunks.flatMap((c) => c.rings).filter((r) => !this.taken.has(r.id)), itemBoxes: [], wreckers: [],
+      loops: chunks.flatMap((c) => c.loops), bridges: chunks.flatMap((c) => c.bridges), boosts: chunks.flatMap((c) => c.boosts), kickers: chunks.flatMap((c) => c.kickers), rings: chunks.flatMap((c) => c.rings).filter((r) => !this.taken.has(r.id)),
+      stands: [...new Map(chunks.flatMap((c) => c.stands).map((s) => [s.id, s])).values()], itemBoxes: [], wreckers: [],
       path: [{ x: left, y: INF_START_Y - 30 }, { x: right, y: INF_START_Y - 30 }],
       startX: 520, startY: INF_START_Y, finishX: 1e12, finishY: 1e12,
     };
