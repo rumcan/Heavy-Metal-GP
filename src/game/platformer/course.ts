@@ -103,7 +103,13 @@ export interface WreckerSpot { lane: Lane; x: number; pivotY: number; chain: num
 /** A boost pad on the track (`x`..`x + w`): rolling over it pushes you along the slope. */
 export interface BoostSpot { lane: Lane; x: number; w: number }
 
+/** A gold ring to collect (Infinity): pays RING_CREDITS once; `id` is stable for the run. */
+export interface RingSpot { id: string; lane: Lane; x: number; y: number }
+/** Credits a ring pays (an orange peg pays the same). */
+export const RING_CREDITS = 5;
 export interface CoursePlan {
+  /** Gold rings to collect (Infinity only). */
+  rings?: RingSpot[];
   seed: number;
   /** World size: the course runs from x = 0 to `width`, top at y = 0. */
   width: number;

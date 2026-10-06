@@ -7,6 +7,12 @@
 .infinity-km { display: inline-flex; align-items: baseline; gap: 5px; padding: 5px 12px; border-radius: 999px; background: #0c141c66; color: #eef4f8; text-shadow: 0 1px 4px #0008; }
 .infinity-km strong { font: 600 22px/1 var(--display, 'Oswald', system-ui, sans-serif); letter-spacing: .5px; }
 .infinity-km small { font: 600 10px var(--mono, ui-monospace, monospace); letter-spacing: 1px; opacity: .8; }
+.infinity-rings { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; padding: 5px 12px; border-radius: 999px; background: #0c141c66; color: #ffe08a; text-shadow: 0 1px 4px #0008; }
+.infinity-rings i { width: 13px; height: 16px; border-radius: 50%; border: 3px solid #ffc93a; box-shadow: 0 0 8px #ffd34a99, inset 0 0 2px #fff4b0; animation: infinity-ring-spin 1.6s linear infinite; }
+.infinity-rings strong { font: 600 20px/1 var(--display, 'Oswald', system-ui, sans-serif); }
+.infinity-rings small { font: 600 10px var(--mono, ui-monospace, monospace); letter-spacing: .5px; opacity: .85; }
+@keyframes infinity-ring-spin { 0%, 100% { transform: scaleX(1); } 50% { transform: scaleX(.2); } }
+@media (prefers-reduced-motion: reduce) { .infinity-rings i { animation: none; } }
 .infinity-tools { position: absolute; right: max(12px, env(safe-area-inset-right)); top: max(10px, env(safe-area-inset-top)); display: flex; gap: 8px; }
 .infinity-icon { width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid #ffffff2e; background: #0c141c66; color: #eef4f8; cursor: pointer; }
 .infinity-icon:hover { background: #0c141ca6; }

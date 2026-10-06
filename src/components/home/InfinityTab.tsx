@@ -6,6 +6,7 @@ import { dailySeedText, formatKm, loadRecords, saveRecords, seedTextFor } from '
 import type { InfinityRecords, SeedChoice } from '../../game/infinity-store';
 import GaragePanel from './GaragePanel';
 import '../infinity/infinity.css';
+import { RING_CREDITS } from '../../game/platformer/course';
 
 interface Props {
   garage: Garage;
@@ -18,7 +19,7 @@ interface Props {
 
 /**
  * Infinity: a calm card (the best distance and the seed in use), the goblin and ball, and the records. One big button,
- * in the footer, rolls. No rewards: there is nothing to farm, and the point is to roll for as long as you like.
+ * in the footer, rolls. Its gold rings pay credits (the owner: play Infinity to buy skills instead of the story).
  */
 export default function InfinityTab({ garage, onGarage, account, onShop, rank, onRank }: Props) {
   const [records, setRecords] = useState<InfinityRecords>(() => loadRecords());
@@ -56,7 +57,7 @@ export default function InfinityTab({ garage, onGarage, account, onShop, rank, o
         <dt>Runs</dt><dd>{records.runs}</dd>
         <dt>Last seed</dt><dd>{records.lastSeed || '—'}</dd>
       </dl>
-      <p className="muted">Distance is the only thing Infinity keeps: no credits and no XP.</p>
+      <p className="muted">Collect gold rings on the way: each one pays {RING_CREDITS} credits to spend in the shop.</p>
     </section>
   </>;
 }

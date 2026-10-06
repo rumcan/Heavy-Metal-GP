@@ -260,6 +260,43 @@ function drawBump(ctx: CanvasRenderingContext2D, x: number, y: number, w: number
   ctx.stroke();
 }
 
+/**
+ * Gold rings (Infinity): each spins about its upright axis (its width breathes with the cosine of the turn), bobs a
+ * little, and glows. A gold gradient band with a bright inner edge, so it reads as a polished ring at any zoom.
+ */
+function drawRings(ctx: CanvasRenderingContext2D, plan: CoursePlan, lane: number, left: number, right: number, t: number) {
+  const rings = plan.rings;
+  if (!rings?.length) return;
+  const R = 17;
+  ctx.save();
+  for (const r of rings) {
+    if (r.lane !== lane || r.x < left - R || r.x > right + R) continue;
+    const spin = t / 380 + r.x / 97;
+    const rx = Math.max(2.5, R * Math.abs(Math.cos(spin)));
+    const y = r.y + Math.sin(t / 520 + r.x / 60) * 3;
+    const glow = ctx.createRadialGradient(r.x, y, 2, r.x, y, R * 2.1);
+    glow.addColorStop(0, 'rgba(255,214,90,0.38)');
+    glow.addColorStop(1, 'rgba(255,214,90,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(r.x - R * 2.1, y - R * 2.1, R * 4.2, R * 4.2);
+    const band = ctx.createLinearGradient(r.x - rx, y - R, r.x + rx, y + R);
+    band.addColorStop(0, '#fff4b0');
+    band.addColorStop(0.45, '#ffc93a');
+    band.addColorStop(1, '#a8650c');
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = band;
+    ctx.beginPath();
+    ctx.ellipse(r.x, y, rx, R, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = 'rgba(255,255,240,0.85)';
+    ctx.beginPath();
+    ctx.ellipse(r.x, y, Math.max(1, rx - 2.5), R - 2.5, 0, Math.PI * 1.05, Math.PI * 1.75);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function drawGate(ctx: CanvasRenderingContext2D, plan: CoursePlan, g: LaneGate, t: number, near: boolean) {
   const pulse = 0.55 + 0.45 * Math.sin(t / 220);
   const back = g.to < g.lane;
@@ -439,6 +476,7 @@ function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, 
   if (classic.length) drawBodies(ctx, game, classic, { viewTop: -1e9, viewBottom: 1e9, viewLeft: left, viewRight: right }, t, { withStatic: true });
   drawCannons(ctx, game, lane, t);
   drawSkillWorld(ctx, game, lane, t); // P2-08
+  drawRings(ctx, info.plan, lane, left, right, t);
   const player = game.player;
   for (const g of info.plan.gates) {
     if (g.lane !== lane || g.x + g.w < left || g.x > right) continue;

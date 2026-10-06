@@ -20,6 +20,8 @@ import type { InfinityChunk } from './infinity';
 /** Chunks kept behind the ball's chunk (about three screens) and built ahead of it. */
 export const CHUNKS_BEHIND = 2;
 export const CHUNKS_AHEAD = 3;
+/** How close the ball's centre must come to a ring's centre to collect it. */
+const RING_REACH = 34;
 /** How far under the last solid ground the ball may fall before it is lifted back. */
 const FALL_DEPTH = 650;
 
@@ -61,6 +63,9 @@ export class InfinityRun {
   viewHalfWidth = 0;
   /** How the world moved at the last origin shift (add it to anything that holds world positions, like a camera). */
   lastShift = { dx: 0, dy: 0 };
+  /** Gold rings collected this run, and the ids taken (a rebuilt chunk does not bring them back). */
+  rings = 0;
+  private taken = new Set<string>();
   private live = new Map<number, Live>();
   private cache = new Map<number, InfinityChunk>();
   private wallBody: Matter.Body | null = null;
@@ -116,7 +121,7 @@ export class InfinityRun {
     return {
       seed: this.seed, style: 'flow', width: right, height: Math.round(maxY + 900), floors,
       bumps: chunks.flatMap((c) => c.bumps), gates: chunks.flatMap((c) => c.gates), ledges: chunks.flatMap((c) => c.ledges), springs: chunks.flatMap((c) => c.springs),
-      loops: chunks.flatMap((c) => c.loops), bridges: chunks.flatMap((c) => c.bridges), boosts: chunks.flatMap((c) => c.boosts), kickers: chunks.flatMap((c) => c.kickers), itemBoxes: [], wreckers: [],
+      loops: chunks.flatMap((c) => c.loops), bridges: chunks.flatMap((c) => c.bridges), boosts: chunks.flatMap((c) => c.boosts), kickers: chunks.flatMap((c) => c.kickers), rings: chunks.flatMap((c) => c.rings).filter((r) => !this.taken.has(r.id)), itemBoxes: [], wreckers: [],
       path: [{ x: left, y: INF_START_Y - 30 }, { x: right, y: INF_START_Y - 30 }],
       startX: 520, startY: INF_START_Y, finishX: 1e12, finishY: 1e12,
     };
@@ -206,6 +211,20 @@ export class InfinityRun {
     // Pushing on and going nowhere (wedged against something): lifted back after a few calm seconds. Standing still is fine.
     this.pinned = Math.abs(g.nudge) > 0.2 && slow ? this.pinned + dt : 0;
     if (this.pinned > 3000) { this.pinned = 0; this.recover(false); }
+    // Gold rings: rolled or flown through in the ball's lane.
+    const rings = plan.rings;
+    if (rings?.length) {
+      for (let i = rings.length - 1; i >= 0; i--) {
+        const r = rings[i];
+        if (r.lane !== lane || Math.abs(r.x - p.x) > RING_REACH || Math.abs(r.y - p.y) > RING_REACH) continue;
+        if (Math.hypot(r.x - p.x, r.y - p.y) > RING_REACH) continue;
+        rings.splice(i, 1);
+        this.taken.add(r.id);
+        this.rings++;
+        g.sfx('pickup', m, r.x, r.y);
+        g.effects.push({ type: 'ring', x: r.x, y: r.y, ttl: 18, maxTtl: 18, color: '#ffd34a' });
+      }
+    }
     // Distance never goes backwards.
     this.distance = Math.max(this.distance, this.origin.x + p.x - this.startAbsX);
     if (this.distance > this.best) this.best = this.distance;

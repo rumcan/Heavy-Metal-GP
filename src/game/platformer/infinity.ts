@@ -6,7 +6,7 @@
 // balls, no item boxes, no wall a rolling ball cannot get over.
 import { mulberry32 } from '../types';
 import { SPRING_W } from './course';
-import type { BoostSpot, Bump, Floor, Kicker, Lane, LaneGate, Ledge, Spring } from './course';
+import type { BoostSpot, Bump, Floor, Kicker, Lane, LaneGate, Ledge, RingSpot, Spring } from './course';
 import { LOOP_PITCH, LOOP_R, PLANK_H } from './routes';
 import type { BridgeSpot, LoopSpot } from './routes';
 
@@ -99,6 +99,7 @@ export interface InfinityChunk {
   bridges: BridgeSpot[];
   boosts: BoostSpot[];
   kickers: Kicker[];
+  rings: RingSpot[];
 }
 
 /** A different random stream per chunk and purpose, stable for ever. */
@@ -125,7 +126,10 @@ export function infinityChunk(seed: number, index: number): InfinityChunk {
   const h = (lane: Lane, x: number) => terrainY(seed, lane, x);
   const rng = chunkRng(seed, index, 1);
   const roll = (a: number, b: number) => a + rng() * (b - a);
-  const chunk: InfinityChunk = { index, x0, x1, floors: [], bumps: [], gates: [], springs: [], ledges: [], loops: [], bridges: [], boosts: [], kickers: [] };
+  // Gold rings to collect (the owner): each pays RING_CREDITS; stable ids, so a collected one stays collected while the
+  // chunk is rebuilt.
+  const ring = (lane: Lane, x: number, y: number) => chunk.rings.push({ id: `${index}:${chunk.rings.length}`, lane, x: Math.round(x), y: Math.round(y) });
+  const chunk: InfinityChunk = { index, x0, x1, floors: [], bumps: [], gates: [], springs: [], ledges: [], loops: [], bridges: [], boosts: [], kickers: [], rings: [] };
 
   // ---- the features: kept inside [x0 + 250, x1 + 220] so a neighbour never meets them
   const chasms = new Map<Lane, [number, number]>();
@@ -207,24 +211,44 @@ export function infinityChunk(seed: number, index: number): InfinityChunk {
     // ramp that throws a fast ball into the air, and a cloud or two above the landing (one-way: rise through, land on
     // top). Their own random stream, so nothing above moves. In a lane with nothing else going on in this chunk.
     const sky = chunkRng(seed, index, 9);
-    if (sky() < 0.2) {
+    let skyLane: Lane | null = null;
+    if (sky() < 0.4) {
       const first = Math.floor(sky() * 3);
       for (let k = 0; k < 3; k++) {
         const lane = LANES[(first + k) % 3];
         if (chasms.has(lane) || springLanes.has(lane) || ledgeLanes.has(lane) || chunk.boosts.some((b) => b.lane === lane)) continue;
         if (chunk.gates.some((g) => g.lane === lane || g.to === lane)) continue;
-        const boostX = x0 + 260, kickX = x0 + 520, lip = kickX + 150;
+        const boostX = x0 + 250, kickX = x0 + 430, lip = kickX + 150;
         if (h(lane, kickX) - h(lane, boostX) < -20) continue;
         chunk.boosts.push({ lane, x: boostX, w: 180 });
         chunk.kickers.push({ lane, x: kickX, w: 150, h: 80 });
-        const clouds = 1 + (sky() < 0.55 ? 1 : 0);
+        // the flight: a gold arc of rings along the path of a fast ball off the lip
+        const ly = h(lane, lip);
+        for (let k = 0; k < 4; k++) ring(lane, lip + 70 + k * 65, ly - 90 - 150 * Math.sin((Math.PI * (k + 1)) / 5));
+        // a staircase of clouds climbing into the sky (the owner: lots, high up): hop from one to the next, a few rings
+        // on each, the highest richest
+        const clouds = 1 + Math.floor(sky() * 3);
         for (let i = 0; i < clouds; i++) {
-          const cx = lip + 240 + i * 530, w = Math.round(i ? 340 + sky() * 30 : 380 + sky() * 100);
+          const cx = lip + 200 + i * 330, w = Math.round(270 + sky() * 30);
+          if (cx + w > x0 + CHUNK_W + 250) break;
           let low = Infinity;
           for (let x = cx; x <= cx + w; x += 40) low = Math.min(low, h(lane, x));
-          chunk.ledges.push({ lane, x: cx, w, y: Math.round(low - 170 - i * 70), cloud: Math.floor(sky() * 5) });
+          const cy = Math.round(low - 170 - i * 85);
+          chunk.ledges.push({ lane, x: cx, w, y: cy, cloud: Math.floor(sky() * 5) });
+          for (let k = 0; k < 2 + i; k++) ring(lane, cx + (w * (k + 1)) / (3 + i), cy - 42);
         }
+        skyLane = lane;
         break;
+      }
+    }
+    // Rings along the track (their own stream): a line to roll through or a little arc to hop, in a lane with no chasm.
+    const rr = chunkRng(seed, index, 11);
+    if (rr() < 0.55) {
+      const lane = LANES[Math.floor(rr() * 3)];
+      const hop = rr() < 0.5;
+      const rx = x0 + 300 + Math.round(rr() * 200);
+      if (lane !== skyLane && !chasms.has(lane) && !springLanes.has(lane)) {
+        for (let k = 0; k < 5; k++) { const x = rx + k * 70; ring(lane, x, h(lane, x) - 40 - (hop ? 110 * Math.sin((Math.PI * (k + 0.5)) / 5) : 0)); }
       }
     }
   }
@@ -273,5 +297,6 @@ export function shiftChunk(c: InfinityChunk, dx: number, dy: number): InfinityCh
     bridges: c.bridges.map((b) => ({ ...b, x0: b.x0 + dx, x1: b.x1 + dx, y0: b.y0 + dy, y1: b.y1 + dy })),
     boosts: c.boosts.map((b) => ({ ...b, x: b.x + dx })),
     kickers: c.kickers.map((k) => ({ ...k, x: k.x + dx })),
+    rings: c.rings.map((r) => ({ ...r, x: r.x + dx, y: r.y + dy })),
   };
 }

@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Camera, RotateCcw, EyeOff, Pause, Play, Volume2, VolumeX, ZoomIn, ZoomOut } from 'lucide-react';
 import { InfinityRun } from '../../game/platformer/infinity-world';
+import { RING_CREDITS } from '../../game/platformer/course';
 import { marbleDepth, renderPlatformer, shiftForeground } from '../../game/platformer/render';
 import type { PlatformCamera } from '../../game/platformer/render';
 import { laneView } from '../../game/lanes';
@@ -31,6 +32,8 @@ interface Props {
   onLeave: () => void;
   /** Start again on a new seed (the app makes the text and remounts this screen). */
   onNewSeed: () => void;
+  /** Credits earned from gold rings, paid into the account as they are banked (every few seconds, and on leaving). */
+  onCredits?: (credits: number) => void;
 }
 
 /** How often the distance is banked into the records while rolling (ms): a closed tab keeps the best. */
@@ -54,7 +57,10 @@ export function autoZoom(speed: number): number {
   return 1.25 - 0.7 * t * t * (3 - 2 * t);
 }
 
-export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }: Props) {
+export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed, onCredits }: Props) {
+  const creditsRef = useRef(onCredits);
+  creditsRef.current = onCredits;
+  const [rings, setRings] = useState(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fadeRef = useRef<HTMLDivElement>(null);
   const controls = useRef({ left: false, right: false, touch: 0, engine: false });
@@ -123,6 +129,9 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
     audio.setMuted(raceAudio.muted);
     painter.onKm = () => audio.chime();
     let elapsed = 0, frameMs = 16;
+    // gold rings become credits in the account (banked every few seconds and on leaving, so a closed tab keeps them)
+    let ringsPaid = 0;
+    const payRings = () => { const n = run.rings - ringsPaid; if (n > 0) { ringsPaid = run.rings; creditsRef.current?.(n * RING_CREDITS); } };
     runRef.current = run;
     recordStart(seedText);
     if (import.meta.env.DEV) (window as unknown as { __infinity?: unknown }).__infinity = run;
@@ -256,8 +265,8 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
       }
       if (fadeRef.current) fadeRef.current.style.opacity = String(Math.min(1, run.fade * 1.1).toFixed(2));
       hudTimer += dt; bankTimer += dt;
-      if (hudTimer > 120) { hudTimer = 0; setKm(run.km); }
-      if (bankTimer > BANK_EVERY_MS && !pausedRef.current) { bankTimer = 0; recordDistance(run.km, banked); banked = run.km; }
+      if (hudTimer > 120) { hudTimer = 0; setKm(run.km); setRings(run.rings); }
+      if (bankTimer > BANK_EVERY_MS && !pausedRef.current) { bankTimer = 0; recordDistance(run.km, banked); banked = run.km; payRings(); }
       unblend();
     };
     raf = requestAnimationFrame(frame);
@@ -276,6 +285,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
       canvas.removeEventListener('pointerup', pointerUp);
       canvas.removeEventListener('pointercancel', pointerUp);
       recordDistance(run.km, banked);
+      payRings();
       audio.stop();
       audioRef.current = null;
       runRef.current = null;
@@ -297,6 +307,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
     {!uiHidden && <>
       <div className="infinity-hud" aria-live="off">
         <span className="infinity-km"><strong>{formatKm(km)}</strong><small>km</small></span>
+        <span className="infinity-rings" title={`Gold rings: ${RING_CREDITS} credits each`}><i aria-hidden="true" /><strong>{rings}</strong><small>+{rings * RING_CREDITS} CR</small></span>
         {savedNote && <span className="infinity-note" role="status">{savedNote}</span>}
       </div>
       <div className="infinity-tools">
