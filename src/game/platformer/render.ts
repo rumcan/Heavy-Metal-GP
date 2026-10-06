@@ -6,7 +6,7 @@ import type Matter from 'matter-js';
 import type { Game, Marble } from '../engine';
 import { drawImg } from '../mip';
 import { meta } from '../track';
-import { laneFocus, laneView, visibleLanes, LANE_SWITCH_MS, LANE_MIDDLE, LANE_FRONT } from '../lanes';
+import { laneFocus, laneView, visibleLanes, LANE_SWITCH_MS, LANE_MIDDLE } from '../lanes';
 import { drawBodies, drawBridgeChain, drawMarble } from '../render';
 import { drawSkillWorld } from '../skills/draw';
 import { GATE_RAMP_H, SPRING_W, floorAt } from './course';
@@ -770,7 +770,7 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
  * than the track (they are nearer than it). Kept low: their tops stop well below the middle, where your ball is.
  */
 /** Per camera: how far the pines have scrolled (screen px) and where they sit vertically. */
-const FG = new WeakMap<PlatformCamera, { camX: number; camY: number; scroll: number; scrollMid: number; scrollBack: number; lagY: number; trackY?: number; frontY?: number }>();
+const FG = new WeakMap<PlatformCamera, { camX: number; camY: number; scroll: number; scrollMid: number; scrollBack: number; lagY: number; trackY?: number }>();
 export const FG_PARALLAX = 1.35;
 /** The second row of pines, between the front row and the cliffs: further away, so it scrolls slower (depth). */
 export const FG_MID_PARALLAX = 1.15;
@@ -808,18 +808,38 @@ export function shiftForeground(cam: PlatformCamera, dx: number, dy: number): vo
   if (!st) return;
   st.camX += dx; st.camY += dy; st.lagY += dy;
   if (st.trackY !== undefined) st.trackY += dy;
-  if (st.frontY !== undefined) st.frontY += dy;
 }
 
-export function foregroundTop(cam: PlatformCamera, plan: CoursePlan | undefined, ch: number): number {
+/**
+ * The pines' anchor: the floor of the lane the camera is on (the front-most track you see: a lane in front of the
+ * camera has faded out), eased so the rows follow the course's slopes and a lane change smoothly, held over a chasm.
+ */
+function foregroundAnchor(cam: PlatformCamera, plan: CoursePlan | undefined): number {
   const st = FG.get(cam);
-  const floor = plan ? floorAt(plan, LANE_MIDDLE as Lane, cam.x) : null;
+  const lane = Math.max(0, Math.min(2, Math.round(cam.focus ?? LANE_MIDDLE))) as Lane;
+  const floor = plan ? floorAt(plan, lane, cam.x) : null;
   let trackY = st?.trackY ?? floor ?? cam.y;
   if (floor !== null) trackY = Math.abs(floor - trackY) > 900 ? floor : trackY + (floor - trackY) * 0.06;
   if (st) st.trackY = trackY;
-  // the track on screen, with the pines' extra parallax (they are nearer than the track)
-  const trackScreen = ch / 2 + (trackY - cam.y) * cam.scale * FG_PARALLAX;
-  return trackScreen + ch * 0.1;
+  return trackY;
+}
+
+/**
+ * Where a row of pines at parallax depth `p` stands on screen. Parallax: a layer at depth p moves p times as far on
+ * screen as the track does, sideways (foregroundScroll) and up and down alike, so it is the anchor's screen offset
+ * from the centre times p, plus the row's own fixed drop below the track. Every row shares the one anchor, so they
+ * keep their order and spacing and only spread apart (or close up) as the camera moves, like real depth. With p >= 1
+ * and a drop >= 0, a row never rises above the track while the track is below the middle of the screen.
+ */
+function pineRowTop(cam: PlatformCamera, anchorY: number, ch: number, p: number, drop: number): number {
+  return ch / 2 + (anchorY - cam.y) * cam.scale * p + ch * drop;
+}
+
+/** The front row (FG_PARALLAX) stands this far below the track (a share of the screen height); the rows behind, higher. */
+const FG_DROP = 0.1, FG_MID_DROP = 0.05, FG_BACK_DROP = 0.015;
+
+export function foregroundTop(cam: PlatformCamera, plan: CoursePlan | undefined, ch: number): number {
+  return pineRowTop(cam, foregroundAnchor(cam, plan), ch, FG_PARALLAX, FG_DROP);
 }
 
 /**
@@ -859,18 +879,14 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
   const w = (img.naturalWidth / img.naturalHeight) * h;
   const { x: scroll, mid, back } = foregroundScroll(cam);
   let x = -(((scroll % w) + w) % w);
-  const y = foregroundTop(cam, plan, ch);
-  // two more rows behind the front one (owner: depth), each smaller, higher, hazier and slower; under each, a band in
-  // its own darkest colour down to the row in front, so no land shows between the rows
-  // never above the front-most track on screen (eased, so the rows follow its slopes smoothly)
-  const st = FG.get(cam)!;
-  const fv = laneView(LANE_FRONT, cam.focus);
-  const floor = plan ? floorAt(plan, LANE_FRONT as Lane, cam.x) : null;
-  if (floor !== null) st.frontY = st.frontY === undefined || Math.abs(floor - st.frontY) > 900 ? floor : st.frontY + (floor - st.frontY) * 0.06;
-  const front = st.frontY === undefined ? -Infinity : ch / 2 + fv.lift * cam.scale + (st.frontY - cam.y) * cam.scale * fv.scale + 40;
+  // one anchor for all three rows (see pineRowTop): each row at its own parallax depth and drop below the track
+  const anchor = foregroundAnchor(cam, plan);
+  const y = pineRowTop(cam, anchor, ch, FG_PARALLAX, FG_DROP);
+  // two more rows behind the front one (owner: depth), each smaller, higher and slower; under each, a band in its own
+  // darkest colour down to the row in front, so no land shows between the rows
   const rows = [
-    { pines: hazePines(img, 0, true), top: Math.max(front, y - ch * 0.13), height: h * 0.58, scroll: back },
-    { pines: hazePines(img, 0, false), top: Math.max(front + ch * 0.04, y - ch * 0.05), height: h * 0.72, scroll: mid },
+    { pines: hazePines(img, 0, true), top: pineRowTop(cam, anchor, ch, FG_BACK_PARALLAX, FG_BACK_DROP), height: h * 0.58, scroll: back },
+    { pines: hazePines(img, 0, false), top: pineRowTop(cam, anchor, ch, FG_MID_PARALLAX, FG_MID_DROP), height: h * 0.72, scroll: mid },
   ];
   rows.forEach((row, i) => {
     if (row.top >= ch) return;

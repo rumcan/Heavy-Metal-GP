@@ -296,9 +296,10 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
 const CROWD_EVERY = 10_000;
 /**
  * The goblin crowd stands (the owner's art): once a km, on the back lane only, on a flat stretch of track (moved along
- * to the nearest one, or left out). Each stands on the cliff top and rises above the track, so no air shows under it;
- * drawn before that lane's cliff and beam, so every track and cliff is in front of it, with trees at its feet
- * (crowdGapTrees). Sometimes one stand, sometimes two or three side by side. Static: cached with the lane.
+ * to the nearest one, or left out). Each stands level with the track (its base just under the beam); the drop from
+ * the track to the cliff under it is filled with trees (crowdGapTrees), so no air shows under a stand. Drawn before
+ * that lane's cliff and beam, so every track and cliff is in front of it. Sometimes one stand, sometimes two or three
+ * side by side. Static: cached with the lane.
  */
 function crowds(ctx: CanvasRenderingContext2D, run: Pt[], pts: Pt[], lane: Lane): { x: number; w: number; base: number }[] {
   const placed: { x: number; w: number; base: number }[] = [];
@@ -317,11 +318,9 @@ function crowds(ctx: CanvasRenderingContext2D, run: Pt[], pts: Pt[], lane: Lane)
     const img0 = ART.crowds[k % 2];
     if (!ready(img0) || !ready(ART.crowds[(k + 1) % 2])) continue;
     const aspect = img0.naturalWidth / img0.naturalHeight;
-    // how much stand shows above the track; below it, each stand reaches down past the lowest cliff top under it (the
-    // cliff, drawn after, covers the rest), so no air shows under a stand
-    const above = 300 + hash(k, lane + 32) * 60;
-    const lowest = (x0: number, x1: number) => { let c = 0; for (let i = 0; i <= 8; i++) c = Math.max(c, clearance(x0 + ((x1 - x0) * i) / 8)); return c; };
-    const span = (count: number) => aspect * (above + 280 + 14) * count; // the widest a stand can be (clearance <= 280)
+    // how tall a stand is: all of it above the track
+    const h = 300 + hash(k, lane + 32) * 60;
+    const span = (count: number) => aspect * h * count;
     // the nearest flat stretch to the km mark, within 2,400 px either way, for as many of the stands as fit
     let start: number | null = null, count = want;
     for (; count >= 1 && start === null; count--) {
@@ -338,10 +337,9 @@ function crowds(ctx: CanvasRenderingContext2D, run: Pt[], pts: Pt[], lane: Lane)
     for (let i = 0; i < count; i++) {
       const img = ART.crowds[(k + i) % 2];
       if (!ready(img)) continue;
-      const track = yOn(run, x);
-      const h = above + lowest(x, x + aspect * (above + 294)) + 14;
+      // the base on the track line, hidden behind the beam
+      const base = yOn(run, x) + TRACK_T - RAIL_UP;
       const w = (img.naturalWidth / img.naturalHeight) * h;
-      const base = track - above + h;
       drawImg(ctx, img, x, base - h, w, h);
       placed.push({ x, w, base });
       x += w - 8;
@@ -350,17 +348,23 @@ function crowds(ctx: CanvasRenderingContext2D, run: Pt[], pts: Pt[], lane: Lane)
   return placed;
 }
 
-/** Trees along the cliff top under a stand that stops short of the cliff, tall enough to cover the gap. */
+/**
+ * Under a stand, the drop from the track down to the cliff is filled with trees (the owner): two staggered layers of
+ * the tree groups standing on the cliff top, tall enough to reach up behind the beam, so no air shows under a stand.
+ * Drawn after the trestles and before the beam.
+ */
 function crowdGapTrees(ctx: CanvasRenderingContext2D, run: Pt[], stands: { x: number; w: number; base: number }[], lane: Lane) {
   for (const st of stands) {
-    for (let x = st.x + 20, n = 0; x < st.x + st.w; x += 70, n++) {
-      const img = ART.treeGroups[Math.floor(hash(n + Math.round(st.x), lane + 47) * 3)];
-      if (!ready(img)) continue;
-      const foot = yOn(run, x) + clearance(x) + 22;
-      if (foot - st.base < 30) continue; // the stand reaches the cliff here
-      const h = Math.min(clearance(x) * 0.95, foot - st.base + 40 + hash(n, lane + 48) * 30);
-      const w = (img.naturalWidth / img.naturalHeight) * h;
-      drawImg(ctx, img, x - w / 2, foot - h, w, h);
+    for (const layer of [0, 1]) {
+      for (let x = st.x - 40 + layer * 45, n = 0; x < st.x + st.w + 40; x += 90, n++) {
+        const img = ART.treeGroups[Math.floor(hash(n + Math.round(st.x) + layer * 7, lane + 47) * 3)];
+        if (!ready(img)) continue;
+        const foot = yOn(run, x) + clearance(x) + 22;
+        // up to the stand's base (behind the beam); the back layer (drawn first) a little shorter
+        const h = foot - st.base + 30 + hash(n, lane + 48 + layer) * 40 - (1 - layer) * 20;
+        const w = (img.naturalWidth / img.naturalHeight) * h;
+        drawImg(ctx, img, x - w / 2, foot - h, w, h);
+      }
     }
   }
 }
