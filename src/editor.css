@@ -407,3 +407,9 @@
   .editor-toolbar > *, .editor-editbar > *, .editor-testbar > * { flex-shrink: 0; }
   .editor-editbar .editor-chip, .editor-testbar .editor-chip, .editor-status { display: none; }
 }
+
+/* Lane tabs (the owner: build one lane at a time; a course has 1, 2 or 3 lanes). */
+.editor-lane-tabs { gap: 4px; }
+.editor-lane-label { font: 9px var(--mono); letter-spacing: .6px; text-transform: uppercase; color: #6f8193; margin-right: 2px; }
+.editor-lane-tab { display: inline-flex; }
+.editor-lane-tab .editor-lane-remove { margin-left: -1px; padding: 5px 5px; color: #fca5a5; }

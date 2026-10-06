@@ -459,6 +459,8 @@ function encodeBinary(def: TrackDef): Uint8Array {
     }
   }
   if (def.mode === 'platformer') { writeUVarint(out, 1); writeUVarint(out, Math.round(def.width ?? 0)); }
+  // a 1- or 2-lane course adds tag 2 and its lane count (3-lane codes stay as they were)
+  if (def.mode === 'platformer' && def.lanes) { writeUVarint(out, 2); writeUVarint(out, def.lanes); }
   return new Uint8Array(out);
 }
 
@@ -834,10 +836,15 @@ function decodeBinary(bytes: Uint8Array, version = 1): TrackDef {
   }
   // P2-22: a platformer course closes with a trailer (tag 1, then its width). Codes made before it simply end here.
   let width: number | undefined;
+  let lanes: number | undefined;
   if (pos.o < bytes.length) {
     const tag = readUVarint(bytes, pos);
     if (tag !== 1) throw new ShareCodeError('Unknown trailer on track data.');
     width = readUVarint(bytes, pos);
+    if (pos.o < bytes.length) {
+      if (readUVarint(bytes, pos) !== 2) throw new ShareCodeError('Unknown trailer on track data.');
+      lanes = readUVarint(bytes, pos);
+    }
   }
   // ensure no trailing bytes (tamper detection)
   if (pos.o !== bytes.length) throw new ShareCodeError('Extra bytes after track data.');
@@ -851,6 +858,7 @@ function decodeBinary(bytes: Uint8Array, version = 1): TrackDef {
     pieces,
     ...(segments.length ? { segments } : {}),
     ...(width !== undefined ? { mode: 'platformer', width } : {}),
+    ...(lanes !== undefined ? { lanes } : {}),
   } as TrackDef;
 
   const check = validateTrackDef(def);

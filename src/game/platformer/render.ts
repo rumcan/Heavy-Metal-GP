@@ -905,7 +905,8 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
   ctx.setTransform(ctx.getTransform().a, 0, 0, ctx.getTransform().d, 0, 0);
   const dpr = ctx.getTransform().a;
   sky(ctx, cam, cw, ch, game.track.platformer!.plan.startY, t);
-  const lanes = visibleLanes(cam.focus);
+  // only the lanes this course has (a Workshop course may have 1 or 2)
+  const lanes = courseLanes(game.track.platformer!.plan, cam.focus);
   const depths = game.marbles.filter((m) => !m.hold || m.hold.kind === 'cart').map((m) => ({ m, z: marbleDepth(game, m) }));
 
   for (const lane of lanes) {
@@ -1014,7 +1015,7 @@ function betweenTrees(ctx: CanvasRenderingContext2D, game: Game, cam: PlatformCa
   if (!st) { st = { camX: cam.x, scrolls: [0, 0] }; BETWEEN.set(cam, st); }
   const dx = cam.x - st.camX;
   if (Math.abs(dx) < 400 && far === Math.min(far, 1)) st.scrolls[far] += dx * sp;
-  if (far === lastBetweenLane(cam)) st.camX = cam.x;
+  if (far === lastBetweenLane(cam, plan)) st.camX = cam.x;
   // up and down: glued to the far track on screen
   const COL = 24, cols = Math.ceil(cw / COL) + 2;
   const line = new Float32Array(cols);
@@ -1067,11 +1068,16 @@ function tileStart(cam: PlatformCamera, key: string, scroll: number, rw: number,
   return x;
 }
 
+/** The lanes to draw this frame: those behind the camera (visibleLanes) that this course has. */
+function courseLanes(plan: CoursePlan, focus: number): number[] {
+  return visibleLanes(focus).filter((l) => !plan.lanes || plan.lanes.includes(l));
+}
+
 /** Per camera: how far each between-tracks layer has scrolled (screen px), by its far lane. */
 const BETWEEN = new WeakMap<PlatformCamera, { camX: number; scrolls: number[] }>();
 /** The nearest-to-the-camera far lane that has a between layer this frame (its call moves the shared camera memory on). */
-function lastBetweenLane(cam: PlatformCamera): number {
-  const lanes = visibleLanes(cam.focus);
+function lastBetweenLane(cam: PlatformCamera, plan: CoursePlan): number {
+  const lanes = courseLanes(plan, cam.focus);
   return lanes.length >= 2 ? lanes[lanes.length - 2] : -1;
 }
 

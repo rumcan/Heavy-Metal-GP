@@ -121,6 +121,8 @@ export interface SmashBreak { id: string; lane: Lane; x: number; y: number; at: 
  */
 export interface StandSpot { id: number; lane: Lane; x: number; w: number; y: number }
 export interface CoursePlan {
+  /** The lanes this course has (absent = all three; lanes.ts LANE_SETS). */
+  lanes?: readonly number[];
   /**
    * Infinity: where this plan's local origin is in the endless land (the world is shifted back every 40 km; local x +
    * originX is the absolute x). Scenery hashes and textures use absolute positions, so nothing changes at a shift.

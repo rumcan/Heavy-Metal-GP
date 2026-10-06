@@ -200,6 +200,8 @@ export interface TrackDef {
    */
   mode?: 'platformer';
   width?: number;
+  /** A platformer course's lane count (lanes.ts LANE_SETS: 1 = main only, 2 = main + back, 3 = all). Absent = 3. */
+  lanes?: 1 | 2;
   /** Sector list for the HUD, minimap and story hooks. Omitted defs get Start/Custom/Finish. */
   segments?: SegmentInfo[];
   pieces: Piece[];
@@ -791,6 +793,12 @@ function validateTrackDefInner(value: unknown): TrackDefCheck {
       width = number(value.width, 'width', PLATFORMER_MIN_WIDTH, PLATFORMER_MAX_WIDTH, problems);
     }
   } else if (value.width !== undefined) problems.add('width only belongs to a platformer course.');
+  let lanes: 1 | 2 | undefined;
+  if (value.lanes !== undefined) {
+    if (mode !== 'platformer') problems.add('lanes only belongs to a platformer course.');
+    else if (value.lanes === 1 || value.lanes === 2) lanes = value.lanes;
+    else if (value.lanes !== 3) problems.add('lanes must be 1, 2 or 3.');
+  }
 
   const pieces: Piece[] = [];
   if (!Array.isArray(value.pieces)) {
@@ -830,6 +838,7 @@ function validateTrackDefInner(value: unknown): TrackDefCheck {
       theme: theme!,
       height,
       ...(mode ? { mode, width } : {}),
+      ...(lanes ? { lanes } : {}),
       ...(segments ? { segments } : {}),
       pieces: pieces.map(compact),
     }),

@@ -117,7 +117,7 @@ function PlatformerStarts({ use }: { use: (def: TrackDef) => void }) {
     <section className="new-track-section">
       <h3><LayoutGrid size={14} /> Start from scratch</h3>
       <div className="new-track-grid">
-        <Card testId="new-platformer" def={blank} title="Blank course" desc="Just the start platform and the finish line. Draw the floors yourself with Ramp and Curve: drag their handles to make them as steep as you like." cta="Start building" onPick={() => use(newPlatformerDef('My platformer course'))} />
+        <Card testId="new-platformer" def={blank} title="Blank course" desc="Just the start platform and the finish line. Draw the floors yourself with Ramp and Curve: drag their handles to make them as steep as you like." cta="Start building" onPick={() => use({ ...newPlatformerDef('My platformer course'), lanes: 1 })} />
         <Card testId="generate-platformer" def={generated} title={<><Dices size={13} /> Random course</>} desc="Rolling hills made for you. Reshape any piece afterwards." cta="Use this one" onPick={() => use(generated)} />
       </div>
       <button className="text-button" onClick={() => setSeed(randomSeed())}><Dices size={13} /> Roll another random course</button>
