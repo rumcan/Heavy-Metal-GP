@@ -27,13 +27,17 @@ import treesFrontUrl from '../../assets/game/platformer/trees-front.webp';
 import { CANNON_LEN, CANNON_SPEED, muzzle } from '../engine/platformer';
 import skyCloudsUrl from '../../assets/game/platformer/sky-clouds.webp';
 import airshipUrl from '../../assets/game/airship.webp';
+import smashCrateUrl from '../../assets/game/smash-crate.webp';
+import smashTopUrl from '../../assets/game/smash-crate-top.webp';
+import smashBottomUrl from '../../assets/game/smash-crate-bottom.webp';
+import { sprite } from '../sprites';
 
 // rope bridges on flow courses and in Infinity: the Workshop's rope bridge art
 setBridgeArt(drawBridgeChain);
 
 // Generated art (P2-00): a skin over the vector bodies. Every draw falls back to flat shapes until it loads.
 const load = (src: string) => (typeof Image !== 'undefined' ? Object.assign(new Image(), { src }) : null);
-const ART = { earth: load(earthUrl), grass: load(grassUrl), crate: load(crateUrl), door: load(doorUrl), far: load(farUrl), trees: load(treesUrl), skyIslands: load(skyIslandsUrl), cannon: load(cannonUrl), treesFront: load(treesFrontUrl), skyClouds: load(skyCloudsUrl), airship: load(airshipUrl) };
+const ART = { earth: load(earthUrl), grass: load(grassUrl), crate: load(crateUrl), door: load(doorUrl), far: load(farUrl), trees: load(treesUrl), skyIslands: load(skyIslandsUrl), cannon: load(cannonUrl), treesFront: load(treesFrontUrl), skyClouds: load(skyCloudsUrl), airship: load(airshipUrl), smash: load(smashCrateUrl), smashTop: load(smashTopUrl), smashBottom: load(smashBottomUrl) };
 const ready = (img: HTMLImageElement | null): img is HTMLImageElement => !!img && img.complete && img.naturalWidth > 0;
 const patterns = new WeakMap<CanvasRenderingContext2D, CanvasPattern>();
 function earthPattern(ctx: CanvasRenderingContext2D): CanvasPattern | null {
@@ -300,6 +304,131 @@ function drawBump(ctx: CanvasRenderingContext2D, x: number, y: number, w: number
   ctx.stroke();
 }
 
+/** A small, stable hash in 0..1 (the same shard flies the same way every frame). */
+function toyHash(s: string, k: number): number {
+  let h = k * 2654435761;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 2246822519);
+  h = Math.imul(h ^ (h >>> 15), 3266489917);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+/**
+ * Infinity's toys (the owner): vents (an iron grate; an updraft's rising streaks, a geyser's column when it erupts),
+ * fire rings (the classic fire-hoop art, flickering), smash crates (the owner's stacked SMASH crates) and the ones
+ * bursting: the two crates fly apart and tumble, planks and splinters scatter, a puff of dust, all fading in ~1 s.
+ */
+function drawToys(ctx: CanvasRenderingContext2D, game: Game, plan: CoursePlan, lane: number, left: number, right: number, t: number) {
+  for (const v of plan.vents ?? []) {
+    if (v.lane !== lane || v.x + v.w < left || v.x - v.w > right) continue;
+    ctx.save();
+    if (v.kind === 'updraft') {
+      // a soft column of rising air, and streaks drifting up it
+      const col = ctx.createLinearGradient(0, v.y - v.h, 0, v.y);
+      col.addColorStop(0, 'rgba(200,235,255,0)');
+      col.addColorStop(1, 'rgba(200,235,255,0.28)');
+      ctx.fillStyle = col;
+      ctx.fillRect(v.x - v.w / 2, v.y - v.h, v.w, v.h);
+      ctx.strokeStyle = 'rgba(235,248,255,0.85)';
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      for (let i = 0; i < 10; i++) {
+        const k = ((t / 800 + i / 10) % 1);
+        const x = v.x - v.w / 2 + 8 + ((i * 37) % (v.w - 16));
+        const y = v.y - k * v.h;
+        ctx.globalAlpha = Math.sin(k * Math.PI) * 0.8;
+        ctx.beginPath();
+        ctx.moveTo(x, y + 40);
+        ctx.quadraticCurveTo(x + Math.sin(t / 300 + i) * 10, y + 20, x, y);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    } else {
+      const phase = game.time % 3200;
+      if (phase < 900) {
+        // the eruption: a column of water and steam, highest mid-burst
+        const k = Math.sin((phase / 900) * Math.PI);
+        const top = v.y - v.h * k;
+        const g = ctx.createLinearGradient(0, top, 0, v.y);
+        g.addColorStop(0, 'rgba(235,248,255,0)');
+        g.addColorStop(0.25, 'rgba(225,244,255,0.75)');
+        g.addColorStop(1, 'rgba(170,215,240,0.9)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(v.x - v.w * 0.3, v.y);
+        ctx.quadraticCurveTo(v.x - v.w * 0.45, (v.y + top) / 2, v.x - v.w * 0.15, top);
+        ctx.lineTo(v.x + v.w * 0.15, top);
+        ctx.quadraticCurveTo(v.x + v.w * 0.45, (v.y + top) / 2, v.x + v.w * 0.3, v.y);
+        ctx.closePath();
+        ctx.fill();
+      } else {
+        // a wisp of steam between eruptions
+        ctx.fillStyle = 'rgba(230,240,248,0.35)';
+        const k = (t / 1400) % 1;
+        ctx.beginPath();
+        ctx.arc(v.x, v.y - 20 - k * 50, 8 + k * 14, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    // the grate (the classic geyser vent art where it has loaded)
+    const vent = sprite('geyser');
+    if (vent) drawImg(ctx, vent, v.x - 30, v.y - 30, 60, 38);
+    else { ctx.fillStyle = '#2b2f36'; ctx.fillRect(v.x - v.w / 2, v.y - 10, v.w, 12); }
+    ctx.restore();
+  }
+  const hoop = sprite('fire-hoop');
+  for (const o of plan.hoops ?? []) {
+    if (o.lane !== lane || o.x + o.r * 3 < left || o.x - o.r * 3 > right) continue;
+    if (!hoop) continue;
+    // the art's hole: 251 px across, centred at (200, 269); the ring only (the stand is cut off at row 418)
+    const s = ((o.r * 2) / 251) * (1 + Math.sin(t / 140 + o.x) * 0.02);
+    drawImg(ctx, hoop, 0, 0, 400, 418, o.x - 200 * s, o.y - 269 * s, 400 * s, 418 * s);
+  }
+  const crate = ART.smash;
+  for (const c of plan.smashes ?? []) {
+    if (c.lane !== lane || c.x + 40 < left || c.x - 40 > right || !ready(crate)) continue;
+    drawImg(ctx, crate, c.x - 26, c.y - 59 + 4, 52, 59);
+  }
+  for (const f of plan.smashFx ?? []) {
+    if (f.lane !== lane || f.x + 400 < left || f.x - 400 > right) continue;
+    const ms = game.time - f.at, k = ms / 16.67, fade = Math.max(0, 1 - ms / 1300);
+    if (fade <= 0) continue;
+    ctx.save();
+    ctx.globalAlpha = fade;
+    // dust puff
+    ctx.fillStyle = 'rgba(190,160,120,0.5)';
+    ctx.beginPath();
+    ctx.arc(f.x, f.y - 26, 14 + Math.min(60, k * 3), 0, Math.PI * 2);
+    ctx.fill();
+    // the two crates fly apart and tumble
+    const halves: [HTMLImageElement | null, number, number, number, number][] = [
+      [ART.smashTop, f.vx * 0.7 + 2.5, -8, 0.09, 30],
+      [ART.smashBottom, f.vx * 0.45 + 1, -4.5, -0.06, 0],
+    ];
+    for (const [img, vx, vy, spin, lift] of halves) {
+      if (!ready(img)) continue;
+      const x = f.x + vx * k, y = f.y - 15 - lift + vy * k + 0.28 * k * k;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(spin * k);
+      drawImg(ctx, img, -26, -15, 52, 30);
+      ctx.restore();
+    }
+    // planks and splinters
+    for (let i = 0; i < 12; i++) {
+      const a = toyHash(f.id, i), b = toyHash(f.id, i + 50);
+      const vx = f.vx * 0.5 + (a - 0.5) * 12, vy = -3 - b * 9;
+      const x = f.x + vx * k, y = f.y - 30 + vy * k + 0.3 * k * k;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate((a - 0.5) * k * 0.6);
+      ctx.fillStyle = i % 3 === 0 ? '#5a3a1e' : '#9a6a3a';
+      ctx.fillRect(-(4 + a * 10), -2, 8 + a * 20, 3 + b * 2);
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+}
+
 /**
  * Gold rings (Infinity): each spins about its upright axis (its width breathes with the cosine of the turn), bobs a
  * little, and glows. A gold gradient band with a bright inner edge, so it reads as a polished ring at any zoom.
@@ -517,6 +646,7 @@ function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, 
   drawCannons(ctx, game, lane, t);
   drawSkillWorld(ctx, game, lane, t); // P2-08
   drawRings(ctx, info.plan, lane, left, right, t);
+  drawToys(ctx, game, info.plan, lane, left, right, t);
   const player = game.player;
   for (const g of info.plan.gates) {
     if (g.lane !== lane || g.x + g.w < left || g.x > right) continue;

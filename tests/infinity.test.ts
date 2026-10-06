@@ -240,7 +240,8 @@ test('records: best and total distance are kept, no credits or XP, and damaged s
   r = loadRecords();
   assert.equal(r.bestKm, 4);
   assert.ok(Math.abs(r.totalKm - 5.2) < 1e-9);
-  assert.deepEqual(Object.keys(r).sort(), ['bestKm', 'choice', 'lastSeed', 'mySeed', 'reduceMotion', 'runs', 'totalKm'], 'distance, seeds and the Reduce motion choice only');
+  // (and the gold rings still to be counted out after a run: the owner made Infinity pay credits through its ring tally)
+  assert.deepEqual(Object.keys(r).sort(), ['bestKm', 'choice', 'lastSeed', 'mySeed', 'pending', 'reduceMotion', 'runs', 'totalKm'], 'distance, seeds, Reduce motion and the rings waiting to be counted');
   assert.deepEqual(normalizeRecords({ bestKm: -3, totalKm: 'x', runs: 2.7, choice: 'weird', mySeed: 5 }), { ...emptyRecords(), runs: 2 });
   storage.setItem(INFINITY_KEY, '{not json');
   assert.deepEqual(loadRecords(), emptyRecords());

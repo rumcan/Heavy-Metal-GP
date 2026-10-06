@@ -3,7 +3,18 @@
 import { meta } from '../track';
 import { elementBodies, hasElement } from '../elements';
 import { Body } from '../engine';
-import type { Game } from '../engine';
+import type { Game, Marble } from '../engine';
+import type Matter from 'matter-js';
+
+/**
+ * On a platformer course a field (built as a lane's classic piece, md.lane) only touches balls in its own lane: a vent
+ * in the back lane used to lift balls in every lane. (Every client computes fields itself: an online room with clients
+ * on an older version would disagree on these balls.)
+ */
+function otherLane(game: Game, body: Matter.Body, m: Marble): boolean {
+  const lane = (meta(body) as { lane?: number }).lane;
+  return !!game.track.platformer && lane !== undefined && (m.lane ?? 1) !== lane;
+}
 
 export function applyFields(game: Game): void {
 // ---------------- MB-10E: fields and surfaces ----------------
@@ -19,6 +30,7 @@ if (hasElement(game.track, 'wind')) {
     const push = w.push * k;
     if (push < 0.005) continue;
     for (const m of game.marbles) {
+      if (otherLane(game, body, m)) continue;
       if (m.finishedAt !== null || m.frozen || m.hold) continue;
       const p = m.body.position;
       if (p.x < w.box.x - 12 || p.x > w.box.x + w.box.w + 12 || p.y < w.box.y - 12 || p.y > w.box.y + w.box.h + 12) continue;
@@ -41,6 +53,7 @@ if (hasElement(game.track, 'magnet')) {
     // thrum: an on/off cycle read off the clock
     if (g.periodMs > 0 && ((game.time + g.phaseMs) % g.periodMs) >= g.periodMs / 2) continue;
     for (const m of game.marbles) {
+      if (otherLane(game, body, m)) continue;
       if (m.finishedAt !== null || m.frozen || m.hold) continue;
       if (m.ghostUntil > game.time) continue; // Ghost has no iron in it
       const p = m.body.position;
@@ -73,6 +86,7 @@ if (hasElement(game.track, 'mud')) {
     const mud = md.mud;
     if (!mud) continue;
     for (const m of game.marbles) {
+      if (otherLane(game, body, m)) continue;
       if (m.finishedAt !== null || m.frozen || m.hold) continue;
       const p = m.body.position;
       if (p.x < mud.box.x || p.x > mud.box.x + mud.box.w || p.y < mud.box.y || p.y > mud.box.y + mud.box.h) continue;
@@ -105,6 +119,7 @@ if (hasElement(game.track, 'geyser')) {
     }
     if (!erupting) continue;
     for (const m of game.marbles) {
+      if (otherLane(game, body, m)) continue;
       if (m.finishedAt !== null || m.frozen || m.hold) continue;
       const p = m.body.position;
       if (p.y > g.topY + 6 || p.y < g.topY - g.h) continue;
