@@ -7,6 +7,8 @@ import { CAT_LOOP_CLOSE, CAT_LOOP_UP, CAT_WALL } from '../track';
 import type { Meta } from '../track';
 import { laneCategory } from '../lanes';
 import type { Lane } from './course';
+import { sprite } from '../sprites';
+import { drawImg } from '../mip';
 
 /**
  * A loop ring in one lane. `x` is where the ride starts (the floor climbs away from here) and `y` the floor line
@@ -117,8 +119,43 @@ export function bridgeLineAt(bridge: BridgeSpot, x: number): number | null {
 
 const WOOD = '#9a6a35', WOOD_DARK = '#4b2f15', WOOD_LIGHT = '#c99a5b';
 
-/** The loop ring as a wooden coaster ribbon with cross-ties. */
+/**
+ * The loop ring in the pinball tracks' own art (the 'loop-ring' sprite, the same ring as the classic Loop piece). The
+ * ring here is a helix (it leaves `pitch` further on than it began), so the sprite is drawn as thin wedges, each one
+ * slid along by the helix's offset at that angle: the art follows the ride line exactly. The wooden ribbon below
+ * until the sprite has loaded.
+ */
 export function drawLoop(ctx: CanvasRenderingContext2D, loop: LoopSpot): void {
+  const img = sprite('loop-ring');
+  if (img) { drawLoopArt(ctx, loop, img); return; }
+  drawLoopRibbon(ctx, loop);
+}
+
+function drawLoopArt(ctx: CanvasRenderingContext2D, loop: LoopSpot, img: HTMLImageElement) {
+  // as the classic Loop: the ring's hole (131x135 px, centred at 127,121.5 in the 255x242 art) on the running surface
+  const inner = loop.r * 2 + 4;
+  const kx = inner / 131, ky = inner / 135;
+  const w = img.naturalWidth * kx, h = img.naturalHeight * ky;
+  const reach = Math.max(w, h);
+  const N = LOOP_STEPS;
+  for (let i = 0; i < N; i++) {
+    const t0 = (i / N) * Math.PI * 2, t1 = ((i + 1) / N) * Math.PI * 2;
+    // the ride point at turn angle t sits at canvas angle pi/2 - t around the ring's centre
+    const a0 = Math.PI / 2 - t0 + 0.012, a1 = Math.PI / 2 - t1 - 0.012;
+    const cx = loop.x + (loop.pitch * (t0 + t1)) / 2 / (Math.PI * 2), cy = loop.y - loop.r;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, reach, a0, a1, true);
+    ctx.closePath();
+    ctx.clip();
+    drawImg(ctx, img, cx - 127 * kx, cy - 121.5 * ky, w, h);
+    ctx.restore();
+  }
+}
+
+/** The fallback: a wooden coaster ribbon with cross-ties. */
+function drawLoopRibbon(ctx: CanvasRenderingContext2D, loop: LoopSpot): void {
   ctx.save();
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
