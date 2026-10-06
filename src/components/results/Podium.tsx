@@ -7,7 +7,6 @@ import Portrait from '../Portrait';
 
 interface Props { results: HeatResult[]; roster: MarbleInfo[] }
 const PLACES = [2, 1, 3] as const;
-const ORDINALS = ['1st', '2nd', '3rd'];
 const CONFETTI = Array.from({ length: 14 }, (_, i) => ({
   '--burst-x': `${(i - 6.5) * 13}px`,
   '--burst-y': `${-32 - (i % 4) * 13}px`,
@@ -34,7 +33,7 @@ export default function Podium({ results, roster }: Props) {
             <span className="podium-team">{team?.name ?? 'Unclaimed'}</span>
             <time className="podium-time">{result ? formatTime(result.time!) : '—'}</time>
           </div>
-          <div className="podium-plinth">{rank === 1 && marble && <Trophy size={18} aria-hidden="true" />}<b>{ORDINALS[rank - 1]}</b></div>
+          <div className="podium-plinth">{rank === 1 && marble && <Trophy size={18} aria-hidden="true" />}</div>
         </li>;
       })}
     </ol>

@@ -84,7 +84,7 @@ export default function LoadoutScreen({ account, onBuy, onClose, mode: startMode
           {item ? <><ItemGlyph item={item} size={22} /><b>{ITEM_INFO[item].short}</b><span>x{account.inventory[item]}</span></> : <span className="loadout-empty">empty</span>}
         </button>
         {item && <div className="loadout-slot-tools">
-          <button onClick={() => buy(item)} disabled={account.inventory[item] >= MAX_ITEM_STACK || account.credits < ITEM_INFO[item].price} title={`Buy one charge for ${ITEM_INFO[item].price} CR`}>+1 · {ITEM_INFO[item].price}</button>
+          <button onClick={() => buy(item)} disabled={account.inventory[item] >= MAX_ITEM_STACK || account.credits < ITEM_INFO[item].price} className="loadout-buy" aria-label={`Buy one more ${ITEM_INFO[item].name} for ${ITEM_INFO[item].price} credits`} title={account.inventory[item] >= MAX_ITEM_STACK ? 'Full' : account.credits < ITEM_INFO[item].price ? `Need ${ITEM_INFO[item].price - account.credits} more credits` : `Buy one charge for ${ITEM_INFO[item].price} CR`}>{account.inventory[item] >= MAX_ITEM_STACK ? 'Full' : <>Buy <Coins size={11} />{ITEM_INFO[item].price}</>}</button>
           <button onClick={() => clear(i)} aria-label={`Clear slot ${SLOT_KEYS[i]}`}><X size={12} /></button>
         </div>}
       </div>)}
