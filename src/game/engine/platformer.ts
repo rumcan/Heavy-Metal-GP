@@ -43,6 +43,14 @@ export interface Cannon { x: number; y: number; lane: Lane; angle: number; fired
 /** Where a slot's cannon stands (1 = pole) and in which lane. */
 export function gridSpot(game: Game, slot: number): { x: number; y: number; lane: Lane } {
   const plan = game.track.platformer!.plan;
+  if (plan.lanes && plan.lanes.length < 3) {
+    // a course with fewer lanes: the grid shares them out, rows closer together so ten cannons still fit
+    const lanes = plan.lanes as Lane[];
+    const lane = lanes[(slot - 1) % lanes.length];
+    const row = Math.floor((slot - 1) / lanes.length);
+    const gap = lanes.length === 1 ? 64 : 110;
+    return { x: plan.startX - 60 - row * gap, y: plan.startY - 20, lane };
+  }
   const lane = GRID_LANES[(slot - 1) % GRID_LANES.length];
   const row = Math.floor((slot - 1) / 3);
   return { x: plan.startX - 60 - row * CANNON_GAP, y: plan.startY - 20, lane };

@@ -15,6 +15,7 @@ import { SPRING_W } from './course';
 import type { BoostSpot, Bump, CoursePlan, Floor, ItemBoxSpot, Kicker, Lane, LaneGate, Ledge, Spring, WreckerSpot } from './course';
 import { LOOP_R, PLANK_H } from './routes';
 import type { BridgeSpot, LoopSpot } from './routes';
+import { lanesOf } from '../lanes';
 
 /** The y of the flat start platform. A platformer def is built downwards from here, with room above it to climb. */
 export const PF_START_Y = 800;
@@ -88,7 +89,7 @@ function fixedFloors(def: TrackDef, own: readonly Floor[]): Floor[] {
   const runX = finishXOf(width) - RUN_OUT_BEFORE;
   const runY = floorYAt(own, 1, runX) ?? PF_START_Y;
   const out: Floor[] = [];
-  for (const lane of LANES) {
+  for (const lane of lanesOf(def.lanes) as Lane[]) {
     out.push({ lane, x0: -200, y0: PF_START_Y, x1: PF_START_END, y1: PF_START_Y });
     out.push({ lane, x0: runX, y0: runY, x1: width, y1: runY });
   }
@@ -121,7 +122,8 @@ export function settle(def: TrackDef): TrackDef {
 /** The CoursePlan a platformer def describes: what the race builds, the AI reads and the editor draws. */
 export function planFromTrackDef(def: TrackDef): CoursePlan {
   const width = def.width ?? PF_DEFAULT_WIDTH;
-  const own = pieceFloors(def);
+  const active = lanesOf(def.lanes);
+  const own = pieceFloors(def).filter((f) => active.includes(f.lane)); // only the lanes this course has
   const floors: Floor[] = [...fixedFloors(def, own), ...own];
   const bumps: Bump[] = [], gates: LaneGate[] = [], ledges: Ledge[] = [], springs: Spring[] = [];
   const itemBoxes: ItemBoxSpot[] = [], wreckers: WreckerSpot[] = [], boosts: BoostSpot[] = [];
@@ -130,6 +132,7 @@ export function planFromTrackDef(def: TrackDef): CoursePlan {
   const extras: NonNullable<CoursePlan['extras']> = [];
   def.pieces.forEach((p, source) => {
     const lane = laneOf(p);
+    if (!active.includes(lane)) return; // a lane the course does not have
     switch (p.t) {
       // Floors and the two lane pieces are the platformer's own. Every other piece is the drop-track piece itself, built
       // by the classic Builder with its own art and behaviour (P2-26), exactly as on a pinball-style track. The drivers
@@ -169,6 +172,7 @@ export function planFromTrackDef(def: TrackDef): CoursePlan {
   const height = Math.max(def.height, maxY + 900);
   return {
     seed: def.seed ?? 0, style: 'flow', width, height, floors, bumps, gates, path, ...(extras.length ? { extras } : {}),
+    ...(def.lanes ? { lanes: active } : {}),
     startX: 520, startY: PF_START_Y, finishX, finishY,
     springs, ledges, itemBoxes, wreckers, boosts, loops, bridges, ...(kickers.length ? { kickers } : {}),
   };
@@ -198,6 +202,10 @@ export function platformerIssues(def: TrackDef): PlatformerIssue[] {
       }
     })();
     const add = (message: string) => out.push({ message, x: here.x, y: here.y, piece: i });
+    const active = lanesOf(def.lanes);
+    const LANE_WORD = ['back', 'main', 'front'];
+    if (!active.includes(lane)) add(`${name} is in the ${LANE_WORD[lane]} lane, which this course does not have: add the lane or move it.`);
+    if (p.t === 'gate' && !active.includes(p.to)) add(`${name} at x ${at(p.x)} leads to the ${LANE_WORD[p.to]} lane, which this course does not have.`);
     if (p.t === 'gate') {
       if (p.to === lane) add(`${name} at x ${at(p.x)} leads to its own lane (back, middle or front): pick another lane to go to.`);
       if (floorYAt(floors, lane, p.x + p.w / 2) === null) add(`${name} at x ${at(p.x)} has no floor under it in its lane.`);

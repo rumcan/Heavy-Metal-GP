@@ -13,6 +13,15 @@ export const LANE_FRONT = 2;
 export const LANE_NAMES = ['back', 'middle', 'front'] as const;
 
 /**
+ * Which lanes a course has (the owner: build one lane at a time, a course has 1, 2 or 3): the main (middle) lane
+ * always; a second lane is the back one (seen behind you from the main lane); a third the front one.
+ */
+export const LANE_SETS: Record<1 | 2 | 3, readonly number[]> = { 1: [1], 2: [0, 1], 3: [0, 1, 2] };
+export function lanesOf(count: number | undefined): readonly number[] {
+  return LANE_SETS[(count === 1 || count === 2 ? count : 3) as 1 | 2 | 3];
+}
+
+/**
  * Each lane behind you is drawn this much smaller, so it also slides past this much slower: depth (the owner: every
  * layer, near to far, at its own speed; the far track clearly slower).
  */

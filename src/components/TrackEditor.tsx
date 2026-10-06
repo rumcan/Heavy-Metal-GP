@@ -44,7 +44,9 @@ import {
   MousePointer2,
   Group,
   Ungroup,
+  Plus,
 } from 'lucide-react';
+import { lanesOf } from '../game/lanes';
 import Brand from './Brand';
 import Dialog from './Dialog';
 import PublishDialog from './editor/PublishDialog';
@@ -394,6 +396,10 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
   /** Pieces in another lane than the one being edited: drawn behind, not selectable. */
   const inactive = useMemo<ReadonlySet<number> | undefined>(() => (side ? new Set(defPieces.flatMap((p, i) => ((p.lane ?? 1) !== lane ? [i] : []))) : undefined), [side, defPieces, lane]);
   useEffect(() => { setSelected([]); }, [lane]);
+  // The owner: build one lane at a time; a course has 1, 2 (main + back) or 3 lanes.
+  const laneCount = side ? lanesOf(circuit.def.lanes).length : 3;
+  const activeLanes = side ? (lanesOf(circuit.def.lanes) as readonly (0 | 1 | 2)[]) : ([0, 1, 2] as const);
+  useEffect(() => { if (side && !activeLanes.includes(lane)) setLane(1); }, [side, activeLanes, lane]);
   const track = built.track;
   const bodyToPiece = built.bodyToPiece;
   const buildError = built.error;
@@ -508,6 +514,30 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
     },
     [history, bumpHistory],
   );
+  /** Adds the next lane: the back lane first (it shows behind you from the main lane), then the front. */
+  const addLane = useCallback(() => {
+    if (laneCount >= 3) return;
+    commit((def) => ({ ...def, lanes: laneCount === 1 ? 2 : undefined }));
+    setLane(laneCount === 1 ? 0 : 2);
+  }, [commit, laneCount]);
+  /**
+   * Removes a lane and everything in it (asks first; Undo brings it back). From three lanes the one left beside the
+   * main lane becomes the back lane, so a 2-lane course is always main + back. Lane gates into it go too.
+   */
+  const removeLane = useCallback((which: 0 | 2) => {
+    if (laneCount <= 1) return;
+    const count = circuit.def.pieces.filter((p) => (p.lane ?? 1) === which).length;
+    if (!window.confirm(`Remove the ${which === 0 ? 'back' : 'front'} lane${count ? ` and its ${count} piece${count === 1 ? '' : 's'}` : ''}? Undo brings it back.`)) return;
+    commit((def) => {
+      const pieces = def.pieces
+        .filter((p) => (p.lane ?? 1) !== which && !(p.t === 'gate' && p.to === which))
+        .map((p) => (laneCount === 3 && which === 0 && (p.lane ?? 1) === 2 ? { ...p, lane: 0 as const } : laneCount === 3 && which === 0 && p.t === 'gate' && p.to === 2 ? { ...p, to: 0 as const } : p));
+      const next: TrackDef = { ...def, pieces };
+      if (laneCount === 3) next.lanes = 2; else next.lanes = 1;
+      return next;
+    }, { select: [] });
+    setLane(1);
+  }, [circuit.def.pieces, commit, laneCount]);
 
   // Clipboard for copy/paste
   const clipboardRef = useRef<Piece[]>([]);
@@ -1265,10 +1295,15 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
                 <Ruler size={13} />Ruler
               </button>
             </div>
-            {side && <div className="editor-toggles" role="group" aria-label="Lane being edited">
-              {([[0, 'Back'], [1, 'Middle'], [2, 'Front']] as const).map(([n, label]) => (
-                <button key={n} type="button" className={`editor-toggle ${lane === n ? 'on' : ''}`} aria-pressed={lane === n} onClick={() => setLane(n)} title={`Build in the ${label.toLowerCase()} lane. The other lanes show behind it.`}>{label}</button>
+            {side && <div className="editor-toggles editor-lane-tabs" role="tablist" aria-label="Lanes: build one at a time">
+              <span className="editor-lane-label">Lanes</span>
+              {([[0, 'Back lane'], [1, 'Main lane'], [2, 'Front lane']] as const).filter(([n]) => activeLanes.includes(n)).map(([n, label]) => (
+                <span key={n} className={`editor-lane-tab ${lane === n ? 'on' : ''}`}>
+                  <button type="button" role="tab" className={`editor-toggle ${lane === n ? 'on' : ''}`} aria-selected={lane === n} onClick={() => setLane(n)} title={`Build the ${label.toLowerCase()}. The lanes behind it show faded.`}>{label}</button>
+                  {n !== 1 && lane === n && <button type="button" className="editor-toggle editor-lane-remove" onClick={() => removeLane(n)} aria-label={`Remove the ${label.toLowerCase()}`} title={`Remove the ${label.toLowerCase()} and its pieces (Undo brings it back)`}><X size={11} /></button>}
+                </span>
               ))}
+              {laneCount < 3 && <button type="button" className="editor-toggle" onClick={addLane} title={laneCount === 1 ? 'Add a back lane: a second route, seen behind the main lane' : 'Add a front lane'}><Plus size={11} />Lane</button>}
             </div>}
             <div className="editor-zoom">
               <button className="icon-button" onClick={() => rigZoom(rig, 1 / 1.25)} aria-label="Zoom out">
