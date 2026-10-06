@@ -813,7 +813,7 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
  * than the track (they are nearer than it). Kept low: their tops stop well below the middle, where your ball is.
  */
 /** Per camera: how far each row of pines has scrolled (screen px) and where they sit vertically. */
-const FG = new WeakMap<PlatformCamera, { camX: number; camY: number; scrolls: number[]; lagY: number; tilt?: number }>();
+const FG = new WeakMap<PlatformCamera, { camX: number; camY: number; scrolls: number[]; lagY: number }>();
 
 /**
  * The foreground forest (the owner: many rows, bigger and lower as you zoom in): rows of the owner's pines, back to
@@ -886,23 +886,26 @@ export function groundUnder(plan: CoursePlan, lane: Lane, x: number): number | n
   return n ? sum / n : null;
 }
 
+/**
+ * The track the camera stands on, at world `x`: the focused lane's floor (mid lane change, the two lanes' floors
+ * blended by the camera's depth), the smoothed ground over a chasm. The Infinity camera locks to it and the
+ * foreground pines are glued to it on screen, so the two can never drift apart (the owner: trees must not move
+ * against the track, on any lane). null with no ground near.
+ */
+export function trackLineY(plan: CoursePlan, focus: number, x: number): number | null {
+  const f = Math.max(0, Math.min(2, focus));
+  const l0 = Math.floor(f) as Lane, l1 = Math.min(2, l0 + 1) as Lane, t = f - l0;
+  const at = (l: Lane) => floorAt(plan, l, x) ?? groundUnder(plan, l, x);
+  const y0 = at(l0);
+  if (t < 1e-3) return y0;
+  const y1 = at(l1);
+  if (y0 === null) return y1;
+  if (y1 === null) return y0;
+  return y0 + (y1 - y0) * t;
+}
+
 /** Where the track sits below the screen's centre while the ball rolls (the camera frames the ball 10 px above it). */
 const FG_TRACK_BELOW = 15;
-
-/**
- * Where a row of pines stands on screen (at the camera's x). It does not ride up and down with the camera (the owner:
- * the rows follow the slope, so they need not move otherwise): it stands at a fixed depth under the track as the ball
- * rolls, its drop times the zoom times its parallax depth p, so zooming in still makes every row bigger and lower,
- * the near ones most. foreground() then slopes each row with the hill.
- */
-function pineRowTop(cam: PlatformCamera, ch: number, row: { p: number; drop: number }): number {
-  return ch / 2 + (FG_TRACK_BELOW + row.drop) * (cam.fgScale ?? cam.scale) * row.p;
-}
-
-export function foregroundTop(cam: PlatformCamera, plan: CoursePlan | undefined, ch: number): number {
-  void plan;
-  return pineRowTop(cam, ch, PINE_ROWS[PINE_ROWS.length - 1]);
-}
 
 /**
  * The front pines washed with evening haze (mirrored for every other row, so the rows never line up), drawn once per
@@ -940,26 +943,31 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
   const { rows: scrolls } = foregroundScroll(cam);
   const aspect = img.naturalWidth / img.naturalHeight;
   // The pines are near the lens (the owner): they slide sideways faster than the track, each row at its own parallax
-  // speed (foregroundScroll), which is the depth; they do NOT move up and down with the ball, the camera or a lane
-  // change (a fixed height on screen), and only your own zoom resizes them (fgScale). To lie along the hill, the rows
-  // are slanted as one straight line at the slope of the track under the camera, smoothed over 800 px and eased, so
-  // they tilt with the hill and never jump with a bump.
+  // speed (foregroundScroll), which is the depth. Up and down, every row is glued to the track you are on as it lies on
+  // the screen, column by column, a fixed drop below it (trackLineY: the same line the Infinity camera locks to). So
+  // the trees can never move against the track, on any lane, mid lane change, at any zoom; they lie along every hill;
+  // and only your own zoom resizes them (fgScale).
   const fs = cam.fgScale ?? cam.scale;
-  const st = FG.get(cam)!;
-  const lane = Math.max(0, Math.min(2, Math.round(cam.focus ?? LANE_MIDDLE))) as Lane;
-  let want = st.tilt ?? 0;
-  if (plan) {
-    const ga = groundUnder(plan, lane, cam.x - 400), gb = groundUnder(plan, lane, cam.x + 400);
-    if (ga !== null && gb !== null) want = Math.max(-0.5, Math.min(0.5, (gb - ga) / 800));
+  const COL = 24;
+  const cols = Math.ceil(cw / COL) + 2;
+  const line = new Float32Array(cols);
+  let held = ch / 2 + FG_TRACK_BELOW * cam.scale;
+  for (let c = 0; c < cols; c++) {
+    const y = plan ? trackLineY(plan, cam.focus ?? LANE_MIDDLE, cam.x + (c * COL - cw / 2) / cam.scale) : null;
+    if (y !== null) held = ch / 2 + (y - cam.y) * cam.scale; // over a gap, the line holds
+    line[c] = held;
   }
-  st.tilt = st.tilt === undefined ? want : st.tilt + (want - st.tilt) * 0.04;
-  const tilt = st.tilt;
+  const lineAt = (sx: number) => {
+    const f = Math.max(0, Math.min(cols - 1.001, sx / COL));
+    const c = Math.floor(f);
+    return line[c] + (line[c + 1] - line[c]) * (f - c);
+  };
   // Back to front. The nearer rows past the front one (zoomed out) fade in as the ground under the row behind them
   // comes into view, and out again as it leaves (the owner: no snapping in and out).
   let prev: { top: number; height: number } | null = null;
   for (let i = 0; i < PINE_ALL; i++) {
     const r = pineRow(i);
-    const top = pineRowTop(cam, ch, r), height = r.h * fs * r.p;
+    const top = lineAt(cw / 2) + r.drop * fs * r.p, height = r.h * fs * r.p;
     let alpha = 1;
     if (i >= PINE_ROWS.length && prev) alpha = Math.max(0, Math.min(1, (ch - (prev.top + prev.height * 0.75)) / (ch * 0.12)));
     if (alpha <= 0) break;
@@ -977,7 +985,7 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
       for (let k = 0; k < n; k++) {
         const sx = rx + k * sw;
         if (sx > cw || sx + sw < 0) continue;
-        const y = top + (sx + sw / 2 - cw / 2) * tilt;
+        const y = lineAt(sx + sw / 2) + r.drop * fs * r.p;
         if (y >= ch) continue;
         ctx.fillRect(sx, y + height * 0.8, sw + 0.6, Math.max(0, ch - (y + height * 0.8)));
         drawImg(ctx, pines.c, k * srcW, 0, srcW, pines.c.height, sx, y, sw + 0.6, height);
