@@ -776,15 +776,16 @@ const FG = new WeakMap<PlatformCamera, { camX: number; camY: number; scrolls: nu
  * The foreground forest (the owner: many rows, bigger and lower as you zoom in): rows of the owner's pines, back to
  * front. Each row is at parallax depth p and measured in world px (its height, and its drop below your track), so on
  * screen it is p times the zoom: zoom in and every row grows and moves down, the near ones most, like real depth.
+ * The back row starts about 100 px below the track (the owner: the track, its supports and the cliff tops show).
  */
 const PINE_ROWS: readonly { p: number; h: number; drop: number }[] = [
-  { p: 1.03, h: 170, drop: 2 },
-  { p: 1.07, h: 185, drop: 12 },
-  { p: 1.12, h: 200, drop: 23 },
-  { p: 1.17, h: 215, drop: 34 },
-  { p: 1.23, h: 235, drop: 45 },
-  { p: 1.29, h: 260, drop: 56 },
-  { p: 1.35, h: 290, drop: 68 },
+  { p: 1.03, h: 170, drop: 102 },
+  { p: 1.07, h: 185, drop: 112 },
+  { p: 1.12, h: 200, drop: 123 },
+  { p: 1.17, h: 215, drop: 134 },
+  { p: 1.23, h: 235, drop: 145 },
+  { p: 1.29, h: 260, drop: 156 },
+  { p: 1.35, h: 290, drop: 168 },
 ];
 export const FG_PARALLAX = PINE_ROWS[PINE_ROWS.length - 1].p;
 /**
@@ -896,25 +897,28 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
   const { rows: scrolls } = foregroundScroll(cam);
   const anchor = foregroundAnchor(cam, plan);
   const aspect = img.naturalWidth / img.naturalHeight;
-  const rows: { pines: { c: HTMLCanvasElement; floor: string }; top: number; height: number; scroll: number }[] = [];
+  // Back to front. The nearer rows past the front one (zoomed out) fade in as the ground under the row behind them
+  // comes into view, and out again as it leaves (the owner: no snapping in and out).
+  let prev: { top: number; height: number } | null = null;
   for (let i = 0; i < PINE_ALL; i++) {
     const r = pineRow(i);
+    const top = pineRowTop(cam, anchor, ch, r), height = r.h * cam.scale * r.p;
+    let alpha = 1;
+    if (i >= PINE_ROWS.length && prev) alpha = Math.max(0, Math.min(1, (ch - (prev.top + prev.height * 0.75)) / (ch * 0.12)));
+    if (alpha <= 0) break;
+    prev = { top, height };
+    if (top >= ch) continue;
     // every other row mirrored, so neighbouring rows never line up (the front row is the art as painted)
-    const row = { pines: hazePines(img, 0, (PINE_ROWS.length - 1 - i) % 2 === 0), top: pineRowTop(cam, anchor, ch, r), height: r.h * cam.scale * r.p, scroll: scrolls[i] };
-    rows.push(row);
-    // the nearer rows only while the screen still shows ground below the last one
-    if (i >= PINE_ROWS.length - 1 && row.top + row.height * 0.75 >= ch) break;
+    const pines = hazePines(img, 0, (PINE_ROWS.length - 1 - i) % 2 === 0);
+    const rw = aspect * height;
+    ctx.globalAlpha = alpha;
+    // under the row, a band in its own darkest colour to the screen's bottom (the rows in front cover the rest), so no
+    // land shows between the rows
+    ctx.fillStyle = i < PINE_ROWS.length - 1 ? pines.floor : '#080e0d';
+    ctx.fillRect(0, top + height * 0.8, cw, Math.max(0, ch - (top + height * 0.8)));
+    for (let rx = -(((scrolls[i] % rw) + rw) % rw); rx < cw; rx += rw) drawImg(ctx, pines.c, rx, top, rw + 1, height);
   }
-  rows.forEach((row, i) => {
-    if (row.top >= ch) return;
-    const rw = aspect * row.height;
-    // under each row, a band in its own darkest colour down to the row in front (the front row: to the screen's
-    // bottom), so no land shows between the rows
-    const below = i + 1 < rows.length ? rows[i + 1].top + rows[i + 1].height * 0.5 : ch;
-    ctx.fillStyle = i + 1 < rows.length ? row.pines.floor : '#080e0d';
-    ctx.fillRect(0, row.top + row.height * 0.8, cw, Math.max(0, below - (row.top + row.height * 0.8)));
-    for (let rx = -(((row.scroll % rw) + rw) % rw); rx < cw; rx += rw) drawImg(ctx, row.pines.c, rx, row.top, rw + 1, row.height);
-  });
+  ctx.globalAlpha = 1;
 }
 
 function drawBall(ctx: CanvasRenderingContext2D, game: Game, m: Marble, t: number) {
