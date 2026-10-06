@@ -4,7 +4,8 @@
 // plain floor pieces from build.ts). Returns false until the art has loaded, and the caller draws a fallback.
 import type { CoursePlan, Floor, Lane } from './course';
 import { drawImg } from '../mip';
-import { SPRING_W } from './course';
+import { SPRING_W, floorAt } from './course';
+import type { Kicker } from './course';
 import type Matter from 'matter-js';
 import { LEDGE_H } from './build';
 import { drawRoutes } from './routes';
@@ -18,15 +19,21 @@ import tower1Url from '../../assets/game/tower-1.webp';
 import tower2Url from '../../assets/game/tower-2.webp';
 import tower3Url from '../../assets/game/tower-3.webp';
 import torchUrl from '../../assets/game/torch.webp';
-import stripWoodUrl from '../../assets/game/strip-wood.webp';
 import treesGroup1Url from '../../assets/game/trees-group-1.webp';
 import treesGroup2Url from '../../assets/game/trees-group-2.webp';
 import treesGroup3Url from '../../assets/game/trees-group-3.webp';
 import crowd1Url from '../../assets/game/crowd-1.webp';
 import crowd2Url from '../../assets/game/crowd-2.webp';
 import { drawCloudLedge, drawKicker } from './sky-art';
+import { LANE_BACK } from '../lanes';
 
-const load = (src: string) => (typeof Image !== 'undefined' ? Object.assign(new Image(), { src }) : null);
+// decoded up front (off the main thread), so a big sprite seen for the first time mid-race never stalls a frame
+const load = (src: string) => {
+  if (typeof Image === 'undefined') return null;
+  const img = Object.assign(new Image(), { src });
+  img.decode?.().catch(() => {});
+  return img;
+};
 const ART = {
   wood: load(railWoodUrl), rock: load(rockFillUrl), moss: load(mossUrl), sheep: load(sheepUrl),
   crate: load(crateUrl), ball: load(wreckingBallUrl), towers: [load(tower1Url), load(tower2Url), load(tower3Url)], torch: load(torchUrl),
@@ -171,14 +178,13 @@ const byName = (prefix: string) => Object.entries(supportUrls)
   .map(([, url]) => load(url));
 const BENTS = byName('bent');
 const POSTS = byName('post');
-const plank = load(stripWoodUrl);
 
 /** Supports every SUPPORT_EVERY px along the track, alternating a braced bent and a single post. */
 const SUPPORT_EVERY = 230;
 
 /**
  * The supports between the track and the cliff: the owner's sprites, scaled to the gap (each picked by hash, so
- * every machine draws the same one), tied to the next support by a horizontal plank strut.
+ * every machine draws the same one). No strut between them (the owner: one wood line, the beam, only).
  */
 function trestle(ctx: CanvasRenderingContext2D, run: Pt[], x0: number, x1: number, ground: (x: number) => number) {
   const supports: { x: number; top: number; foot: number; img: HTMLImageElement }[] = [];
@@ -189,14 +195,6 @@ function trestle(ctx: CanvasRenderingContext2D, run: Pt[], x0: number, x1: numbe
     const img = set[Math.floor(hash(k, 17) * set.length)];
     if (!ready(img)) continue;
     supports.push({ x, top: yOn(run, x) + TRACK_T - RAIL_UP - 8, foot: ground(x) + 14, img });
-  }
-  // plank struts first, so the supports stand in front of them
-  if (ready(plank)) {
-    for (let i = 0; i < supports.length - 1; i++) {
-      const a = supports[i], b = supports[i + 1];
-      const ya = a.top + (a.foot - a.top) * 0.45, yb = b.top + (b.foot - b.top) * 0.45;
-      stripAlong(ctx, plank, [{ x: a.x, y: ya }, { x: b.x, y: yb }], 5, 9);
-    }
   }
   for (const sp of supports) stackSupport(ctx, sp.img, sp.x, sp.top, sp.foot, SUPPORT_MODULE, 105);
 }
@@ -236,6 +234,8 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
     const pts = clip(run, left, right);
     const u0 = arcOf(run)[clipStart(run, left)];
     if (!statics) { torches(ctx, run, pts, lane, time); continue; }
+    // the goblin stands first: behind this lane's cliff and beam (and every nearer lane)
+    const stands = crowds(ctx, run, pts, lane);
     const cliff = pts.map((p) => ({ x: p.x, y: p.y + clearance(p.x) }));
     // the cliff under this stretch of track: rock, darker lower down, moss on top
     ctx.beginPath();
@@ -266,9 +266,9 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
       const foot = yOn(run, x) + clearance(x) + 16;
       drawImg(ctx, img, x - w / 2, foot - h, w, h);
     }
-    crowds(ctx, run, pts, lane);
     trestle(ctx, run, pts[0].x - SUPPORT_EVERY, pts[pts.length - 1].x + SUPPORT_EVERY, (x) => yOn(run, x) + clearance(x));
     treeGroups(ctx, run, pts, lane);
+    crowdGapTrees(ctx, run, stands, lane);
     // the track: a plain wooden beam (no chevron rail, per the owner)
     stripAlong(ctx, middle(ART.wood!), pts, RAIL_UP, TRACK_T, u0);
     if (dynamics) torches(ctx, run, pts, lane, time);
@@ -291,10 +291,14 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
 /** One stretch of the course per crowd: a km (the HUD's 10,000 px). */
 const CROWD_EVERY = 10_000;
 /**
- * The goblin crowd stands (the owner's art): behind the track once a km, standing on the cliff. Sometimes one stand,
+ * The goblin crowd stands (the owner's art): once a km, on the back lane only, standing at the height of the track
+ * with their base just under the beam. Drawn before that lane's cliff and beam, so every track and cliff is in front of
+ * them; where a sloping track leaves a gap under a stand, trees (crowdGapTrees) hide it. Sometimes one stand,
  * sometimes two or three side by side. Static, so they are cached with the rest of the lane.
  */
-function crowds(ctx: CanvasRenderingContext2D, run: Pt[], pts: Pt[], lane: Lane) {
+function crowds(ctx: CanvasRenderingContext2D, run: Pt[], pts: Pt[], lane: Lane): { x: number; w: number; base: number }[] {
+  const placed: { x: number; w: number; base: number }[] = [];
+  if (lane !== LANE_BACK) return placed;
   const a = pts[0].x, b = pts[pts.length - 1].x;
   for (let k = Math.floor((a - 3 * 1100) / CROWD_EVERY); k * CROWD_EVERY < b + 1100; k++) {
     if (k < 1) continue;
@@ -307,8 +311,26 @@ function crowds(ctx: CanvasRenderingContext2D, run: Pt[], pts: Pt[], lane: Lane)
       const w = (img.naturalWidth / img.naturalHeight) * h;
       const x = k * CROWD_EVERY + i * (w - 8);
       if (x + w < a || x > b || x < run[0].x + 60 || x + w > run[run.length - 1].x - 60) continue;
-      const foot = Math.max(yOn(run, x) + clearance(x), yOn(run, x + w) + clearance(x + w)) + 24;
-      drawImg(ctx, img, x, foot - h, w, h);
+      // the base under the lower end of the beam over it, so the stand never floats above the track
+      const base = Math.max(yOn(run, x), yOn(run, x + w)) + TRACK_T - RAIL_UP;
+      drawImg(ctx, img, x, base - h, w, h);
+      placed.push({ x, w, base });
+    }
+  }
+  return placed;
+}
+
+/** Trees along the cliff top under a stand that stops short of the cliff, tall enough to cover the gap. */
+function crowdGapTrees(ctx: CanvasRenderingContext2D, run: Pt[], stands: { x: number; w: number; base: number }[], lane: Lane) {
+  for (const st of stands) {
+    for (let x = st.x + 20, n = 0; x < st.x + st.w; x += 70, n++) {
+      const img = ART.treeGroups[Math.floor(hash(n + Math.round(st.x), lane + 47) * 3)];
+      if (!ready(img)) continue;
+      const foot = yOn(run, x) + clearance(x) + 22;
+      if (foot - st.base < 30) continue; // the stand reaches the cliff here
+      const h = Math.min(clearance(x) * 0.95, foot - st.base + 40 + hash(n, lane + 48) * 30);
+      const w = (img.naturalWidth / img.naturalHeight) * h;
+      drawImg(ctx, img, x - w / 2, foot - h, w, h);
     }
   }
 }
@@ -336,6 +358,31 @@ function treeGroups(ctx: CanvasRenderingContext2D, run: Pt[], pts: Pt[], lane: L
   }
 }
 
+/**
+ * A kicker in the track's own art (the owner: not a vector wedge): a stack of the track's crates under the slope,
+ * cut to the wedge, and the wooden beam of the track as its deck. The vector one (sky-art.ts) until the art loads.
+ */
+function kickerArt(ctx: CanvasRenderingContext2D, plan: CoursePlan, k: Kicker) {
+  if (!ready(ART.crate) || !ready(ART.wood)) { drawKicker(ctx, plan, k); return; }
+  const y0 = floorAt(plan, k.lane, k.x) ?? 0, y1 = floorAt(plan, k.lane, k.x + k.w) ?? y0;
+  const top = y1 - k.h;
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(k.x, y0 + 2);
+  ctx.lineTo(k.x + k.w, top);
+  ctx.lineTo(k.x + k.w, y1 + 4);
+  ctx.closePath();
+  ctx.clip();
+  // crates in rows from the track up, each row shifted half a crate like stacked boxes
+  const c = Math.max(26, Math.min(44, k.h / 2));
+  for (let row = 0, y = Math.max(y0, y1) + 4 - c; y + c > top; row++, y -= c) {
+    for (let x = k.x - (row % 2 ? c / 2 : 0); x < k.x + k.w; x += c) drawImg(ctx, ART.crate, x, y, c, c);
+  }
+  ctx.restore();
+  // the deck: the track's beam up the slope, ending flush with the lip
+  stripAlong(ctx, middle(ART.wood), [{ x: k.x, y: y0 }, { x: k.x + k.w, y: top }], RAIL_UP, TRACK_T * 0.7);
+}
+
 /** Torches on the beam now and then (they flicker, so they are never cached). */
 function torches(ctx: CanvasRenderingContext2D, run: Pt[], pts: Pt[], lane: Lane, time: number) {
   for (let x = Math.ceil(pts[0].x / 600) * 600; x < pts[pts.length - 1].x; x += 600) {
@@ -360,7 +407,7 @@ function staticProps(ctx: CanvasRenderingContext2D, plan: CoursePlan, runs: Pt[]
     }
   }
   // kickers: wooden ramps on the track
-  for (const k of plan.kickers ?? []) if (k.lane === lane && k.x + k.w > left && k.x < right) drawKicker(ctx, plan, k);
+  for (const k of plan.kickers ?? []) if (k.lane === lane && k.x + k.w > left && k.x < right) kickerArt(ctx, plan, k);
   // ledges: spur tracks on posts (a cloud platform is a cloud instead)
   for (const l of plan.ledges ?? []) {
     if (l.lane !== lane || l.x + l.w < left || l.x > right) continue;

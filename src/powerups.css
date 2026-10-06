@@ -63,7 +63,7 @@
 
 /* The entire purchased and collected inventory stays in dedicated bottom-screen space. */
 .race-shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: 70px minmax(0, 1fr) auto; }
-.race-dashboard.race-cockpit { display: flex; flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 0; padding: 10px 23px 13px; }
+.race-dashboard.race-cockpit { position: relative; display: flex; flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 0; padding: 10px 23px 13px; }
 .race-telemetry { display: flex; align-items: center; gap: 24px; min-height: 49px; margin-bottom: 10px; }
 .race-telemetry .position-readout { min-width: 70px; }
 .race-telemetry .position-readout strong { font-size: 34px; }
@@ -409,3 +409,13 @@
 .loadout-prerace { flex-wrap: wrap; align-items: center; }
 .loadout-ask { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #8ea2b5; margin-left: auto; cursor: pointer; }
 .loadout-ask input { width: 16px; height: 16px; }
+
+/* The skill bar (owner): about a third of its old size, hovering over the race in the middle, just above the footer. */
+.race-dashboard.race-cockpit > .inventory-toolbar { position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); width: clamp(264px, 30%, 600px); max-width: calc(100vw - 32px); z-index: 5; margin: 0; padding: 5px 6px; border: 0; border-radius: 10px; background: #06101ab3; box-shadow: 0 4px 14px #0008; pointer-events: auto; order: initial; flex: none; min-width: 0; }
+.race-dashboard.race-cockpit > .inventory-toolbar .inventory-toolbar-heading { display: none; }
+.race-dashboard.race-cockpit > .inventory-toolbar .inventory-slots { grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 4px; }
+.race-dashboard.race-cockpit > .inventory-toolbar .inventory-slot.kit-slot { min-height: 0; padding: 0; background: none; }
+.race-dashboard.race-cockpit > .inventory-toolbar .kit-slot-state { display: none; }
+.race-dashboard.race-cockpit > .inventory-toolbar .inventory-slot > kbd { font-size: 7px; padding: 0 2px; }
+.race-dashboard.race-cockpit > .inventory-toolbar .kit-slot-count { font-size: 9px; padding: 0 3px 1px; border-width: 1px; }
+@media (max-width: 650px) { .race-dashboard.race-cockpit > .inventory-toolbar { left: auto; right: 12px; transform: none; } }
