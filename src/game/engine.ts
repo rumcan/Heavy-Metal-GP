@@ -18,6 +18,8 @@ import type { RaceCounter, StoryHooks } from './story/types';
 import type { ItemBoxState, MarbleState, RaceEvent } from '../net/protocol';
 
 export interface GameOptions {
+  /** Platformer races: balls take the course's gold rings (counted like orange pegs). Infinity keeps its own. Default on. */
+  collectRings?: boolean;
   profile?: TrackProfile;
   gridOrder?: number[]; // marble ids, P1 first
   track?: Track;
@@ -321,6 +323,8 @@ export class Game {
   recoveryEnabled: boolean;
   stragglerCut: { ms: number; humans: boolean } | null = null;
   aiDifficulty: import('./ai-personality').RaceDifficulty = 'normal';
+  /** Platformer races: balls take the course's gold rings (GameOptions.collectRings). */
+  collectRings = true;
   effectsEnabled: boolean;
   aiItemsEnabled: boolean;
   onRecover?: (marbleId: number, pos: { x: number; y: number }) => void;
@@ -413,6 +417,7 @@ export class Game {
     this.recoveryEnabled = opts.recovery !== false;
     this.stragglerCut = opts.stragglerCut ?? null;
     this.aiDifficulty = opts.aiDifficulty ?? 'normal';
+    this.collectRings = opts.collectRings ?? true;
     this.effectsEnabled = opts.effects !== false;
     this.aiItemsEnabled = opts.aiItems !== false;
     this.onRecover = opts.onRecover;
@@ -1148,6 +1153,7 @@ export class Game {
       // lane-change hop is not overwritten by it.
       if (this.track.platformer) {
         platformer.laneGates(this, m);
+        platformer.collectRings(this, m);
         platformer.laneStep(this, m);
       }
 
