@@ -813,7 +813,7 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
  * than the track (they are nearer than it). Kept low: their tops stop well below the middle, where your ball is.
  */
 /** Per camera: how far each row of pines has scrolled (screen px) and where they sit vertically. */
-const FG = new WeakMap<PlatformCamera, { camX: number; camY: number; scrolls: number[]; lagY: number; laneOff?: number }>();
+const FG = new WeakMap<PlatformCamera, { camX: number; camY: number; scrolls: number[]; lagY: number; tilt?: number }>();
 
 /**
  * The foreground forest (the owner: many rows, bigger and lower as you zoom in): rows of the owner's pines, back to
@@ -939,31 +939,27 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
   if (!ready(img)) return;
   const { rows: scrolls } = foregroundScroll(cam);
   const aspect = img.naturalWidth / img.naturalHeight;
-  // The rows stand on the land (the owner: not tied to the ball or the camera): each row is drawn in thin upright
-  // slices, each standing on the hill (the middle lane's track, smoothed over a few hundred px: the hill, not every
-  // bump; the middle lane always, so a lane change cannot move them) at its own point in the world, seen at the row's
-  // parallax depth p. The trees stay upright; the row's foot follows the hill; they move exactly as the land does.
-  const memo = new Map<number, number | null>();
-  const hill = (xw: number): number | null => {
-    const key = Math.round(xw / 40);
-    if (!memo.has(key)) memo.set(key, plan ? groundUnder(plan, LANE_MIDDLE as Lane, key * 40) : null);
-    return memo.get(key)!;
-  };
+  // The pines are near the lens (the owner): they slide sideways faster than the track, each row at its own parallax
+  // speed (foregroundScroll), which is the depth; they do NOT move up and down with the ball, the camera or a lane
+  // change (a fixed height on screen), and only your own zoom resizes them (fgScale). To lie along the hill, the rows
+  // are slanted as one straight line at the slope of the track under the camera, smoothed over 800 px and eased, so
+  // they tilt with the hill and never jump with a bump.
   const fs = cam.fgScale ?? cam.scale;
-  // On another lane, the rows stand under that lane's track instead: the difference between its hill and the middle's
-  // under the camera, eased (a lane change slides them across smoothly, never a jump).
   const st = FG.get(cam)!;
-  const focusLane = Math.max(0, Math.min(2, Math.round(cam.focus ?? LANE_MIDDLE))) as Lane;
-  const mid = hill(cam.x), own = plan ? groundUnder(plan, focusLane, cam.x) : null;
-  if (mid !== null && own !== null) st.laneOff = st.laneOff === undefined ? own - mid : st.laneOff + (own - mid - st.laneOff) * 0.05;
-  const laneOff = st.laneOff ?? 0;
-  let lastHill = mid ?? cam.y + FG_TRACK_BELOW;
+  const lane = Math.max(0, Math.min(2, Math.round(cam.focus ?? LANE_MIDDLE))) as Lane;
+  let want = st.tilt ?? 0;
+  if (plan) {
+    const ga = groundUnder(plan, lane, cam.x - 400), gb = groundUnder(plan, lane, cam.x + 400);
+    if (ga !== null && gb !== null) want = Math.max(-0.5, Math.min(0.5, (gb - ga) / 800));
+  }
+  st.tilt = st.tilt === undefined ? want : st.tilt + (want - st.tilt) * 0.04;
+  const tilt = st.tilt;
   // Back to front. The nearer rows past the front one (zoomed out) fade in as the ground under the row behind them
   // comes into view, and out again as it leaves (the owner: no snapping in and out).
   let prev: { top: number; height: number } | null = null;
   for (let i = 0; i < PINE_ALL; i++) {
     const r = pineRow(i);
-    const top = pineRowTop(cam, ch, r), height = r.h * (cam.fgScale ?? cam.scale) * r.p;
+    const top = pineRowTop(cam, ch, r), height = r.h * fs * r.p;
     let alpha = 1;
     if (i >= PINE_ROWS.length && prev) alpha = Math.max(0, Math.min(1, (ch - (prev.top + prev.height * 0.75)) / (ch * 0.12)));
     if (alpha <= 0) break;
@@ -981,10 +977,7 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
       for (let k = 0; k < n; k++) {
         const sx = rx + k * sw;
         if (sx > cw || sx + sw < 0) continue;
-        const xw = cam.x + (sx + sw / 2 - cw / 2) / (cam.scale * r.p);
-        const hy = hill(xw) ?? lastHill;
-        lastHill = hy;
-        const y = ch / 2 + (hy + laneOff - cam.y) * cam.scale * r.p + r.drop * fs * r.p;
+        const y = top + (sx + sw / 2 - cw / 2) * tilt;
         if (y >= ch) continue;
         ctx.fillRect(sx, y + height * 0.8, sw + 0.6, Math.max(0, ch - (y + height * 0.8)));
         drawImg(ctx, pines.c, k * srcW, 0, srcW, pines.c.height, sx, y, sw + 0.6, height);
