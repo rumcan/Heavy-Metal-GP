@@ -26,6 +26,8 @@ import treesGroup2Url from '../../assets/game/trees-group-2.webp';
 import treesGroup3Url from '../../assets/game/trees-group-3.webp';
 import crowd1Url from '../../assets/game/crowd-1.webp';
 import crowd2Url from '../../assets/game/crowd-2.webp';
+import flagRaceUrl from '../../assets/game/flag-race.webp';
+
 import { drawCloudLedge, drawKicker } from './sky-art';
 import { LANE_BACK } from '../lanes';
 
@@ -39,7 +41,7 @@ const load = (src: string) => {
 const ART = {
   wood: load(railWoodUrl), rock: load(rockFillUrl), moss: load(mossUrl), sheep: load(sheepUrl),
   crate: load(crateUrl), ball: load(wreckingBallUrl), towers: [load(tower1Url), load(tower2Url), load(tower3Url)], torch: load(torchUrl),
-  treeGroups: [load(treesGroup1Url), load(treesGroup2Url), load(treesGroup3Url)], crowds: [load(crowd1Url), load(crowd2Url)],
+  treeGroups: [load(treesGroup1Url), load(treesGroup2Url), load(treesGroup3Url)], crowds: [load(crowd1Url), load(crowd2Url)], flag: load(flagRaceUrl),
 };
 // loops are drawn in the pinball tracks' loop-ring art (routes.ts)
 setLoopRingSource(() => sprite('loop-ring'));
@@ -73,9 +75,16 @@ function rockPattern(ctx: CanvasRenderingContext2D): CanvasPattern | null {
 const TRACK_T = 30;
 const RAIL_UP = 5;
 
+/**
+ * The plan being drawn's origin in absolute coordinates (Infinity shifts its world back every 40 km): the scenery
+ * below hashes and textures absolute positions, so a shift (or a chunk dropped behind you) changes nothing on screen.
+ */
+let OX = 0, OY = 0;
+
 /** How far the cliffs sit below the track: a slow swell, 150..280 px, the same on every machine. */
 function clearance(x: number): number {
-  return 150 + 130 * (0.5 + 0.5 * Math.sin(x / 700 + 1.3) * Math.cos(x / 1900));
+  const ax = x + OX;
+  return 150 + 130 * (0.5 + 0.5 * Math.sin(ax / 700 + 1.3) * Math.cos(ax / 1900));
 }
 
 function hash(a: number, b: number): number {
@@ -125,6 +134,33 @@ function yOn(run: Pt[], x: number): number {
  * `u0`: where the texture starts, as a distance along the track. Taken from the run (not from wherever this drawing
  * happens to begin), so two drawings of neighbouring stretches meet without a seam (the scenery cache draws strips).
  */
+/**
+ * Like stripAlong, but the texture runs with absolute x (each segment shows the stretch of texture for its x span):
+ * stretches drawn separately, or after the world shifted, meet without a jump in the texture.
+ */
+function stripAlongX(ctx: CanvasRenderingContext2D, img: CanvasImageSource & { width: number; height: number }, pts: Pt[], up: number, thick: number) {
+  const tw = (img.width / img.height) * thick;
+  const srcPerPx = img.width / tw;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    const span = b.x - a.x;
+    if (span <= 0.01) continue;
+    const len = Math.hypot(span, b.y - a.y), f = len / span;
+    ctx.save();
+    ctx.translate(a.x, a.y);
+    ctx.rotate(Math.atan2(b.y - a.y, span));
+    let done = 0;
+    while (done < span - 0.01) {
+      let at = (((a.x + OX + done) % tw) + tw) % tw;
+      if (tw - at < 0.5) at = 0;
+      const piece = Math.max(0.5, Math.min(span - done, tw - at));
+      drawImg(ctx, img, at * srcPerPx, 0, Math.max(1, piece * srcPerPx), img.height, done * f - 0.6, -up, piece * f + 1.2, thick);
+      done += piece;
+    }
+    ctx.restore();
+  }
+}
+
 function stripAlong(ctx: CanvasRenderingContext2D, img: CanvasImageSource & { width: number; height: number }, pts: Pt[], up: number, thick: number, u0?: number) {
   const tw = (img.width / img.height) * thick;
   const srcPerPx = img.width / tw;
@@ -146,24 +182,6 @@ function stripAlong(ctx: CanvasRenderingContext2D, img: CanvasImageSource & { wi
     ctx.restore();
     u = (u + len) % tw;
   }
-}
-
-/** Distance along a run to each of its points (cached per run). */
-const arcCache = new WeakMap<Pt[], number[]>();
-function arcOf(run: Pt[]): number[] {
-  let arc = arcCache.get(run);
-  if (!arc) {
-    arc = [0];
-    for (let i = 1; i < run.length; i++) arc.push(arc[i - 1] + Math.hypot(run[i].x - run[i - 1].x, run[i].y - run[i - 1].y));
-    arcCache.set(run, arc);
-  }
-  return arc;
-}
-/** Index in its run of the first point `clip` keeps. */
-function clipStart(run: Pt[], left: number): number {
-  let i0 = 0;
-  while (i0 < run.length - 1 && run[i0 + 1].x < left) i0++;
-  return i0;
 }
 
 function clip(run: Pt[], left: number, right: number): Pt[] {
@@ -192,9 +210,10 @@ const SUPPORT_EVERY = 230;
  */
 function trestle(ctx: CanvasRenderingContext2D, run: Pt[], x0: number, x1: number, ground: (x: number) => number) {
   const supports: { x: number; top: number; foot: number; img: HTMLImageElement }[] = [];
-  for (let x = Math.ceil(x0 / SUPPORT_EVERY) * SUPPORT_EVERY; x <= x1; x += SUPPORT_EVERY) {
+  for (let ax = Math.ceil((x0 + OX) / SUPPORT_EVERY) * SUPPORT_EVERY; ax <= x1 + OX; ax += SUPPORT_EVERY) {
+    const x = ax - OX;
     if (x < run[0].x + 30 || x > run[run.length - 1].x - 30) continue;
-    const k = Math.round(x / SUPPORT_EVERY);
+    const k = Math.round(ax / SUPPORT_EVERY);
     const set = k % 2 === 0 ? BENTS : POSTS;
     const img = set[Math.floor(hash(k, 17) * set.length)];
     if (!ready(img)) continue;
@@ -230,14 +249,15 @@ export const coasterReady = (): boolean => allReady();
  */
 export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan, lane: Lane, left: number, right: number, bottom: number, time: number, springFired: (x: number) => boolean, pieces: Matter.Body[] = [], part: 'all' | 'static' | 'dynamic' = 'all'): boolean {
   if (!allReady()) return false;
+  OX = plan.originX ?? 0; OY = plan.originY ?? 0;
   const runs = runsOf(plan)[lane];
   const statics = part !== 'dynamic', dynamics = part !== 'static';
   const rock = statics ? rockPattern(ctx) : null;
+  if (rock && ART.rock && typeof DOMMatrix !== 'undefined') rock.setTransform(new DOMMatrix().translate(-(OX % ART.rock.naturalWidth), -(OY % ART.rock.naturalHeight)));
   const drawnStands = new Set<number>(); // a stand spanning two runs is drawn once
   for (const run of runs) {
     if (run[run.length - 1].x < left || run[0].x > right) continue;
     const pts = clip(run, left, right);
-    const u0 = arcOf(run)[clipStart(run, left)];
     if (!statics) { torches(ctx, run, pts, lane, time); continue; }
     // the goblin stands first: behind this lane's cliff and beam (and every nearer lane)
     const stands = plan.stands ? standsAt(ctx, plan.stands, run, pts, lane, drawnStands) : crowds(ctx, run, pts, lane);
@@ -251,22 +271,27 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
     ctx.closePath();
     ctx.fillStyle = rock ?? '#6b6258';
     ctx.fill();
-    // from the whole run (not this stretch), so strips drawn separately shade the same
-    const top = runTop(run);
-    const g = ctx.createLinearGradient(0, top, 0, top + 500);
-    g.addColorStop(0, 'rgba(30,24,20,0)');
-    g.addColorStop(1, 'rgba(18,14,12,0.6)');
-    ctx.fillStyle = g;
-    ctx.fill();
+    // darker lower down: bands following the cliff edge (the same at every x, however the stretch is cut)
+    for (let d = 90; d <= 540; d += 90) {
+      ctx.beginPath();
+      ctx.moveTo(cliff[0].x, cliff[0].y + d);
+      for (const p of cliff) ctx.lineTo(p.x, p.y + d);
+      ctx.lineTo(cliff[cliff.length - 1].x, bottom);
+      ctx.lineTo(cliff[0].x, bottom);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(18,14,12,0.1)';
+      ctx.fill();
+    }
     if (pts[0] === run[0]) { ctx.fillStyle = 'rgba(20,14,10,0.55)'; ctx.fillRect(cliff[0].x, cliff[0].y, 10, bottom - cliff[0].y); }
     if (pts[pts.length - 1] === run[run.length - 1]) { const e = cliff[cliff.length - 1]; ctx.fillStyle = 'rgba(20,14,10,0.55)'; ctx.fillRect(e.x - 10, e.y, 10, bottom - e.y); }
-    stripAlong(ctx, ART.moss!, cliff, 14, 30, u0);
+    stripAlongX(ctx, ART.moss!, cliff, 14, 30);
     // (no single goblin watchtowers: the owner)
     trestle(ctx, run, pts[0].x - SUPPORT_EVERY, pts[pts.length - 1].x + SUPPORT_EVERY, (x) => yOn(run, x) + clearance(x));
     treeGroups(ctx, run, pts, lane);
     crowdGapTrees(ctx, run, stands, lane);
+    kmFlags(ctx, run, pts);
     // the track: a plain wooden beam (no chevron rail, per the owner)
-    stripAlong(ctx, middle(ART.wood!), pts, RAIL_UP, TRACK_T, u0);
+    stripAlongX(ctx, middle(ART.wood!), pts, RAIL_UP, TRACK_T);
     if (dynamics) torches(ctx, run, pts, lane, time);
   }
   if (statics) staticProps(ctx, plan, runs, lane, left, right);
@@ -314,6 +339,29 @@ function standsAt(ctx: CanvasRenderingContext2D, spots: StandSpot[], run: Pt[], 
   }
   void run;
   return placed;
+}
+
+/**
+ * The red and white checkered flag at every km (the owner), in every lane: on a tall post planted just behind the beam
+ * (the beam hides its foot), so it reads as a marker beside the track. Absolute km, so it never moves.
+ */
+function kmFlags(ctx: CanvasRenderingContext2D, run: Pt[], pts: Pt[]) {
+  const img = ART.flag;
+  if (!ready(img)) return;
+  const a = pts[0].x, b = pts[pts.length - 1].x;
+  for (let k = Math.max(1, Math.ceil((a + OX) / CROWD_EVERY)); k * CROWD_EVERY - OX <= b; k++) {
+    const x = k * CROWD_EVERY - OX;
+    if (x < run[0].x + 20 || x > run[run.length - 1].x - 20) continue;
+    const foot = yOn(run, x) + TRACK_T - RAIL_UP;
+    const h = 96, w = (img.naturalWidth / img.naturalHeight) * h;
+    const postTop = foot - 150;
+    ctx.fillStyle = '#4a2e18';
+    ctx.fillRect(x - 3, postTop, 6, foot - postTop);
+    ctx.fillStyle = '#7a4d2a';
+    ctx.fillRect(x - 3, postTop, 2, foot - postTop);
+    // the art's own pole sits at its left: line it up with the post
+    drawImg(ctx, img, x - w * 0.12, postTop - h + 14, w, h);
+  }
 }
 
 /** One stretch of the course per crowd: a km (the HUD's 10,000 px). */
@@ -381,7 +429,7 @@ function crowdGapTrees(ctx: CanvasRenderingContext2D, run: Pt[], stands: { x: nu
   for (const st of stands) {
     for (const layer of [0, 1]) {
       for (let x = st.x - 40 + layer * 45, n = 0; x < st.x + st.w + 40; x += 90, n++) {
-        const img = ART.treeGroups[Math.floor(hash(n + Math.round(st.x) + layer * 7, lane + 47) * 3)];
+        const img = ART.treeGroups[Math.floor(hash(n + Math.round(st.x + OX) + layer * 7, lane + 47) * 3)];
         if (!ready(img)) continue;
         const foot = yOn(run, x) + clearance(x) + 22;
         // up to the stand's base (behind the beam); the back layer (drawn first) a little shorter
@@ -401,12 +449,12 @@ const TREE_STEP = 230;
  */
 function treeGroups(ctx: CanvasRenderingContext2D, run: Pt[], pts: Pt[], lane: Lane) {
   const a = pts[0].x, b = pts[pts.length - 1].x;
-  for (let k = Math.floor((a - 400) / TREE_STEP); k * TREE_STEP < b + 400; k++) {
+  for (let k = Math.floor((a + OX - 400) / TREE_STEP); k * TREE_STEP < b + OX + 400; k++) {
     const r = hash(k, lane + 41);
     if (r > 0.72) continue;
     const img = ART.treeGroups[Math.floor(hash(k, lane + 42) * 3)];
     if (!ready(img)) continue;
-    const x = k * TREE_STEP + (hash(k, lane + 43) - 0.5) * 80;
+    const x = k * TREE_STEP + (hash(k, lane + 43) - 0.5) * 80 - OX;
     if (x < run[0].x + 40 || x > run[run.length - 1].x - 40) continue;
     const clear = clearance(x);
     const h = Math.min(clear * 0.85, 150 + hash(k, lane + 44) * 90);
@@ -451,13 +499,14 @@ function torches(ctx: CanvasRenderingContext2D, run: Pt[], pts: Pt[], lane: Lane
   // On the supports (the owner: a torch floating over the beam made no sense): now and then a support carries a wall
   // torch on its post, just under the beam. The same support spacing and run-end rule as trestle().
   if (!ready(ART.torch)) return;
-  for (let x = Math.ceil(pts[0].x / SUPPORT_EVERY) * SUPPORT_EVERY; x <= pts[pts.length - 1].x; x += SUPPORT_EVERY) {
+  for (let ax = Math.ceil((pts[0].x + OX) / SUPPORT_EVERY) * SUPPORT_EVERY; ax <= pts[pts.length - 1].x + OX; ax += SUPPORT_EVERY) {
+    const x = ax - OX;
     if (x < run[0].x + 30 || x > run[run.length - 1].x - 30) continue;
-    const k = Math.round(x / SUPPORT_EVERY);
+    const k = Math.round(ax / SUPPORT_EVERY);
     if (hash(k, lane + 3) > 0.25) continue;
     const y = yOn(run, x) + TRACK_T - RAIL_UP + 6;
     if (clearance(x) < 90) continue; // too little post under the beam to hang it on
-    const flicker = 1 + Math.sin(time / 90 + x) * 0.03;
+    const flicker = 1 + Math.sin(time / 90 + ax) * 0.03;
     drawImg(ctx, ART.torch, x + 6, y + 52 * (1 - flicker), 28, 52 * flicker);
   }
 }
@@ -584,12 +633,4 @@ function drawMapPieces(ctx: CanvasRenderingContext2D, pieces: Matter.Body[], lan
       ctx.restore();
     }
   }
-}
-
-/** The highest cliff edge along a whole run (cached): where its darkening gradient starts. */
-const topCache = new WeakMap<Pt[], number>();
-function runTop(run: Pt[]): number {
-  let top = topCache.get(run);
-  if (top === undefined) { top = Math.min(...run.map((p) => p.y + clearance(p.x))); topCache.set(run, top); }
-  return top;
 }
