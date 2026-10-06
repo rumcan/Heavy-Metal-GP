@@ -6,6 +6,7 @@ import { ArrowLeft, ArrowRight, Camera, RotateCcw, EyeOff, Pause, Play, Volume2,
 import { InfinityRun } from '../../game/platformer/infinity-world';
 import { marbleDepth, renderPlatformer, shiftForeground } from '../../game/platformer/render';
 import type { PlatformCamera } from '../../game/platformer/render';
+import { laneView } from '../../game/lanes';
 import { PHYSICS_STEP } from '../../game/physics';
 import { blendPoses, rememberPoses } from '../../game/interpolate';
 import { PerfMeter } from '../../game/perf-meter';
@@ -35,13 +36,22 @@ interface Props {
 /** How often the distance is banked into the records while rolling (ms): a closed tab keeps the best. */
 const BANK_EVERY_MS = 4000;
 
-/** The player's own zoom on top of the automatic framing (wheel, pinch, + / - / 0, or the buttons), kept on this device. */
+/**
+ * Zoom (the owner): automatic by default, in close when slow and out wide when fast (autoZoom). Zooming yourself (the
+ * wheel, a pinch, + / - or the buttons) takes over and is kept on this device; 0 (or the Auto button) hands it back.
+ * null = automatic.
+ */
 const ZOOM_KEY = 'heavy-metal-gp:infinity-zoom';
 export const INFINITY_ZOOM_MIN = 0.4;
 export const INFINITY_ZOOM_MAX = 2;
 const clampZoom = (z: number) => Math.max(INFINITY_ZOOM_MIN, Math.min(INFINITY_ZOOM_MAX, z));
-function loadZoom(): number {
-  try { const n = Number(storage.getItem(ZOOM_KEY)); return n > 0 ? clampZoom(n) : 1; } catch { return 1; }
+function loadZoom(): number | null {
+  try { const n = Number(storage.getItem(ZOOM_KEY)); return n > 0 ? clampZoom(n) : null; } catch { return null; }
+}
+/** The automatic zoom at a speed (px per step): 1.25 standing still, easing down to 0.55 at about 24 and up. */
+export function autoZoom(speed: number): number {
+  const t = Math.max(0, Math.min(1, speed / 24));
+  return 1.25 - 0.7 * t * t * (3 - 2 * t);
 }
 
 export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }: Props) {
@@ -62,13 +72,16 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
   reduceRef.current = reduceMotion;
   const audioRef = useRef<InfinityAudio | null>(null);
   const [savedNote, setSavedNote] = useState<string | null>(null);
-  const zoomRef = useRef(loadZoom());
-  const [zoom, setZoomState] = useState(zoomRef.current);
-  const setZoom = useCallback((value: number) => {
-    const next = clampZoom(value);
+  const zoomRef = useRef<number | null>(loadZoom());
+  /** The zoom on screen right now (automatic or yours): where your own zooming starts from. */
+  const shownZoomRef = useRef(zoomRef.current ?? 1);
+  const [zoom, setZoomState] = useState<number | null>(zoomRef.current);
+  /** Your own zoom (it takes over from the automatic one), or null: back to automatic. */
+  const setZoom = useCallback((value: number | null) => {
+    const next = value === null ? null : clampZoom(value);
     zoomRef.current = next;
     setZoomState(next);
-    try { storage.setItem(ZOOM_KEY, String(next)); } catch { /* storage unavailable */ }
+    try { storage.setItem(ZOOM_KEY, next === null ? 'auto' : String(next)); } catch { /* storage unavailable */ }
   }, []);
 
   const setPaused = useCallback((next: boolean) => {
@@ -115,6 +128,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
     if (import.meta.env.DEV) (window as unknown as { __infinity?: unknown }).__infinity = run;
     const game = run.game;
     const camera: PlatformCamera = { x: game.player.body.position.x + 200, y: game.player.body.position.y - 40, scale: 0.8, focus: 1 };
+    let smoothSpeed = 0, shownZoom = zoomRef.current ?? autoZoom(0);
     let width = 0, height = 0, raf = 0, last = performance.now(), accumulator = 0, hudTimer = 0, bankTimer = 0, banked = 0, lookAhead = 0;
 
     const meter = new PerfMeter();
@@ -137,9 +151,9 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
       if (down && !event.repeat && event.code === 'KeyM') { toggleMute(); return; }
       if (down && !event.repeat && (event.code === 'KeyP' || event.code === 'Escape')) { setPaused(!pausedRef.current); return; }
       if (down && !event.repeat && event.code === 'KeyH') { setUiHidden((v) => !v); return; }
-      if (down && (event.code === 'Equal' || event.code === 'NumpadAdd')) { setZoom(zoomRef.current * 1.2); return; }
-      if (down && (event.code === 'Minus' || event.code === 'NumpadSubtract')) { setZoom(zoomRef.current / 1.2); return; }
-      if (down && (event.code === 'Digit0' || event.code === 'Numpad0')) { setZoom(1); return; }
+      if (down && (event.code === 'Equal' || event.code === 'NumpadAdd')) { setZoom(shownZoomRef.current * 1.2); return; }
+      if (down && (event.code === 'Minus' || event.code === 'NumpadSubtract')) { setZoom(shownZoomRef.current / 1.2); return; }
+      if (down && (event.code === 'Digit0' || event.code === 'Numpad0')) { setZoom(null); return; }
       if (down && !event.repeat && event.code === 'F3') { event.preventDefault(); meter.toggle(); return; }
       if (pausedRef.current) return;
       let code = event.code;
@@ -161,11 +175,11 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
     document.addEventListener('visibilitychange', hidden);
     const unlock = () => { raceAudio.unlock(); audio.start(); };
     window.addEventListener('pointerdown', unlock);
-    const wheel = (event: WheelEvent) => { event.preventDefault(); setZoom(zoomRef.current * Math.exp(-event.deltaY * 0.0015)); };
+    const wheel = (event: WheelEvent) => { event.preventDefault(); setZoom(shownZoomRef.current * Math.exp(-event.deltaY * 0.0015)); };
     const pointers = new Map<number, { x: number; y: number }>();
     let pinchStart = 0, pinchZoom = 1;
     const spread = () => { const [a, b] = [...pointers.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
-    const pointerDown = (event: PointerEvent) => { pointers.set(event.pointerId, { x: event.clientX, y: event.clientY }); if (pointers.size === 2) { pinchStart = spread(); pinchZoom = zoomRef.current; } };
+    const pointerDown = (event: PointerEvent) => { pointers.set(event.pointerId, { x: event.clientX, y: event.clientY }); if (pointers.size === 2) { pinchStart = spread(); pinchZoom = shownZoomRef.current; } };
     const pointerMove = (event: PointerEvent) => {
       if (!pointers.has(event.pointerId)) return;
       pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -206,11 +220,17 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
       if (width > 0 && height > 0) {
         const p = game.player.body.position;
         // Side-scrolling camera, framed for landscape, easing toward a little way ahead of the ball.
-        // P2-25: a slow zoom out as the ball picks up speed (never sudden).
+        // The zoom: yours if you set one, else automatic from the speed (eased slowly: never sudden). The speed is
+        // smoothed first, so a bump or a landing does not pump the zoom.
         const v = game.player.body.velocity;
-        const speed = Math.hypot(v.x, v.y);
-        const target = Math.max(0.42, Math.min(1.25, Math.min(width / 1000, height / 520))) * (1 - Math.min(0.16, speed * 0.011)) * zoomRef.current;
+        smoothSpeed += (Math.hypot(v.x, v.y) - smoothSpeed) * (1 - Math.exp(-dt / 700));
+        const want = zoomRef.current ?? autoZoom(smoothSpeed);
+        shownZoom += (want - shownZoom) * (1 - Math.exp(-dt / (zoomRef.current === null ? 900 : 120)));
+        shownZoomRef.current = shownZoom;
+        const target = Math.max(0.42, Math.min(1.25, Math.min(width / 1000, height / 520))) * shownZoom;
         camera.scale += (target - camera.scale) * (1 - Math.exp(-dt / 180));
+        // the land the screen shows, out to the back lane (drawn smallest, so widest): the run keeps all of it built
+        run.viewHalfWidth = width / 2 / (camera.scale * laneView(0, camera.focus).scale);
         // a smoothed look-ahead (the raw speed jumps on every bump) and a calmer vertical follow
         lookAhead += (Math.max(-160, Math.min(260, game.player.body.velocity.x * 26)) - lookAhead) * (1 - Math.exp(-dt / 600));
         camera.x += (p.x + lookAhead - camera.x) * (1 - Math.exp(-dt / 220));
@@ -227,7 +247,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
         const biome = biomeAt(run.km, seed);
         const music = biome.t > 0.5 ? biome.to : biome.from;
         audio.setScale(music.scale, music.root);
-        audio.update(pausedRef.current ? 0 : speed, grounded && !pausedRef.current, dayAt(run.km, elapsed).dark);
+        audio.update(pausedRef.current ? 0 : Math.hypot(v.x, v.y), grounded && !pausedRef.current, dayAt(run.km, elapsed).dark);
         const cues = game.sounds.splice(0);
         if (cues.length && !pausedRef.current) {
           const listener = { x: camera.x, y: camera.y, halfHeight: height / 2 / camera.scale };
@@ -282,8 +302,9 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
       <div className="infinity-tools">
         <button className="infinity-icon" onClick={() => setPaused(true)} aria-label="Pause" title="Pause (P)"><Pause size={18} /></button>
         <button className="infinity-icon" onClick={toggleMute} aria-label={muted ? 'Unmute' : 'Mute'} aria-pressed={muted} title="Sound (M)">{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button>
-        <button className="infinity-icon" onClick={() => setZoom(zoom / 1.25)} disabled={zoom <= INFINITY_ZOOM_MIN} aria-label="Zoom out" title="Zoom out (-)"><ZoomOut size={18} /></button>
-        <button className="infinity-icon" onClick={() => setZoom(zoom * 1.25)} disabled={zoom >= INFINITY_ZOOM_MAX} aria-label="Zoom in" title="Zoom in (+)"><ZoomIn size={18} /></button>
+        <button className="infinity-icon" onClick={() => setZoom(shownZoomRef.current / 1.25)} disabled={zoom !== null && zoom <= INFINITY_ZOOM_MIN} aria-label="Zoom out" title="Zoom out (-)"><ZoomOut size={18} /></button>
+        <button className="infinity-icon" onClick={() => setZoom(shownZoomRef.current * 1.25)} disabled={zoom !== null && zoom >= INFINITY_ZOOM_MAX} aria-label="Zoom in" title="Zoom in (+)"><ZoomIn size={18} /></button>
+        {zoom !== null && <button className="infinity-icon infinity-auto-zoom" onClick={() => setZoom(null)} aria-label="Automatic zoom" title="Automatic zoom (0)">A</button>}
         <button className="infinity-icon" onClick={savePicture} aria-label="Save picture" title="Save a picture"><Camera size={18} /></button>
         <button className="infinity-icon" onClick={() => setUiHidden(true)} aria-label="Hide the buttons" title="Hide the buttons (H)"><EyeOff size={18} /></button>
       </div>

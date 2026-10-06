@@ -769,32 +769,42 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
  * The owner's blurred foreground pines: in front of everything along the bottom of the screen, scrolling faster
  * than the track (they are nearer than it). Kept low: their tops stop well below the middle, where your ball is.
  */
-/** Per camera: how far the pines have scrolled (screen px) and where they sit vertically. */
-const FG = new WeakMap<PlatformCamera, { camX: number; camY: number; scroll: number; scrollMid: number; scrollBack: number; lagY: number; trackY?: number }>();
-export const FG_PARALLAX = 1.35;
-/** The second row of pines, between the front row and the cliffs: further away, so it scrolls slower (depth). */
-export const FG_MID_PARALLAX = 1.15;
-/** The third row, higher up and further back still (it covers the gap between the tracks): slower again. */
-export const FG_BACK_PARALLAX = 1.05;
+/** Per camera: how far each row of pines has scrolled (screen px) and where they sit vertically. */
+const FG = new WeakMap<PlatformCamera, { camX: number; camY: number; scrolls: number[]; lagY: number; trackY?: number }>();
+
+/**
+ * The foreground forest (the owner: many rows, bigger and lower as you zoom in): rows of the owner's pines, back to
+ * front. Each row is at parallax depth p and measured in world px (its height, and its drop below your track), so on
+ * screen it is p times the zoom: zoom in and every row grows and moves down, the near ones most, like real depth.
+ */
+const PINE_ROWS: readonly { p: number; h: number; drop: number }[] = [
+  { p: 1.03, h: 170, drop: 2 },
+  { p: 1.07, h: 185, drop: 12 },
+  { p: 1.12, h: 200, drop: 23 },
+  { p: 1.17, h: 215, drop: 34 },
+  { p: 1.23, h: 235, drop: 45 },
+  { p: 1.29, h: 260, drop: 56 },
+  { p: 1.35, h: 290, drop: 68 },
+];
+export const FG_PARALLAX = PINE_ROWS[PINE_ROWS.length - 1].p;
 
 /**
  * Where the foreground pines are this frame. They used to sit at cam.x * cam.scale * 1.35 (mod their width): the
  * camera zooms out at speed, and a tiny zoom change times a world x in the tens of thousands threw them hundreds of
- * pixels at once. Now each frame scrolls them by that frame's camera movement only (at the current zoom), so a zoom
- * never moves them, a respawn or restart (a big jump) does not spin them, and they sway a little against vertical
- * motion and settle back, like something close to the lens.
+ * pixels at once. Now each frame scrolls each row by that frame's camera movement only (at the current zoom and its
+ * depth), so a zoom never slides them, and a respawn or restart (a big jump) does not spin them.
  */
-export function foregroundScroll(cam: PlatformCamera): { x: number; y: number; mid: number; back: number } {
+export function foregroundScroll(cam: PlatformCamera): { x: number; y: number; rows: number[] } {
   let st = FG.get(cam);
-  if (!st) { st = { camX: cam.x, camY: cam.y, scroll: 0, scrollMid: 0, scrollBack: 0, lagY: cam.y }; FG.set(cam, st); }
+  if (!st) { st = { camX: cam.x, camY: cam.y, scrolls: PINE_ROWS.map(() => 0), lagY: cam.y }; FG.set(cam, st); }
   const dx = cam.x - st.camX;
-  if (Math.abs(dx) < 400) { st.scroll += dx * cam.scale * FG_PARALLAX; st.scrollMid += dx * cam.scale * FG_MID_PARALLAX; st.scrollBack += dx * cam.scale * FG_BACK_PARALLAX; } // a bigger jump is a teleport: do not spin
+  if (Math.abs(dx) < 400) PINE_ROWS.forEach((r, i) => { st.scrolls[i] += dx * cam.scale * r.p; }); // a bigger jump is a teleport: do not spin
   st.camX = cam.x;
   st.camY = cam.y;
   st.lagY += (cam.y - st.lagY) * 0.08;
   if (Math.abs(cam.y - st.lagY) > 600) st.lagY = cam.y;
   const y = Math.max(-24, Math.min(24, (st.lagY - cam.y) * cam.scale * 0.35));
-  return { x: st.scroll, y, mid: st.scrollMid, back: st.scrollBack };
+  return { x: st.scrolls[st.scrolls.length - 1], y, rows: st.scrolls };
 }
 
 /**
@@ -825,21 +835,18 @@ function foregroundAnchor(cam: PlatformCamera, plan: CoursePlan | undefined): nu
 }
 
 /**
- * Where a row of pines at parallax depth `p` stands on screen. Parallax: a layer at depth p moves p times as far on
- * screen as the track does, sideways (foregroundScroll) and up and down alike, so it is the anchor's screen offset
- * from the centre times p, plus the row's own fixed drop below the track. Every row shares the one anchor, so they
- * keep their order and spacing and only spread apart (or close up) as the camera moves, like real depth. With p >= 1
- * and a drop >= 0, a row never rises above the track while the track is below the middle of the screen.
+ * Where a row of pines stands on screen. Parallax: a layer at depth p moves p times as far on screen as the track
+ * does, sideways (foregroundScroll) and up and down alike, and is p times as big: the anchor's offset from the screen
+ * centre plus the row's drop, times the zoom, times p. Every row shares the one anchor, so they keep their order and
+ * spacing and only spread apart (or close up) as the camera moves or zooms, like real depth. With p >= 1 and a drop
+ * >= 0, a row never rises above the track while the track is below the middle of the screen.
  */
-function pineRowTop(cam: PlatformCamera, anchorY: number, ch: number, p: number, drop: number): number {
-  return ch / 2 + (anchorY - cam.y) * cam.scale * p + ch * drop;
+function pineRowTop(cam: PlatformCamera, anchorY: number, ch: number, row: { p: number; drop: number }): number {
+  return ch / 2 + (anchorY + row.drop - cam.y) * cam.scale * row.p;
 }
 
-/** The front row (FG_PARALLAX) stands this far below the track (a share of the screen height); the rows behind, higher. */
-const FG_DROP = 0.1, FG_MID_DROP = 0.05, FG_BACK_DROP = 0.015;
-
 export function foregroundTop(cam: PlatformCamera, plan: CoursePlan | undefined, ch: number): number {
-  return pineRowTop(cam, foregroundAnchor(cam, plan), ch, FG_PARALLAX, FG_DROP);
+  return pineRowTop(cam, foregroundAnchor(cam, plan), ch, PINE_ROWS[PINE_ROWS.length - 1]);
 }
 
 /**
@@ -875,31 +882,24 @@ function hazePines(img: HTMLImageElement, haze: number, flip: boolean): { c: HTM
 function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch: number, plan?: CoursePlan) {
   const img = ART.treesFront;
   if (!ready(img)) return;
-  const h = ch * 0.46;
-  const w = (img.naturalWidth / img.naturalHeight) * h;
-  const { x: scroll, mid, back } = foregroundScroll(cam);
-  let x = -(((scroll % w) + w) % w);
-  // one anchor for all three rows (see pineRowTop): each row at its own parallax depth and drop below the track
+  const { rows: scrolls } = foregroundScroll(cam);
   const anchor = foregroundAnchor(cam, plan);
-  const y = pineRowTop(cam, anchor, ch, FG_PARALLAX, FG_DROP);
-  // two more rows behind the front one (owner: depth), each smaller, higher and slower; under each, a band in its own
-  // darkest colour down to the row in front, so no land shows between the rows
-  const rows = [
-    { pines: hazePines(img, 0, true), top: pineRowTop(cam, anchor, ch, FG_BACK_PARALLAX, FG_BACK_DROP), height: h * 0.58, scroll: back },
-    { pines: hazePines(img, 0, false), top: pineRowTop(cam, anchor, ch, FG_MID_PARALLAX, FG_MID_DROP), height: h * 0.72, scroll: mid },
-  ];
+  const aspect = img.naturalWidth / img.naturalHeight;
+  const rows = PINE_ROWS.map((r, i) => ({
+    // every other row mirrored, so neighbouring rows never line up (the front row is the art as painted)
+    pines: hazePines(img, 0, (PINE_ROWS.length - 1 - i) % 2 === 0),
+    top: pineRowTop(cam, anchor, ch, r), height: r.h * cam.scale * r.p, scroll: scrolls[i],
+  }));
   rows.forEach((row, i) => {
     if (row.top >= ch) return;
-    const rw = (img.naturalWidth / img.naturalHeight) * row.height;
-    const below = i + 1 < rows.length ? rows[i + 1].top + rows[i + 1].height * 0.5 : y + h * 0.5;
-    ctx.fillStyle = row.pines.floor;
+    const rw = aspect * row.height;
+    // under each row, a band in its own darkest colour down to the row in front (the front row: to the screen's
+    // bottom), so no land shows between the rows
+    const below = i + 1 < rows.length ? rows[i + 1].top + rows[i + 1].height * 0.5 : ch;
+    ctx.fillStyle = i + 1 < rows.length ? row.pines.floor : '#080e0d';
     ctx.fillRect(0, row.top + row.height * 0.8, cw, Math.max(0, below - (row.top + row.height * 0.8)));
     for (let rx = -(((row.scroll % rw) + rw) % rw); rx < cw; rx += rw) drawImg(ctx, row.pines.c, rx, row.top, rw + 1, row.height);
   });
-  if (y >= ch) return; // the camera is far above the track: the pines are below the screen
-  for (; x < cw; x += w) drawImg(ctx, img, x, y, w + 1, h);
-  // below the trees' feet (the track can sit high on screen): the forest floor, in their own darkest colour
-  if (y + h * 0.96 < ch) { ctx.fillStyle = '#080e0d'; ctx.fillRect(0, y + h * 0.95, cw, ch - (y + h * 0.95)); }
 }
 
 function drawBall(ctx: CanvasRenderingContext2D, game: Game, m: Marble, t: number) {

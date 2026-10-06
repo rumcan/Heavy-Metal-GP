@@ -6,7 +6,7 @@
 // balls, no item boxes, no wall a rolling ball cannot get over.
 import { mulberry32 } from '../types';
 import { SPRING_W } from './course';
-import type { BoostSpot, Bump, Floor, Lane, LaneGate, Ledge, Spring } from './course';
+import type { BoostSpot, Bump, Floor, Kicker, Lane, LaneGate, Ledge, Spring } from './course';
 import { LOOP_PITCH, LOOP_R, PLANK_H } from './routes';
 import type { BridgeSpot, LoopSpot } from './routes';
 
@@ -98,6 +98,7 @@ export interface InfinityChunk {
   loops: LoopSpot[];
   bridges: BridgeSpot[];
   boosts: BoostSpot[];
+  kickers: Kicker[];
 }
 
 /** A different random stream per chunk and purpose, stable for ever. */
@@ -124,7 +125,7 @@ export function infinityChunk(seed: number, index: number): InfinityChunk {
   const h = (lane: Lane, x: number) => terrainY(seed, lane, x);
   const rng = chunkRng(seed, index, 1);
   const roll = (a: number, b: number) => a + rng() * (b - a);
-  const chunk: InfinityChunk = { index, x0, x1, floors: [], bumps: [], gates: [], springs: [], ledges: [], loops: [], bridges: [], boosts: [] };
+  const chunk: InfinityChunk = { index, x0, x1, floors: [], bumps: [], gates: [], springs: [], ledges: [], loops: [], bridges: [], boosts: [], kickers: [] };
 
   // ---- the features: kept inside [x0 + 250, x1 + 220] so a neighbour never meets them
   const chasms = new Map<Lane, [number, number]>();
@@ -195,13 +196,36 @@ export function infinityChunk(seed: number, index: number): InfinityChunk {
         chunk.gates.push({ kind: 'ramp', lane, to, x: gx, w: 170, y: h(lane, gx + 85) });
       }
     }
-    // Crates to hop, in lanes with nothing else going on there.
+    // No crates (the owner: being stopped by a box is no fun here). Their rolls stay, so the rest of the land is unchanged.
     for (const lane of LANES) {
       if (rng() >= 0.22 || ledgeLanes.has(lane) || chasms.has(lane)) continue;
-      const x = round10(x0 + roll(1100, 1450));
-      if (chunk.gates.some((g) => (g.lane === lane || g.to === lane) && x + 70 > g.x - 80 && x < g.x + g.w + 80)) continue;
-      const w = Math.round(roll(46, 80)), hh = Math.round(roll(28, 46));
-      chunk.bumps.push({ lane, x, w, y: Math.min(h(lane, x), h(lane, x + w)) - hh + 6, h: hh });
+      roll(1100, 1450);
+      if (chunk.gates.some((g) => g.lane === lane || g.to === lane)) continue;
+      roll(46, 80); roll(28, 46);
+    }
+    // Sky runs (the owner: clouds you ramp up to and ride), as on the race courses (flow.ts): a boost pad, a kicker
+    // ramp that throws a fast ball into the air, and a cloud or two above the landing (one-way: rise through, land on
+    // top). Their own random stream, so nothing above moves. In a lane with nothing else going on in this chunk.
+    const sky = chunkRng(seed, index, 9);
+    if (sky() < 0.2) {
+      const first = Math.floor(sky() * 3);
+      for (let k = 0; k < 3; k++) {
+        const lane = LANES[(first + k) % 3];
+        if (chasms.has(lane) || springLanes.has(lane) || ledgeLanes.has(lane) || chunk.boosts.some((b) => b.lane === lane)) continue;
+        if (chunk.gates.some((g) => g.lane === lane || g.to === lane)) continue;
+        const boostX = x0 + 260, kickX = x0 + 520, lip = kickX + 150;
+        if (h(lane, kickX) - h(lane, boostX) < -20) continue;
+        chunk.boosts.push({ lane, x: boostX, w: 180 });
+        chunk.kickers.push({ lane, x: kickX, w: 150, h: 80 });
+        const clouds = 1 + (sky() < 0.55 ? 1 : 0);
+        for (let i = 0; i < clouds; i++) {
+          const cx = lip + 240 + i * 530, w = Math.round(i ? 340 + sky() * 30 : 380 + sky() * 100);
+          let low = Infinity;
+          for (let x = cx; x <= cx + w; x += 40) low = Math.min(low, h(lane, x));
+          chunk.ledges.push({ lane, x: cx, w, y: Math.round(low - 170 - i * 70), cloud: Math.floor(sky() * 5) });
+        }
+        break;
+      }
     }
   }
 
@@ -248,5 +272,6 @@ export function shiftChunk(c: InfinityChunk, dx: number, dy: number): InfinityCh
     loops: c.loops.map((l) => ({ ...l, x: l.x + dx, y: l.y + dy })),
     bridges: c.bridges.map((b) => ({ ...b, x0: b.x0 + dx, x1: b.x1 + dx, y0: b.y0 + dy, y1: b.y1 + dy })),
     boosts: c.boosts.map((b) => ({ ...b, x: b.x + dx })),
+    kickers: c.kickers.map((k) => ({ ...k, x: k.x + dx })),
   };
 }
