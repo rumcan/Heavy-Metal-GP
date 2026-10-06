@@ -82,6 +82,11 @@ export interface Bump { lane: Lane; x: number; w: number; y: number; h: number; 
  * - `ramp`: rolling through it on the ground takes you to `to` (jump over it to stay).
  * - `door`: press jump inside it to go through to `to`.
  */
+/**
+ * A ramp gate is a jump ramp: a wedge in its lane rising GATE_RAMP_H to a lip at the gate's end. Roll up it and the
+ * lip throws you into the air, across onto the lane it leads to (engine/platformer.ts laneGates).
+ */
+export const GATE_RAMP_H = 56;
 export interface LaneGate { kind: 'ramp' | 'door'; lane: Lane; to: Lane; x: number; w: number; y: number }
 /** A spring pad on the floor (`x`..`x + SPRING_W`, top at `y`): rolling or landing on it launches you up. */
 export interface Spring { lane: Lane; x: number; y: number }
@@ -220,7 +225,9 @@ export function planCourse(seed: number, tuning = COURSE_TUNING): CoursePlan {
     if (w >= 600 && rng() < tuning.gateChance) {
       const lane = LANES[Math.floor(rng() * 3)];
       const to = (lane === LANE_MIDDLE ? (rng() < 0.5 ? LANE_BACK : LANE_FRONT) : LANE_MIDDLE) as Lane;
-      const kind = rng() < 0.5 ? 'ramp' : 'door';
+      // the owner: every lane change is a jump ramp (doors are only placed by hand, in the Workshop or the tutorial)
+      rng(); // the roll stays, so the rest of the course is unchanged
+      const kind = 'ramp' as const;
       for (let tries = 0; tries < 6; tries++) {
         const gx = snap(x + roll(80, w - 80 - tuning.gateW));
         const clear = (l: Lane) => {

@@ -183,12 +183,16 @@ export function infinityChunk(seed: number, index: number): InfinityChunk {
       if (h(lane, bx + 160) - h(lane, bx) >= 10) chunk.boosts.push({ lane, x: bx, w: 160 });
     }
     // A lane gate, alternating ramps and doors, where both lanes are free of chasms and ledges.
-    if (rng() < 0.32) {
-      const lane = LANES[Math.floor(rng() * 3)];
-      const to = (lane === 1 ? (rng() < 0.5 ? 0 : 2) : 1) as Lane;
+    // (the owner: jump ramps come often, most from the middle lane, where a ball spends most of its run; from the
+    // middle, a bit more often up to the back track than down to the front)
+    if (rng() < 0.6) {
+      const pickLane = rng();
+      const lane = (pickLane < 0.6 ? 1 : pickLane < 0.8 ? 0 : 2) as Lane;
+      const to = (lane === 1 ? (rng() < 0.6 ? 0 : 2) : 1) as Lane;
       const gx = round10(x0 + 1200 + roll(0, 100));
       if (!ledgeLanes.has(lane) && !ledgeLanes.has(to) && !chasms.has(lane) && !chasms.has(to)) {
-        chunk.gates.push({ kind: rng() < 0.5 ? 'ramp' : 'door', lane, to, x: gx, w: 170, y: h(lane, gx + 85) });
+        rng(); // the owner: every lane change is a jump ramp (the roll stays, so the land is unchanged)
+        chunk.gates.push({ kind: 'ramp', lane, to, x: gx, w: 170, y: h(lane, gx + 85) });
       }
     }
     // Crates to hop, in lanes with nothing else going on there.

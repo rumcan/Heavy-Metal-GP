@@ -8,7 +8,7 @@ import type { TrackTheme } from '../types';
 import { laneCategory } from '../lanes';
 import { makePath } from '../course-path';
 import type { CoursePath } from '../course-path';
-import { floorAt, planCourse, planOfficial, platformerCourse } from './course';
+import { GATE_RAMP_H, floorAt, planCourse, planOfficial, platformerCourse } from './course';
 import { buildBridgeBodies, buildLoopBodies } from './routes';
 import type { CoursePlan, Lane } from './course';
 
@@ -131,6 +131,15 @@ export function planBodies(plan: CoursePlan): { bodies: Matter.Body[]; itemBoxes
     const y0 = floorAt(plan, k.lane, k.x) ?? 0, y1 = floorAt(plan, k.lane, k.x + k.w) ?? y0;
     const body = quad([{ x: k.x, y: y0 + 2 }, { x: k.x + k.w, y: y1 - k.h }, { x: k.x + k.w, y: y1 + 24 }, { x: k.x, y: y0 + 24 }], k.lane, 'floor', k.h);
     body.plugin = { kind: 'floor', lane: k.lane, depth: -1, kicker: true };
+    bodies.push(body);
+  }
+  // Lane-change ramps: the same wedge as a kicker, GATE_RAMP_H high at the gate's end (the engine throws the ball
+  // across to the gate's lane off its lip).
+  for (const g of plan.gates) {
+    if (g.kind !== 'ramp') continue;
+    const y0 = floorAt(plan, g.lane, g.x) ?? g.y, y1 = floorAt(plan, g.lane, g.x + g.w) ?? y0;
+    const body = quad([{ x: g.x, y: y0 + 2 }, { x: g.x + g.w, y: y1 - GATE_RAMP_H }, { x: g.x + g.w, y: y1 + 24 }, { x: g.x, y: y0 + 24 }], g.lane, 'floor', GATE_RAMP_H);
+    body.plugin = { kind: 'floor', lane: g.lane, depth: -1, kicker: true };
     bodies.push(body);
   }
   for (const b of plan.boosts ?? []) {

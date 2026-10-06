@@ -5,7 +5,8 @@
 import type { CoursePlan, Floor, Lane } from './course';
 import { drawImg } from '../mip';
 import { SPRING_W, floorAt } from './course';
-import type { Kicker } from './course';
+import type { Kicker, LaneGate } from './course';
+import { GATE_RAMP_H } from './course';
 import type Matter from 'matter-js';
 import { LEDGE_H } from './build';
 import { drawRoutes, setLoopRingSource } from './routes';
@@ -410,6 +411,11 @@ function kickerArt(ctx: CanvasRenderingContext2D, plan: CoursePlan, k: Kicker) {
   ctx.restore();
   // the deck: the track's beam up the slope, ending flush with the lip
   stripAlong(ctx, middle(ART.wood), [{ x: k.x, y: y0 }, { x: k.x + k.w, y: top }], RAIL_UP, TRACK_T * 0.7);
+}
+
+/** A lane-change jump ramp: the kicker's art (crates under the slope, the track's beam as its deck). */
+export function drawGateRamp(ctx: CanvasRenderingContext2D, plan: CoursePlan, g: LaneGate): void {
+  kickerArt(ctx, plan, { lane: g.lane, x: g.x, w: g.w, h: GATE_RAMP_H });
 }
 
 /** Torches on the beam now and then (they flicker, so they are never cached). */
