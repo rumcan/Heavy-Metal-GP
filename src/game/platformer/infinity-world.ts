@@ -203,7 +203,10 @@ export class InfinityRun {
     const floorY = floorAt(plan, lane, p.x);
     if (floorY !== null && Math.abs(p.y + MARBLE_RADIUS - floorY) < 8) this.solid = { lane, x: p.x, y: floorY };
     const last = this.solid;
-    if (last && p.y > last.y + FALL_DEPTH) this.recover(false);
+    // Fallen: below the land under the ball (a chasm, or through the floor), judged against the ground at the ball's
+    // own x. (It used to be the last ground touched: a fast ball flying a long way down the descending land counted as
+    // a fall and was lifted back thousands of px: the owner's "reset when I go fast or far".)
+    if (last && this.belowLand(plan, lane, p)) this.recover(false);
     // Wedged on a loop's ring (a slow ball that stopped on it): lifted back like a fall, after a few calm seconds.
     const slow = Math.hypot(m.body.velocity.x, m.body.velocity.y) < 0.6;
     this.wedged = (m.loopPhase ?? 0) === 1 && slow ? this.wedged + dt : 0;
@@ -236,6 +239,13 @@ export class InfinityRun {
   }
   private wedged = 0;
   private pinned = 0;
+
+  /** Is the ball FALL_DEPTH below the land at its x (over a chasm: below the higher of the ground on either side)? */
+  private belowLand(plan: CoursePlan, lane: Lane, p: { x: number; y: number }): boolean {
+    let ground = floorAt(plan, lane, p.x);
+    for (let d = 40; ground === null && d <= 800; d += 40) ground = floorAt(plan, lane, p.x - d) ?? floorAt(plan, lane, p.x + d);
+    return ground !== null && p.y > ground + FALL_DEPTH;
+  }
 
   /** The distance in km, as the HUD shows it. */
   get km(): number { return this.distance / PX_PER_KM; }

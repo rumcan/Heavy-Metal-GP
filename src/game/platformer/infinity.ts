@@ -241,6 +241,19 @@ export function infinityChunk(seed: number, index: number): InfinityChunk {
         break;
       }
     }
+    // Clouds all over the sky at random heights (the owner: a lot more of them), their own stream: one to three per
+    // chunk, from just above a jump up to high overhead, each a platform you can land on, some with rings on top.
+    const air = chunkRng(seed, index, 13);
+    const many = 1 + Math.floor(air() * 3);
+    for (let i = 0; i < many; i++) {
+      const lane = LANES[Math.floor(air() * 3)];
+      const cx = Math.round(x0 + 200 + air() * 1300), w = Math.round(250 + air() * 110);
+      let low = Infinity;
+      for (let x = cx; x <= cx + w; x += 40) low = Math.min(low, h(lane, x));
+      const cy = Math.round(low - 300 - air() * 750);
+      chunk.ledges.push({ lane, x: cx, w, y: cy, cloud: Math.floor(air() * 5) });
+      if (air() < 0.5) for (let k = 0; k < 3; k++) ring(lane, cx + (w * (k + 1)) / 4, cy - 42);
+    }
     // Rings along the track (their own stream): a line to roll through or a little arc to hop, in a lane with no chasm.
     const rr = chunkRng(seed, index, 11);
     if (rr() < 0.55) {

@@ -54,7 +54,8 @@ test('nothing hostile and no clutter: no wreckers or boxes, features stay inside
     for (const l of c.ledges) assert.ok(l.x + l.w <= c.x1 + 260, 'a ledge may spill a little into the next chunk, never far');
     for (const b of c.bridges) assert.ok(b.x0 >= c.x0 + 700 && b.x1 <= c.x0 + 1100);
     loops += c.loops.length;
-    features += c.bumps.length + c.gates.length + c.springs.length + c.ledges.length + c.loops.length + c.bridges.length;
+    // (clouds up in the sky are scenery to ride, not clutter on the track: the owner wants lots of them)
+    features += c.bumps.length + c.gates.length + c.springs.length + c.ledges.filter((l) => l.cloud === undefined).length + c.loops.length + c.bridges.length;
     if (n < 2) assert.equal(c.bumps.length + c.gates.length + c.springs.length + c.loops.length + c.bridges.length, 0, 'the start is clear');
     assert.equal(c.loops.length > 0, isLoopChunk(11, n) && c.loops.length > 0);
   }
