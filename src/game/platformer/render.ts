@@ -799,6 +799,8 @@ function pineRow(i: number): { p: number; h: number; drop: number } {
   return { p: front.p + 0.08 * k, h: front.h + 35 * k, drop: front.drop + 18 * k };
 }
 const PINE_ALL = PINE_ROWS.length + PINE_EXTRA;
+/** How wide (screen px) each upright slice of a row is when it follows the slope: narrow enough that the steps vanish. */
+const PINE_SLICE = 24;
 
 /**
  * Where the foreground pines are this frame. They used to sit at cam.x * cam.scale * 1.35 (mod their width): the
@@ -897,6 +899,25 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
   const { rows: scrolls } = foregroundScroll(cam);
   const anchor = foregroundAnchor(cam, plan);
   const aspect = img.naturalWidth / img.naturalHeight;
+  // The rows follow the slope (the owner): each row is drawn in thin upright slices, each slice raised or lowered by
+  // how much the track (smoothed over a few hundred px, so it is the hill and not every bump) differs there from under
+  // the camera, at the row's own depth. The trees stay upright; the row's foot follows the hill.
+  const lane = Math.max(0, Math.min(2, Math.round(cam.focus ?? LANE_MIDDLE))) as Lane;
+  const memo = new Map<number, number>();
+  const hill = (xw: number): number | null => {
+    const key = Math.round(xw / 40);
+    if (memo.has(key)) return memo.get(key)!;
+    let sum = 0, n = 0;
+    if (plan) for (let d = -240; d <= 240; d += 120) { const y = floorAt(plan, lane, key * 40 + d); if (y !== null) { sum += y; n++; } }
+    const v = n ? sum / n : null;
+    memo.set(key, v as number);
+    return v;
+  };
+  const here = hill(cam.x);
+  const lift = (xw: number) => {
+    const y = hill(xw);
+    return y === null || here === null ? 0 : Math.max(-400, Math.min(400, y - here));
+  };
   // Back to front. The nearer rows past the front one (zoomed out) fade in as the ground under the row behind them
   // comes into view, and out again as it leaves (the owner: no snapping in and out).
   let prev: { top: number; height: number } | null = null;
@@ -915,8 +936,18 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
     // under the row, a band in its own darkest colour to the screen's bottom (the rows in front cover the rest), so no
     // land shows between the rows
     ctx.fillStyle = i < PINE_ROWS.length - 1 ? pines.floor : '#080e0d';
-    ctx.fillRect(0, top + height * 0.8, cw, Math.max(0, ch - (top + height * 0.8)));
-    for (let rx = -(((scrolls[i] % rw) + rw) % rw); rx < cw; rx += rw) drawImg(ctx, pines.c, rx, top, rw + 1, height);
+    const n = Math.max(1, Math.ceil(rw / PINE_SLICE)), sw = rw / n, srcW = pines.c.width / n;
+    for (let rx = -(((scrolls[i] % rw) + rw) % rw); rx < cw; rx += rw) {
+      for (let k = 0; k < n; k++) {
+        const sx = rx + k * sw;
+        if (sx > cw || sx + sw < 0) continue;
+        const xw = cam.x + (sx + sw / 2 - cw / 2) / (cam.scale * r.p);
+        const y = top + lift(xw) * cam.scale * r.p;
+        if (y >= ch) continue;
+        ctx.fillRect(sx, y + height * 0.8, sw + 0.6, Math.max(0, ch - (y + height * 0.8)));
+        drawImg(ctx, pines.c, k * srcW, 0, srcW, pines.c.height, sx, y, sw + 0.6, height);
+      }
+    }
   }
   ctx.globalAlpha = 1;
 }
