@@ -113,6 +113,13 @@ export const RING_CREDITS = 5;
  */
 export interface StandSpot { id: number; lane: Lane; x: number; w: number; y: number }
 export interface CoursePlan {
+  /**
+   * Infinity: where this plan's local origin is in the endless land (the world is shifted back every 40 km; local x +
+   * originX is the absolute x). Scenery hashes and textures use absolute positions, so nothing changes at a shift.
+   * Absent (0) on race courses.
+   */
+  originX?: number;
+  originY?: number;
   /** Infinity: the goblin stands' spots (else coaster.ts finds flat stretches itself). */
   stands?: StandSpot[];
   /** Gold rings to collect (Infinity only). */

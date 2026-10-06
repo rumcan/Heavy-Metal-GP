@@ -119,7 +119,7 @@ export class InfinityRun {
     for (const f of floors) maxY = Math.max(maxY, f.y0, f.y1);
     const left = chunks[0]?.x0 ?? 0, right = chunks[chunks.length - 1]?.x1 ?? CHUNK_W;
     return {
-      seed: this.seed, style: 'flow', width: right, height: Math.round(maxY + 900), floors,
+      seed: this.seed, originX: this.origin.x, originY: this.origin.y, style: 'flow', width: right, height: Math.round(maxY + 900), floors,
       bumps: chunks.flatMap((c) => c.bumps), gates: chunks.flatMap((c) => c.gates), ledges: chunks.flatMap((c) => c.ledges), springs: chunks.flatMap((c) => c.springs),
       loops: chunks.flatMap((c) => c.loops), bridges: chunks.flatMap((c) => c.bridges), boosts: chunks.flatMap((c) => c.boosts), kickers: chunks.flatMap((c) => c.kickers), rings: chunks.flatMap((c) => c.rings).filter((r) => !this.taken.has(r.id)),
       stands: [...new Map(chunks.flatMap((c) => c.stands).map((s) => [s.id, s])).values()], itemBoxes: [], wreckers: [],

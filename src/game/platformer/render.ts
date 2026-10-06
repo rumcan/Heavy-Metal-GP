@@ -26,13 +26,14 @@ import cannonUrl from '../../assets/game/cannon.webp';
 import treesFrontUrl from '../../assets/game/platformer/trees-front.webp';
 import { CANNON_LEN, CANNON_SPEED, muzzle } from '../engine/platformer';
 import skyCloudsUrl from '../../assets/game/platformer/sky-clouds.webp';
+import airshipUrl from '../../assets/game/airship.webp';
 
 // rope bridges on flow courses and in Infinity: the Workshop's rope bridge art
 setBridgeArt(drawBridgeChain);
 
 // Generated art (P2-00): a skin over the vector bodies. Every draw falls back to flat shapes until it loads.
 const load = (src: string) => (typeof Image !== 'undefined' ? Object.assign(new Image(), { src }) : null);
-const ART = { earth: load(earthUrl), grass: load(grassUrl), crate: load(crateUrl), door: load(doorUrl), far: load(farUrl), trees: load(treesUrl), skyIslands: load(skyIslandsUrl), cannon: load(cannonUrl), treesFront: load(treesFrontUrl), skyClouds: load(skyCloudsUrl) };
+const ART = { earth: load(earthUrl), grass: load(grassUrl), crate: load(crateUrl), door: load(doorUrl), far: load(farUrl), trees: load(treesUrl), skyIslands: load(skyIslandsUrl), cannon: load(cannonUrl), treesFront: load(treesFrontUrl), skyClouds: load(skyCloudsUrl), airship: load(airshipUrl) };
 const ready = (img: HTMLImageElement | null): img is HTMLImageElement => !!img && img.complete && img.naturalWidth > 0;
 const patterns = new WeakMap<CanvasRenderingContext2D, CanvasPattern>();
 function earthPattern(ctx: CanvasRenderingContext2D): CanvasPattern | null {
@@ -94,7 +95,40 @@ function scratch(w: number, h: number): CanvasRenderingContext2D | null {
   return c;
 }
 
-function sky(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch: number, startY: number) {
+/**
+ * Hot air balloons (the owner's art, the same goblin balloon the classic races fly): now and then one drifts across the
+ * sky, at three distances (smaller, slower and hazier further off), bobbing gently. Placed by hash in each layer's own
+ * scroll space, so a balloon stays where it is as you roll (and across Infinity's world shifts); at most a few at once.
+ */
+function balloons(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch: number, t: number) {
+  const img = ART.airship;
+  if (!ready(img)) return;
+  const aspect = img.naturalWidth / img.naturalHeight;
+  const layers = [{ p: 0.05, size: 0.09, alpha: 0.6 }, { p: 0.09, size: 0.13, alpha: 0.78 }, { p: 0.14, size: 0.18, alpha: 0.92 }];
+  layers.forEach((layer, li) => {
+    const slot = cw * 0.9;
+    // the layer's scroll: the camera at its parallax, plus a slow drift of its own
+    const u = (cam.x + (cam.originX ?? 0)) * layer.p + t * 0.004 * (li + 1);
+    for (let n = Math.floor(u / slot) - 1; n <= Math.floor((u + cw) / slot) + 1; n++) {
+      if (balloonHash(n, li * 7 + 1) > 0.42) continue;
+      const h = ch * layer.size * (0.85 + balloonHash(n, li * 7 + 2) * 0.3);
+      const w = aspect * h;
+      const x = n * slot + balloonHash(n, li * 7 + 3) * (slot - w) - u;
+      const y = ch * (0.06 + balloonHash(n, li * 7 + 4) * 0.3) + Math.sin(t / 1600 + n * 1.7) * h * 0.04;
+      if (x + w < 0 || x > cw) continue;
+      ctx.globalAlpha = layer.alpha;
+      drawImg(ctx, img, x, y, w, h);
+    }
+  });
+  ctx.globalAlpha = 1;
+}
+function balloonHash(a: number, b: number): number {
+  let h = (a * 374761393 + b * 668265263) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+function sky(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch: number, startY: number, t = 0) {
   const g = ctx.createLinearGradient(0, 0, 0, ch);
   g.addColorStop(0, '#5d8fb8');
   g.addColorStop(0.55, '#a9c3cf');
@@ -125,6 +159,7 @@ function sky(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch:
       ctx.fillStyle = mist;
       ctx.fillRect(0, y - h * 0.1, cw, h * 0.2);
     }
+    balloons(ctx, cam, cw, ch, t);
     return;
   }
   // Far mountains and the tree line: scenery, not a lane. They scroll very slowly and never change with depth.
@@ -728,7 +763,7 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
   ctx.imageSmoothingQuality = 'high'; // backgrounds are stretched on big screens: the best filter is least grainy
   ctx.setTransform(ctx.getTransform().a, 0, 0, ctx.getTransform().d, 0, 0);
   const dpr = ctx.getTransform().a;
-  sky(ctx, cam, cw, ch, game.track.platformer!.plan.startY);
+  sky(ctx, cam, cw, ch, game.track.platformer!.plan.startY, t);
   const lanes = visibleLanes(cam.focus);
   const depths = game.marbles.filter((m) => !m.hold || m.hold.kind === 'cart').map((m) => ({ m, z: marbleDepth(game, m) }));
 
