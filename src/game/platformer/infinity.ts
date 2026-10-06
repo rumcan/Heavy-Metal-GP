@@ -6,7 +6,7 @@
 // balls, no item boxes, no wall a rolling ball cannot get over.
 import { mulberry32 } from '../types';
 import { SPRING_W } from './course';
-import type { BoostSpot, Bump, Floor, Kicker, Lane, LaneGate, Ledge, RingSpot, Spring } from './course';
+import type { BoostSpot, Bump, Floor, Kicker, Lane, LaneGate, Ledge, RingSpot, Spring, StandSpot } from './course';
 import { LOOP_PITCH, LOOP_R, PLANK_H } from './routes';
 import type { BridgeSpot, LoopSpot } from './routes';
 
@@ -67,6 +67,12 @@ export function terrainY(seed: number, lane: Lane, x: number): number {
   return y + (level - y) * f;
 }
 
+/** The level of the back lane's stand stretch after km `k` (the height terrainY holds there). */
+export function standLevel(seed: number, k: number): number {
+  const a = k * PX_PER_KM + STAND_FROM, b = a + STAND_LEN;
+  return (rollingY(seed, STAND_LANE, a) + rollingY(seed, STAND_LANE, b)) / 2;
+}
+
 /** The back lane's level stretch for the goblin stands: from STAND_FROM past each km mark, STAND_LEN long. */
 const STAND_LANE: Lane = 0;
 export const STAND_FROM = -100;
@@ -100,6 +106,8 @@ export interface InfinityChunk {
   boosts: BoostSpot[];
   kickers: Kicker[];
   rings: RingSpot[];
+  /** The goblin stands' spots this chunk overlaps (a stand spans two chunks: both carry it). */
+  stands: StandSpot[];
 }
 
 /** A different random stream per chunk and purpose, stable for ever. */
@@ -129,7 +137,12 @@ export function infinityChunk(seed: number, index: number): InfinityChunk {
   // Gold rings to collect (the owner): each pays RING_CREDITS; stable ids, so a collected one stays collected while the
   // chunk is rebuilt.
   const ring = (lane: Lane, x: number, y: number) => chunk.rings.push({ id: `${index}:${chunk.rings.length}`, lane, x: Math.round(x), y: Math.round(y) });
-  const chunk: InfinityChunk = { index, x0, x1, floors: [], bumps: [], gates: [], springs: [], ledges: [], loops: [], bridges: [], boosts: [], kickers: [], rings: [] };
+  const chunk: InfinityChunk = { index, x0, x1, floors: [], bumps: [], gates: [], springs: [], ledges: [], loops: [], bridges: [], boosts: [], kickers: [], rings: [], stands: [] };
+  // the goblin stands' spots: every km's level stretch on the back lane that overlaps this chunk
+  for (let k = Math.max(1, Math.floor((x0 - STAND_FROM - STAND_LEN) / PX_PER_KM)); k * PX_PER_KM + STAND_FROM < x1; k++) {
+    const a = k * PX_PER_KM + STAND_FROM;
+    if (a + STAND_LEN > x0) chunk.stands.push({ id: k, lane: STAND_LANE, x: a, w: STAND_LEN, y: standLevel(seed, k) });
+  }
 
   // ---- the features: kept inside [x0 + 250, x1 + 220] so a neighbour never meets them
   const chasms = new Map<Lane, [number, number]>();
@@ -311,5 +324,6 @@ export function shiftChunk(c: InfinityChunk, dx: number, dy: number): InfinityCh
     boosts: c.boosts.map((b) => ({ ...b, x: b.x + dx })),
     kickers: c.kickers.map((k) => ({ ...k, x: k.x + dx })),
     rings: c.rings.map((r) => ({ ...r, x: r.x + dx, y: r.y + dy })),
+    stands: c.stands.map((s) => ({ ...s, x: s.x + dx, y: s.y + dy })),
   };
 }

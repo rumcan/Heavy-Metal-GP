@@ -7,7 +7,7 @@ import type { Game, Marble } from '../engine';
 import { drawImg } from '../mip';
 import { meta } from '../track';
 import { laneFocus, laneView, visibleLanes, LANE_SWITCH_MS, LANE_MIDDLE } from '../lanes';
-import { drawBodies, drawBridgeChain, drawMarble } from '../render';
+import { drawBodies, drawBridgeChain, drawEffects, drawMarble } from '../render';
 import { drawSkillWorld } from '../skills/draw';
 import { GATE_RAMP_H, SPRING_W, floorAt } from './course';
 import type { CoursePlan, Floor, Lane, LaneGate } from './course';
@@ -450,7 +450,7 @@ function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, 
     // only ever asked for once the coaster art is loaded (see laneCache)
     drawCoasterLane(ctx, info.plan, lane as Lane, left, right, bottom, t, () => false, [], 'static');
     const still = laneLists(game, lane).classicStill;
-    if (still.length) drawBodies(ctx, game, still, { viewTop: -1e9, viewBottom: 1e9, viewLeft: left, viewRight: right }, t, { withStatic: true });
+    if (still.length) drawBodies(ctx, game, still, { viewTop: -1e9, viewBottom: 1e9, viewLeft: left, viewRight: right }, t, { withStatic: true, piecesOnly: true });
     if (info.plan.finishX > left && info.plan.finishX < right) drawFinish(ctx, info.plan.finishX, info.plan.finishY);
     return;
   }
@@ -478,7 +478,7 @@ function drawLaneWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number, 
   // P2-26: the classic pieces in this lane, with their drop-track art.
   // (in the 'dynamic' part the still ones are already in the cached scenery)
   const classic = part === 'dynamic' ? lists.classicLive : lists.classic;
-  if (classic.length) drawBodies(ctx, game, classic, { viewTop: -1e9, viewBottom: 1e9, viewLeft: left, viewRight: right }, t, { withStatic: true });
+  if (classic.length) drawBodies(ctx, game, classic, { viewTop: -1e9, viewBottom: 1e9, viewLeft: left, viewRight: right }, t, { withStatic: true, piecesOnly: true });
   drawCannons(ctx, game, lane, t);
   drawSkillWorld(ctx, game, lane, t); // P2-08
   drawRings(ctx, info.plan, lane, left, right, t);
@@ -796,6 +796,17 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
       ctx.restore();
     }
   }
+  // The game's effects (ring pickups, hoop flashes, debris...), once, in the depth of the lane you are on.
+  {
+    const fv = laneView(Math.round(cam.focus), cam.focus);
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.translate(cw / 2, ch / 2 + fv.lift * cam.scale);
+    ctx.scale(cam.scale * fv.scale, cam.scale * fv.scale);
+    ctx.translate(-cam.x, -cam.y);
+    drawEffects(ctx, game);
+    ctx.restore();
+  }
   // The ball the camera follows is never hidden behind a layer: mid-dive it is drawn last, on top of everything.
   const own = depths.find((d) => d.m === followed);
   if (own && own.z !== Math.round(own.z)) {
@@ -857,7 +868,7 @@ function betweenTrees(ctx: CanvasRenderingContext2D, game: Game, cam: PlatformCa
     const n = Math.max(1, Math.ceil(rw / PINE_SLICE)), sw = rw / n, srcW = pines.c.width / n;
     const scroll = st!.scrolls[far] * (1 + i * 0.04);
     ctx.fillStyle = pines.floor;
-    for (let rx = -(((scroll % rw) + rw) % rw); rx < cw; rx += rw) {
+    for (let rx = tileStart(cam, `b${far}:${i}`, scroll, rw, cw); rx < cw; rx += rw) {
       for (let k = 0; k < n; k++) {
         const sx = rx + k * sw;
         if (sx > cw || sx + sw < 0) continue;
@@ -870,6 +881,24 @@ function betweenTrees(ctx: CanvasRenderingContext2D, game: Game, cam: PlatformCa
   });
   ctx.restore();
 }
+/**
+ * Where a row's first tile starts on screen. The row's scroll is kept in whole tiles (a scroll step divided by the
+ * tile width at that moment), and the tiles are laid out from the screen's centre: a zoom (which changes the tile
+ * width) grows the row about the centre and never slides it sideways (the owner); rolling slides it at its speed.
+ */
+const PHASES = new WeakMap<PlatformCamera, Map<string, { last: number; phase: number }>>();
+function tileStart(cam: PlatformCamera, key: string, scroll: number, rw: number, cw: number): number {
+  let rows = PHASES.get(cam);
+  if (!rows) { rows = new Map(); PHASES.set(cam, rows); }
+  let st = rows.get(key);
+  if (!st) { st = { last: scroll, phase: 0 }; rows.set(key, st); }
+  st.phase += (scroll - st.last) / rw;
+  st.last = scroll;
+  let x = cw / 2 - (((st.phase % 1) + 1) % 1) * rw;
+  while (x > 0) x -= rw;
+  return x;
+}
+
 /** Per camera: how far each between-tracks layer has scrolled (screen px), by its far lane. */
 const BETWEEN = new WeakMap<PlatformCamera, { camX: number; scrolls: number[] }>();
 /** The nearest-to-the-camera far lane that has a between layer this frame (its call moves the shared camera memory on). */
@@ -1047,7 +1076,7 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
     // land shows between the rows
     ctx.fillStyle = i < PINE_ROWS.length - 1 ? pines.floor : '#080e0d';
     const n = Math.max(1, Math.ceil(rw / PINE_SLICE)), sw = rw / n, srcW = pines.c.width / n;
-    for (let rx = -(((scrolls[i] % rw) + rw) % rw); rx < cw; rx += rw) {
+    for (let rx = tileStart(cam, `f${i}`, scrolls[i], rw, cw); rx < cw; rx += rw) {
       for (let k = 0; k < n; k++) {
         const sx = rx + k * sw;
         if (sx > cw || sx + sw < 0) continue;

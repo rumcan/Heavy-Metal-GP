@@ -400,17 +400,22 @@ export function drawMarble(ctx: CanvasRenderingContext2D, game: Game, m: Marble,
   const label = m.info.isPlayer ? 'YOU' : human ? m.info.name.toUpperCase() : m.info.name;
   const tw = ctx.measureText(label).width;
   const boxH = size + 4;
-  ctx.fillStyle = human ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.4)';
-  ctx.beginPath();
-  ctx.roundRect(x - tw / 2 - 5, y - r - 6 - boxH, tw + 10, boxH, 4);
-  ctx.fill();
-  if (human) {
-    ctx.strokeStyle = m.info.color;
-    ctx.lineWidth = 2;
-    ctx.stroke();
+  // Your own YOU tag shows you where you are at the start, then goes 2 s after lights out (the owner: it hid the
+  // health bar). Other humans keep theirs.
+  const hideOwn = m.info.isPlayer && game.gateOpen && game.time - game.raceStartTime > 2000;
+  if (!hideOwn) {
+    ctx.fillStyle = human ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.4)';
+    ctx.beginPath();
+    ctx.roundRect(x - tw / 2 - 5, y - r - 6 - boxH, tw + 10, boxH, 4);
+    ctx.fill();
+    if (human) {
+      ctx.strokeStyle = m.info.color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    ctx.fillStyle = human ? '#fff' : '#b8c2cf';
+    ctx.fillText(label, x, y - r - 7);
   }
-  ctx.fillStyle = human ? '#fff' : '#b8c2cf';
-  ctx.fillText(label, x, y - r - 7);
   const heldItem = game.availableItem(m);
   if (heldItem) {
     ctx.beginPath();
@@ -512,7 +517,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, cam: Camera, c
  * Draw these bodies with their classic art (every piece kind but the baked static layer). The drop track draws all
  * of its bodies here; a platformer course draws the classic pieces of one lane here, inside that lane's transform.
  */
-export function drawBodies(ctx: CanvasRenderingContext2D, game: Game, bodies: readonly Matter.Body[], view: { viewTop: number; viewBottom: number; viewLeft: number; viewRight: number }, t: number, options: { workshopPreview?: boolean; withStatic?: boolean } = {}) {
+export function drawBodies(ctx: CanvasRenderingContext2D, game: Game, bodies: readonly Matter.Body[], view: { viewTop: number; viewBottom: number; viewLeft: number; viewRight: number }, t: number, options: { workshopPreview?: boolean; withStatic?: boolean; piecesOnly?: boolean } = {}) {
   const { viewTop, viewBottom, viewLeft, viewRight } = view;
   const theme = game.track.theme;
   for (const b of bodies) {
@@ -1068,6 +1073,9 @@ export function drawBodies(ctx: CanvasRenderingContext2D, game: Game, bodies: re
     }
   }
 
+  // The platformer draws its classic pieces lane by lane with this: there the balls, skills and effects are drawn by
+  // the platformer renderer itself (once, at their own depth), else every lane showed a copy of every ball.
+  if (options.piecesOnly) return;
   drawSkillWorld(ctx, game, null, t); // P2-08: bolts, bombs, spikes, decoys
   // marbles (player drawn last)
   const sorted = [...game.marbles].sort((a, b) => Number(a.info.isPlayer) - Number(b.info.isPlayer));
@@ -1077,8 +1085,11 @@ export function drawBodies(ctx: CanvasRenderingContext2D, game: Game, bodies: re
     if (p.y < viewTop || p.y > viewBottom || game.benched.has(m.info.id)) continue;
     drawMarble(ctx, game, m, t);
   }
+  drawEffects(ctx, game);
+}
 
-  // effects
+/** The game's short-lived effects (rings, flashes, beams, debris, snow, floating text), in world coordinates. */
+export function drawEffects(ctx: CanvasRenderingContext2D, game: Game) {
   for (const e of game.effects) {
     const k = e.ttl / e.maxTtl;
     switch (e.type) {

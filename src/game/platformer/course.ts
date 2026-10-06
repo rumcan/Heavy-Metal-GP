@@ -107,7 +107,14 @@ export interface BoostSpot { lane: Lane; x: number; w: number }
 export interface RingSpot { id: string; lane: Lane; x: number; y: number }
 /** Credits a ring pays (an orange peg pays the same). */
 export const RING_CREDITS = 5;
+/**
+ * A goblin stand's spot (Infinity): the level stretch of the back lane after km `id` (absolute), its track height `y`.
+ * Every chunk that overlaps it carries it, so a stand never depends on which chunks are built or where the origin is.
+ */
+export interface StandSpot { id: number; lane: Lane; x: number; w: number; y: number }
 export interface CoursePlan {
+  /** Infinity: the goblin stands' spots (else coaster.ts finds flat stretches itself). */
+  stands?: StandSpot[];
   /** Gold rings to collect (Infinity only). */
   rings?: RingSpot[];
   seed: number;
