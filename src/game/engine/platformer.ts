@@ -284,6 +284,25 @@ export function gateLaunchVy(rise: number): number {
  * Lane-change ramps are jump ramps (the owner): roll up one and its lip throws you into the air and across onto the
  * lane it leads to; you land on that track. Jump over it (or fly past it) and nothing happens.
  */
+/**
+ * Gold rings on a race course (the owner: rings in normal races too): any ball rolling or flying through one in its
+ * lane takes it, and it counts like an orange peg (the same credits at the finish). Deterministic, so an online room
+ * agrees. Infinity counts its own rings (its tally), so it switches this off.
+ */
+export function collectRings(game: Game, m: Marble): void {
+  const rings = game.track.platformer?.plan.rings;
+  if (!rings?.length || !game.collectRings || m.finishedAt !== null) return;
+  const p = m.body.position, lane = m.lane ?? LANE_MIDDLE;
+  for (let i = rings.length - 1; i >= 0; i--) {
+    const r = rings[i];
+    if (r.lane !== lane || Math.abs(r.x - p.x) > 34 || Math.abs(r.y - p.y) > 34 || Math.hypot(r.x - p.x, r.y - p.y) > 34) continue;
+    rings.splice(i, 1);
+    m.pegs++;
+    if (game.isHuman(m)) game.sfx('pickup', m, r.x, r.y);
+    game.effects.push({ type: 'ring', x: r.x, y: r.y, ttl: 18, maxTtl: 18, color: '#ffd34a' });
+  }
+}
+
 export function laneGates(game: Game, m: Marble): void {
   const info = game.track.platformer;
   if (!info || switching(game, m)) return;

@@ -84,7 +84,7 @@ export class InfinityRun {
     const first = this.local(this.abs(0));
     const track = this.trackOf([first]);
     // Chunk 0 only at first: a Game with more than 350 bodies would start streaming its track by height.
-    this.game = new Game(this.seed, [driver], { track, effects: opts.effects ?? true, aiItems: false, recovery: false });
+    this.game = new Game(this.seed, [driver], { track, effects: opts.effects ?? true, aiItems: false, recovery: false, collectRings: false });
     this.live.set(0, { chunk: first, bodies: [...track.bodies] });
     this.chunksBuilt++;
     this.wallBody = wall(-320, INF_START_Y + 40, 2400);

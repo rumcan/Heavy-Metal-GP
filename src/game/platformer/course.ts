@@ -30,8 +30,8 @@ export interface PlatformerCourse {
 /** The official platformer courses (owner playtest first, then the other calendar slots convert). */
 export const PLATFORMER_COURSES: readonly PlatformerCourse[] = [
   { id: 'rolling-hills', name: 'Rolling Hills', blurb: 'Long rolling slopes: build speed on the descents, fly off the crests, jump the chasms and hop the crates. The ridges behind you are the other lanes.', seed: 11, flow: true },
-  { id: 'greenhollow', name: 'Greenhollow Run', blurb: 'A long green descent with ten lane gates. The back lane is the shortcut if you can clear its gaps.', seed: 7 },
-  { id: 'misty-ridge', name: 'Misty Ridge', blurb: 'Longer and busier: thirteen gates, more doors, and crates in every lane.', seed: 23, length: 28000 },
+  { id: 'greenhollow', name: 'Greenhollow Run', blurb: 'A long green descent: jump ramps between the lanes, sky runs, vents and gold rings. The back lane is the shortcut if you can clear its gaps.', seed: 7, flow: true },
+  { id: 'misty-ridge', name: 'Misty Ridge', blurb: 'Longer and busier: more jump ramps, fire rings, updrafts and geysers, and gold rings to collect.', seed: 23, length: 28000, flow: true },
   { id: 'training', name: 'Training Grounds', blurb: 'The short tutorial course: one crate, one gap, one ramp, one door, a slope and a climb.', seed: 1, tutorial: true },
 ];
 

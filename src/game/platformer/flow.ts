@@ -2,7 +2,7 @@
 // Alto's Adventure; the art is our own), chasms to jump, crates to hop, and three parallel depth ridges.
 // Pure data (a CoursePlan), deterministic from the seed. Floors are short straight pieces along a smooth curve.
 import { mulberry32 } from '../types';
-import type { BoostSpot, Bump, CoursePlan, Floor, ItemBoxSpot, Kicker, Lane, LaneGate, Ledge, Spring, WreckerSpot } from './course';
+import type { BoostSpot, Bump, CoursePlan, Floor, ItemBoxSpot, Kicker, Lane, LaneGate, Ledge, RingSpot, Spring, WreckerSpot } from './course';
 import { LOOP_PITCH, LOOP_R, LOOP_RUN_OUT, PLANK_H } from './routes';
 import type { BridgeSpot, LoopSpot } from './routes';
 
@@ -291,10 +291,44 @@ export function planFlow(seed: number, t: FlowTuning = FLOW_TUNING): CoursePlan 
     }
   }
 
+  // Toy runs (the owner: more of the Workshop's pieces on the courses, and gold rings in normal races too): every so
+  // often a line or hop-arc of gold rings, an updraft vent up to a cloud with rings on it, a geyser with rings above,
+  // or a fire ring on the track. Their own stream (nothing planned above moves), in a lane with clear track.
+  const rings: RingSpot[] = [];
+  if (t.sky !== false) {
+    const tr = mulberry32(seed ^ 0x70a5);
+    const ring = (lane: Lane, x: number, y: number) => rings.push({ id: `r${rings.length}`, lane, x: Math.round(x), y: Math.round(y) });
+    for (let bx = START_FLAT + 1000; bx < end - 1500; bx += 1300) {
+      if (tr() > 0.75) continue;
+      const lane = LANES[Math.floor(tr() * 3)];
+      const x = Math.round((bx + tr() * 600) / 10) * 10;
+      const kind = tr();
+      if (!clearTrack(lane, x - 170, x + 420) || taken(lane, x - 170, x + 420)) continue;
+      if (kickers.some((k) => k.lane === lane && x + 420 > k.x - 200 && x < k.x + 1400) || ledges.some((l) => l.lane === lane && x + 420 > l.x - 100 && x - 170 < l.x + l.w + 100)) continue;
+      const y = heightAt(lane, x);
+      if (kind < 0.45) {
+        const hop = tr() < 0.5;
+        for (let k = 0; k < 5; k++) { const rx = x + k * 70; ring(lane, rx, heightAt(lane, rx) - 40 - (hop ? 110 * Math.sin((Math.PI * (k + 0.5)) / 5) : 0)); }
+      } else if (kind < 0.65) {
+        // an updraft up to a cloud with rings on it
+        extras.push({ lane, piece: { t: 'wind', a: [x - 110, Math.round(y - 470)], b: [x + 110, Math.round(y)], dir: 270, str: 0.6, pulse: 0, phase: 0, lane } as import('../trackdef').Piece });
+        const cy = Math.round(y - 480);
+        ledges.push({ lane, x: x - 150, w: 300, y: cy, cloud: Math.floor(tr() * 5) });
+        for (let k = 0; k < 3; k++) ring(lane, x - 75 + k * 75, cy - 42);
+      } else if (kind < 0.85) {
+        if (Math.abs(heightAt(lane, x - 60) - heightAt(lane, x + 60)) > 25) continue;
+        extras.push({ lane, piece: { t: 'geyser', x, y: Math.round(y), h: 320, period: 3600, phase: Math.round(tr() * 3600), lane } as import('../trackdef').Piece });
+        for (let k = 0; k < 3; k++) ring(lane, x, y - 150 - k * 70);
+      } else {
+        extras.push({ lane, piece: { t: 'hoop', x, y: Math.round(y - 38), dir: [1, 0], lane } as import('../trackdef').Piece });
+      }
+    }
+  }
+
   const path: { x: number; y: number }[] = [];
   for (let x = 0; x <= t.length; x += 200) path.push({ x, y: heightAt(1, x) - 30 });
   const finishX = end + 360;
   const finishY = heightAt(1, finishX);
   const height = Math.max(...floors.map((f) => Math.max(f.y0, f.y1))) + 900;
-  return { seed, style: 'flow' as const, width: t.length, height, floors, bumps: rocks, gates, path, springs, ledges, itemBoxes, wreckers, boosts, loops, bridges, kickers, ...(extras.length ? { extras } : {}), startX: 520, startY: t.startY, finishX, finishY };
+  return { seed, style: 'flow' as const, width: t.length, height, floors, bumps: rocks, gates, path, springs, ledges, itemBoxes, wreckers, boosts, loops, bridges, kickers, ...(extras.length ? { extras } : {}), ...(rings.length ? { rings } : {}), startX: 520, startY: t.startY, finishX, finishY };
 }
