@@ -805,8 +805,7 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
     ctx.restore();
   }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  // (the screen-fixed foreground pines are gone: every track has its own forest in the world now, coaster.ts forest)
-  void foreground;
+  foreground(ctx, cam, cw, ch, game.track.platformer?.plan);
 }
 
 /**
