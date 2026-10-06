@@ -15,7 +15,7 @@ import { RenderScale } from '../../game/render-scale';
 import { nudgeOf } from '../../game/controls';
 import { actionForKey } from '../../game/skill-keys';
 import { raceAudio } from '../../game/audio';
-import { formatKm, loadRecords, recordDistance, recordStart, seedFromText, setReduceMotion } from '../../game/infinity-store';
+import { bankRings, bankRunEnd, formatKm, loadRecords, recordDistance, recordStart, seedFromText, setReduceMotion } from '../../game/infinity-store';
 import { biomeAt, dayAt } from '../../game/infinity-look';
 import { InfinityAudio } from '../../game/infinity-audio';
 import { InfinityPainter } from './InfinityPainter';
@@ -32,8 +32,7 @@ interface Props {
   onLeave: () => void;
   /** Start again on a new seed (the app makes the text and remounts this screen). */
   onNewSeed: () => void;
-  /** Credits earned from gold rings, paid into the account as they are banked (every few seconds, and on leaving). */
-  onCredits?: (credits: number) => void;
+
 }
 
 /** How often the distance is banked into the records while rolling (ms): a closed tab keeps the best. */
@@ -57,9 +56,7 @@ export function autoZoom(speed: number): number {
   return 1.25 - 0.7 * t * t * (3 - 2 * t);
 }
 
-export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed, onCredits }: Props) {
-  const creditsRef = useRef(onCredits);
-  creditsRef.current = onCredits;
+export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }: Props) {
   const [rings, setRings] = useState(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fadeRef = useRef<HTMLDivElement>(null);
@@ -78,6 +75,8 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed, o
   reduceRef.current = reduceMotion;
   const audioRef = useRef<InfinityAudio | null>(null);
   const [savedNote, setSavedNote] = useState<string | null>(null);
+  /** Ends the current run's bookkeeping (set by the run's effect). */
+  const endRunRef = useRef<() => void>(() => {});
   const zoomRef = useRef<number | null>(loadZoom());
   /** The zoom on screen right now (automatic or yours): where your own zooming starts from. */
   const shownZoomRef = useRef(zoomRef.current ?? 1);
@@ -130,8 +129,19 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed, o
     painter.onKm = () => audio.chime();
     let elapsed = 0, frameMs = 16;
     // gold rings become credits in the account (banked every few seconds and on leaving, so a closed tab keeps them)
-    let ringsPaid = 0;
-    const payRings = () => { const n = run.rings - ringsPaid; if (n > 0) { ringsPaid = run.rings; creditsRef.current?.(n * RING_CREDITS); } };
+    let ringsBanked = 0;
+    const bankRun = () => { const n = run.rings - ringsBanked; if (n > 0) { ringsBanked = run.rings; bankRings(n); } };
+    // The run is over (Leave, Restart, New seed, or the screen closing): bank its distance, rings and distance bonus,
+    // once. Leave calls it before the menu opens, so the menu's ring tally counts this run (the owner).
+    let ended = false;
+    const endRun = () => {
+      if (ended) return;
+      ended = true;
+      recordDistance(run.km, banked);
+      bankRun();
+      bankRunEnd(run.km);
+    };
+    endRunRef.current = endRun;
     runRef.current = run;
     recordStart(seedText);
     if (import.meta.env.DEV) (window as unknown as { __infinity?: unknown }).__infinity = run;
@@ -284,7 +294,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed, o
       if (fadeRef.current) fadeRef.current.style.opacity = String(Math.min(1, run.fade * 1.1).toFixed(2));
       hudTimer += dt; bankTimer += dt;
       if (hudTimer > 120) { hudTimer = 0; setKm(run.km); setRings(run.rings); }
-      if (bankTimer > BANK_EVERY_MS && !pausedRef.current) { bankTimer = 0; recordDistance(run.km, banked); banked = run.km; payRings(); }
+      if (bankTimer > BANK_EVERY_MS && !pausedRef.current) { bankTimer = 0; recordDistance(run.km, banked); banked = run.km; bankRun(); }
       unblend();
     };
     raf = requestAnimationFrame(frame);
@@ -302,8 +312,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed, o
       canvas.removeEventListener('pointermove', pointerMove);
       canvas.removeEventListener('pointerup', pointerUp);
       canvas.removeEventListener('pointercancel', pointerUp);
-      recordDistance(run.km, banked);
-      payRings();
+      endRun();
       audio.stop();
       audioRef.current = null;
       runRef.current = null;
@@ -359,7 +368,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed, o
         <button className="button-primary" onClick={() => setPaused(false)} autoFocus><Play size={15} />Resume</button>
         <button className="button-secondary" onClick={() => { setPaused(false); setKm(0); setRestarts((n) => n + 1); }}><RotateCcw size={15} />Restart</button>
         <button className="button-secondary" onClick={onNewSeed}>New seed</button>
-        <button className="button-secondary" onClick={onLeave}>Leave</button>
+        <button className="button-secondary" onClick={() => { endRunRef.current(); onLeave(); }}>Leave</button>
       </div>
     </Dialog>}
   </div>;

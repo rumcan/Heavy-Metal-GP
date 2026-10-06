@@ -812,6 +812,7 @@ export default function App() {
         onStartStory={(pick) => { setStoryPick(pick ?? null); setStoryNotice(null); setPhase('story'); }}
         storyNotice={storyNotice}
         onStartInfinity={() => { setInfinitySeed(seedTextFor(loadRecords())); setPhase('infinity'); }}
+        onInfinityCredits={(credits) => publishAccount({ ...accountRef.current, credits: accountRef.current.credits + credits, totalWinnings: accountRef.current.totalWinnings + credits })}
         onWorkshop={() => setPhase('editor')}
         mpBusy={mpBusy}
         mpError={mpError}
@@ -837,7 +838,6 @@ export default function App() {
       seedText={infinitySeed}
       driver={infinityDriver}
       onLeave={() => setPhase('menu')}
-      onCredits={(credits) => publishAccount({ ...accountRef.current, credits: accountRef.current.credits + credits, totalWinnings: accountRef.current.totalWinnings + credits })}
       onNewSeed={() => {
         // A fresh random seed becomes "My seed", so the Roll button remembers it.
         const next = `roll-${Math.floor(Math.random() * 0xfffff).toString(36)}`;

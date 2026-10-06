@@ -2,7 +2,8 @@ import { useState } from 'react';
 import type { Garage } from '../../game/garages';
 import type { RacerAccount } from '../../game/economy';
 import type { RankChipModel } from '../../game/rank-view';
-import { dailySeedText, formatKm, loadRecords, saveRecords, seedTextFor } from '../../game/infinity-store';
+import { clearPending, dailySeedText, formatKm, loadRecords, saveRecords, seedTextFor } from '../../game/infinity-store';
+import RingTally from './RingTally';
 import type { InfinityRecords, SeedChoice } from '../../game/infinity-store';
 import GaragePanel from './GaragePanel';
 import '../infinity/infinity.css';
@@ -15,14 +16,18 @@ interface Props {
   onShop: () => void;
   rank: RankChipModel | null;
   onRank?: () => void;
+  /** The ring tally's credits, paid into the account. */
+  onCredits?: (credits: number) => void;
 }
 
 /**
  * Infinity: a calm card (the best distance and the seed in use), the goblin and ball, and the records. One big button,
  * in the footer, rolls. Its gold rings pay credits (the owner: play Infinity to buy skills instead of the story).
  */
-export default function InfinityTab({ garage, onGarage, account, onShop, rank, onRank }: Props) {
+export default function InfinityTab({ garage, onGarage, account, onShop, rank, onRank, onCredits }: Props) {
   const [records, setRecords] = useState<InfinityRecords>(() => loadRecords());
+  // the rings banked by the last run(s), counted out once when the tab opens (they stay banked until paid)
+  const [tally] = useState(() => loadRecords().pending);
   const update = (next: InfinityRecords) => { saveRecords(next); setRecords(next); };
   const choose = (choice: SeedChoice) => update({ ...records, choice });
   const seedText = seedTextFor(records);
@@ -51,13 +56,14 @@ export default function InfinityTab({ garage, onGarage, account, onShop, rank, o
     <GaragePanel mode="infinity" garage={garage} onChange={onGarage} account={account} onShop={onShop} rank={rank} onRank={onRank} />
     <section className="fit-pane home-field" data-pane-id="field" aria-label="Your records">
       <div className="section-topline"><span className="eyebrow"><b>03</b> YOUR RECORDS</span></div>
+      {tally.rings + tally.bonus > 0 && <RingTally rings={tally.rings} bonus={tally.bonus} km={tally.km} onPaid={(credits) => { setRecords(clearPending()); onCredits?.(credits); }} />}
       <dl className="infinity-records">
         <dt>Best distance</dt><dd>{formatKm(records.bestKm)} km</dd>
         <dt>Total rolled</dt><dd>{formatKm(records.totalKm)} km</dd>
         <dt>Runs</dt><dd>{records.runs}</dd>
         <dt>Last seed</dt><dd>{records.lastSeed || '—'}</dd>
       </dl>
-      <p className="muted">Collect gold rings on the way: each one pays {RING_CREDITS} credits to spend in the shop.</p>
+      <p className="muted">Collect gold rings on the way: each one pays {RING_CREDITS} credits to spend in the shop, plus a distance bonus of 5 rings for every km. They are counted out here after your run.</p>
     </section>
   </>;
 }
