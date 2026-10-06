@@ -8,7 +8,8 @@ import { SPRING_W, floorAt } from './course';
 import type { Kicker } from './course';
 import type Matter from 'matter-js';
 import { LEDGE_H } from './build';
-import { drawRoutes } from './routes';
+import { drawRoutes, setLoopRingSource } from './routes';
+import { sprite } from '../sprites';
 import wreckingBallUrl from '../../assets/game/wrecking-ball.webp';
 import railWoodUrl from '../../assets/game/rail-wood.webp';
 import rockFillUrl from '../../assets/game/rock-fill.webp';
@@ -39,6 +40,8 @@ const ART = {
   crate: load(crateUrl), ball: load(wreckingBallUrl), towers: [load(tower1Url), load(tower2Url), load(tower3Url)], torch: load(torchUrl),
   treeGroups: [load(treesGroup1Url), load(treesGroup2Url), load(treesGroup3Url)], crowds: [load(crowd1Url), load(crowd2Url)],
 };
+// loops are drawn in the pinball tracks' loop-ring art (routes.ts)
+setLoopRingSource(() => sprite('loop-ring'));
 const ready = (img: HTMLImageElement | null): img is HTMLImageElement => !!img && img.complete && img.naturalWidth > 0;
 const allReady = () => ready(ART.wood) && ready(ART.rock) && ready(ART.moss);
 

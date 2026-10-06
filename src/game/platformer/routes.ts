@@ -7,7 +7,6 @@ import { CAT_LOOP_CLOSE, CAT_LOOP_UP, CAT_WALL } from '../track';
 import type { Meta } from '../track';
 import { laneCategory } from '../lanes';
 import type { Lane } from './course';
-import { sprite } from '../sprites';
 import { drawImg } from '../mip';
 
 /**
@@ -119,6 +118,10 @@ export function bridgeLineAt(bridge: BridgeSpot, x: number): number | null {
 
 const WOOD = '#9a6a35', WOOD_DARK = '#4b2f15', WOOD_LIGHT = '#c99a5b';
 
+/** Where the 'loop-ring' sprite comes from: set by the browser-only skin (coaster.ts), so this module stays node-safe. */
+let loopRing: () => HTMLImageElement | null = () => null;
+export function setLoopRingSource(source: () => HTMLImageElement | null): void { loopRing = source; }
+
 /**
  * The loop ring in the pinball tracks' own art (the 'loop-ring' sprite, the same ring as the classic Loop piece). The
  * ring here is a helix (it leaves `pitch` further on than it began), so the sprite is drawn as thin wedges, each one
@@ -126,7 +129,7 @@ const WOOD = '#9a6a35', WOOD_DARK = '#4b2f15', WOOD_LIGHT = '#c99a5b';
  * until the sprite has loaded.
  */
 export function drawLoop(ctx: CanvasRenderingContext2D, loop: LoopSpot): void {
-  const img = sprite('loop-ring');
+  const img = loopRing();
   if (img) { drawLoopArt(ctx, loop, img); return; }
   drawLoopRibbon(ctx, loop);
 }
