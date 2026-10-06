@@ -294,30 +294,56 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
 /** One stretch of the course per crowd: a km (the HUD's 10,000 px). */
 const CROWD_EVERY = 10_000;
 /**
- * The goblin crowd stands (the owner's art): once a km, on the back lane only, standing at the height of the track
- * with their base just under the beam. Drawn before that lane's cliff and beam, so every track and cliff is in front of
- * them; where a sloping track leaves a gap under a stand, trees (crowdGapTrees) hide it. Sometimes one stand,
- * sometimes two or three side by side. Static, so they are cached with the rest of the lane.
+ * The goblin crowd stands (the owner's art): once a km, on the back lane only, on a flat stretch of track (moved along
+ * to the nearest one, or left out). Each stands on the cliff top and rises above the track, so no air shows under it;
+ * drawn before that lane's cliff and beam, so every track and cliff is in front of it, with trees at its feet
+ * (crowdGapTrees). Sometimes one stand, sometimes two or three side by side. Static: cached with the lane.
  */
 function crowds(ctx: CanvasRenderingContext2D, run: Pt[], pts: Pt[], lane: Lane): { x: number; w: number; base: number }[] {
   const placed: { x: number; w: number; base: number }[] = [];
   if (lane !== LANE_BACK) return placed;
   const a = pts[0].x, b = pts[pts.length - 1].x;
-  for (let k = Math.floor((a - 3 * 1100) / CROWD_EVERY); k * CROWD_EVERY < b + 1100; k++) {
+  const flat = (x0: number, x1: number) => {
+    if (x0 < run[0].x + 60 || x1 > run[run.length - 1].x - 60) return false;
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i <= 10; i++) { const y = yOn(run, x0 + ((x1 - x0) * i) / 10); lo = Math.min(lo, y); hi = Math.max(hi, y); }
+    return hi - lo <= 12;
+  };
+  for (let k = Math.floor((a - 6000) / CROWD_EVERY); k * CROWD_EVERY < b + 6000; k++) {
     if (k < 1) continue;
     const r = hash(k, lane + 31);
-    const count = r < 0.4 ? 1 : r < 0.8 ? 2 : 3;
-    const h = 330 + hash(k, lane + 32) * 60;
+    const want = r < 0.4 ? 1 : r < 0.8 ? 2 : 3;
+    const img0 = ART.crowds[k % 2];
+    if (!ready(img0) || !ready(ART.crowds[(k + 1) % 2])) continue;
+    const aspect = img0.naturalWidth / img0.naturalHeight;
+    // how much stand shows above the track; below it, each stand reaches down past the lowest cliff top under it (the
+    // cliff, drawn after, covers the rest), so no air shows under a stand
+    const above = 300 + hash(k, lane + 32) * 60;
+    const lowest = (x0: number, x1: number) => { let c = 0; for (let i = 0; i <= 8; i++) c = Math.max(c, clearance(x0 + ((x1 - x0) * i) / 8)); return c; };
+    const span = (count: number) => aspect * (above + 280 + 14) * count; // the widest a stand can be (clearance <= 280)
+    // the nearest flat stretch to the km mark, within 2,400 px either way, for as many of the stands as fit
+    let start: number | null = null, count = want;
+    for (; count >= 1 && start === null; count--) {
+      for (let step = 0; step <= 12 && start === null; step++) {
+        for (const sign of step ? [1, -1] : [1]) {
+          const x = k * CROWD_EVERY + sign * step * 200;
+          if (flat(x, x + span(count))) { start = x; break; }
+        }
+      }
+    }
+    count++;
+    if (start === null || start > b || start + span(count) < a) continue;
+    let x = start;
     for (let i = 0; i < count; i++) {
       const img = ART.crowds[(k + i) % 2];
       if (!ready(img)) continue;
+      const track = yOn(run, x);
+      const h = above + lowest(x, x + aspect * (above + 294)) + 14;
       const w = (img.naturalWidth / img.naturalHeight) * h;
-      const x = k * CROWD_EVERY + i * (w - 8);
-      if (x + w < a || x > b || x < run[0].x + 60 || x + w > run[run.length - 1].x - 60) continue;
-      // the base under the lower end of the beam over it, so the stand never floats above the track
-      const base = Math.max(yOn(run, x), yOn(run, x + w)) + TRACK_T - RAIL_UP;
+      const base = track - above + h;
       drawImg(ctx, img, x, base - h, w, h);
       placed.push({ x, w, base });
+      x += w - 8;
     }
   }
   return placed;

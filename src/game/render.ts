@@ -3080,9 +3080,21 @@ function neighboursForBridge(game: Game, body: Matter.Body): BridgeNeighbours {
 
 /** Painted timber deck with continuous ropes following the existing live plank bodies. */
 function drawBridgePlank(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, game: Game) {
+  drawBridgePlankWith(ctx, b, md, neighboursForBridge(game, b));
+}
+
+/**
+ * A whole rope bridge in the classic art from its planks (any order): the platformer's bridges (routes.ts) use it,
+ * so a bridge on a flow course or in Infinity looks exactly like the Workshop's rope bridge.
+ */
+export function drawBridgeChain(ctx: CanvasRenderingContext2D, planks: Matter.Body[]): void {
+  const sorted = [...planks].sort((p, q) => (meta(p).bridge?.idx ?? 0) - (meta(q).bridge?.idx ?? 0));
+  sorted.forEach((b, i) => drawBridgePlankWith(ctx, b, meta(b), { previous: sorted[i - 1] ?? null, next: sorted[i + 1] ?? null }));
+}
+
+function drawBridgePlankWith(ctx: CanvasRenderingContext2D, b: Matter.Body, md: ReturnType<typeof meta>, neighbours: BridgeNeighbours) {
   const br = md.bridge;
   if (!br) return;
-  const neighbours = neighboursForBridge(game, b);
   const previous = neighbours.previous?.position ?? br.anchor[0];
   const next = neighbours.next?.position ?? br.anchor[1];
   const points = [previous, b.position];

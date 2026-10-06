@@ -53,6 +53,27 @@ const ease = (x: number) => Math.max(0, Math.min(1, (x - INF_START_FLAT) / 600))
  * after the start meadow. Continuous and bounded away from the mean line, so the land rolls but never runs off.
  */
 export function terrainY(seed: number, lane: Lane, x: number): number {
+  const y = rollingY(seed, lane, x);
+  if (lane !== STAND_LANE) return y;
+  // The back lane is level for a stretch after every km mark: the goblin stands (coaster.ts) stand there. Eased ramps
+  // in and out; the level sits halfway between the land at its two ends, so with the land's descent both ramps go down.
+  const k = Math.round((x - STAND_FROM - STAND_LEN / 2) / PX_PER_KM);
+  if (k < 1) return y;
+  const a = k * PX_PER_KM + STAND_FROM, b = a + STAND_LEN;
+  if (x <= a - STAND_RAMP || x >= b + STAND_RAMP) return y;
+  const level = (rollingY(seed, lane, a) + rollingY(seed, lane, b)) / 2;
+  const smooth = (t: number) => t * t * (3 - 2 * t);
+  const f = x < a ? smooth((x - (a - STAND_RAMP)) / STAND_RAMP) : x > b ? smooth(((b + STAND_RAMP) - x) / STAND_RAMP) : 1;
+  return y + (level - y) * f;
+}
+
+/** The back lane's level stretch for the goblin stands: from STAND_FROM past each km mark, STAND_LEN long. */
+const STAND_LANE: Lane = 0;
+export const STAND_FROM = -100;
+export const STAND_LEN = 2600;
+const STAND_RAMP = 2000;
+
+function rollingY(seed: number, lane: Lane, x: number): number {
   const w = wavesOf(seed);
   const along = Math.max(0, x - INF_START_FLAT);
   // The grade breathes between 0.6x and 1.4x over about 90 000 u; its integral is closed-form.
