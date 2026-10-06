@@ -188,9 +188,14 @@ function drawLoopRibbon(ctx: CanvasRenderingContext2D, loop: LoopSpot): void {
   ctx.restore();
 }
 
-/** The deck of a rope bridge from its (moving) planks: ropes at the plank ends, then the planks, then the anchor posts. */
+/** The classic rope bridge's drawing (render.ts drawBridgeChain), set by the browser-only renderer: routes.ts stays node-safe. */
+let bridgeArt: ((ctx: CanvasRenderingContext2D, planks: Matter.Body[]) => void) | null = null;
+export function setBridgeArt(draw: (ctx: CanvasRenderingContext2D, planks: Matter.Body[]) => void): void { bridgeArt = draw; }
+
+/** A rope bridge from its (moving) planks: the Workshop's rope bridge art; a plain vector deck only without it. */
 export function drawBridge(ctx: CanvasRenderingContext2D, planks: Matter.Body[]): void {
   if (!planks.length) return;
+  if (bridgeArt) { bridgeArt(ctx, planks); return; }
   const sorted = [...planks].sort((p, q) => p.position.x - q.position.x);
   ctx.save();
   ctx.lineCap = 'round';

@@ -6,14 +6,14 @@ import type Matter from 'matter-js';
 import type { Game, Marble } from '../engine';
 import { drawImg } from '../mip';
 import { meta } from '../track';
-import { laneFocus, laneView, visibleLanes, LANE_SWITCH_MS, LANE_MIDDLE } from '../lanes';
-import { drawBodies, drawMarble } from '../render';
+import { laneFocus, laneView, visibleLanes, LANE_SWITCH_MS, LANE_MIDDLE, LANE_FRONT } from '../lanes';
+import { drawBodies, drawBridgeChain, drawMarble } from '../render';
 import { drawSkillWorld } from '../skills/draw';
 import { SPRING_W, floorAt } from './course';
 import type { CoursePlan, Floor, Lane, LaneGate } from './course';
 import { coasterReady, drawCoasterLane } from './coaster';
 import { drawCloudLedge, drawKicker } from './sky-art';
-import { drawRoutes } from './routes';
+import { drawRoutes, setBridgeArt } from './routes';
 import { LEDGE_H } from './build';
 import earthUrl from '../../assets/game/platformer/earth.webp';
 import grassUrl from '../../assets/game/platformer/grass.webp';
@@ -27,6 +27,9 @@ import cannonUrl from '../../assets/game/cannon.webp';
 import treesFrontUrl from '../../assets/game/platformer/trees-front.webp';
 import { CANNON_LEN, CANNON_SPEED, muzzle } from '../engine/platformer';
 import skyCloudsUrl from '../../assets/game/platformer/sky-clouds.webp';
+
+// rope bridges on flow courses and in Infinity: the Workshop's rope bridge art
+setBridgeArt(drawBridgeChain);
 
 // Generated art (P2-00): a skin over the vector bodies. Every draw falls back to flat shapes until it loads.
 const load = (src: string) => (typeof Image !== 'undefined' ? Object.assign(new Image(), { src }) : null);
@@ -787,10 +790,12 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
  * than the track (they are nearer than it). Kept low: their tops stop well below the middle, where your ball is.
  */
 /** Per camera: how far the pines have scrolled (screen px) and where they sit vertically. */
-const FG = new WeakMap<PlatformCamera, { camX: number; camY: number; scroll: number; scrollMid: number; lagY: number; trackY?: number }>();
+const FG = new WeakMap<PlatformCamera, { camX: number; camY: number; scroll: number; scrollMid: number; scrollBack: number; lagY: number; trackY?: number; frontY?: number }>();
 export const FG_PARALLAX = 1.35;
 /** The second row of pines, between the front row and the cliffs: further away, so it scrolls slower (depth). */
 export const FG_MID_PARALLAX = 1.15;
+/** The third row, higher up and further back still (it covers the gap between the tracks): slower again. */
+export const FG_BACK_PARALLAX = 1.05;
 
 /**
  * Where the foreground pines are this frame. They used to sit at cam.x * cam.scale * 1.35 (mod their width): the
@@ -799,17 +804,17 @@ export const FG_MID_PARALLAX = 1.15;
  * never moves them, a respawn or restart (a big jump) does not spin them, and they sway a little against vertical
  * motion and settle back, like something close to the lens.
  */
-export function foregroundScroll(cam: PlatformCamera): { x: number; y: number; mid: number } {
+export function foregroundScroll(cam: PlatformCamera): { x: number; y: number; mid: number; back: number } {
   let st = FG.get(cam);
-  if (!st) { st = { camX: cam.x, camY: cam.y, scroll: 0, scrollMid: 0, lagY: cam.y }; FG.set(cam, st); }
+  if (!st) { st = { camX: cam.x, camY: cam.y, scroll: 0, scrollMid: 0, scrollBack: 0, lagY: cam.y }; FG.set(cam, st); }
   const dx = cam.x - st.camX;
-  if (Math.abs(dx) < 400) { st.scroll += dx * cam.scale * FG_PARALLAX; st.scrollMid += dx * cam.scale * FG_MID_PARALLAX; } // a bigger jump is a teleport: do not spin
+  if (Math.abs(dx) < 400) { st.scroll += dx * cam.scale * FG_PARALLAX; st.scrollMid += dx * cam.scale * FG_MID_PARALLAX; st.scrollBack += dx * cam.scale * FG_BACK_PARALLAX; } // a bigger jump is a teleport: do not spin
   st.camX = cam.x;
   st.camY = cam.y;
   st.lagY += (cam.y - st.lagY) * 0.08;
   if (Math.abs(cam.y - st.lagY) > 600) st.lagY = cam.y;
   const y = Math.max(-24, Math.min(24, (st.lagY - cam.y) * cam.scale * 0.35));
-  return { x: st.scroll, y, mid: st.scrollMid };
+  return { x: st.scroll, y, mid: st.scrollMid, back: st.scrollBack };
 }
 
 /**
@@ -823,6 +828,7 @@ export function shiftForeground(cam: PlatformCamera, dx: number, dy: number): vo
   if (!st) return;
   st.camX += dx; st.camY += dy; st.lagY += dy;
   if (st.trackY !== undefined) st.trackY += dy;
+  if (st.frontY !== undefined) st.frontY += dy;
 }
 
 export function foregroundTop(cam: PlatformCamera, plan: CoursePlan | undefined, ch: number): number {
@@ -836,21 +842,34 @@ export function foregroundTop(cam: PlatformCamera, plan: CoursePlan | undefined,
   return trackScreen + ch * 0.1;
 }
 
-/** The front pines mirrored (so the rows never line up) and washed with a little evening haze: drawn once. */
-let midPinesCache: { img: HTMLImageElement; c: HTMLCanvasElement } | null = null;
-function midPines(img: HTMLImageElement): HTMLCanvasElement {
-  if (midPinesCache?.img === img) return midPinesCache.c;
+/**
+ * The front pines washed with evening haze (mirrored for every other row, so the rows never line up), drawn once per
+ * strength; `floor` is the colour of their feet, for the band under them.
+ */
+const hazeCache = new Map<string, { img: HTMLImageElement; c: HTMLCanvasElement; floor: string }>();
+function hazePines(img: HTMLImageElement, haze: number, flip: boolean): { c: HTMLCanvasElement; floor: string } {
+  const key = haze + (flip ? 'f' : '');
+  const hit = hazeCache.get(key);
+  if (hit?.img === img) return hit;
   const c = document.createElement('canvas');
   c.width = img.naturalWidth; c.height = img.naturalHeight;
-  const g = c.getContext('2d')!;
-  g.translate(c.width, 0); g.scale(-1, 1);
+  const g = c.getContext('2d', { willReadFrequently: true })!;
+  if (!flip) { g.translate(c.width, 0); g.scale(-1, 1); }
   g.drawImage(img, 0, 0);
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.globalCompositeOperation = 'source-atop';
-  g.fillStyle = 'rgba(70,100,120,0.32)';
+  g.fillStyle = `rgba(70,100,120,${haze})`; // 0: the owner wants no haze (kept for tuning)
   g.fillRect(0, 0, c.width, c.height);
-  midPinesCache = { img, c };
-  return c;
+  // the average colour of the solid pixels along the bottom
+  let r = 0, gr = 0, bl = 0, n = 0;
+  try {
+    const d = g.getImageData(0, Math.floor(c.height * 0.9), c.width, Math.max(1, Math.floor(c.height * 0.08))).data;
+    for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 200) { r += d[i]; gr += d[i + 1]; bl += d[i + 2]; n++; }
+  } catch { /* a tainted canvas: fall back below */ }
+  const floor = n ? `rgb(${Math.round(r / n)},${Math.round(gr / n)},${Math.round(bl / n)})` : '#152326';
+  const out = { img, c, floor };
+  hazeCache.set(key, out);
+  return out;
 }
 
 function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch: number, plan?: CoursePlan) {
@@ -858,13 +877,29 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
   if (!ready(img)) return;
   const h = ch * 0.46;
   const w = (img.naturalWidth / img.naturalHeight) * h;
-  const { x: scroll, mid } = foregroundScroll(cam);
+  const { x: scroll, mid, back } = foregroundScroll(cam);
   let x = -(((scroll % w) + w) % w);
   const y = foregroundTop(cam, plan, ch);
-  // the second row (owner: depth): smaller, a little higher up the screen, hazier and slower, behind the front row
-  const hazy = midPines(img);
-  const mh = h * 0.72, mw = (img.naturalWidth / img.naturalHeight) * mh, my = y - ch * 0.05;
-  if (my < ch) for (let mx = -(((mid % mw) + mw) % mw); mx < cw; mx += mw) drawImg(ctx, hazy, mx, my, mw + 1, mh);
+  // two more rows behind the front one (owner: depth), each smaller, higher, hazier and slower; under each, a band in
+  // its own darkest colour down to the row in front, so no land shows between the rows
+  // never above the front-most track on screen (eased, so the rows follow its slopes smoothly)
+  const st = FG.get(cam)!;
+  const fv = laneView(LANE_FRONT, cam.focus);
+  const floor = plan ? floorAt(plan, LANE_FRONT as Lane, cam.x) : null;
+  if (floor !== null) st.frontY = st.frontY === undefined || Math.abs(floor - st.frontY) > 900 ? floor : st.frontY + (floor - st.frontY) * 0.06;
+  const front = st.frontY === undefined ? -Infinity : ch / 2 + fv.lift * cam.scale + (st.frontY - cam.y) * cam.scale * fv.scale + 40;
+  const rows = [
+    { pines: hazePines(img, 0, true), top: Math.max(front, y - ch * 0.13), height: h * 0.58, scroll: back },
+    { pines: hazePines(img, 0, false), top: Math.max(front + ch * 0.04, y - ch * 0.05), height: h * 0.72, scroll: mid },
+  ];
+  rows.forEach((row, i) => {
+    if (row.top >= ch) return;
+    const rw = (img.naturalWidth / img.naturalHeight) * row.height;
+    const below = i + 1 < rows.length ? rows[i + 1].top + rows[i + 1].height * 0.5 : y + h * 0.5;
+    ctx.fillStyle = row.pines.floor;
+    ctx.fillRect(0, row.top + row.height * 0.8, cw, Math.max(0, below - (row.top + row.height * 0.8)));
+    for (let rx = -(((row.scroll % rw) + rw) % rw); rx < cw; rx += rw) drawImg(ctx, row.pines.c, rx, row.top, rw + 1, row.height);
+  });
   if (y >= ch) return; // the camera is far above the track: the pines are below the screen
   for (; x < cw; x += w) drawImg(ctx, img, x, y, w + 1, h);
   // below the trees' feet (the track can sit high on screen): the forest floor, in their own darkest colour
