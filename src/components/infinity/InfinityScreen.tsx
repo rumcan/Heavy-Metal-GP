@@ -2,7 +2,7 @@
 // rolling across a land that grows ahead of it. The HUD is one soft distance readout, a pause button, a mute button and
 // Hide UI (photo mode: only the world, tap anywhere to bring the buttons back).
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Camera, RotateCcw, EyeOff, Pause, Play, Volume2, VolumeX } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Camera, RotateCcw, EyeOff, Pause, Play, Volume2, VolumeX, ZoomIn, ZoomOut } from 'lucide-react';
 import { InfinityRun } from '../../game/platformer/infinity-world';
 import { marbleDepth, renderPlatformer, shiftForeground } from '../../game/platformer/render';
 import type { PlatformCamera } from '../../game/platformer/render';
@@ -18,6 +18,7 @@ import { biomeAt, dayAt } from '../../game/infinity-look';
 import { InfinityAudio } from '../../game/infinity-audio';
 import { InfinityPainter } from './InfinityPainter';
 import type { MarbleInfo } from '../../game/types';
+import * as storage from '../../game/storage';
 import Dialog from '../Dialog';
 import './infinity.css';
 
@@ -33,6 +34,15 @@ interface Props {
 
 /** How often the distance is banked into the records while rolling (ms): a closed tab keeps the best. */
 const BANK_EVERY_MS = 4000;
+
+/** The player's own zoom on top of the automatic framing (wheel, pinch, + / - / 0, or the buttons), kept on this device. */
+const ZOOM_KEY = 'heavy-metal-gp:infinity-zoom';
+export const INFINITY_ZOOM_MIN = 0.4;
+export const INFINITY_ZOOM_MAX = 2;
+const clampZoom = (z: number) => Math.max(INFINITY_ZOOM_MIN, Math.min(INFINITY_ZOOM_MAX, z));
+function loadZoom(): number {
+  try { const n = Number(storage.getItem(ZOOM_KEY)); return n > 0 ? clampZoom(n) : 1; } catch { return 1; }
+}
 
 export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -52,6 +62,14 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
   reduceRef.current = reduceMotion;
   const audioRef = useRef<InfinityAudio | null>(null);
   const [savedNote, setSavedNote] = useState<string | null>(null);
+  const zoomRef = useRef(loadZoom());
+  const [zoom, setZoomState] = useState(zoomRef.current);
+  const setZoom = useCallback((value: number) => {
+    const next = clampZoom(value);
+    zoomRef.current = next;
+    setZoomState(next);
+    try { storage.setItem(ZOOM_KEY, String(next)); } catch { /* storage unavailable */ }
+  }, []);
 
   const setPaused = useCallback((next: boolean) => {
     pausedRef.current = next;
@@ -119,6 +137,9 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
       if (down && !event.repeat && event.code === 'KeyM') { toggleMute(); return; }
       if (down && !event.repeat && (event.code === 'KeyP' || event.code === 'Escape')) { setPaused(!pausedRef.current); return; }
       if (down && !event.repeat && event.code === 'KeyH') { setUiHidden((v) => !v); return; }
+      if (down && (event.code === 'Equal' || event.code === 'NumpadAdd')) { setZoom(zoomRef.current * 1.2); return; }
+      if (down && (event.code === 'Minus' || event.code === 'NumpadSubtract')) { setZoom(zoomRef.current / 1.2); return; }
+      if (down && (event.code === 'Digit0' || event.code === 'Numpad0')) { setZoom(1); return; }
       if (down && !event.repeat && event.code === 'F3') { event.preventDefault(); meter.toggle(); return; }
       if (pausedRef.current) return;
       let code = event.code;
@@ -140,6 +161,22 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
     document.addEventListener('visibilitychange', hidden);
     const unlock = () => { raceAudio.unlock(); audio.start(); };
     window.addEventListener('pointerdown', unlock);
+    const wheel = (event: WheelEvent) => { event.preventDefault(); setZoom(zoomRef.current * Math.exp(-event.deltaY * 0.0015)); };
+    const pointers = new Map<number, { x: number; y: number }>();
+    let pinchStart = 0, pinchZoom = 1;
+    const spread = () => { const [a, b] = [...pointers.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+    const pointerDown = (event: PointerEvent) => { pointers.set(event.pointerId, { x: event.clientX, y: event.clientY }); if (pointers.size === 2) { pinchStart = spread(); pinchZoom = zoomRef.current; } };
+    const pointerMove = (event: PointerEvent) => {
+      if (!pointers.has(event.pointerId)) return;
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (pointers.size === 2 && pinchStart > 0) setZoom(pinchZoom * spread() / pinchStart);
+    };
+    const pointerUp = (event: PointerEvent) => { pointers.delete(event.pointerId); if (pointers.size < 2) pinchStart = 0; };
+    canvas.addEventListener('wheel', wheel, { passive: false });
+    canvas.addEventListener('pointerdown', pointerDown);
+    canvas.addEventListener('pointermove', pointerMove);
+    canvas.addEventListener('pointerup', pointerUp);
+    canvas.addEventListener('pointercancel', pointerUp);
 
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame);
@@ -172,7 +209,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
         // P2-25: a slow zoom out as the ball picks up speed (never sudden).
         const v = game.player.body.velocity;
         const speed = Math.hypot(v.x, v.y);
-        const target = Math.max(0.42, Math.min(1.25, Math.min(width / 1000, height / 520))) * (1 - Math.min(0.16, speed * 0.011));
+        const target = Math.max(0.42, Math.min(1.25, Math.min(width / 1000, height / 520))) * (1 - Math.min(0.16, speed * 0.011)) * zoomRef.current;
         camera.scale += (target - camera.scale) * (1 - Math.exp(-dt / 180));
         // a smoothed look-ahead (the raw speed jumps on every bump) and a calmer vertical follow
         lookAhead += (Math.max(-160, Math.min(260, game.player.body.velocity.x * 26)) - lookAhead) * (1 - Math.exp(-dt / 600));
@@ -213,13 +250,18 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
       window.removeEventListener('blur', blur);
       document.removeEventListener('visibilitychange', hidden);
       window.removeEventListener('pointerdown', unlock);
+      canvas.removeEventListener('wheel', wheel);
+      canvas.removeEventListener('pointerdown', pointerDown);
+      canvas.removeEventListener('pointermove', pointerMove);
+      canvas.removeEventListener('pointerup', pointerUp);
+      canvas.removeEventListener('pointercancel', pointerUp);
       recordDistance(run.km, banked);
       audio.stop();
       audioRef.current = null;
       runRef.current = null;
       run.destroy();
     };
-  }, [seedText, driver, setPaused, toggleMute, pressJump, restarts]);
+  }, [seedText, driver, setPaused, toggleMute, pressJump, setZoom, restarts]);
 
   const hold = (key: 'left' | 'right') => ({
     onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => { e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); controls.current[key] = true; },
@@ -240,6 +282,8 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
       <div className="infinity-tools">
         <button className="infinity-icon" onClick={() => setPaused(true)} aria-label="Pause" title="Pause (P)"><Pause size={18} /></button>
         <button className="infinity-icon" onClick={toggleMute} aria-label={muted ? 'Unmute' : 'Mute'} aria-pressed={muted} title="Sound (M)">{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button>
+        <button className="infinity-icon" onClick={() => setZoom(zoom / 1.25)} disabled={zoom <= INFINITY_ZOOM_MIN} aria-label="Zoom out" title="Zoom out (-)"><ZoomOut size={18} /></button>
+        <button className="infinity-icon" onClick={() => setZoom(zoom * 1.25)} disabled={zoom >= INFINITY_ZOOM_MAX} aria-label="Zoom in" title="Zoom in (+)"><ZoomIn size={18} /></button>
         <button className="infinity-icon" onClick={savePicture} aria-label="Save picture" title="Save a picture"><Camera size={18} /></button>
         <button className="infinity-icon" onClick={() => setUiHidden(true)} aria-label="Hide the buttons" title="Hide the buttons (H)"><EyeOff size={18} /></button>
       </div>

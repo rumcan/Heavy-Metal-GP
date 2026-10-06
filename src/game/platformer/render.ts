@@ -787,8 +787,10 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
  * than the track (they are nearer than it). Kept low: their tops stop well below the middle, where your ball is.
  */
 /** Per camera: how far the pines have scrolled (screen px) and where they sit vertically. */
-const FG = new WeakMap<PlatformCamera, { camX: number; camY: number; scroll: number; lagY: number; trackY?: number }>();
+const FG = new WeakMap<PlatformCamera, { camX: number; camY: number; scroll: number; scrollMid: number; lagY: number; trackY?: number }>();
 export const FG_PARALLAX = 1.35;
+/** The second row of pines, between the front row and the cliffs: further away, so it scrolls slower (depth). */
+export const FG_MID_PARALLAX = 1.15;
 
 /**
  * Where the foreground pines are this frame. They used to sit at cam.x * cam.scale * 1.35 (mod their width): the
@@ -797,17 +799,17 @@ export const FG_PARALLAX = 1.35;
  * never moves them, a respawn or restart (a big jump) does not spin them, and they sway a little against vertical
  * motion and settle back, like something close to the lens.
  */
-export function foregroundScroll(cam: PlatformCamera): { x: number; y: number } {
+export function foregroundScroll(cam: PlatformCamera): { x: number; y: number; mid: number } {
   let st = FG.get(cam);
-  if (!st) { st = { camX: cam.x, camY: cam.y, scroll: 0, lagY: cam.y }; FG.set(cam, st); }
+  if (!st) { st = { camX: cam.x, camY: cam.y, scroll: 0, scrollMid: 0, lagY: cam.y }; FG.set(cam, st); }
   const dx = cam.x - st.camX;
-  if (Math.abs(dx) < 400) st.scroll += dx * cam.scale * FG_PARALLAX; // a bigger jump is a teleport: do not spin
+  if (Math.abs(dx) < 400) { st.scroll += dx * cam.scale * FG_PARALLAX; st.scrollMid += dx * cam.scale * FG_MID_PARALLAX; } // a bigger jump is a teleport: do not spin
   st.camX = cam.x;
   st.camY = cam.y;
   st.lagY += (cam.y - st.lagY) * 0.08;
   if (Math.abs(cam.y - st.lagY) > 600) st.lagY = cam.y;
   const y = Math.max(-24, Math.min(24, (st.lagY - cam.y) * cam.scale * 0.35));
-  return { x: st.scroll, y };
+  return { x: st.scroll, y, mid: st.scrollMid };
 }
 
 /**
@@ -834,14 +836,35 @@ export function foregroundTop(cam: PlatformCamera, plan: CoursePlan | undefined,
   return trackScreen + ch * 0.1;
 }
 
+/** The front pines mirrored (so the rows never line up) and washed with a little evening haze: drawn once. */
+let midPinesCache: { img: HTMLImageElement; c: HTMLCanvasElement } | null = null;
+function midPines(img: HTMLImageElement): HTMLCanvasElement {
+  if (midPinesCache?.img === img) return midPinesCache.c;
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth; c.height = img.naturalHeight;
+  const g = c.getContext('2d')!;
+  g.translate(c.width, 0); g.scale(-1, 1);
+  g.drawImage(img, 0, 0);
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalCompositeOperation = 'source-atop';
+  g.fillStyle = 'rgba(70,100,120,0.32)';
+  g.fillRect(0, 0, c.width, c.height);
+  midPinesCache = { img, c };
+  return c;
+}
+
 function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch: number, plan?: CoursePlan) {
   const img = ART.treesFront;
   if (!ready(img)) return;
   const h = ch * 0.46;
   const w = (img.naturalWidth / img.naturalHeight) * h;
-  const { x: scroll } = foregroundScroll(cam);
+  const { x: scroll, mid } = foregroundScroll(cam);
   let x = -(((scroll % w) + w) % w);
   const y = foregroundTop(cam, plan, ch);
+  // the second row (owner: depth): smaller, a little higher up the screen, hazier and slower, behind the front row
+  const hazy = midPines(img);
+  const mh = h * 0.72, mw = (img.naturalWidth / img.naturalHeight) * mh, my = y - ch * 0.05;
+  if (my < ch) for (let mx = -(((mid % mw) + mw) % mw); mx < cw; mx += mw) drawImg(ctx, hazy, mx, my, mw + 1, mh);
   if (y >= ch) return; // the camera is far above the track: the pines are below the screen
   for (; x < cw; x += w) drawImg(ctx, img, x, y, w + 1, h);
   // below the trees' feet (the track can sit high on screen): the forest floor, in their own darkest colour
