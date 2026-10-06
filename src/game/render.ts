@@ -1089,8 +1089,9 @@ export function drawBodies(ctx: CanvasRenderingContext2D, game: Game, bodies: re
 }
 
 /** The game's short-lived effects (rings, flashes, beams, debris, snow, floating text), in world coordinates. */
-export function drawEffects(ctx: CanvasRenderingContext2D, game: Game) {
+export function drawEffects(ctx: CanvasRenderingContext2D, game: Game, only?: (e: Game['effects'][number]) => boolean) {
   for (const e of game.effects) {
+    if (only && !only(e)) continue;
     const k = e.ttl / e.maxTtl;
     switch (e.type) {
       case 'ring': {
