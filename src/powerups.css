@@ -362,6 +362,10 @@
 .loadout-slot-tools button { flex: 1; padding: 4px; font: 600 10px var(--mono); background: #172433; border: 1px solid #2c3b4b; color: #d5e7ae; cursor: pointer; }
 .loadout-slot-tools button:disabled { opacity: .4; cursor: default; }
 .loadout-slot-tools button:last-child { flex: 0 0 26px; color: #fca5a5; }
+/* The owner: a clear buy button (it was a bare "+1"). */
+.loadout-slot-tools .loadout-buy { display: inline-flex; align-items: center; justify-content: center; gap: 4px; background: #d63e2e; border-color: #ff6b5a; color: #fff; font: 700 11px var(--mono); letter-spacing: .5px; text-transform: uppercase; }
+.loadout-slot-tools .loadout-buy:not(:disabled):hover { background: #e8503f; }
+.loadout-slot-tools .loadout-buy:disabled { background: #2a3442; border-color: #3a4656; color: #9aa7b6; }
 .loadout-groups { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 18px; max-height: 40vh; overflow: auto; }
 .loadout-groups h3 { margin: 8px 0 4px; font: 700 11px var(--mono); letter-spacing: 1px; text-transform: uppercase; }
 .loadout-skill-list { display: grid; gap: 4px; }
@@ -418,4 +422,12 @@
 .race-dashboard.race-cockpit > .inventory-toolbar .kit-slot-state { display: none; }
 .race-dashboard.race-cockpit > .inventory-toolbar .inventory-slot > kbd { font-size: 7px; padding: 0 2px; }
 .race-dashboard.race-cockpit > .inventory-toolbar .kit-slot-count { font-size: 9px; padding: 0 3px 1px; border-width: 1px; }
-@media (max-width: 650px) { .race-dashboard.race-cockpit > .inventory-toolbar { left: auto; right: 12px; transform: none; } }
+/* Phones and portrait tablets (the owner): the skill bar spans the width, big enough to tap. */
+@media (max-width: 1100px) and (orientation: portrait), (max-width: 650px) {
+  .race-dashboard.race-cockpit > .inventory-toolbar { left: 8px; right: 8px; width: auto; max-width: none; transform: none; padding: 6px; }
+  .race-dashboard.race-cockpit > .inventory-toolbar .inventory-slots { gap: 6px; }
+  .race-dashboard.race-cockpit > .inventory-toolbar .inventory-slot > kbd { display: none; }
+  .race-dashboard.race-cockpit > .inventory-toolbar .kit-slot-count { font-size: 11px; }
+  /* the zoom buttons move to the top left (the course map is top right), clear of the full-width skill bar */
+  .race-shell .zoom-controls { top: 8px; bottom: auto; left: 10px; right: auto; flex-direction: row; }
+}

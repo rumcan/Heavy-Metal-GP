@@ -179,6 +179,8 @@ export interface Marble {
   lane?: number;
   laneFrom?: number;
   laneAt?: number;
+  /** When a wrecking ball last hurt this marble (a hit counts once per swing). */
+  wreckerHitAt?: number;
   /** P2-00 platformer: the lane-change ramp this marble is rolling up (its lip throws it across), and when it last touched it. */
   gateRide?: { gate: LaneGate; at: number };
   /** P2-00 platformer: distance along the course path, and the best so far (the stall watchdog). */

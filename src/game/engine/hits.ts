@@ -139,7 +139,8 @@ export function marbleHits(game: Game, m: Marble, other: Matter.Body) {
       const push = 7;
       Body.setVelocity(m.body, { x: v.x * 0.4 + dx / d * push, y: v.y * 0.4 + dy / d * push });
       game.shake = Math.max(game.shake, 5);
-      game.damage(m, DAMAGE.wrecker, null, 'wrecker'); // P2-07 (platformer races)
+      // One hit per swing: a ball pinned against the wrecking ball was hit again every contact and knocked out at once (the owner)
+      if (game.time - (m.wreckerHitAt ?? -Infinity) > 900) { m.wreckerHitAt = game.time; game.damage(m, DAMAGE.wrecker, null, 'wrecker'); } // P2-07 (platformer races)
       game.sfx('clang', m, other.position.x, other.position.y);
       game.effects.push({ type: 'ring', x: m.body.position.x, y: m.body.position.y, ttl: 14, maxTtl: 14, color: '#e2e8f0' });
       break;
