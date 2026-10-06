@@ -52,6 +52,13 @@ export class InfinityRun {
   /** Counters for tests. */
   chunksBuilt = 0;
   originShifts = 0;
+  /**
+   * Half the width of the land on screen, in world px (the screen sets it every frame from its zoom, for the furthest
+   * lane drawn). The built window always covers it, plus the road ahead at the ball's speed, so land is never built or
+   * dropped where you can see it (it used to be a fixed 3 chunks ahead and 2 behind: zoomed out at speed, you saw the
+   * seam). 0 (tests, no screen) keeps the minimum window.
+   */
+  viewHalfWidth = 0;
   /** How the world moved at the last origin shift (add it to anything that holds world positions, like a camera). */
   lastShift = { dx: 0, dy: 0 };
   private live = new Map<number, Live>();
@@ -109,7 +116,7 @@ export class InfinityRun {
     return {
       seed: this.seed, style: 'flow', width: right, height: Math.round(maxY + 900), floors,
       bumps: chunks.flatMap((c) => c.bumps), gates: chunks.flatMap((c) => c.gates), ledges: chunks.flatMap((c) => c.ledges), springs: chunks.flatMap((c) => c.springs),
-      loops: chunks.flatMap((c) => c.loops), bridges: chunks.flatMap((c) => c.bridges), boosts: chunks.flatMap((c) => c.boosts), itemBoxes: [], wreckers: [],
+      loops: chunks.flatMap((c) => c.loops), bridges: chunks.flatMap((c) => c.bridges), boosts: chunks.flatMap((c) => c.boosts), kickers: chunks.flatMap((c) => c.kickers), itemBoxes: [], wreckers: [],
       path: [{ x: left, y: INF_START_Y - 30 }, { x: right, y: INF_START_Y - 30 }],
       startX: 520, startY: INF_START_Y, finishX: 1e12, finishY: 1e12,
     };
@@ -133,12 +140,22 @@ export class InfinityRun {
   /** One chunk as a plan of its own (what `planBodies` builds from). */
   private planOfOne(c: InfinityChunk): CoursePlan { return { ...this.planOf([c]) }; }
 
+  /** How many chunks to keep built ahead of and behind the ball's chunk: the screen's width, and the road at speed. */
+  private windowSize(): { ahead: number; behind: number } {
+    const vx = Math.abs(this.game.player.body.velocity.x);
+    const ahead = Math.ceil((this.viewHalfWidth + vx * 90 + 600) / CHUNK_W);
+    const behind = Math.ceil((this.viewHalfWidth + 400) / CHUNK_W);
+    return { ahead: Math.max(CHUNKS_AHEAD, Math.min(12, ahead)), behind: Math.max(CHUNKS_BEHIND, Math.min(10, behind)) };
+  }
+  private lastWindow = '';
+
   /** Builds the chunks the ball needs, drops the ones behind it, and gives the Game a fresh Track and plan. */
   private refreshWindow(): void {
     const g = this.game;
     const here = this.chunkAt(g.player.body.position.x);
+    const { ahead, behind } = this.windowSize();
     const want = new Set<number>();
-    for (let n = Math.max(0, here - CHUNKS_BEHIND); n <= here + CHUNKS_AHEAD; n++) want.add(n);
+    for (let n = Math.max(0, here - behind); n <= here + ahead; n++) want.add(n);
     let changed = false;
     for (const [n, live] of this.live) {
       if (want.has(n)) continue;
@@ -193,10 +210,11 @@ export class InfinityRun {
     this.distance = Math.max(this.distance, this.origin.x + p.x - this.startAbsX);
     if (this.distance > this.best) this.best = this.distance;
     this.fade = Math.max(0, this.fade - dt / 900);
-    if (this.chunkAt(p.x) !== this.lastChunk) { this.lastChunk = this.chunkAt(p.x); this.refreshWindow(); }
+    const size = this.windowSize();
+    const key = `${this.chunkAt(p.x)}:${size.ahead}:${size.behind}`;
+    if (key !== this.lastWindow) { this.lastWindow = key; this.refreshWindow(); }
     if (p.x > ORIGIN_STEP + CHUNK_W) this.shiftOrigin();
   }
-  private lastChunk = 0;
   private wedged = 0;
   private pinned = 0;
 
@@ -239,7 +257,7 @@ export class InfinityRun {
     for (const [, live] of this.live) Matter.Composite.remove(g.world, live.bodies);
     this.live.clear();
     this.origin = { x: nx, y: ny };
-    this.lastChunk = -1;
+    this.lastWindow = '';
     this.originShifts++;
     this.lastShift = { dx: -dx, dy: -dy };
     this.refreshWindow();

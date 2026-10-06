@@ -260,16 +260,7 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
     if (pts[0] === run[0]) { ctx.fillStyle = 'rgba(20,14,10,0.55)'; ctx.fillRect(cliff[0].x, cliff[0].y, 10, bottom - cliff[0].y); }
     if (pts[pts.length - 1] === run[run.length - 1]) { const e = cliff[cliff.length - 1]; ctx.fillStyle = 'rgba(20,14,10,0.55)'; ctx.fillRect(e.x - 10, e.y, 10, bottom - e.y); }
     stripAlong(ctx, ART.moss!, cliff, 14, 30, u0);
-    // goblin watchtowers on the cliffs, now and then (behind the track)
-    for (let x = Math.floor(pts[0].x / 1800) * 1800 + 900; x < pts[pts.length - 1].x; x += 1800) {
-      const r = hash(Math.round(x), lane + 11);
-      const img = ART.towers[Math.floor(r * 3)];
-      if (r > 0.3 || !ready(img) || x < run[0].x + 120 || x > run[run.length - 1].x - 120) continue;
-      const h = 360 + r * 200;
-      const w = (img.naturalWidth / img.naturalHeight) * h;
-      const foot = yOn(run, x) + clearance(x) + 16;
-      drawImg(ctx, img, x - w / 2, foot - h, w, h);
-    }
+    // (no single goblin watchtowers: the owner)
     trestle(ctx, run, pts[0].x - SUPPORT_EVERY, pts[pts.length - 1].x + SUPPORT_EVERY, (x) => yOn(run, x) + clearance(x));
     treeGroups(ctx, run, pts, lane);
     crowdGapTrees(ctx, run, stands, lane);
@@ -424,14 +415,17 @@ export function drawGateRamp(ctx: CanvasRenderingContext2D, plan: CoursePlan, g:
 
 /** Torches on the beam now and then (they flicker, so they are never cached). */
 function torches(ctx: CanvasRenderingContext2D, run: Pt[], pts: Pt[], lane: Lane, time: number) {
-  for (let x = Math.ceil(pts[0].x / 600) * 600; x < pts[pts.length - 1].x; x += 600) {
-    const r = hash(Math.round(x), lane + 3);
-    const y = yOn(run, x);
-    // (the support sprites carry their own banners)
-    if (r < 0.4 && ready(ART.torch)) {
-      const flicker = 1 + Math.sin(time / 90 + x) * 0.03;
-      drawImg(ctx, ART.torch, x - 14, y - 66 * flicker, 28, 52 * flicker);
-    }
+  // On the supports (the owner: a torch floating over the beam made no sense): now and then a support carries a wall
+  // torch on its post, just under the beam. The same support spacing and run-end rule as trestle().
+  if (!ready(ART.torch)) return;
+  for (let x = Math.ceil(pts[0].x / SUPPORT_EVERY) * SUPPORT_EVERY; x <= pts[pts.length - 1].x; x += SUPPORT_EVERY) {
+    if (x < run[0].x + 30 || x > run[run.length - 1].x - 30) continue;
+    const k = Math.round(x / SUPPORT_EVERY);
+    if (hash(k, lane + 3) > 0.25) continue;
+    const y = yOn(run, x) + TRACK_T - RAIL_UP + 6;
+    if (clearance(x) < 90) continue; // too little post under the beam to hang it on
+    const flicker = 1 + Math.sin(time / 90 + x) * 0.03;
+    drawImg(ctx, ART.torch, x + 6, y + 52 * (1 - flicker), 28, 52 * flicker);
   }
 }
 
