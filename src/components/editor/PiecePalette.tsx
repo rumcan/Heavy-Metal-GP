@@ -5,6 +5,7 @@ import { getTemplates, deleteTemplate } from './templates';
 import { pegArts, pegArtById, chosenPegArt, choosePegArt } from '../../game/peg-art';
 import { scaffoldKits, scaffoldKitById, chosenScaffoldKit, chooseScaffoldKit, SCAFFOLD_MARGIN } from '../../game/scaffold-kits';
 import { W } from '../../game/track';
+import { isSideWorld } from './world';
 import { piecePoints } from '../../game/platformer/crossings';
 import { doubleLoopKit, loopKit, overpassKit } from '../../game/platformer/track-kits';
 import type { Piece } from '../../game/trackdef';
@@ -102,7 +103,7 @@ function ScaffoldPicker() {
     }
     return pts.join(' ');
   };
-  const tooWide = kit.width > W - SCAFFOLD_MARGIN * 2;
+  const tooWide = !isSideWorld() && kit.width > W - SCAFFOLD_MARGIN * 2; // a course built sideways has no 900 px shaft
   return (
     <div className="peg-art-picker">
       <label className="prop-field" style={{ gridTemplateColumns: '1fr' }}>

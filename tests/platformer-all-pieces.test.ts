@@ -26,7 +26,7 @@ const field = (): MarbleInfo[] => {
 
 test('every drop-track tile is also a platformer tile', () => {
   const side = new Set(PLATFORMER_PALETTE.flatMap((g) => g.tiles.map((t) => t.t)));
-  const missing = PALETTE.flatMap((g) => g.tiles.map((t) => t.t)).filter((t) => !side.has(t) && t !== 'bucket'); // the minecart has no sideways meaning
+  const missing = PALETTE.flatMap((g) => g.tiles.map((t) => t.t)).filter((t) => !side.has(t) && t !== 'bucket' && t !== 'wall'); // the minecart has no sideways meaning; the wall only fenced the shaft (the owner removed it)
   assert.deepEqual([...new Set(missing)], []);
   const ids = PLATFORMER_PALETTE.flatMap((g) => g.tiles.map((t) => t.id));
   assert.equal(new Set(ids).size, ids.length, 'tile ids are unique');

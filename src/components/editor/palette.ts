@@ -199,7 +199,6 @@ export const PLATFORMER_PALETTE: PaletteGroup[] = [
     note: 'Back, middle and front lanes',
     tiles: [
       { id: 'gate-ramp', t: 'gate', label: 'Lane ramp', sprite: null, preset: { kind: 'ramp' } as Partial<Piece>, hint: 'Roll through it and you move to the lane it leads to. Jump over it to stay in your lane.' },
-      { id: 'gate-door', t: 'gate', label: 'Lane door', sprite: null, preset: { kind: 'door' } as Partial<Piece>, hint: 'Press jump inside it to go through to the lane it leads to.' },
       { id: 'pad', t: 'pad', label: 'Spring', sprite: 'sheep-spring', hint: 'A spring: roll or land on it and it throws you up. Put one before a chasm.' },
       { id: 'boost', t: 'boost', label: 'Boost', sprite: 'rail-chevron', hint: 'A chevron strip that speeds up whatever crosses it.' },
     ],
@@ -223,7 +222,8 @@ export const PLATFORMER_PALETTE: PaletteGroup[] = [
  */
 const PLATFORMER_OWN = new Set(PLATFORMER_PALETTE.flatMap((g) => g.tiles.map((t) => t.id)));
 // The minecart shuttles across the drop shaft's width and has no position of its own: it has no sideways meaning.
-const NOT_SIDEWAYS = new Set(['bucket']);
+// The wall only fenced the drop shaft's sides; on a course built sideways it did nothing (the owner removed it).
+const NOT_SIDEWAYS = new Set(['bucket', 'wall']);
 for (const group of PALETTE) {
   const tiles = group.tiles.filter((t) => !PLATFORMER_OWN.has(t.id) && !NOT_SIDEWAYS.has(t.id));
   if (tiles.length) PLATFORMER_PALETTE.push({ ...group, id: `pf-${group.id}`, tiles });
