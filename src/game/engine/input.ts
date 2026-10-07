@@ -36,7 +36,10 @@ export function steer(game: Game, m: Marble, v: Matter.Vector, s: number): Matte
   const fx = m.tfx;
   const tune = fx ? { ...CONTROL_TUNING, engineHeatPerMs: CONTROL_TUNING.engineHeatPerMs / (1 + (fx.engineHeatPct ?? 0) / 100), engineCoolPerMs: CONTROL_TUNING.engineCoolPerMs * (1 + (fx.engineCoolPct ?? 0) / 100), overheatLockMs: CONTROL_TUNING.overheatLockMs * (1 + (fx.overheatLockPct ?? 0) / 100), engineThrust: CONTROL_TUNING.engineThrust * (1 + (fx.thrustPct ?? 0) / 100) } : CONTROL_TUNING;
   const engine = engineStep(m.engine ?? newEngine(), hands.engine, game.time, s * TICK, tune);
+  // the overheat: a hiss and a sputter the moment the engine locks up
+  if (!overdrive && engine.state.lockedUntil > game.time && (m.engine?.lockedUntil ?? 0) <= game.time) game.sfx('overheat', m, m.body.position.x, m.body.position.y);
   m.engine = overdrive ? { heat: 0, lockedUntil: 0 } : engine.state;
+  m.engineOn = engine.firing || (overdrive && hands.engine);
   const push = engineThrust(v.x, v.y, engine.firing || (overdrive && hands.engine), s * (overdrive ? 1.5 : 1), tune);
   v = { x: v.x + push.x, y: v.y + push.y };
 
@@ -47,6 +50,9 @@ export function steer(game: Game, m: Marble, v: Matter.Vector, s: number): Matte
   const canJump = grounded || (waiting && !!game.track.platformer && nearGround(game, m));
   const jump = jumpStep(m.jumpState ?? newJump(), game.time, canJump, hands.jump);
   m.jumpState = jump.state;
-  if (jump.jump) v = game.track.platformer ? railJump(game, m, v) : { x: v.x, y: Math.min(v.y, -CONTROL_TUNING.jumpSpeed) };
+  if (jump.jump) {
+    v = game.track.platformer ? railJump(game, m, v) : { x: v.x, y: Math.min(v.y, -CONTROL_TUNING.jumpSpeed) };
+    game.sfx('jump', m, m.body.position.x, m.body.position.y);
+  }
   return v;
 }

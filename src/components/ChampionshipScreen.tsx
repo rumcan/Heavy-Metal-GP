@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react';
+import RadioPill from './RadioPill';
+import { useEffect, useMemo, useState } from 'react';
+import { radio } from '../game/sound/radio';
 import { ArrowRight, ArrowUpRight, Trophy, Flag, Check, LockKeyhole, SlidersHorizontal, Timer, CircleHelp, FlaskConical, Replace, Hammer } from 'lucide-react';
 import { CALENDAR, canChangeRoundTrack, computeStandings, computeTeamStandings, gpRanking, gpPointsTable, gpSeed, roundName, roundTrack } from '../game/season';
 import type { SeasonState } from '../game/season';
@@ -66,9 +68,10 @@ export default function ChampionshipScreen({ season, onStartHeat, onRetune, onAb
   const gpOrder = showingHeats ? gpRanking(showingHeats, season.fastest[showing]) : [];
   const gpPoints = showingHeats ? gpPointsTable(showingHeats, season.fastest[showing]) : new Map<number, number>();
   const champion = season.complete ? byId(standings[0].id) : null;
+  useEffect(() => { if (champion) radio.stinger(champion.isPlayer ? 'trophy' : 'finish-jingle'); }, [champion?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return <div className="app-shell championship-page fit-shell" data-pane={pane}>
-    <header className="app-header"><Brand onClick={onAbandon} /><nav className="main-nav" aria-label="Main navigation"><button onClick={onAbandon}>Garage</button><button className="active" aria-current="page">Championship</button><button onClick={() => setDialog('rules')}>How to play</button></nav><div className="header-tools"><button className="icon-button mobile-only" onClick={() => setDialog('rules')} aria-label="How to play"><CircleHelp size={17} /></button>{import.meta.env.DEV && <button className="text-button lab-link" onClick={() => setDialog('lab')}><FlaskConical size={16} /><span>Physics lab</span></button>}<WalletButton credits={account.credits} onClick={onShop} /></div></header>
+    <header className="app-header"><Brand onClick={onAbandon} /><nav className="main-nav" aria-label="Main navigation"><button onClick={onAbandon}>Garage</button><button className="active" aria-current="page">Championship</button><button onClick={() => setDialog('rules')}>How to play</button></nav><div className="header-tools"><button className="icon-button mobile-only" onClick={() => setDialog('rules')} aria-label="How to play"><CircleHelp size={17} /></button>{import.meta.env.DEV && <button className="text-button lab-link" onClick={() => setDialog('lab')}><FlaskConical size={16} /><span>Physics lab</span></button>}<RadioPill /><WalletButton credits={account.credits} onClick={onShop} /></div></header>
     <main className="fit-main champ-fit">
       <div className="fit-pane event-pane" data-pane-id="event">
       {champion && <section className="champion-banner"><Trophy size={45} /><div><span className="eyebrow">WORLD CHAMPION</span><h2>{champion.isPlayer ? 'YOU DID IT.' : `${champion.name.toUpperCase()} TAKES THE TITLE.`}</h2><p>{standings[0].points} points. {standings[0].wins} Grand Prix wins. {teams[0].team.name} wins the constructors' championship.</p><span>You finished P{playerPosition} in the championship.</span></div><img className="champion-crowd" src={crowd} alt="" aria-hidden="true" /></section>}

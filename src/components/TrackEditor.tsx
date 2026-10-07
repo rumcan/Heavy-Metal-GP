@@ -12,6 +12,8 @@
  * a minimal HUD, ghost field toggle and a live trail, returning to the
  * editor with def and camera unchanged.
  */
+import RadioPill from './RadioPill';
+import { raceAudio } from '../game/audio';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
@@ -587,6 +589,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
       if (!toAdd.length) return;
 
       if (armed.startsWith(TEMPLATE_ARM) || toAdd.length > 1) {
+        raceAudio.ui('place');
         const startLen = circuit.def.pieces.length;
         const select = toAdd.map((_, i) => startLen + i);
         commit((def) => {
@@ -598,6 +601,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
       }
 
       const piece = toAdd[0];
+      raceAudio.ui('place');
 
       // Automatically select the new piece and open settings if it needs configuration
       const needsConfig = ['trapdoor', 'crusher', 'boulder', 'magnet', 'geyser', 'wind', 'sign'].includes(piece.t);
@@ -735,6 +739,7 @@ const handleSwapCrossing = useCallback((zone: number) => {
 
   const handleDelete = useCallback(() => {
     if (selected.length === 0) return;
+    raceAudio.ui('delete');
     pushHistory();
     setCircuit((cur) => {
       const set = new Set(selected);
@@ -850,6 +855,7 @@ const handleSwapCrossing = useCallback((zone: number) => {
   const handleUndo = useCallback(() => {
     const prev = history.undo(circuit.def);
     if (!prev) return;
+    raceAudio.ui('undo');
     setCircuit((cur) => ({ def: prev, build: cur.build + 1 }));
     setSelected((s) => s.filter((i) => i < prev.pieces.length));
     bumpHistory();
@@ -1221,6 +1227,7 @@ const handleSwapCrossing = useCallback((zone: number) => {
           <button onClick={() => setRules(true)}>How to play</button>
         </nav>
         <div className="header-tools">
+          <RadioPill compact />
           <span className="editor-seed">SEED <b>{seed.toString(16).slice(0, 6).toUpperCase()}</b></span>
           <button className="text-button" onClick={() => setCoachForced(true)} title="Zapp's voiced tour of the Workshop">Tutorial</button>
           <button className="button-secondary" data-coach="new-track" onClick={() => setShowNew(true)} title="Start a new track — blank, calendar copy or starter template">New track</button>

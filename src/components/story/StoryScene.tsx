@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
 import { FastForward, SkipForward } from 'lucide-react';
+import { radio } from '../../game/sound/radio';
 import { raceAudio } from '../../game/audio';
 import { hasVoiceAudio, playVoice, preloadVoice, stopVoice } from '../../game/voice';
 import { STORY_VOICE_SET, storyVoiceId } from '../../game/story/voice-lines';
@@ -59,6 +60,7 @@ export default function StoryScene({
   const [index, setIndex] = useState(0);
   const [shown, setShown] = useState(still ? (lines[0]?.text.length ?? 0) : 0);
   const [fast, setFast] = useState(false);
+  useEffect(() => { radio.setScene('story'); }, []); // the story score under the dialogue
   const holdTimer = useRef<number | null>(null);
   const held = useRef(false);
 

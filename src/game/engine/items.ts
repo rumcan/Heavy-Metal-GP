@@ -112,7 +112,7 @@ export function useItem(game: Game, m: Marble, item = game.availableItem(m)): bo
   if (m.pickup === item) m.pickup = null;
   else if (!game.unlimitedItems.has(item) && !refunded) m.inventory[item]--;
   m.itemCooldownUntil = game.time + Math.max(150, 450 * (1 + (fx?.skillCooldownPct ?? 0) / 100));
-  game.sfx('item', m, p.x, p.y);
+  game.sfx('item', m, p.x, p.y, { item });
   game.emit({ kind: 'item', seat: m.info.id, item });
   switch (item) {
     case 'oil': {

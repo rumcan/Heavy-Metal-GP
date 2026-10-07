@@ -1,3 +1,5 @@
+import { radio } from './game/sound/radio';
+import { raceAudio } from './game/audio';
 import * as storage from './game/storage';
 import { APP_VERSION, SEEN_VERSION_KEY } from './game/version';
 import WhatsNew from './components/WhatsNew';
@@ -583,6 +585,7 @@ export default function App() {
   const buy = useCallback((item: ItemType) => {
     const result = purchaseItem(accountRef.current, item);
     if (!result.error) publishAccount(result.account);
+    raceAudio.ui(result.error ? 'error' : 'buy');
     return result.error;
   }, [publishAccount]);
   const inventoryChanged = useCallback((inventory: Inventory) => {
@@ -706,6 +709,27 @@ export default function App() {
   };
 
   useEffect(() => saveSeason(season), [season]);
+  // Sound: the first touch or key anywhere unlocks the sound and starts the radio (browsers allow it only after one).
+  // Every button press in the menus clicks, tabs tick (a button can opt out with data-sound="none"; the race's own skill
+  // keys and the canvas have their own sounds).
+  useEffect(() => {
+    const unlock = () => { raceAudio.unlock(); radio.unlock(); };
+    const click = (e: MouseEvent) => {
+      const el = e.target instanceof Element ? e.target.closest('button, [role="tab"], a[href]') : null;
+      if (!el || el.closest('[data-sound="none"], .inventory-toolbar, canvas') || (el as HTMLButtonElement).disabled) return;
+      raceAudio.ui(el.getAttribute('role') === 'tab' || el.classList.contains('tab-btn') ? 'tab' : 'click');
+    };
+    window.addEventListener('pointerdown', unlock, true);
+    window.addEventListener('keydown', unlock, true);
+    document.addEventListener('click', click, true);
+    return () => { window.removeEventListener('pointerdown', unlock, true); window.removeEventListener('keydown', unlock, true); document.removeEventListener('click', click, true); };
+  }, []);
+  // Menu music (Pit Lane Radio) wherever the player is between races; the race, Infinity, story scenes and the Workshop
+  // tune their own on arrival.
+  useEffect(() => {
+    if (phase === 'menu' || phase === 'retune' || phase === 'hub' || phase === 'lobby' || phase === 'community') radio.setScene('menu');
+    else if (phase === 'editor') radio.setScene('workshop');
+  }, [phase]);
   // The Workshop's Test drive of a platformer course: the pick is set, now start the heat.
   useEffect(() => { if (pfTest && phase === 'editor') launchQuickRace(); }, [pfTest]); // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -1,0 +1,788 @@
+{
+  "note": "Every generated sound in the game. `node scripts/audio/generate.mjs` makes any file that is missing (rundot generate music/sfx). Files land in public/audio/<dir>/<id>.mp3 and ship next to index.html (not inlined). Change a prompt and delete the file to remake it.",
+  "music": [
+    {
+      "id": "grid-01-cannon-fodder",
+      "station": "grid",
+      "duration": 150,
+      "title": "Cannon Fodder",
+      "prompt": "Instrumental heavy metal racing anthem. Fast double-kick drums at 168 BPM, chugging palm-muted electric guitars, a soaring lead guitar melody, galloping bass. Relentless forward energy for a goblin marble race on wooden roller coaster tracks. No vocals, no lyrics, consistent energy so it loops well, no long fade-in."
+    },
+    {
+      "id": "grid-02-goblin-gallop",
+      "station": "grid",
+      "duration": 150,
+      "title": "Goblin Gallop",
+      "prompt": "Instrumental power metal with a folk twist: galloping triplet rhythm at 150 BPM, twin harmony lead guitars, a mischievous fiddle and tin whistle hook like a goblin tavern jig, pounding drums. Fun, cheeky and fast. No vocals, no lyrics, steady energy throughout."
+    },
+    {
+      "id": "grid-03-iron-downhill",
+      "station": "grid",
+      "duration": 150,
+      "title": "Iron Downhill",
+      "prompt": "Instrumental stoner hard rock groove, heavy fuzzy riffs, swaggering mid-tempo 120 BPM drums with big cymbals, a wah-wah lead, rumbling bass. Feels like steel marbles thundering downhill. No vocals, no lyrics, consistent energy, loopable."
+    },
+    {
+      "id": "grid-04-spark-and-steel",
+      "station": "grid",
+      "duration": 150,
+      "title": "Spark and Steel",
+      "prompt": "Instrumental speed metal meets surf rock: reverb-drenched tremolo-picked guitar melody over thrash drums at 180 BPM, punchy bass runs, playful and high-octane racing music. No vocals, no lyrics, no breakdown silences, loopable."
+    },
+    {
+      "id": "grid-05-neon-forge",
+      "station": "grid",
+      "duration": 150,
+      "title": "Neon Forge",
+      "prompt": "Instrumental synth metal: heavy downtuned guitar riffs layered with retro analog synth arpeggios, driving four-on-the-floor drums with metal fills at 140 BPM, epic and modern, arcade racing energy. No vocals, no lyrics, steady intensity, loopable."
+    },
+    {
+      "id": "grid-06-final-lap",
+      "station": "grid",
+      "duration": 150,
+      "title": "Final Lap",
+      "prompt": "Instrumental epic symphonic metal: crunching guitars, thunderous drums at 160 BPM, a heroic brass and choir-pad melody (wordless, no lyrics), sense of a decisive final lap and a crowd roaring. No vocals singing words, consistent energy, loopable."
+    },
+    {
+      "id": "sky-01-dawn-ridge",
+      "station": "infinity",
+      "mood": "day",
+      "duration": 180,
+      "title": "Dawn Ridge",
+      "prompt": "Instrumental soundtrack for an endless, flowing downhill marble ride through painted pine forests at sunrise. Uplifting cinematic adventure: soft plucked harp and celtic flute melody over warm string pads, light hand percussion and a gentle steady pulse around 92 BPM. Calm but always moving forward, hopeful. No vocals, no sudden stops, consistent energy so it loops well.",
+      "biomes": [
+        "meadow",
+        "forest"
+      ]
+    },
+    {
+      "id": "sky-02-floating-isles",
+      "station": "infinity",
+      "mood": "day",
+      "duration": 180,
+      "title": "Floating Isles",
+      "prompt": "Instrumental airy fantasy adventure music for gliding past floating sky islands, goblin castles and airships. Shimmering celesta and marimba patterns, wide orchestral strings, a lyrical solo violin melody, soft brushed drums at 100 BPM, sense of wonder and open sky. No vocals, steady flow, loopable.",
+      "biomes": [
+        "valley",
+        "lake"
+      ]
+    },
+    {
+      "id": "sky-03-river-run",
+      "station": "infinity",
+      "mood": "day",
+      "duration": 180,
+      "title": "River Run",
+      "prompt": "Instrumental warm folk-adventure travel music: fingerpicked acoustic guitar, mandolin and accordion melody, upright bass, light cajon groove around 104 BPM, carefree and rolling, like an endless sunny journey through valleys and waterfalls. No vocals, consistent energy, loopable.",
+      "biomes": [
+        "meadow",
+        "valley"
+      ]
+    },
+    {
+      "id": "sky-04-cloud-glide",
+      "station": "infinity",
+      "mood": "day",
+      "duration": 180,
+      "title": "Cloud Glide",
+      "prompt": "Instrumental chillhop with cinematic warmth: mellow electric piano chords, soft vinyl texture, gentle boom-bap beat at 85 BPM, a dreamy flute and string melody floating on top. Relaxed, focused, endlessly rolling forward through clouds. No vocals, loopable.",
+      "biomes": [
+        "valley",
+        "autumn"
+      ]
+    },
+    {
+      "id": "sky-05-starlit-pines",
+      "station": "infinity",
+      "mood": "night",
+      "duration": 180,
+      "title": "Starlit Pines",
+      "prompt": "Instrumental calm night journey music for rolling through dark pine forests under stars and lanterns. Soft music-box and glockenspiel melody, warm low string pads, distant ambient synth shimmer, very gentle slow pulse around 76 BPM. Peaceful, magical, never sleepy-stopping. No vocals, loopable.",
+      "biomes": [
+        "night"
+      ]
+    },
+    {
+      "id": "sky-06-moon-canyon",
+      "station": "infinity",
+      "mood": "night",
+      "duration": 180,
+      "title": "Moon Canyon",
+      "prompt": "Instrumental nocturnal ambient adventure: deep warm synth pads, a lonely duduk-like woodwind melody, soft frame drum heartbeat around 80 BPM, echoing guitar harmonics, moonlit canyon with glowing crystals. Mysterious but comforting, steady flow, no vocals, loopable.",
+      "biomes": [
+        "night"
+      ]
+    },
+    {
+      "id": "sky-07-pine-cathedral",
+      "station": "infinity",
+      "mood": "day",
+      "biomes": [
+        "forest"
+      ],
+      "duration": 180,
+      "title": "Pine Cathedral",
+      "prompt": "Instrumental mystical forest journey music for rolling endlessly through towering ancient pine woods. Warm low strings, a soft wordless choir pad, gentle woodblock and frame drum pulse around 88 BPM, a wooden flute melody echoing between the trees. Reverent and adventurous, always moving forward. No vocals or lyrics, consistent energy, loopable."
+    },
+    {
+      "id": "sky-08-ember-hills",
+      "station": "infinity",
+      "mood": "day",
+      "biomes": [
+        "autumn"
+      ],
+      "duration": 180,
+      "title": "Ember Hills",
+      "prompt": "Instrumental warm autumn travel music through golden rolling hills and falling leaves. Fingerpicked acoustic guitar, a singing cello melody, fiddle harmonies, soft brushed drums at 96 BPM, nostalgic and cosy but moving forward. No vocals, consistent energy, loopable."
+    },
+    {
+      "id": "sky-09-mirror-lake",
+      "station": "infinity",
+      "mood": "day",
+      "biomes": [
+        "lake"
+      ],
+      "duration": 180,
+      "title": "Mirror Lake",
+      "prompt": "Instrumental serene lakeside journey music: gentle rippling piano arpeggios, harp glissandos like water, soft warm synth pads, a light shaker and soft kick pulse at 82 BPM, calm and shimmering, endless gliding along still water at dawn. No vocals, consistent flow, loopable."
+    },
+    {
+      "id": "sky-10-snowfields",
+      "station": "infinity",
+      "mood": "day",
+      "biomes": [
+        "snow"
+      ],
+      "duration": 180,
+      "title": "Snowfields",
+      "prompt": "Instrumental crystalline winter adventure music for gliding across bright snowfields: celesta and glockenspiel sparkle, airy high strings, soft sleigh-bell shimmer, a warm horn melody, gentle steady pulse at 90 BPM. Cold air but a warm heart, always moving. No vocals, loopable."
+    },
+    {
+      "id": "sky-11-firefly-waltz",
+      "station": "infinity",
+      "mood": "night",
+      "biomes": [
+        "night"
+      ],
+      "duration": 180,
+      "title": "Firefly Waltz",
+      "prompt": "Instrumental gentle night waltz in 3/4 for rolling through a meadow full of fireflies under the stars: music box melody, soft pizzicato strings, warm accordion pad, a lullaby-like but flowing pulse around 84 BPM. Magical, peaceful, never stopping. No vocals, loopable."
+    },
+    {
+      "id": "pit-01-wrench-groove",
+      "station": "pit",
+      "duration": 120,
+      "title": "Wrench Groove",
+      "prompt": "Instrumental laid-back funk-rock workshop groove: clean wah guitar, slap bass, tight dry drums at 96 BPM, a little organ. The vibe of goblin mechanics tinkering in a cosy garage between races. No vocals, loopable."
+    },
+    {
+      "id": "pit-02-tavern-tune-up",
+      "station": "pit",
+      "duration": 120,
+      "title": "Tavern Tune-Up",
+      "prompt": "Instrumental cheerful goblin tavern folk-rock: bouncy accordion, fiddle and banjo over a stomping rock beat at 110 BPM, mischievous and warm, menu music for a fantasy racing game. No vocals, loopable."
+    },
+    {
+      "id": "pit-03-oil-and-lofi",
+      "station": "pit",
+      "duration": 120,
+      "title": "Oil and Lofi",
+      "prompt": "Instrumental lofi hip hop with a rock edge: dusty drums at 82 BPM, warm overdriven guitar licks, mellow Rhodes chords, soft workshop clinks as percussion texture. Chill, cosy, background for building race tracks. No vocals, loopable."
+    },
+    {
+      "id": "pit-04-blueprint-blues",
+      "station": "pit",
+      "duration": 120,
+      "title": "Blueprint Blues",
+      "prompt": "Instrumental relaxed blues rock shuffle: slide guitar melody, honky-tonk piano, brushed shuffle drums at 92 BPM, walking bass. Easygoing, friendly, perfect for browsing a garage and shop. No vocals, loopable."
+    },
+    {
+      "id": "tale-01-scrapyard-dreams",
+      "station": "story",
+      "duration": 120,
+      "title": "Scrapyard Dreams",
+      "prompt": "Instrumental heartfelt storybook underscore for a young goblin who dreams of racing: gentle piano and plucked strings, hopeful solo cello melody, soft glockenspiel, slow build of warmth, 84 BPM. Quiet enough to sit under dialogue. No vocals, loopable."
+    },
+    {
+      "id": "tale-02-rivals",
+      "station": "story",
+      "duration": 120,
+      "title": "Rivals",
+      "prompt": "Instrumental playful tension underscore for meeting cocky racing rivals: pizzicato strings, low brass stabs, ticking percussion, a sly clarinet motif, light rock drums at 100 BPM. Cheeky and competitive, quiet enough for dialogue. No vocals, loopable."
+    },
+    {
+      "id": "tale-03-champions-road",
+      "station": "story",
+      "duration": 120,
+      "title": "Champion's Road",
+      "prompt": "Instrumental triumphant adventure theme: rising strings and French horns, rock drums, a heroic electric guitar melody joining the orchestra, determined and proud, 108 BPM. Quiet enough to sit under dialogue at the start, swelling later. No vocals, loopable."
+    }
+  ],
+  "stingers": [
+    {
+      "id": "win-fanfare",
+      "duration": 7,
+      "prompt": "Short triumphant heavy metal victory fanfare: blazing guitar riff, crash cymbals and a brass hit, ending on a big sustained power chord. Celebrating first place in a race. Instrumental."
+    },
+    {
+      "id": "podium-jingle",
+      "duration": 5,
+      "prompt": "Short upbeat rock jingle for finishing on the podium: bright guitar lick, drum fill, happy brass stab, ends cleanly. Instrumental."
+    },
+    {
+      "id": "finish-jingle",
+      "duration": 4,
+      "prompt": "Short neutral race-finished rock jingle: a quick guitar strum and a drum hit, ends cleanly, upbeat but modest. Instrumental."
+    },
+    {
+      "id": "ko-jingle",
+      "duration": 4,
+      "prompt": "Short comical sad trombone wah-wah-wah with a deflating tuba note and a cymbal choke, cartoon failure sting. Instrumental."
+    },
+    {
+      "id": "level-up",
+      "duration": 4,
+      "prompt": "Short magical level-up sting: rising sparkling harp glissando into a bright brass and guitar chord, triumphant reward feeling. Instrumental."
+    },
+    {
+      "id": "chapter-complete",
+      "duration": 6,
+      "prompt": "Short orchestral story chapter complete sting: warm strings swell, a horn melody and a soft timpani roll, satisfying and heartfelt resolution. Instrumental."
+    },
+    {
+      "id": "trophy",
+      "duration": 8,
+      "prompt": "Grand championship trophy fanfare: full orchestra with heavy metal guitars and drums, majestic brass, cymbal crashes and a crowd roar, ending on a huge final chord. Instrumental."
+    }
+  ],
+  "sfx": [
+    {
+      "id": "race-beep",
+      "duration": 0.6,
+      "prompt": "Race start countdown beep, a single clean electronic tone with a short metallic ring, like a start light."
+    },
+    {
+      "id": "race-go",
+      "duration": 1.5,
+      "prompt": "Race start horn blast with a short burst of crowd cheering, loud and exciting."
+    },
+    {
+      "id": "cannon-1",
+      "duration": 1.5,
+      "prompt": "Old iron cannon firing a heavy steel ball, deep black-powder boom with a short echo."
+    },
+    {
+      "id": "cannon-2",
+      "duration": 1.5,
+      "prompt": "Small iron cannon shot, punchy boom and a whistle of the ball leaving the barrel."
+    },
+    {
+      "id": "jump-1",
+      "duration": 0.6,
+      "prompt": "Light springy hop sound for a metal marble jumping, a short upward swoosh with a soft spring twang."
+    },
+    {
+      "id": "jump-2",
+      "duration": 0.6,
+      "prompt": "Quick cartoon jump whoosh going upward, short and snappy."
+    },
+    {
+      "id": "land-soft",
+      "duration": 0.6,
+      "prompt": "Steel marble landing softly on a wooden track, a short solid wooden thunk."
+    },
+    {
+      "id": "land-hard",
+      "duration": 0.8,
+      "prompt": "Heavy steel ball slamming down onto wooden planks after a big jump, deep thud with a slight rattle of wood."
+    },
+    {
+      "id": "roll-loop",
+      "duration": 4,
+      "prompt": "A heavy steel marble rolling fast on a wooden roller coaster track, continuous seamless loop, no start or end."
+    },
+    {
+      "id": "wind-loop",
+      "duration": 5,
+      "prompt": "Rushing wind past the ears at high speed, steady continuous whoosh, seamless loop, no start or end."
+    },
+    {
+      "id": "engine-loop",
+      "duration": 4,
+      "prompt": "Small magical goblin engine thrusting, a steady roaring rumble with a mystical shimmering whine, continuous seamless loop."
+    },
+    {
+      "id": "engine-overheat",
+      "duration": 1.5,
+      "prompt": "Small engine overheating: a burst of hissing steam, a sputter and a metallic clank."
+    },
+    {
+      "id": "lane-change",
+      "duration": 0.8,
+      "prompt": "Quick airy whoosh as a ball leaps sideways between two tracks, swift and light."
+    },
+    {
+      "id": "spring-sheep",
+      "duration": 1.2,
+      "prompt": "Cartoon spring boing as a ball bounces off a woolly sheep, a springy boing followed by a short surprised sheep baa."
+    },
+    {
+      "id": "item-box",
+      "duration": 1.0,
+      "prompt": "Magical wooden crate bursting open to reveal a power-up, a crunchy pop with bright sparkling chimes."
+    },
+    {
+      "id": "trial-pickup",
+      "duration": 1.0,
+      "prompt": "Mysterious magical item acquired, shimmering rising chime with a soft whoosh, exciting and curious."
+    },
+    {
+      "id": "ring-1",
+      "duration": 0.6,
+      "prompt": "Collecting a gold ring, a bright short metallic coin chime."
+    },
+    {
+      "id": "ring-2",
+      "duration": 0.6,
+      "prompt": "Bright golden coin ping, slightly higher, short and sparkly."
+    },
+    {
+      "id": "crate-smash-1",
+      "duration": 1.0,
+      "prompt": "Wooden crate smashing apart as a steel ball crashes through it, splintering wood and scattering planks."
+    },
+    {
+      "id": "crate-smash-2",
+      "duration": 1.0,
+      "prompt": "Light wooden box shattering into pieces, crisp crack and falling splinters."
+    },
+    {
+      "id": "clack-1",
+      "duration": 0.5,
+      "prompt": "Two heavy steel ball bearings colliding, a sharp metallic clack."
+    },
+    {
+      "id": "clack-2",
+      "duration": 0.5,
+      "prompt": "Steel marbles knocking together hard, short bright click-clack."
+    },
+    {
+      "id": "fire-ring",
+      "duration": 1.3,
+      "prompt": "Ball flying through a ring of fire, a roaring whoosh of flames with crackling."
+    },
+    {
+      "id": "geyser",
+      "duration": 2.0,
+      "prompt": "Hot water geyser erupting, a powerful hiss and a rushing burst of steam and water."
+    },
+    {
+      "id": "updraft",
+      "duration": 2.0,
+      "prompt": "Strong upward gust of wind lifting something into the air, rising airy whoosh."
+    },
+    {
+      "id": "wrecker-hit",
+      "duration": 1.0,
+      "prompt": "Giant iron wrecking ball smashing into a small steel ball, a massive metallic clang with a heavy thud."
+    },
+    {
+      "id": "loop-whoosh",
+      "duration": 1.6,
+      "prompt": "Ball racing around a vertical loop-the-loop on a roller coaster, a circling doppler whoosh."
+    },
+    {
+      "id": "hit-1",
+      "duration": 0.6,
+      "prompt": "Video game damage hit, a punchy impact thump with a metallic ring."
+    },
+    {
+      "id": "hit-2",
+      "duration": 0.6,
+      "prompt": "Sharp crunchy hit impact, short and punchy, taking damage."
+    },
+    {
+      "id": "ko-boom",
+      "duration": 2.0,
+      "prompt": "Knockout: a small cartoon explosion with a puff of smoke and scattered metal bits clattering."
+    },
+    {
+      "id": "finish-line",
+      "duration": 2.5,
+      "prompt": "Crossing the finish line: a big crowd cheer with whistles and a ringing bell."
+    },
+    {
+      "id": "crowd-loop",
+      "duration": 6,
+      "prompt": "Rowdy goblin crowd cheering and chanting in a grandstand at a race, continuous seamless loop, no start or end."
+    },
+    {
+      "id": "boost-pad",
+      "duration": 0.9,
+      "prompt": "Speed boost pad, an electric zap and a quick rising whoosh of acceleration."
+    },
+    {
+      "id": "skill-rocket",
+      "duration": 1.5,
+      "prompt": "Rocket booster igniting on a small ball, fiery whoosh with a roaring thrust."
+    },
+    {
+      "id": "skill-jump",
+      "duration": 1.0,
+      "prompt": "Super jump, a powerful spring launch with a big upward whoosh."
+    },
+    {
+      "id": "skill-shield",
+      "duration": 1.2,
+      "prompt": "Magical energy bubble shield forming around someone, a shimmering hum and a soft glassy chime."
+    },
+    {
+      "id": "skill-oil",
+      "duration": 1.0,
+      "prompt": "Thick black oil splattering onto a track, a gloopy splash and slick squelch."
+    },
+    {
+      "id": "skill-ram",
+      "duration": 1.2,
+      "prompt": "Battering ram charging forward, a heavy metal clank and a rushing charge with a grunt-like rumble."
+    },
+    {
+      "id": "skill-repair",
+      "duration": 1.2,
+      "prompt": "Quick repair: a wrench ratcheting, a couple of bolts tightening and a pleasant healing chime."
+    },
+    {
+      "id": "skill-shock",
+      "duration": 1.2,
+      "prompt": "Shockwave blast, a deep electric thump radiating outward with a crackle."
+    },
+    {
+      "id": "skill-anvil",
+      "duration": 1.0,
+      "prompt": "Turning into heavy metal: a huge anvil clang and a heavy iron weight thud."
+    },
+    {
+      "id": "skill-brake",
+      "duration": 1.0,
+      "prompt": "Air brake: a sharp pneumatic hiss and a quick screech of slowing down."
+    },
+    {
+      "id": "skill-freeze",
+      "duration": 1.3,
+      "prompt": "Freeze ray firing, an icy zap beam with crystals forming and crackling frost."
+    },
+    {
+      "id": "skill-aero",
+      "duration": 1.3,
+      "prompt": "Slipstream, a smooth sleek whoosh of air streaming past, aerodynamic and fast."
+    },
+    {
+      "id": "skill-bolt",
+      "duration": 1.2,
+      "prompt": "Homing magic bolt launching, a zippy crackling projectile whizzing away."
+    },
+    {
+      "id": "skill-ghost",
+      "duration": 1.4,
+      "prompt": "Ghost mode, an eerie ethereal whoosh with a spooky airy wail, turning see-through."
+    },
+    {
+      "id": "skill-overdrive",
+      "duration": 1.4,
+      "prompt": "Engine overdrive, a revving engine roaring up to full power with a turbo whine."
+    },
+    {
+      "id": "skill-spikes",
+      "duration": 1.0,
+      "prompt": "Scattering metal caltrops onto a wooden track, a handful of sharp metal spikes clattering and bouncing."
+    },
+    {
+      "id": "skill-decoy",
+      "duration": 1.0,
+      "prompt": "Decoy appearing, a cartoon poof of smoke with a playful pop."
+    },
+    {
+      "id": "skill-grapple",
+      "duration": 1.2,
+      "prompt": "Grappling hook fired, a rope whipping out, a metal hook clank and a fast reel winding in."
+    },
+    {
+      "id": "skill-bomb",
+      "duration": 1.0,
+      "prompt": "Sticky bomb attaching: a gooey splat and a fast ticking fuse."
+    },
+    {
+      "id": "skill-bomb-boom",
+      "duration": 1.5,
+      "prompt": "Small bomb explosion, a punchy boom with debris."
+    },
+    {
+      "id": "skill-reflect",
+      "duration": 1.2,
+      "prompt": "Mirror plate activating, a bright metallic shimmer and glassy ring like a reflecting shield."
+    },
+    {
+      "id": "skill-blink",
+      "duration": 0.9,
+      "prompt": "Short-range teleport blink, a quick magical zip and pop out of existence and back."
+    },
+    {
+      "id": "skill-emp",
+      "duration": 1.4,
+      "prompt": "Electromagnetic pulse, an electric power-down whoomp with buzzing static."
+    },
+    {
+      "id": "skill-lightning",
+      "duration": 1.6,
+      "prompt": "Lightning strike from the sky, a sharp electric crack followed by close thunder."
+    },
+    {
+      "id": "skill-drill",
+      "duration": 1.3,
+      "prompt": "Drill boring down through wood and earth, a whirring grinding drill."
+    },
+    {
+      "id": "skill-charm",
+      "duration": 1.4,
+      "prompt": "Shaman's charm, a mystical tribal chime with a soft wooden rattle and a magical glow hum."
+    },
+    {
+      "id": "ui-click",
+      "duration": 0.5,
+      "prompt": "Satisfying UI button click, a short chunky mechanical metal switch click."
+    },
+    {
+      "id": "ui-tab",
+      "duration": 0.5,
+      "prompt": "Soft UI tab switch, a light short wooden tick."
+    },
+    {
+      "id": "ui-open",
+      "duration": 0.7,
+      "prompt": "Menu panel opening, a quick soft whoosh with a light metal latch."
+    },
+    {
+      "id": "ui-back",
+      "duration": 0.5,
+      "prompt": "UI back or close, a short descending soft swish."
+    },
+    {
+      "id": "ui-buy",
+      "duration": 1.0,
+      "prompt": "Buying an item in a shop, a cash register cha-ching with jingling gold coins."
+    },
+    {
+      "id": "ui-coin",
+      "duration": 0.5,
+      "prompt": "A single small gold coin clink, very short."
+    },
+    {
+      "id": "ui-error",
+      "duration": 0.6,
+      "prompt": "Gentle UI error, a short low double buzz, not harsh."
+    },
+    {
+      "id": "ui-unlock",
+      "duration": 1.5,
+      "prompt": "Unlocking a new skill, a magical reveal with rising sparkles and a heavy lock clicking open."
+    },
+    {
+      "id": "ui-equip",
+      "duration": 0.6,
+      "prompt": "Equipping an item into a slot, a solid metal clank and a click into place."
+    },
+    {
+      "id": "ws-place",
+      "duration": 0.6,
+      "prompt": "Placing a wooden track piece, a solid hollow wooden thunk."
+    },
+    {
+      "id": "ws-delete",
+      "duration": 0.7,
+      "prompt": "Removing a piece, a quick wooden crunch and a poof."
+    },
+    {
+      "id": "ws-snap",
+      "duration": 0.5,
+      "prompt": "Two wooden track pieces snapping together, a crisp satisfying click."
+    },
+    {
+      "id": "ws-undo",
+      "duration": 0.6,
+      "prompt": "Undo, a short reversed swoosh."
+    },
+    {
+      "id": "amb-forest",
+      "duration": 8,
+      "prompt": "Pine forest ambience in the daytime, light wind through trees and distant birds chirping, continuous seamless loop."
+    },
+    {
+      "id": "amb-night",
+      "duration": 8,
+      "prompt": "Night forest ambience, crickets and a distant owl, soft breeze, continuous seamless loop."
+    },
+    {
+      "id": "amb-sky",
+      "duration": 8,
+      "prompt": "High altitude ambience among floating islands, soft steady wind and faint distant wind chimes, continuous seamless loop."
+    }
+  ],
+  "announcer": [
+    {
+      "id": "ann-start-1",
+      "call": "start",
+      "text": "[shouting] Cannons loaded! Lights out, and away they go!"
+    },
+    {
+      "id": "ann-start-2",
+      "call": "start",
+      "text": "[excited] And they're off! Ten goblins, ten marbles, one finish line!"
+    },
+    {
+      "id": "ann-start-3",
+      "call": "start",
+      "text": "[shouting] Fire in the hole! The race is on!"
+    },
+    {
+      "id": "ann-lead-1",
+      "call": "lead",
+      "text": "[excited] You take the lead!"
+    },
+    {
+      "id": "ann-lead-2",
+      "call": "lead",
+      "text": "[excited] Into first place! Look at that marble go!"
+    },
+    {
+      "id": "ann-lead-3",
+      "call": "lead",
+      "text": "[excited] Out in front! Now hold on to it!"
+    },
+    {
+      "id": "ann-overtaken-1",
+      "call": "overtaken",
+      "text": "[surprised] Overtaken! They went right past you!"
+    },
+    {
+      "id": "ann-overtaken-2",
+      "call": "overtaken",
+      "text": "[shouting] You've lost the lead! Hit back!"
+    },
+    {
+      "id": "ann-half-1",
+      "call": "half",
+      "text": "Halfway there! The pack is closing in!"
+    },
+    {
+      "id": "ann-half-2",
+      "call": "half",
+      "text": "Half the course behind you. The hard part starts now!"
+    },
+    {
+      "id": "ann-final-1",
+      "call": "final",
+      "text": "[shouting] Final stretch! Give it everything you've got!"
+    },
+    {
+      "id": "ann-final-2",
+      "call": "final",
+      "text": "[excited] The finish line is in sight!"
+    },
+    {
+      "id": "ann-final-3",
+      "call": "final",
+      "text": "[shouting] Last few hundred metres! Engine to the max!"
+    },
+    {
+      "id": "ann-ko-1",
+      "call": "ko",
+      "text": "[shouting] Knock-out! Down they go!"
+    },
+    {
+      "id": "ann-ko-2",
+      "call": "ko",
+      "text": "[laughs] Smashed! One less rival to worry about!"
+    },
+    {
+      "id": "ann-ko-3",
+      "call": "ko",
+      "text": "[excited] What a hit! They're out of the race!"
+    },
+    {
+      "id": "ann-out-1",
+      "call": "out",
+      "text": "[groans] Oh! You're out of the race!"
+    },
+    {
+      "id": "ann-out-2",
+      "call": "out",
+      "text": "Knocked out! Patch it up for the next one."
+    },
+    {
+      "id": "ann-lowhp-1",
+      "call": "lowhp",
+      "text": "[worried] Your marble is falling apart! Grab a repair!"
+    },
+    {
+      "id": "ann-lowhp-2",
+      "call": "lowhp",
+      "text": "[urgent] Careful! One more hit and you're scrap!"
+    },
+    {
+      "id": "ann-win-1",
+      "call": "win",
+      "text": "[shouting] Victory! What a drive!"
+    },
+    {
+      "id": "ann-win-2",
+      "call": "win",
+      "text": "[excited] First across the line! The crowd goes wild!"
+    },
+    {
+      "id": "ann-podium-1",
+      "call": "podium",
+      "text": "[excited] A podium finish! Well raced!"
+    },
+    {
+      "id": "ann-podium-2",
+      "call": "podium",
+      "text": "On the podium! Not bad at all!"
+    },
+    {
+      "id": "ann-finish-1",
+      "call": "finish",
+      "text": "Across the line! Better luck next heat."
+    },
+    {
+      "id": "ann-finish-2",
+      "call": "finish",
+      "text": "You made it home! Every finish counts."
+    },
+    {
+      "id": "ann-air-1",
+      "call": "air",
+      "text": "[excited] Big air!"
+    },
+    {
+      "id": "ann-air-2",
+      "call": "air",
+      "text": "[laughs] Look at it fly!"
+    },
+    {
+      "id": "ann-trial-1",
+      "call": "trial",
+      "text": "[curious] A mystery skill! Press Tab to try it!"
+    },
+    {
+      "id": "ann-trial-2",
+      "call": "trial",
+      "text": "[excited] Ooh, a new toy! Tab to use it!"
+    }
+  ],
+  "announcerVoice": {
+    "speaker": "narrator",
+    "voiceId": "gU0LNdkMOQCOrPrwtbee",
+    "stability": 0.4,
+    "speed": 1.05
+  }
+}

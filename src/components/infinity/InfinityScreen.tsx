@@ -4,6 +4,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Camera, RotateCcw, EyeOff, Pause, Play, Volume2, VolumeX, ZoomIn, ZoomOut } from 'lucide-react';
 import { InfinityRun } from '../../game/platformer/infinity-world';
+import { radio } from '../../game/sound/radio';
+import RadioPill from '../RadioPill';
 import { RING_CREDITS } from '../../game/platformer/course';
 import { marbleDepth, renderPlatformer, shiftForeground, trackLineY } from '../../game/platformer/render';
 import type { PlatformCamera } from '../../game/platformer/render';
@@ -286,7 +288,13 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
         const biome = biomeAt(run.km, seed);
         const music = biome.t > 0.5 ? biome.to : biome.from;
         audio.setScale(music.scale, music.root);
-        audio.update(pausedRef.current ? 0 : Math.hypot(v.x, v.y), grounded && !pausedRef.current, dayAt(run.km, elapsed).dark);
+        const dark = dayAt(run.km, elapsed).dark;
+        // The music is the radio's Infinity Skies (night tracks after dark); the old synth pad only plays when the radio
+        // is off. The ball's rolling and wind are the shared recorded loops, the forest (or crickets) underneath.
+        audio.update(pausedRef.current ? 0 : Math.hypot(v.x, v.y), grounded && !pausedRef.current, dark, !radio.snapshot().playing);
+        radio.setScene('infinity', dark > 0.5, (biome.t > 0.5 ? biome.to : biome.from).id);
+        raceAudio.setAmbience(dark > 0.5 ? 'amb-night' : 'amb-forest', 0.14);
+        raceAudio.setDrive(pausedRef.current ? null : { speed: Math.hypot(v.x, v.y), grounded, engine: !!game.player.engineOn });
         const cues = game.sounds.splice(0);
         if (cues.length && !pausedRef.current) {
           const listener = { x: camera.x, y: camera.y, halfHeight: height / 2 / camera.scale };
@@ -316,6 +324,8 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
       canvas.removeEventListener('pointercancel', pointerUp);
       endRun();
       audio.stop();
+      raceAudio.stopDrive();
+      raceAudio.setAmbience(null);
       audioRef.current = null;
       runRef.current = null;
       run.destroy();
@@ -340,6 +350,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
         {savedNote && <span className="infinity-note" role="status">{savedNote}</span>}
       </div>
       <div className="infinity-tools">
+        <RadioPill compact />
         <button className="infinity-icon" onClick={() => setPaused(true)} aria-label="Pause" title="Pause (P)"><Pause size={18} /></button>
         <button className="infinity-icon" onClick={toggleMute} aria-label={muted ? 'Unmute' : 'Mute'} aria-pressed={muted} title="Sound (M)">{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button>
         <button className="infinity-icon" onClick={() => setZoom(shownZoomRef.current / 1.25)} disabled={zoom !== null && zoom <= INFINITY_ZOOM_MIN} aria-label="Zoom out" title="Zoom out (-)"><ZoomOut size={18} /></button>

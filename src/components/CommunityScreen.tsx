@@ -8,6 +8,7 @@
  *   - `CommunityPicker` is the same list as a panel inside the Quick race track picker: one column with a sort toggle,
  *     and each card's button PICKS the track for the race (it is saved to My tracks first, so the race can find it).
  */
+import RadioPill from './RadioPill';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowBigUp, Check, ChevronDown, Flag, Hammer, Plus, Trophy, Sparkles, Users } from 'lucide-react';
 import Brand from './Brand';
@@ -90,7 +91,7 @@ export default function CommunityScreen({ account, onShop, onGarage, onWorkshop 
         <button onClick={onWorkshop}>Workshop</button>
         <button className="active" aria-current="page">Community</button>
       </nav>
-      <div className="header-tools"><WalletButton credits={account.credits} onClick={onShop} /></div>
+      <div className="header-tools"><RadioPill /><WalletButton credits={account.credits} onClick={onShop} /></div>
     </header>
 
     <main className="fit-main community-main">

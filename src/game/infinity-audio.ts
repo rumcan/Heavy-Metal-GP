@@ -104,15 +104,18 @@ export class InfinityAudio {
   }
 
   /** Call every frame: schedules the pad and the plucks a little ahead, and moves the rolling sound with the ball. */
-  update(speed: number, grounded: boolean, dark: number): void {
+  update(speed: number, grounded: boolean, dark: number, synthMusic = true): void {
     const ctx = this.ctx;
     if (!ctx || !this.padBus || ctx.state === 'closed') return;
     if (ctx.state === 'suspended') void ctx.resume();
     const now = ctx.currentTime;
-    if (now + 0.5 > this.nextPad) { this.pad(this.nextPad, dark); this.nextPad += PAD_SECONDS; this.padStep++; }
-    if (now + 0.5 > this.nextPluck) { this.pluck(this.nextPluck); this.nextPluck += pluckGap(this.pluckN, this.seed); this.pluckN++; }
+    // The pad and the plucks are the fallback music (the radio's Infinity Skies plays when it is on): keep the clock
+    // moving either way so they come in on the beat when the radio is switched off.
+    if (now + 0.5 > this.nextPad) { if (synthMusic) this.pad(this.nextPad, dark); this.nextPad += PAD_SECONDS; this.padStep++; }
+    if (now + 0.5 > this.nextPluck) { if (synthMusic) this.pluck(this.nextPluck); this.nextPluck += pluckGap(this.pluckN, this.seed); this.pluckN++; }
+    // the rolling is the recorded loop now (raceAudio.setDrive): this synth one only fills in without the radio
     const roll = rollingFor(speed, grounded);
-    this.rollGain?.gain.setTargetAtTime(roll.gain, now, 0.12);
+    this.rollGain?.gain.setTargetAtTime(synthMusic ? roll.gain : 0, now, 0.12);
     this.rollFilter?.frequency.setTargetAtTime(roll.freq, now, 0.15);
   }
 

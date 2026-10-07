@@ -1,4 +1,7 @@
 // P2-09: the "LEVEL UP!" card: the new level, the talent points earned, and every skill it unlocks.
+import { useEffect } from 'react';
+import { radio } from '../../game/sound/radio';
+import { raceAudio } from '../../game/audio';
 import Dialog from '../Dialog';
 import { GROUP_COLORS, SKILLS, newUnlocks } from '../../game/skills/catalog';
 
@@ -6,6 +9,7 @@ interface Props { from: number; to: number; xp: number; onClose: () => void }
 
 export default function LevelUpCard({ from, to, xp, onClose }: Props) {
   const unlocked = newUnlocks(from, to).map((id) => SKILLS[id]);
+  useEffect(() => { radio.stinger('level-up'); if (unlocked.length) window.setTimeout(() => raceAudio.ui('unlock'), 1600); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return <Dialog titleId="levelup-title" onClose={onClose} className="levelup-dialog">
     <span className="eyebrow accent">+{xp} XP</span>
     <h2 id="levelup-title">LEVEL UP!</h2>

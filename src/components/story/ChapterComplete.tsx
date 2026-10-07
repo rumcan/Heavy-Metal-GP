@@ -1,3 +1,4 @@
+import { radio } from '../../game/sound/radio';
 import { useEffect } from 'react';
 import { ArrowRight, Coins, Sparkles, Trophy } from 'lucide-react';
 import { raceAudio } from '../../game/audio';
@@ -33,7 +34,7 @@ export function ChapterComplete({
 }: ChapterCompleteProps) {
   const still = reducedMotion();
 
-  useEffect(() => { sting(); }, []);
+  useEffect(() => { if (raceAudio.bank.ready('stingers/chapter-complete')) radio.stinger('chapter-complete'); else { sting(); radio.prewarmStingers(['chapter-complete']); } }, []);
   useEffect(() => {
     const down = (event: KeyboardEvent) => {
       if (event.key !== ' ' && event.key !== 'Enter' && event.key !== 'Spacebar' && event.key !== 'Escape') return;

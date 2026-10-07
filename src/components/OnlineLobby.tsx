@@ -15,6 +15,7 @@
 // what the grid looks like. Nothing here simulates anything — that starts when
 // the lights go out and `RaceSession` takes over.
 // ══════════════════════════════════════════════════════════════════════════
+import RadioPill from './RadioPill';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, ArrowUpRight, Check, Copy, Lock, LockOpen } from 'lucide-react';
 import type { RaceRoom } from '../net/transport';
@@ -590,6 +591,7 @@ export default function OnlineLobby({ room, garage, circuitIndex, onCircuit, onL
       <div className="header-tools">
         <span className="eyebrow">{rated ? 'RANKED' : autoStart ? 'QUICK RACE' : isHost ? 'HOSTING' : 'JOINED'} <span className="muted">/ {seats.filter((s) => !s.isAI).length} DRIVERS</span></span>
         {onRank && <button className="rank-button rank-button-lobby" onClick={onRank} aria-label="Your rank — open the ladder" title="Your rank — open the ladder"><RankChip model={myChip} compact /></button>}
+        <RadioPill compact />
         <button className="text-button" onClick={onLeave}>Leave <ArrowUpRight size={15} /></button>
       </div>
     </header>
