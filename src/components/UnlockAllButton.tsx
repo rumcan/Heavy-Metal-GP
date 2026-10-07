@@ -2,24 +2,11 @@
 // talent tier and story chapter. RUN shows its own confirmation (and a top-up when the player is short). Once owned it
 // is a small badge.
 import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useBitsIcon } from './useBitsIcon';
 import { Check, Sparkles } from 'lucide-react';
 import { UNLOCK_ALL_PRICE_BITS, buyUnlockAll, onUnlockAll, unlockAllOwned } from '../game/premium';
 import { raceAudio } from '../game/audio';
 import '../premium.css';
-
-/** The RUN Bits mark, when the platform can give it (null in a browser without RUN). */
-function useBitsIcon(): string | null {
-  const [src, setSrc] = useState<string | null>(null);
-  useEffect(() => {
-    let live = true;
-    import('@series-inc/rundot-game-sdk/api')
-      .then((m) => (m.default as unknown as { iap?: { getCurrencyIcon?: (o?: object) => Promise<{ base64Data: string }> } }).iap?.getCurrencyIcon?.({ size: 'sm' }))
-      .then((icon) => { if (live && icon?.base64Data) setSrc(`data:image/png;base64,${icon.base64Data}`); })
-      .catch(() => { /* no platform: the word Bits does */ });
-    return () => { live = false; };
-  }, []);
-  return src;
-}
 
 export default function UnlockAllButton() {
   const owned = useSyncExternalStore((fn) => onUnlockAll(fn), unlockAllOwned, unlockAllOwned);

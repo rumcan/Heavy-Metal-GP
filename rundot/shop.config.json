@@ -27,6 +27,34 @@
       "sortOrder": 1,
       "releasedAt": null,
       "expiresAt": null
+    },
+    {
+      "itemId": "credits_1000",
+      "name": "1,000 credits",
+      "description": "A thousand credits for skills and cosmetics, in your wallet straight away.",
+      "category": "consumable",
+      "price": {
+        "type": "bucks",
+        "value": "1"
+      },
+      "entitlements": [
+        {
+          "entitlementId": "credits_1000",
+          "quantity": 1,
+          "consumable": true
+        }
+      ],
+      "unique": false,
+      "active": true,
+      "regions": [],
+      "refundEligible": false,
+      "refundWindowHours": 0,
+      "tags": [
+        "credits"
+      ],
+      "sortOrder": 2,
+      "releasedAt": null,
+      "expiresAt": null
     }
   ],
   "sales": [],
