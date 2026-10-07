@@ -1,4 +1,10 @@
 import * as storage from '../game/storage';
+import { radio } from '../game/sound/radio';
+import { TAKES, decide, newAnnouncerMemory, pickTake } from '../game/sound/announcer';
+import type { Call } from '../game/sound/announcer';
+import { getVoiceSettings } from '../game/voice';
+import RadioPill from './RadioPill';
+import HeatEdges from './HeatEdges';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { nudgeOf } from '../game/controls';
@@ -180,6 +186,35 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
   const [fast, setFast] = useState(1);
   const [toast, setToast] = useState<{ message: string; color: string } | null>(null);
   const [results, setResults] = useState<HeatResult[] | null>(null);
+  // Sound: race music on the radio, the forest under it, the stingers warm for the finish; the ball's own loops stop
+  // when the race is left.
+  useEffect(() => {
+    radio.setScene('race');
+    raceAudio.setAmbience('amb-forest', 0.1);
+    radio.prewarmStingers(['win-fanfare', 'podium-jingle', 'finish-jingle', 'ko-jingle']);
+    raceAudio.bank.prewarm('voice', Object.values(TAKES).flat());
+    return () => { raceAudio.stopDrive(); raceAudio.setAmbience(null); };
+  }, []);
+  // The announcer (sound/announcer.ts): his memory for this race, and the last take he used.
+  const announcerMem = useRef(newAnnouncerMemory());
+  const announcerLast = useRef<string | null>(null);
+  const announce = useCallback((call: Call) => {
+    const voice = getVoiceSettings();
+    if (!voice.enabled) return;
+    const id = pickTake(call, announcerLast.current);
+    if (!id || !raceAudio.bank.play('voice', id, { vol: 0.9 * voice.volume })) return;
+    announcerLast.current = id;
+    radio.duck(true);
+    window.setTimeout(() => radio.duck(false), 2600);
+  }, []);
+  // The result: a fanfare for a win, a jingle for the podium or a finish, a sad trombone for a knock-out.
+  useEffect(() => {
+    if (!results) return;
+    const mine = results.find((r) => r.id === playerId);
+    raceAudio.setDrive(null);
+    radio.stinger(!mine ? 'finish-jingle' : mine.dnf || mine.time === null ? 'ko-jingle' : mine.rank === 1 ? 'win-fanfare' : mine.rank <= 3 ? 'podium-jingle' : 'finish-jingle');
+    radio.setScene('results');
+  }, [results, playerId]);
   /** P2-10: the eight skills on the keys for this race (read once, so a race never changes mid-way). P2-20: the mode's own bar. */
   const slotsRef = useRef(testDrive ? testDriveSlots(loadSlots(loadoutMode)) : loadSlots(loadoutMode));
   const [mapTrack, setMapTrack] = useState<Track | null>(null);
@@ -705,6 +740,22 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
           out: m.dnf ? outMessage(m.koBy ?? -1, (id) => game.byIdOrNull(id)?.info.name ?? 'a rival') : null,
           viewTop: camera.y - height / 2 / camera.scale, viewBottom: camera.y + height / 2 / camera.scale,
         });
+        // The followed ball's own sounds: rolling, wind, the Magic Engine, and the crowd along the finish straight.
+        const finishX = game.track.platformer?.plan.finishX;
+        raceAudio.setDrive(pausedRef.current || m.finishedAt !== null || m.dnf ? null : {
+          speed: Math.hypot(velocity.x, velocity.y), grounded: m.grounded < 5, engine: !!m.engineOn,
+          crowd: finishX !== undefined ? Math.max(0, 1 - Math.abs(finishX - p.x) / 1800) : 0,
+        });
+        // The announcer calls your race (not in story or tutorial races: they have their own voices).
+        if (!story && !tutorialRef.current) {
+          const call = decide(announcerMem.current, {
+            time: game.time, started: game.gateOpen, rank: game.gateOpen ? game.playerRank() : m.gridSlot, field: game.marbles.length - game.benched.size,
+            progress: game.track.platformer ? Math.max(0, Math.min(1, (m.progress ?? 0) / game.track.platformer.path.length)) : 0,
+            kos: m.kos ?? 0, hp: m.health?.hp ?? 100, maxHp: m.maxHp ?? 100, healthOn: game.healthOn, finished: m.finishedAt !== null, dnf: !!m.dnf,
+            airMs: m.cannon && !m.cannon.fired ? 0 : m.grounded * 16.7, pickup: !!m.pickup,
+          });
+          if (call) announce(call);
+        }
         // P2-13: the tutorial overlay reads the learner's position, heat and flags here.
         tutorialRef.current?.onFrame({ finished: game.player.finishedAt !== null, paused: pausedRef.current });
       }
@@ -785,8 +836,9 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
 
   return <div className={`race-shell${mapTrack?.platformer ? ' is-platformer' : ''}`} {...mpProbe}>
     {online && <NetStats session={sessionRef.current} />}
-    <header className="race-topbar"><Brand compact /><div className="race-event"><span>{subtitle}</span><h1>{title}</h1></div><div className="race-clock"><span>RACE TIME</span><strong>{formatTime(hud.time)}</strong></div><div className="race-top-actions">{import.meta.env.DEV && !results && !online && <div className="dev-skip-race" title="Dev only: finish this heat instantly with you in the chosen place"><span>SKIP</span>{([1, 3, 8, 'dnf'] as const).map((place) => <button key={place} className="text-button" onClick={() => devSkipRace(place)}>{place === 'dnf' ? 'DNF' : `P${place}`}</button>)}</div>}<button className="icon-button" onClick={toggleMute} aria-label={muted ? 'Unmute sound (M)' : 'Mute sound (M)'} aria-pressed={muted} title={muted ? 'Sound off (M)' : 'Sound on (M)'}>{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button><button className="icon-button" onClick={() => setPause(true)} aria-label="Pause race" disabled={!!results || !!online} title={online ? 'An online race cannot be paused' : 'Pause race'}><Pause size={18} /></button><button className="text-button" onClick={requestExit} disabled={!!results}>{online ? 'Leave race' : 'Exit'} <ArrowUpRightIcon /></button></div></header>
+    <header className="race-topbar"><Brand compact /><div className="race-event"><span>{subtitle}</span><h1>{title}</h1></div><div className="race-clock"><span>RACE TIME</span><strong>{formatTime(hud.time)}</strong></div><div className="race-top-actions"><RadioPill compact />{import.meta.env.DEV && !results && !online && <div className="dev-skip-race" title="Dev only: finish this heat instantly with you in the chosen place"><span>SKIP</span>{([1, 3, 8, 'dnf'] as const).map((place) => <button key={place} className="text-button" onClick={() => devSkipRace(place)}>{place === 'dnf' ? 'DNF' : `P${place}`}</button>)}</div>}<button className="icon-button" onClick={toggleMute} aria-label={muted ? 'Unmute sound (M)' : 'Mute sound (M)'} aria-pressed={muted} title={muted ? 'Sound off (M)' : 'Sound on (M)'}>{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button><button className="icon-button" onClick={() => setPause(true)} aria-label="Pause race" disabled={!!results || !!online} title={online ? 'An online race cannot be paused' : 'Pause race'}><Pause size={18} /></button><button className="text-button" onClick={requestExit} disabled={!!results}>{online ? 'Leave race' : 'Exit'} <ArrowUpRightIcon /></button></div></header>
     <div className="race-stage">
+      <HeatEdges on={hud.overheated && !hud.finished && !hud.dnf} />
       <canvas ref={canvasRef} className="race-canvas" aria-label="2D marble race. Arrow keys nudge. Keys 1 to 8 deploy power-ups; plus and minus zoom; Space repeats the last item. P pauses." />
       {mapTrack && <RaceMinimap track={mapTrack} racers={hud.field} roster={roster} viewTop={hud.viewTop} viewBottom={hud.viewBottom} progress={hud.progress} />}
       <aside className="timing-tower" aria-label={preStart ? 'Starting grid' : 'Live classification'}><div className="timing-heading"><i className="live-dot" />{preStart ? 'STARTING GRID' : 'LIVE CLASSIFICATION'}</div><ol>{hud.field.map((r) => {

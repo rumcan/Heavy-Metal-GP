@@ -412,7 +412,7 @@ export function switchLane(game: Game, m: Marble, to: Lane): void {
   if (floor !== null && m.body.position.y > floor - MARBLE_RADIUS - 2) Body.setPosition(m.body, { x: m.body.position.x, y: floor - MARBLE_RADIUS - 2 });
   const v = Body.getVelocity(m.body);
   Body.setVelocity(m.body, { x: v.x, y: Math.min(v.y, -4) });
-  if (m.info.isPlayer) game.sfx('spring', m, m.body.position.x, m.body.position.y);
+  game.sfx('lane', m, m.body.position.x, m.body.position.y);
 }
 
 /** Is this marble mid lane change (the dolly is still running)? */
@@ -470,7 +470,7 @@ export function collectRings(game: Game, m: Marble): void {
     if (r.lane !== lane || Math.abs(r.x - p.x) > 34 || Math.abs(r.y - p.y) > 34 || Math.hypot(r.x - p.x, r.y - p.y) > 34) continue;
     rings.splice(i, 1);
     m.pegs++;
-    if (game.isHuman(m)) game.sfx('pickup', m, r.x, r.y);
+    game.sfx('ring', m, r.x, r.y);
     game.effects.push({ type: 'ring', x: r.x, y: r.y, ttl: 18, maxTtl: 18, color: '#ffd34a' });
   }
 }
@@ -720,6 +720,7 @@ export function aiDrive(game: Game, m: Marble, v: Matter.Vector, s: number): Mat
     if (d.jump || blocked) {
       m.aiJumpAt = game.time + CONTROL_TUNING.jumpCooldownMs;
       v = { x: v.x, y: Math.min(v.y, -CONTROL_TUNING.jumpSpeed) };
+      game.sfx('jump', m, m.body.position.x, m.body.position.y);
     }
   }
   // The Tab slot's trial skill: a computer driver uses it a moment after picking it up (a refusal waits and tries again).

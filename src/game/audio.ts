@@ -1,4 +1,7 @@
 import * as storage from './storage';
+import { SampleBank } from './sound/bank';
+import type { LoopVoice } from './sound/bank';
+import type { ItemType } from './types';
 
 /**
  * Procedural race sound effects (Web Audio, no files). The engine queues SoundEvents; the race screen hands them here
@@ -21,7 +24,10 @@ export type SoundType =
   // MB-10F: set pieces — the turnstile crank, the target drop, the gate bonus, the funnel whoosh
   | 'crank' | 'ding' | 'bonus' | 'whoosh'
   // story mode UI: dialogue tick and chapter/act sting
-  | 'blip' | 'sting';
+  | 'blip' | 'sting'
+  // the recorded sounds (sound/manifest.json): jumps and landings, lane hops, rings, the Tab pickup, damage and
+  // knock-outs, the boost pad, the Magic Engine overheating, a wrecking ball's hit and a sticky bomb going off
+  | 'jump' | 'land' | 'lane' | 'ring' | 'trial' | 'hit' | 'ko' | 'boost' | 'overheat' | 'wrecker' | 'bomb';
 
 export interface SoundEvent {
   type: SoundType;
@@ -30,6 +36,66 @@ export interface SoundEvent {
   player: boolean;
   color?: 'blue' | 'orange' | 'green';
   rank?: number;
+  /** 'item': the skill used (each has its own recording). */
+  item?: ItemType;
+  /** 'land': how hard (vertical speed, px per step). */
+  power?: number;
+}
+
+/**
+ * The recordings behind the race sounds: a list of takes (one is picked at random), their level, and how much the
+ * pitch may wander so a sound heard often never sounds like a loop. Anything not here (and any recording not loaded
+ * yet) plays its synth recipe below.
+ */
+export const RECORDED: Partial<Record<SoundType, { ids: readonly string[]; vol: number; jitter?: number }>> = {
+  light: { ids: ['race-beep'], vol: 0.7 },
+  go: { ids: ['race-go'], vol: 0.8 },
+  bang: { ids: ['cannon-1', 'cannon-2'], vol: 0.6, jitter: 0.06 },
+  jump: { ids: ['jump-1'], vol: 0.32, jitter: 0.06 }, // the subtle take only (the owner: the cartoon whoosh was very annoying)
+  lane: { ids: ['lane-change'], vol: 0.5, jitter: 0.05 },
+  spring: { ids: ['spring-sheep'], vol: 0.6, jitter: 0.05 },
+  pickup: { ids: ['item-box'], vol: 0.55, jitter: 0.04 },
+  trial: { ids: ['trial-pickup'], vol: 0.6 },
+  ring: { ids: ['ring-1', 'ring-2'], vol: 0.4, jitter: 0.04 },
+  smash: { ids: ['crate-smash-1', 'crate-smash-2'], vol: 0.6, jitter: 0.08 },
+  clack: { ids: ['clack-1', 'clack-2'], vol: 0.35, jitter: 0.1 },
+  hoop: { ids: ['fire-ring'], vol: 0.55, jitter: 0.05 },
+  steam: { ids: ['geyser'], vol: 0.45 },
+  loop: { ids: ['loop-whoosh'], vol: 0.55 },
+  finish: { ids: ['finish-line'], vol: 0.7 },
+  hit: { ids: ['hit-1', 'hit-2'], vol: 0.55, jitter: 0.06 },
+  ko: { ids: ['ko-boom'], vol: 0.75 },
+  boost: { ids: ['boost-pad'], vol: 0.45, jitter: 0.05 },
+  overheat: { ids: ['engine-overheat'], vol: 0.55 },
+  wrecker: { ids: ['wrecker-hit'], vol: 0.65, jitter: 0.05 },
+  bomb: { ids: ['skill-bomb-boom'], vol: 0.7, jitter: 0.05 },
+};
+
+/** Sounds worth having decoded before the lights go out (the rest load the first time they are needed). */
+export const PREWARM: readonly string[] = [
+  'race-beep', 'race-go', 'cannon-1', 'cannon-2', 'jump-1', 'land-soft', 'land-hard', 'roll-loop', 'wind-loop',
+  'engine-loop', 'lane-change', 'item-box', 'trial-pickup', 'ring-1', 'ring-2', 'crate-smash-1', 'crate-smash-2', 'clack-1',
+  'clack-2', 'finish-line', 'hit-1', 'hit-2', 'ui-click', 'ui-tab', 'ui-back', 'ui-open',
+];
+
+/** The menu and Workshop sounds: one recording each, played flat (no position). */
+export type UiSound = 'click' | 'tab' | 'open' | 'back' | 'buy' | 'coin' | 'error' | 'unlock' | 'equip' | 'place' | 'delete' | 'snap' | 'undo';
+export const UI_FILE: Record<UiSound, { id: string; vol: number }> = {
+  click: { id: 'ui-click', vol: 0.35 }, tab: { id: 'ui-tab', vol: 0.35 }, open: { id: 'ui-open', vol: 0.35 }, back: { id: 'ui-back', vol: 0.35 },
+  buy: { id: 'ui-buy', vol: 0.55 }, coin: { id: 'ui-coin', vol: 0.3 }, error: { id: 'ui-error', vol: 0.4 }, unlock: { id: 'ui-unlock', vol: 0.6 },
+  equip: { id: 'ui-equip', vol: 0.45 }, place: { id: 'ws-place', vol: 0.45 }, delete: { id: 'ws-delete', vol: 0.45 }, snap: { id: 'ws-snap', vol: 0.4 },
+  undo: { id: 'ws-undo', vol: 0.35 },
+};
+
+/** What the followed ball is doing this frame: drives the rolling, the wind and the Magic Engine loops. */
+export interface DriveState {
+  /** Speed in px per step. */
+  speed: number;
+  grounded: boolean;
+  /** The Magic Engine is pushing. */
+  engine: boolean;
+  /** 0..1: how close a cheering crowd is (the finish straight, a goblin stand). */
+  crowd?: number;
 }
 
 export interface Listener { x: number; y: number; halfHeight: number }
@@ -48,6 +114,13 @@ class RaceAudio {
   private streak = 0;
   private streakAt = 0;
   muted = false;
+  /** The recordings (sound/bank.ts): they play through the same master, so mute and the compressor cover them. */
+  readonly bank = new SampleBank(() => this.ctx, () => this.master);
+  private drive: { roll: LoopVoice; wind: LoopVoice; engine: LoopVoice; crowd: LoopVoice } | null = null;
+  private amb: { id: string; voice: LoopVoice } | null = null;
+
+  /** The context (null before the first gesture), for the music player's stingers. */
+  get context(): AudioContext | null { return this.ctx; }
 
   /** Read the saved mute preference (storage is preloaded at boot, so call this after startup, not at import). */
   loadPreference() {
@@ -74,12 +147,62 @@ class RaceAudio {
       this.noise = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
       const data = this.noise.getChannelData(0);
       for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+      this.bank.prewarm('sfx', PREWARM);
     }
     if (this.ctx.state === 'suspended') void this.ctx.resume();
   }
 
+  /** A menu or Workshop sound (flat, no position). */
+  ui(sound: UiSound) {
+    const ctx = this.ctx;
+    if (!ctx || this.muted || ctx.state !== 'running') return;
+    const f = UI_FILE[sound];
+    const nowMs = ctx.currentTime * 1000;
+    if (nowMs - (this.last.get(`ui:${sound}`) ?? -1e9) < 45) return;
+    this.last.set(`ui:${sound}`, nowMs);
+    if (!this.bank.play('sfx', f.id, { vol: f.vol })) this.tone(ctx.currentTime + 0.005, 1150, 0.04, 'square', 0.1, 0, 760);
+  }
+
+  /**
+   * Every frame of a race or an Infinity run, for the ball the camera follows: the rolling sound follows its speed on
+   * the ground, the wind its speed (louder in the air), the engine loop runs while the Magic Engine pushes, and a crowd
+   * swells near the finish. `null` (pausing) fades them all out.
+   */
+  setDrive(state: DriveState | null) {
+    const ctx = this.ctx;
+    if (!ctx || ctx.state !== 'running') return;
+    if (!state || this.muted) { if (this.drive) for (const v of Object.values(this.drive)) v.set(0); return; }
+    this.drive ??= { roll: this.bank.loop('roll-loop'), wind: this.bank.loop('wind-loop'), engine: this.bank.loop('engine-loop'), crowd: this.bank.loop('crowd-loop') };
+    const s = Math.max(0, state.speed);
+    this.drive.roll.set(state.grounded ? Math.min(0.32, s * 0.022) : 0, 0.75 + Math.min(0.6, s * 0.03));
+    this.drive.wind.set(Math.min(0.28, Math.max(0, s - 7) * (state.grounded ? 0.012 : 0.026)), 0.9 + Math.min(0.3, s * 0.012));
+    this.drive.engine.set(state.engine ? 0.3 : 0, 0.9 + Math.min(0.35, s * 0.015));
+    this.drive.crowd.set(Math.min(1, state.crowd ?? 0) * 0.35);
+  }
+
+  /** Stop the drive loops (the race is over or left). */
+  stopDrive() {
+    if (!this.drive) return;
+    for (const v of Object.values(this.drive)) v.stop();
+    this.drive = null;
+  }
+
+  /** A quiet ambience bed under the music (the forest by day, crickets by night, wind high up); null stops it. */
+  setAmbience(id: 'amb-forest' | 'amb-night' | 'amb-sky' | null, level = 0.16) {
+    if (!this.ctx) return;
+    if (this.amb && this.amb.id !== id) { const old = this.amb.voice; old.set(0); setTimeout(() => old.stop(), 1500); this.amb = null; }
+    if (!id) return;
+    this.amb ??= { id, voice: this.bank.loop(id) };
+    this.amb.voice.set(this.muted ? 0 : level);
+  }
+
+  private muteListeners = new Set<() => void>();
+  /** Called whenever the mute changes (the radio follows it). */
+  onMute(fn: () => void): () => void { this.muteListeners.add(fn); return () => { this.muteListeners.delete(fn); }; }
+
   setMuted(muted: boolean) {
     this.muted = muted;
+    for (const fn of this.muteListeners) fn();
     storage.setItem(MUTE_KEY, muted ? '1' : '0');
     if (this.master && this.ctx) this.master.gain.setTargetAtTime(muted ? 0 : 0.55, this.ctx.currentTime, 0.02);
   }
@@ -101,6 +224,8 @@ class RaceAudio {
     this.last.set(key, nowMs);
     const pan = Math.max(-0.8, Math.min(0.8, (e.x - 450) / 560));
     const t = ctx.currentTime + 0.005;
+    // The recording, when there is one and it is loaded (else the synth recipe below; the load is under way).
+    if (this.recorded(e, vol, pan)) return;
     switch (e.type) {
       case 'peg': return this.peg(e, t, vol, pan);
       case 'bump': return this.tone(t, 330, 0.12, 'sine', 0.5 * vol, pan, 140);
@@ -173,7 +298,30 @@ class RaceAudio {
       case 'boing': { this.tone(t, 180, 0.12, 'sine', 0.3 * vol, pan, 420); return this.tone(t + 0.1, 320, 0.1, 'sine', 0.2 * vol, pan, 520); }
       case 'blip': return this.tone(t, 1500 + Math.random() * 220, 0.028, 'square', 0.07, 0);
       case 'sting': return this.sting(t);
+      // the recorded-only sounds: a small synth stand-in until their file has loaded
+      case 'jump': return this.tone(t, 260, 0.14, 'triangle', 0.25 * vol, pan, 520);
+      case 'land': return this.noiseHit(t, 0.08, 400, Math.min(0.4, 0.06 * (e.power ?? 3)) * vol, pan, 'lowpass');
+      case 'lane': return this.whoosh(t, 0.35, 500, 2200, 0.25 * vol, pan);
+      case 'ring': return this.tone(t, 1760, 0.12, 'sine', 0.2 * vol, pan);
+      case 'trial': return this.arp(t, [74, 79, 83, 86], 0.05, 'triangle', 0.3 * vol, pan);
+      case 'hit': return this.noiseHit(t, 0.12, 700, 0.45 * vol, pan, 'lowpass');
+      case 'ko': this.noiseHit(t, 0.5, 600, 0.7 * vol, pan, 'lowpass'); return this.tone(t, 80, 0.5, 'sine', 0.5 * vol, pan, 40);
+      case 'boost': return this.whoosh(t, 0.3, 600, 3000, 0.3 * vol, pan);
+      case 'overheat': return this.noiseHit(t, 0.6, 4000, 0.25 * vol, pan, 'highpass');
+      case 'wrecker': return this.clang(t, vol, pan);
+      case 'bomb': this.noiseHit(t, 0.45, 900, 0.75 * vol, pan, 'lowpass'); return this.tone(t, 75, 0.4, 'sine', 0.6 * vol, pan, 35);
     }
+  }
+
+  /** Play the recording for this event if it is loaded. Skills each have their own; landings pick soft or hard. */
+  private recorded(e: SoundEvent, vol: number, pan: number): boolean {
+    let ids: readonly string[] | undefined, level = 0.6, jitter = 0;
+    if (e.type === 'item' && e.item) { ids = [`skill-${e.item}`]; level = 0.65; }
+    else if (e.type === 'land') { const hard = (e.power ?? 0) > 7; ids = [hard ? 'land-hard' : 'land-soft']; level = Math.min(0.6, 0.12 + 0.05 * (e.power ?? 3)); jitter = 0.06; }
+    else { const r = RECORDED[e.type]; if (r) { ids = r.ids; level = r.vol; jitter = r.jitter ?? 0; } }
+    if (!ids?.length) return false;
+    const id = ids[Math.floor(Math.random() * ids.length)];
+    return this.bank.play('sfx', id, { vol: level * vol, pan, rate: 1 + (Math.random() * 2 - 1) * jitter });
   }
 
   private out(pan: number): AudioNode {

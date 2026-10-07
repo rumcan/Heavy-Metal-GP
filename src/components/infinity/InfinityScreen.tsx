@@ -4,6 +4,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Camera, RotateCcw, EyeOff, Pause, Play, Volume2, VolumeX, ZoomIn, ZoomOut } from 'lucide-react';
 import { InfinityRun } from '../../game/platformer/infinity-world';
+import { radio } from '../../game/sound/radio';
+import RadioPill from '../RadioPill';
+import HeatEdges from '../HeatEdges';
 import { RING_CREDITS } from '../../game/platformer/course';
 import { marbleDepth, renderPlatformer, shiftForeground, trackLineY } from '../../game/platformer/render';
 import type { PlatformCamera } from '../../game/platformer/render';
@@ -69,6 +72,8 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
   const [restarts, setRestarts] = useState(0);
   const [muted, setMuted] = useState(() => raceAudio.loadPreference());
   const [km, setKm] = useState(0);
+  /** The Magic Engine is overheated (the red glow at the sides). */
+  const [hot, setHot] = useState(false);
   // P2-25: fewer particles and no drifting motion; remembered with the records.
   const [reduceMotion, setReduceMotionState] = useState(() => loadRecords().reduceMotion);
   const reduceRef = useRef(reduceMotion);
@@ -123,6 +128,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
     const run = new InfinityRun(seed, driver, { effects: true });
     const painter = new InfinityPainter(seed);
     let shiftsSeen = 0;
+    radio.setScene('infinity'); // the Infinity Skies station from the first moment (the frame loop refines day, night and biome)
     const audio = new InfinityAudio(seed);
     audioRef.current = audio;
     audio.setMuted(raceAudio.muted);
@@ -284,9 +290,14 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
         }));
         meter.draw(ctx, width, `${canvas.width}x${canvas.height}px (${Math.round(renderScale.scale * 100)}%)`);
         const biome = biomeAt(run.km, seed);
-        const music = biome.t > 0.5 ? biome.to : biome.from;
-        audio.setScale(music.scale, music.root);
-        audio.update(pausedRef.current ? 0 : Math.hypot(v.x, v.y), grounded && !pausedRef.current, dayAt(run.km, elapsed).dark);
+        const here = biome.t > 0.5 ? biome.to : biome.from;
+        audio.setRoot(here.root);
+        const dark = dayAt(run.km, elapsed).dark;
+        // The music is the radio's Infinity Skies (night tracks after dark, tracks made for the biome by day). The ball's
+        // rolling and wind are the shared recorded loops, the forest (or crickets) underneath.
+        radio.setScene('infinity', dark > 0.5, here.id);
+        raceAudio.setAmbience(dark > 0.5 ? 'amb-night' : 'amb-forest', 0.14);
+        raceAudio.setDrive(pausedRef.current ? null : { speed: Math.hypot(v.x, v.y), grounded, engine: !!game.player.engineOn });
         const cues = game.sounds.splice(0);
         if (cues.length && !pausedRef.current) {
           const listener = { x: camera.x, y: camera.y, halfHeight: height / 2 / camera.scale };
@@ -295,7 +306,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
       }
       if (fadeRef.current) fadeRef.current.style.opacity = String(Math.min(1, run.fade * 1.1).toFixed(2));
       hudTimer += dt; bankTimer += dt;
-      if (hudTimer > 120) { hudTimer = 0; setKm(run.km); setRings(run.rings); }
+      if (hudTimer > 120) { hudTimer = 0; setKm(run.km); setRings(run.rings); setHot((game.player.engine?.lockedUntil ?? 0) > game.time && !pausedRef.current); }
       if (bankTimer > BANK_EVERY_MS && !pausedRef.current) { bankTimer = 0; recordDistance(run.km, banked); banked = run.km; bankRun(); }
       unblend();
     };
@@ -316,6 +327,8 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
       canvas.removeEventListener('pointercancel', pointerUp);
       endRun();
       audio.stop();
+      raceAudio.stopDrive();
+      raceAudio.setAmbience(null);
       audioRef.current = null;
       runRef.current = null;
       run.destroy();
@@ -330,6 +343,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
   });
 
   return <div className="infinity-screen" data-ui={uiHidden ? 'hidden' : 'shown'}>
+    <HeatEdges on={hot} />
     <canvas ref={canvasRef} className="infinity-canvas" aria-label="Infinity: a ball rolling across an endless land. Arrow keys steer, up or space jumps, down fires the Magic Engine, P pauses, H hides the buttons." />
     <div ref={fadeRef} className="infinity-fade" aria-hidden="true" />
     {uiHidden && <button className="infinity-reveal" aria-label="Show the buttons" onClick={() => setUiHidden(false)} />}
@@ -340,6 +354,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
         {savedNote && <span className="infinity-note" role="status">{savedNote}</span>}
       </div>
       <div className="infinity-tools">
+        <RadioPill compact />
         <button className="infinity-icon" onClick={() => setPaused(true)} aria-label="Pause" title="Pause (P)"><Pause size={18} /></button>
         <button className="infinity-icon" onClick={toggleMute} aria-label={muted ? 'Unmute' : 'Mute'} aria-pressed={muted} title="Sound (M)">{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button>
         <button className="infinity-icon" onClick={() => setZoom(shownZoomRef.current / 1.25)} disabled={zoom !== null && zoom <= INFINITY_ZOOM_MIN} aria-label="Zoom out" title="Zoom out (-)"><ZoomOut size={18} /></button>

@@ -197,6 +197,10 @@ export interface Marble {
   loopPhase?: 0 | 1;
   /** When this marble got stuck at the foot of a loop ring with no speed to climb it (undefined = not stuck). */
   loopStuckSince?: number;
+  /** The Magic Engine pushed this step (the engine loop sound follows it). */
+  engineOn?: boolean;
+  /** The engine key was held last step (letting go of a hot engine vents steam). */
+  engineKey?: boolean;
   /** The Tab slot (platformer races): one skill picked up from a box or an item peg, to try out. Used once; it never goes home. */
   pickup?: ItemType | null;
   /** Crossing tracks: the Workshop track segment this marble last touched (plan.tracks index, segment) and when. */
@@ -1284,6 +1288,7 @@ export class Game {
     if (r.health === m.health) return false; // invulnerable
     m.health = { ...r.health, invulnUntil: Math.max(r.health.invulnUntil, this.time + 700) };
     this.shake = Math.max(this.shake, 4);
+    if (!r.died) this.sfx('hit', m, m.body.position.x, m.body.position.y);
     this.effects.push({ type: 'text', x: m.body.position.x, y: m.body.position.y - 26, ttl: 40, maxTtl: 40, color: '#f87171', text: `-${Math.round(before - m.health.hp)}` });
     if (r.died) this.knockOut(m, kind);
     return r.died;
@@ -1343,7 +1348,7 @@ export class Game {
     this.emit({ kind: 'ko', seat: m.info.id, by: killer && killer !== m ? killer.info.id : -1 });
     this.effects.push({ type: 'ring', x: m.body.position.x, y: m.body.position.y, ttl: 30, maxTtl: 30, color: '#ef4444' });
     this.effects.push({ type: 'debris', x: m.body.position.x, y: m.body.position.y, ttl: 40, maxTtl: 40, color: '#9ca3af', particles: this.makeParticles(m.body.position.x, m.body.position.y, 16, 5) });
-    this.sfx('smash', m, m.body.position.x, m.body.position.y);
+    this.sfx('ko', m, m.body.position.x, m.body.position.y);
     Composite.remove(this.world, m.body);
     Body.setPosition(m.body, { x: -5000, y: -5000 });
     Body.setVelocity(m.body, { x: 0, y: 0 });

@@ -309,7 +309,7 @@ export function step(game: Game, dt: number): void {
     const p = target.body.position;
     game.effects.push({ type: 'ring', x: p.x, y: p.y, ttl: 26, maxTtl: 26, color: '#dc2626' });
     game.effects.push({ type: 'debris', x: p.x, y: p.y, ttl: 30, maxTtl: 30, color: '#fb923c', particles: game.makeParticles(p.x, p.y, 14, 5) });
-    game.sfx('bang', target, p.x, p.y);
+    game.sfx('bomb', target, p.x, p.y);
     game.shake = Math.max(game.shake, 8);
     for (const o of game.marbles) {
       if (o.finishedAt !== null || o.dnf || !sameLane(game, target, o)) continue;

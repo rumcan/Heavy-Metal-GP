@@ -23,6 +23,7 @@
  */
 import castTable from '../voice/cast.json';
 import { raceAudio } from './audio';
+import { radio } from './sound/radio';
 import * as storage from './storage';
 
 // ────────────────────────────── types ──────────────────────────────
@@ -322,6 +323,7 @@ function endActive(): void {
   active = null;
   if (entry.timer) clearTimeout(entry.timer);
   if (entry.watcher) clearInterval(entry.watcher);
+  if (entry.audio) radio.duck(false); // the music comes back up
   try { entry.audio?.pause(); } catch { /* a pause on a torn-down element is not an error */ }
   setState(null);
   entry.resolve();
@@ -364,6 +366,7 @@ export function playVoice(set: string, id: string): Promise<void> {
         return;
       }
       entry.audio = audio;
+      radio.duck(true); // the music dips under the line
       audio.addEventListener('ended', () => { if (active === entry) endActive(); });
       // A hard stop in case 'ended' never fires, but never before the line can finish: the stored length is a hint
       // (it was once 40% short and cut lines off), so wait for the real one from the file plus a margin.

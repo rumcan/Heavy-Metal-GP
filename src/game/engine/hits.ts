@@ -33,7 +33,12 @@ export function onCollisionStart(game: Game, e: Matter.IEventCollision<Matter.En
     if (single && game.track.platformer) {
       const kind = meta(single === ma ? b : a)?.kind;
       const support = pair.collision.supports[0];
-      if ((kind === 'floor' || kind === 'ledge') && support && support.y > single.body.position.y + 6) single.grounded = 0;
+      if ((kind === 'floor' || kind === 'ledge') && support && support.y > single.body.position.y + 6) {
+        // a landing (it was in the air a while and comes down with some speed): soft or hard by the drop
+        const vy = single.body.velocity.y;
+        if (single.grounded > 14 && vy > 2.5) game.sfx('land', single, single.body.position.x, single.body.position.y, { power: vy });
+        single.grounded = 0;
+      }
     }
     if (ma && !mb) {
       if (game.track.platformer) noteTrackContact(game, ma, b);
@@ -153,7 +158,7 @@ export function marbleHits(game: Game, m: Marble, other: Matter.Body) {
       game.shake = Math.max(game.shake, 5);
       // One hit per swing: a ball pinned against the wrecking ball was hit again every contact and knocked out at once (the owner)
       if (game.time - (m.wreckerHitAt ?? -Infinity) > 900) { m.wreckerHitAt = game.time; game.damage(m, DAMAGE.wrecker, null, 'wrecker'); } // P2-07 (platformer races)
-      game.sfx('clang', m, other.position.x, other.position.y);
+      game.sfx('wrecker', m, other.position.x, other.position.y);
       game.effects.push({ type: 'ring', x: m.body.position.x, y: m.body.position.y, ttl: 14, maxTtl: 14, color: '#e2e8f0' });
       break;
     }
@@ -579,7 +584,7 @@ export function marbleHits(game: Game, m: Marble, other: Matter.Body) {
         md.active = false;
         md.respawnAt = game.time + 7000;
         const item = givePickup(game, m);
-        game.sfx('pickup', m, other.position.x, other.position.y);
+        game.sfx('trial', m, other.position.x, other.position.y);
         game.storyCounter('itemBoxes', m); // STORY HOOK (ST-07)
         game.emit({ kind: 'box', i: game.indexOf(other), taken: true, seat: m.info.id, item });
         game.effects.push({ type: 'ring', x: other.position.x, y: other.position.y, ttl: 18, maxTtl: 18, color: '#facc15' });

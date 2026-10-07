@@ -4,7 +4,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { BIOMES, BIOME_KM, BLEND_KM, biomeAt, dayAt, gradeAt, particleBudget, particlesAt, startOffset } from '../src/game/infinity-look';
-import { chordFor, midiToHz, pluckFor, pluckGap, rollingFor } from '../src/game/infinity-audio';
 import { emptyRecords, normalizeRecords } from '../src/game/infinity-store';
 
 test('biomes: at least five, unique, each with a scale and a particle kind', () => {
@@ -67,23 +66,6 @@ test('particles: the blend shows both kinds; the budget is bounded, smaller for 
   assert.ok(particleBudget(1920, 1080, 16, true) <= desk * 0.3, 'Reduce motion draws far fewer');
   assert.ok(particleBudget(1920, 1080, 60, false) < desk / 2, 'slow frames cut the count');
   assert.equal(particleBudget(0, 0, 16, false), 0);
-});
-
-test('music: chords and plucks only use notes of the scale; gaps are unhurried; rolling follows speed', () => {
-  for (const b of BIOMES) {
-    const inScale = (midi: number) => b.scale.includes((((midi - b.root) % 12) + 12) % 12);
-    for (let i = 0; i < 60; i++) {
-      for (const n of chordFor(i, b.scale, b.root, 5)) assert.ok(inScale(n), `${b.id} chord note ${n}`);
-      assert.ok(inScale(pluckFor(i, b.scale, b.root, 5)), `${b.id} pluck`);
-      const gap = pluckGap(i, 5);
-      assert.ok(gap >= 1.4 && gap <= 4.6);
-    }
-  }
-  assert.deepEqual(chordFor(3, BIOMES[0].scale, 60, 9), chordFor(3, BIOMES[0].scale, 60, 9), 'deterministic');
-  assert.equal(Math.round(midiToHz(69)), 440);
-  assert.equal(rollingFor(10, false).gain, 0, 'silent in the air');
-  assert.ok(rollingFor(10, true).gain > rollingFor(2, true).gain);
-  assert.ok(rollingFor(1000, true).gain <= 0.06, 'never loud');
 });
 
 test('records: Reduce motion is remembered and old records read as off', () => {
