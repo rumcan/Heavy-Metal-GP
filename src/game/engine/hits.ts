@@ -13,6 +13,7 @@ import type { ItemType } from '../types';
 import { BASE_TICK } from '../physics';
 import { DAMAGE, recordBump } from '../health';
 import { ramHit } from '../skills/effects';
+import { givePickup } from './items';
 
 
 
@@ -26,6 +27,14 @@ export function onCollisionStart(game: Game, e: Matter.IEventCollision<Matter.En
     const b = pair.bodyB;
     const ma = game.marbleOf(a);
     const mb = game.marbleOf(b);
+    // A ball rolling fast keeps making fresh contacts with the floor (never a settled one), so touching a platformer
+    // floor below its middle counts as grounded here too, not only in collisionActive: at speed it read as airborne.
+    const single = ma && !mb ? ma : mb && !ma ? mb : null;
+    if (single && game.track.platformer) {
+      const kind = meta(single === ma ? b : a)?.kind;
+      const support = pair.collision.supports[0];
+      if ((kind === 'floor' || kind === 'ledge') && support && support.y > single.body.position.y + 6) single.grounded = 0;
+    }
     if (ma && !mb) {
       if (game.track.platformer) noteTrackContact(game, ma, b);
       game.contactSurface(ma, b, pair, true);
@@ -563,6 +572,19 @@ export function marbleHits(game: Game, m: Marble, other: Matter.Body) {
     }
     case 'itembox': {
       if (!md.active) break;
+      // Platformer courses: one trial skill at a time in the Tab slot. Holding one, you roll through (the box stays for
+      // the others): use it to pick up another.
+      if (game.track.platformer) {
+        if (m.pickup) break;
+        md.active = false;
+        md.respawnAt = game.time + 7000;
+        const item = givePickup(game, m);
+        game.sfx('pickup', m, other.position.x, other.position.y);
+        game.storyCounter('itemBoxes', m); // STORY HOOK (ST-07)
+        game.emit({ kind: 'box', i: game.indexOf(other), taken: true, seat: m.info.id, item });
+        game.effects.push({ type: 'ring', x: other.position.x, y: other.position.y, ttl: 18, maxTtl: 18, color: '#facc15' });
+        break;
+      }
       const pool = game.dropPool ?? (game.track.platformer ? ITEM_POOL : LEGACY_ITEMS); // classic drops keep the original eight
       const available = pool.filter((item) => m.inventory[item] < MAX_ITEM_STACK);
       if (!available.length) break;
@@ -586,8 +608,10 @@ export function marbleHits(game: Game, m: Marble, other: Matter.Body) {
       md.hit = true;
       md.hitAt = game.time;
       game.poppingPegs.add(other);
-      game.emit({ kind: 'peg', i: game.indexOf(other), seat: m.info.id });
       const col = md.pegColor ?? 'blue';
+      // An item peg (green) on a platformer course fills an empty Tab slot with a trial skill.
+      const pegItem = col === 'green' && game.track.platformer && !m.pickup ? givePickup(game, m) : undefined;
+      game.emit({ kind: 'peg', i: game.indexOf(other), seat: m.info.id, ...(pegItem ? { item: pegItem } : {}) });
       game.sfx('peg', m, other.position.x, other.position.y, { color: col });
       const pc = col === 'orange' ? '#fb923c' : col === 'green' ? '#4ade80' : '#60a5fa';
       game.effects.push({ type: 'ring', x: other.position.x, y: other.position.y, ttl: 14, maxTtl: 14, color: pc });
@@ -600,6 +624,8 @@ export function marbleHits(game: Game, m: Marble, other: Matter.Body) {
         const sp = Math.hypot(v.x, v.y) || 1;
         Body.setVelocity(m.body, { x: v.x + (v.x / sp) * 1.5, y: v.y + (v.y / sp) * 1.5 + 0.5 });
         game.effects.push({ type: 'text', x: other.position.x, y: other.position.y - 20, ttl: 40, maxTtl: 40, color: '#fdba74', text: '+1 PEG' });
+      } else if (col === 'green' && game.track.platformer) {
+        if (pegItem) game.effects.push({ type: 'text', x: other.position.x, y: other.position.y - 20, ttl: 40, maxTtl: 40, color: '#86efac', text: 'TRY IT: TAB' });
       } else if (col === 'green') {
         const drops: readonly ItemType[] = game.dropPool ?? LEGACY_ITEMS;
         game.grantItem(m, md.itemDrop && drops.includes(md.itemDrop) ? md.itemDrop : drops[Math.floor(game.rng() * drops.length)]);

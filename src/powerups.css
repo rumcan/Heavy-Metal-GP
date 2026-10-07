@@ -431,3 +431,10 @@
   /* the zoom buttons move to the top left (the course map is top right), clear of the full-width skill bar */
   .race-shell .zoom-controls { top: 8px; bottom: auto; left: 10px; right: auto; flex-direction: row; }
 }
+
+/* The Tab slot (platformer races): one trial skill from a box or an item peg, first on the bar, gold-rimmed. */
+.inventory-slots:has(> .pickup-slot) { grid-template-columns: repeat(9, minmax(0, 1fr)); }
+.race-dashboard.race-cockpit > .inventory-toolbar .inventory-slots:has(> .pickup-slot) { grid-template-columns: repeat(9, minmax(0, 1fr)); }
+.race-dashboard.race-cockpit > .inventory-toolbar:has(.pickup-slot) { width: clamp(297px, 34%, 675px); }
+.inventory-slot.pickup-slot { outline: 2px solid #facc15aa; outline-offset: -2px; border-radius: 6px; }
+.inventory-slot.pickup-slot.empty { outline-color: #facc1540; }

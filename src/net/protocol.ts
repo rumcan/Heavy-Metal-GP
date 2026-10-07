@@ -61,7 +61,7 @@ export type { RaceEntry, RankWire };
  * lobby/ready/start, 20 Hz packed `state`, `events`, chunked `snapshot`,
  * `intent`, `resync`, `results`, presence and the hard refusal on mismatch.
  */
-export const PROTOCOL_VERSION = 12; // 12: P2-26c minecart rails in share codes; 11: P2-11 rooms accept v2 share codes; 10: P2-18 validated cosmetic look in SeatGarage/Seat; 9: P2-20 loadoutSlots house rule; 8: P2-19 hp byte + DNF flag per marble, ko/skillfx events, dnf/kos result rows, talents; 7: P2-08 24-skill inventories; 6: P2-00 depth lane byte per marble; 5: P2-01 engine flag + jump intent; // 3: the rated wire (rating board, result claim, the room's result);
+export const PROTOCOL_VERSION = 13; // 13: Tab-slot trial skills (box/peg events carry the item, snapshot pickups); 12: P2-26c minecart rails in share codes; 11: P2-11 rooms accept v2 share codes; 10: P2-18 validated cosmetic look in SeatGarage/Seat; 9: P2-20 loadoutSlots house rule; 8: P2-19 hp byte + DNF flag per marble, ko/skillfx events, dnf/kos result rows, talents; 7: P2-08 24-skill inventories; 6: P2-00 depth lane byte per marble; 5: P2-01 engine flag + jump intent; // 3: the rated wire (rating board, result claim, the room's result);
 // 4: MB-10 launchers (cannon/catapult/scoop holds, flipper firedAt, sling flash) and the movers' dynamic state
 
 /**
@@ -549,6 +549,8 @@ export interface PegEvent {
   kind: 'peg';
   i: number;
   seat: number;
+  /** An item peg on a platformer course: the trial skill it put in the seat's Tab slot. */
+  item?: ItemType;
 }
 
 /** A breakable wall: damage taken, and whether it broke open. */
@@ -565,6 +567,8 @@ export interface BoxEvent {
   i: number;
   taken: boolean;
   seat?: number;
+  /** A platformer course: the trial skill the box put in the seat's Tab slot. */
+  item?: ItemType;
 }
 
 /** An oil slick hit the track. */
@@ -835,6 +839,8 @@ export interface RaceSnapshot {
   boxes: ItemBoxState[];
   oils: OilState[];
   inventories: Inventory[];
+  /** Per-seat Tab slot (a trial skill picked up on a platformer course), null when empty. Absent from older hosts. */
+  pickups?: (ItemType | null)[];
   /** Per-seat orange pegs popped. */
   pegs: number[];
   /** Per-seat finish time (ms); null when the seat has not finished. */
@@ -1784,6 +1790,7 @@ function validateEvent(value: unknown): ProtocolError | null {
   const seat = (s: unknown) => (isInt(s, 0, MARBLE_COUNT - 1) ? null : forged(`Seat ${String(s)} is not 0..${MARBLE_COUNT - 1}.`));
   switch (e.kind) {
     case 'peg': {
+      if (e.item !== undefined && !(ITEM_TYPES as readonly string[]).includes(e.item as string)) return forged(`Item "${String(e.item)}" is not an item this game has.`);
       const err = body(e.i) ?? seat(e.seat);
       return err;
     }
@@ -1794,6 +1801,7 @@ function validateEvent(value: unknown): ProtocolError | null {
     }
     case 'box': {
       if (typeof e.taken !== 'boolean') return bad('Box event has no taken flag.');
+      if (e.item !== undefined && !(ITEM_TYPES as readonly string[]).includes(e.item as string)) return forged(`Item "${String(e.item)}" is not an item this game has.`);
       if (e.seat !== undefined) {
         const err = seat(e.seat);
         if (err) return err;
@@ -2003,6 +2011,7 @@ export function isRaceSnapshot(value: unknown): value is RaceSnapshot {
   const perSeat = (list: unknown, check: (v: unknown) => boolean): boolean =>
     Array.isArray(list) && list.length === MARBLE_COUNT && list.every(check);
   if (!perSeat(s.inventories, (inv) => readInventory(inv) !== null)) return false;
+  if (s.pickups !== undefined && !perSeat(s.pickups, (v) => v === null || (ITEM_TYPES as readonly string[]).includes(v as string))) return false;
   if (!perSeat(s.pegs, (p) => isInt(p, 0, 100_000))) return false;
   if (!perSeat(s.times, (t) => t === null || (isNumber(t) && (t as number) >= 0))) return false;
   if (!Array.isArray(s.order)) return false;

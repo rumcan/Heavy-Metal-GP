@@ -2,7 +2,7 @@
 // Alto's Adventure; the art is our own), chasms to jump, crates to hop, and three parallel depth ridges.
 // Pure data (a CoursePlan), deterministic from the seed. Floors are short straight pieces along a smooth curve.
 import { mulberry32 } from '../types';
-import type { BoostSpot, Bump, CoursePlan, Floor, ItemBoxSpot, Kicker, Lane, LaneGate, Ledge, RingSpot, Spring, WreckerSpot } from './course';
+import type { BoostSpot, Bump, CoursePlan, Floor, ItemBoxSpot, Kicker, Lane, LaneGate, Ledge, RingSpot, SmashSpot, Spring, WreckerSpot } from './course';
 import { LOOP_PITCH, LOOP_R, LOOP_RUN_OUT, PLANK_H } from './routes';
 import type { BridgeSpot, LoopSpot } from './routes';
 
@@ -325,10 +325,34 @@ export function planFlow(seed: number, t: FlowTuning = FLOW_TUNING): CoursePlan 
     }
   }
 
+  // More power-up boxes and a few item pegs (the owner: lots of boxes, and item pegs). Their own stream, so nothing
+  // planned above moves; each keeps clear of chasms, crates, gates, the other pieces and the ring runs.
+  const more = mulberry32(seed ^ 0x1b0c5e);
+  const ringsNear = (lane: Lane, x0: number, x1: number) => rings.some((r) => r.lane === lane && r.x > x0 - 120 && r.x < x1 + 120);
+  for (const lane of LANES) {
+    for (let bx = START_FLAT + 500; bx < end - 500; bx += 600) {
+      if (more() > 0.6) continue;
+      const x = Math.round(bx + more() * 400);
+      const n = more() < 0.35 ? 2 : 1;
+      if (!clearTrack(lane, x - 40, x + n * 80) || taken(lane, x - 40, x + n * 80) || ringsNear(lane, x, x + n * 80)) continue;
+      for (let i = 0; i < n; i++) itemBoxes.push({ lane, x: x + i * 80, y: Math.round(heightAt(lane, x + i * 80) - 46) });
+    }
+  }
+  for (let bx = START_FLAT + 2000; bx < end - 1500; bx += 2600) {
+    const lane = LANES[Math.floor(more() * 3)];
+    const x = Math.round(bx + more() * 1200);
+    if (!clearTrack(lane, x - 60, x + 60) || taken(lane, x - 60, x + 60) || ringsNear(lane, x, x)) continue;
+    // an item peg (green): hovering a hop over the track, it pops and gives a trial skill for the Tab slot
+    extras.push({ lane, piece: { t: 'ppeg', x, y: Math.round(heightAt(lane, x) - 95), color: 'green', r: 10, lane } as import('../trackdef').Piece });
+  }
+
+  // The owner: no crate to jump that slows you down. Every crate is a smash crate: roll straight through and it bursts.
+  const smashes: SmashSpot[] = rocks.map((r, i) => ({ id: `c${i}`, lane: r.lane, x: Math.round(r.x + r.w / 2), y: Math.round(heightAt(r.lane, r.x + r.w / 2)) }));
+
   const path: { x: number; y: number }[] = [];
   for (let x = 0; x <= t.length; x += 200) path.push({ x, y: heightAt(1, x) - 30 });
   const finishX = end + 360;
   const finishY = heightAt(1, finishX);
   const height = Math.max(...floors.map((f) => Math.max(f.y0, f.y1))) + 900;
-  return { seed, style: 'flow' as const, width: t.length, height, floors, bumps: rocks, gates, path, springs, ledges, itemBoxes, wreckers, boosts, loops, bridges, kickers, ...(extras.length ? { extras } : {}), ...(rings.length ? { rings } : {}), startX: 520, startY: t.startY, finishX, finishY };
+  return { seed, style: 'flow' as const, width: t.length, height, floors, bumps: [] as Bump[], gates, path, ...(smashes.length ? { smashes } : {}), springs, ledges, itemBoxes, wreckers, boosts, loops, bridges, kickers, ...(extras.length ? { extras } : {}), ...(rings.length ? { rings } : {}), startX: 520, startY: t.startY, finishX, finishY };
 }

@@ -119,7 +119,7 @@ function loadZoom(): number {
 
 interface LiveRow { id: number; rank: number; time: number | null; x: number; y: number }
 interface Hud {
-  rank: number; time: number; inventory: Inventory; remaining: Record<ItemType, number>; coolingDown: boolean; speed: number; cap: number;
+  rank: number; time: number; inventory: Inventory; pickup: ItemType | null; remaining: Record<ItemType, number>; coolingDown: boolean; speed: number; cap: number;
   /** P2-01: Magic Engine heat 0..1, and whether it is locked out after overheating. */
   heat: number; overheated: boolean; hp: number; maxHp: number; dnf: boolean; healthOn: boolean;
   /** DEV probe (MP-10): the local marble's position, read by the browser suite. */
@@ -216,7 +216,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
   const selectedRef = useRef<ItemType>(ITEM_TYPES.find((item) => inventory[item] > 0) ?? 'rocket');
   const [selected, setSelected] = useState<ItemType>(selectedRef.current);
   const [hud, setHud] = useState<Hud>({
-    rank: Math.max(0, gridOrder.indexOf(playerId)) + 1, time: 0, inventory: { ...initialInventory.current }, remaining: emptyInventory(), coolingDown: false, speed: 0, cap: 100, heat: 0, overheated: false, hp: 100, maxHp: 100, dnf: false, healthOn: false, lights: 0, mx: 0, my: 0,
+    rank: Math.max(0, gridOrder.indexOf(playerId)) + 1, time: 0, inventory: { ...initialInventory.current }, pickup: null, remaining: emptyInventory(), coolingDown: false, speed: 0, cap: 100, heat: 0, overheated: false, hp: 100, maxHp: 100, dnf: false, healthOn: false, lights: 0, mx: 0, my: 0,
     finished: false, playerTime: null, pegs: 0, sector: 'Starting grid', sectorIndex: 0,
     progress: 0, state: 'ON THE GRID', frozen: false, finishedCount: 0, following: 'You',
     field: gridOrder.map((id, i) => ({ id, rank: i + 1, time: null, x: 60 + i * 86, y: 116 })),
@@ -341,7 +341,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       // Freeze the displayed timers at the same instant as the simulation, not the last HUD tick.
       const remaining = emptyInventory();
       for (const item of ITEM_TYPES) remaining[item] = game.itemRemaining(game.player, item);
-      setHud((previous) => ({ ...previous, time: game.player.finishedAt ?? game.raceTime(), remaining, inventory: { ...game.player.inventory }, coolingDown: game.time < game.player.itemCooldownUntil }));
+      setHud((previous) => ({ ...previous, time: game.player.finishedAt ?? game.raceTime(), remaining, inventory: { ...game.player.inventory }, pickup: game.player.pickup ?? null, coolingDown: game.time < game.player.itemCooldownUntil }));
     }
     setPaused(value);
   }, []);
@@ -490,6 +490,13 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       // front of the first line.
       if (event.code === 'KeyT' && down && !event.repeat && onlineRef.current) { event.preventDefault(); openCompose(); return; }
       if (pausedRef.current) return;
+      // Tab: the trial skill you picked up (the Tab slot). It never moves the keyboard focus during a race.
+      if (event.code === 'Tab') {
+        event.preventDefault();
+        const picked = gameRef.current?.player.pickup;
+        if (down && !event.repeat && picked) useItem(picked);
+        return;
+      }
       // P2-01: arrows steer, ↑/Space jump, ↓ is the Magic Engine, Q W E R / A S D F (and 1–8) fire skill slots.
       const action = actionForKey(event.code);
       if (!action) return;
@@ -683,7 +690,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
         for (const item of ITEM_TYPES) remaining[item] = game.itemRemaining(m, item);
         setHud({
           rank: game.gateOpen ? game.playerRank() : m.gridSlot, time: m.finishedAt ?? game.raceTime(),
-          inventory: { ...m.inventory }, remaining, coolingDown: game.time < m.itemCooldownUntil,
+          inventory: { ...m.inventory }, pickup: m.pickup ?? null, remaining, coolingDown: game.time < m.itemCooldownUntil,
           heat: m.engine?.heat ?? 0, overheated: (m.engine?.lockedUntil ?? 0) > game.time,
           hp: m.health?.hp ?? 100, maxHp: m.maxHp ?? 100, dnf: !!m.dnf, healthOn: game.healthOn,
           speed: Math.hypot(velocity.x, velocity.y) * 6, cap: game.speedLimit(m) * 6,
@@ -827,7 +834,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       <div className={`marble-state ${hud.frozen ? 'is-frozen' : ''}`}><span className="readout-caption">MARBLE STATUS</span><strong>{hud.frozen && <Snowflake size={14} />}{hud.state}</strong><span className="peg-readout"><i className="orange-peg" />{hud.pegs} pegs & rings</span></div>
       <div className="race-wallet"><Coins size={16} /><strong>{credits.toLocaleString()}</strong><span>CR</span></div>
       <div className="race-controls"><div className="nudge-controls"><span>FIND YOUR LINE</span><div><button className="nudge-button" aria-label="Nudge left" {...nudgeButton(-1)} disabled={hud.finished || preStart || paused}><ArrowLeft size={18} /><kbd>←</kbd></button><button className="nudge-button" aria-label="Nudge right" {...nudgeButton(1)} disabled={hud.finished || preStart || paused}><ArrowRight size={18} /><kbd>→</kbd></button></div></div><div className="thumb-controls"><button className="nudge-button jump-button" aria-label="Jump" onPointerDown={(e) => { e.preventDefault(); pressJump(); }} disabled={hud.finished || preStart || paused}>JUMP<kbd>↑</kbd></button><button className="nudge-button engine-button" aria-label="Magic Engine (hold)" onPointerDown={(e) => { const tut = tutorialRef.current; if (tut && !tut.allow('engine')) return; e.currentTarget.setPointerCapture(e.pointerId); controls.current.engine = true; tut?.press('engine', gameRef.current?.time ?? 0); }} onPointerUp={() => { controls.current.engine = false; }} onPointerCancel={() => { controls.current.engine = false; }} onLostPointerCapture={() => { controls.current.engine = false; }} disabled={hud.finished || preStart || paused}>ENGINE<kbd>↓</kbd></button></div></div>
-      </div>{/* (gone once you are finished or out: the fast-forward panel sits there) */}{!(hud.finished || hud.dnf) && <InventoryToolbar slots={slotsRef.current} unlimited={testDrive ? UNLIMITED_ALL : online?.settings.items} inventory={hud.inventory} remaining={hud.remaining} selected={selected} blocked={paused || hud.finished || preStart || hud.frozen || !!results} coolingDown={hud.coolingDown} onUse={deploy} />}
+      </div>{/* (gone once you are finished or out: the fast-forward panel sits there) */}{!(hud.finished || hud.dnf) && <InventoryToolbar slots={slotsRef.current} unlimited={testDrive ? UNLIMITED_ALL : online?.settings.items} inventory={hud.inventory} remaining={hud.remaining} selected={selected} blocked={paused || hud.finished || preStart || hud.frozen || !!results} coolingDown={hud.coolingDown} onUse={deploy} pickup={hud.pickup} onUsePickup={() => { if (hud.pickup) deploy(hud.pickup); }} />}
     </footer>
     {paused && !results && <Dialog titleId="pause-title" onClose={() => { setConfirmExit(false); setPause(false); }} className="pause-dialog"><span className="eyebrow"><Timer size={15} /> {confirmExit ? 'RACE CONTROL' : 'TIME OUT'}</span><h2 id="pause-title">{confirmExit ? 'Leaving the grid?' : 'A quick pit stop.'}</h2><p className="dialog-intro">{confirmExit ? 'This heat will not be scored or paid. Used items stay spent; unused items and pickups stay in your inventory. Previous results are safe.' : 'The clock, every marble, and all item timers are paused. Your next move can wait.'}</p><div className="pause-actions"><button className="button-primary" onClick={() => { setConfirmExit(false); setPause(false); }}><Play size={17} />Back to the race</button>{!online && <button className="button-secondary" onClick={() => { setConfirmExit(false); setPause(false); setRestarts((n) => n + 1); }}><RotateCcw size={16} />Restart race</button>}<button className="button-secondary" onClick={confirmExit ? onExit : () => setConfirmExit(true)}>{confirmExit ? 'Leave heat' : 'Return to paddock'}<ChevronRight size={16} /></button></div></Dialog>}
     {results && <RaceResults results={results} roster={roster} title={title} subtitle={subtitle} actions={actions} championship={championship} payout={payout} credits={credits} startKit={resultStartKit.current} endKit={resultEndKit} onShop={onShop} isCustom={isCustom} rating={rating} />}

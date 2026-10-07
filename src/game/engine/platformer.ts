@@ -379,6 +379,12 @@ export const JUMP_REACH = MARBLE_RADIUS / 2;
  */
 export function nearGround(game: Game, m: Marble): boolean {
   const f = m.body.collisionFilter, p = m.body.position;
+  // standing on a rival's ball (same lane, it solid to you) counts too: you can jump off it
+  for (const o of game.marbles) {
+    if (o === m || o.finishedAt !== null || (o.lane ?? LANE_MIDDLE) !== (m.lane ?? LANE_MIDDLE) || ((o.body.collisionFilter.category ?? 0) & (f.mask ?? 0)) === 0) continue;
+    const dx = o.body.position.x - p.x, dy = o.body.position.y - p.y;
+    if (dy > 0 && Math.abs(dx) < MARBLE_RADIUS && Math.hypot(dx, dy) <= MARBLE_RADIUS * 2 + JUMP_REACH) return true;
+  }
   const solid = game.track.bodies.filter((b) => !b.isSensor && b !== m.body && ((b.collisionFilter.category ?? 0) & (f.mask ?? 0)) !== 0 && ((b.collisionFilter.mask ?? 0) & (f.category ?? 0)) !== 0
     && b.bounds.min.x <= p.x + MARBLE_RADIUS && b.bounds.max.x >= p.x - MARBLE_RADIUS && b.bounds.min.y <= p.y + MARBLE_RADIUS * 2 && b.bounds.max.y >= p.y);
   if (!solid.length) return false;
@@ -466,6 +472,24 @@ export function collectRings(game: Game, m: Marble): void {
     m.pegs++;
     if (game.isHuman(m)) game.sfx('pickup', m, r.x, r.y);
     game.effects.push({ type: 'ring', x: r.x, y: r.y, ttl: 18, maxTtl: 18, color: '#ffd34a' });
+  }
+}
+
+/**
+ * Smash crates on a race course (the owner: no crate to jump that slows you down): any ball rolling or flying into one in
+ * its lane bursts it with no resistance at all. Deterministic, like the rings, so an online room agrees.
+ */
+export function smashCrates(game: Game, m: Marble): void {
+  const plan = game.track.platformer?.plan;
+  const smashes = plan?.smashes;
+  if (!plan || !smashes?.length || m.finishedAt !== null) return;
+  const p = m.body.position, lane = m.lane ?? LANE_MIDDLE;
+  for (let i = smashes.length - 1; i >= 0; i--) {
+    const s = smashes[i];
+    if (s.lane !== lane || Math.abs(s.x - p.x) > 26 + MARBLE_RADIUS || p.y < s.y - 59 - MARBLE_RADIUS || p.y > s.y + 10) continue;
+    smashes.splice(i, 1);
+    plan.smashFx = [...(plan.smashFx ?? []).filter((f) => game.time - f.at < 1400), { id: s.id, lane: s.lane, x: s.x, y: s.y, at: game.time, vx: m.body.velocity.x }];
+    game.sfx('smash', m, s.x, s.y - 30);
   }
 }
 
@@ -698,6 +722,8 @@ export function aiDrive(game: Game, m: Marble, v: Matter.Vector, s: number): Mat
       v = { x: v.x, y: Math.min(v.y, -CONTROL_TUNING.jumpSpeed) };
     }
   }
+  // The Tab slot's trial skill: a computer driver uses it a moment after picking it up (a refusal waits and tries again).
+  if (m.pickup && game.time >= m.aiUseAt) game.useItem(m, m.pickup);
   // Skills: the brain says which held skill fits the moment; a refused one (no target, health off) is just tried later.
   if (d.slot !== null) {
     const id = heldSkills(m)[d.slot];
