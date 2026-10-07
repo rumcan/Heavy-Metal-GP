@@ -2,7 +2,7 @@
 // wooden beam track, carried on the owner's scaffold supports over mossy rock cliffs, with goblin towers,
 // torches, banners and the sheep spring. Built from the game's existing painted art; a skin only (physics is the
 // plain floor pieces from build.ts). Returns false until the art has loaded, and the caller draws a fallback.
-import type { CoursePlan, Floor, Lane } from './course';
+import type { BeamPath, CoursePlan, Floor, Lane } from './course';
 import { drawImg } from '../mip';
 import { SPRING_W, floorAt } from './course';
 import type { Kicker, LaneGate, StandSpot } from './course';
@@ -188,13 +188,13 @@ function stripAlongX(ctx: CanvasRenderingContext2D, img: CanvasImageSource & { w
  * rolls): a segment running right to left is drawn from its other end, so the beam never flips to the far side where
  * a curve doubles back. The texture runs on along the curve.
  */
-function stripBeam(ctx: CanvasRenderingContext2D, img: CanvasImageSource & { width: number; height: number }, pts: Pt[], up: number, thick: number, u0: number) {
+function stripBeam(ctx: CanvasRenderingContext2D, img: CanvasImageSource & { width: number; height: number }, pts: Pt[], up: number, thick: number, u0: number, keepOrder = false) {
   const tw = (img.width / img.height) * thick;
   const srcPerPx = img.width / tw;
   let u = ((u0 % tw) + tw) % tw;
   for (let i = 0; i < pts.length - 1; i++) {
     let a = pts[i], b = pts[i + 1];
-    if (b.x < a.x) [a, b] = [b, a];
+    if (!keepOrder && b.x < a.x) [a, b] = [b, a];
     const len = Math.hypot(b.x - a.x, b.y - a.y);
     if (len < 0.01) continue;
     ctx.save();
@@ -211,6 +211,33 @@ function stripBeam(ctx: CanvasRenderingContext2D, img: CanvasImageSource & { wid
     ctx.restore();
     u = (u + len) % tw;
   }
+}
+
+/** Where a beam's dark backing stroke runs at point i: on the solid side of the running line. */
+function beamCentre(beam: BeamPath, i: number): Pt {
+  const p = beam.pts[i];
+  const off = TRACK_T / 2 - RAIL_UP;
+  if (!beam.oriented) return { x: p.x, y: p.y + off };
+  const a = beam.pts[Math.max(0, i - 1)], b = beam.pts[Math.min(beam.pts.length - 1, i + 1)];
+  const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+  return { x: p.x - ((b.y - a.y) / len) * off, y: p.y + ((b.x - a.x) / len) * off };
+}
+
+/**
+ * One Workshop track's beam, painted whole along its shape, with a dark wood stroke behind it so no seam or gap shows
+ * where it bends hard, turns upright or doubles back. A rail's beam lies on its solid side, whichever way it runs.
+ */
+export function drawBeamPath(ctx: CanvasRenderingContext2D, beam: BeamPath): void {
+  ctx.save();
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#6a3f1c';
+  ctx.lineWidth = TRACK_T * 0.9;
+  ctx.beginPath();
+  beam.pts.forEach((_, i) => { const q = beamCentre(beam, i); if (i) ctx.lineTo(q.x, q.y); else ctx.moveTo(q.x, q.y); });
+  ctx.stroke();
+  ctx.restore();
+  stripBeam(ctx, middle(ART.wood!), beam.pts, RAIL_UP, TRACK_T, beam.pts[0].x + OX, !!beam.oriented);
 }
 
 function stripAlong(ctx: CanvasRenderingContext2D, img: CanvasImageSource & { width: number; height: number }, pts: Pt[], up: number, thick: number, u0?: number) {
@@ -355,16 +382,7 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
     let lo = Infinity, hi = -Infinity;
     for (const p of beam.pts) { lo = Math.min(lo, p.x); hi = Math.max(hi, p.x); }
     if (hi < left - 40 || lo > right + 40) continue;
-    ctx.save();
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = '#6a3f1c';
-    ctx.lineWidth = TRACK_T * 0.9;
-    ctx.beginPath();
-    beam.pts.forEach((p, i) => { const y = p.y - RAIL_UP + TRACK_T / 2; if (i) ctx.lineTo(p.x, y); else ctx.moveTo(p.x, y); });
-    ctx.stroke();
-    ctx.restore();
-    stripBeam(ctx, middle(ART.wood!), beam.pts, RAIL_UP, TRACK_T, beam.pts[0].x + OX);
+    drawBeamPath(ctx, beam);
   }
   if (statics) staticProps(ctx, plan, runs, lane, left, right);
   if (!dynamics) return true;
