@@ -328,12 +328,12 @@
     },
     {
       "id": "item-box",
-      "duration": 1.0,
+      "duration": 1,
       "prompt": "Magical wooden crate bursting open to reveal a power-up, a crunchy pop with bright sparkling chimes."
     },
     {
       "id": "trial-pickup",
-      "duration": 1.0,
+      "duration": 1,
       "prompt": "Mysterious magical item acquired, shimmering rising chime with a soft whoosh, exciting and curious."
     },
     {
@@ -348,12 +348,12 @@
     },
     {
       "id": "crate-smash-1",
-      "duration": 1.0,
+      "duration": 1,
       "prompt": "Wooden crate smashing apart as a steel ball crashes through it, splintering wood and scattering planks."
     },
     {
       "id": "crate-smash-2",
-      "duration": 1.0,
+      "duration": 1,
       "prompt": "Light wooden box shattering into pieces, crisp crack and falling splinters."
     },
     {
@@ -373,17 +373,17 @@
     },
     {
       "id": "geyser",
-      "duration": 2.0,
+      "duration": 2,
       "prompt": "Hot water geyser erupting, a powerful hiss and a rushing burst of steam and water."
     },
     {
       "id": "updraft",
-      "duration": 2.0,
+      "duration": 2,
       "prompt": "Strong upward gust of wind lifting something into the air, rising airy whoosh."
     },
     {
       "id": "wrecker-hit",
-      "duration": 1.0,
+      "duration": 1,
       "prompt": "Giant iron wrecking ball smashing into a small steel ball, a massive metallic clang with a heavy thud."
     },
     {
@@ -403,7 +403,7 @@
     },
     {
       "id": "ko-boom",
-      "duration": 2.0,
+      "duration": 2,
       "prompt": "Knockout: a small cartoon explosion with a puff of smoke and scattered metal bits clattering."
     },
     {
@@ -428,7 +428,7 @@
     },
     {
       "id": "skill-jump",
-      "duration": 1.0,
+      "duration": 1,
       "prompt": "Super jump, a powerful spring launch with a big upward whoosh."
     },
     {
@@ -438,7 +438,7 @@
     },
     {
       "id": "skill-oil",
-      "duration": 1.0,
+      "duration": 1,
       "prompt": "Thick black oil splattering onto a track, a gloopy splash and slick squelch."
     },
     {
@@ -458,12 +458,12 @@
     },
     {
       "id": "skill-anvil",
-      "duration": 1.0,
+      "duration": 1,
       "prompt": "Turning into heavy metal: a huge anvil clang and a heavy iron weight thud."
     },
     {
       "id": "skill-brake",
-      "duration": 1.0,
+      "duration": 1,
       "prompt": "Air brake: a sharp pneumatic hiss and a quick screech of slowing down."
     },
     {
@@ -493,12 +493,12 @@
     },
     {
       "id": "skill-spikes",
-      "duration": 1.0,
+      "duration": 1,
       "prompt": "Scattering metal caltrops onto a wooden track, a handful of sharp metal spikes clattering and bouncing."
     },
     {
       "id": "skill-decoy",
-      "duration": 1.0,
+      "duration": 1,
       "prompt": "A decoy appearing: a quick puff of smoke whoosh and a light playful pop, like a magic trick."
     },
     {
@@ -508,7 +508,7 @@
     },
     {
       "id": "skill-bomb",
-      "duration": 1.0,
+      "duration": 1,
       "prompt": "Sticky bomb attaching: a gooey splat and a fast ticking fuse."
     },
     {
@@ -547,6 +547,106 @@
       "prompt": "Shaman's charm, a mystical tribal chime with a soft wooden rattle and a magical glow hum."
     },
     {
+      "id": "skill-swap",
+      "duration": 1.4,
+      "prompt": "Magical swap, a whooshing magenta teleport whoosh in reverse then forward, with a sparkly chime."
+    },
+    {
+      "id": "skill-telekinesis",
+      "duration": 1.4,
+      "prompt": "Telekinesis, a deep psychic hum rising in pitch with a shimmering violet magic swell."
+    },
+    {
+      "id": "skill-well",
+      "duration": 1.4,
+      "prompt": "Gravity well, a deep sucking vortex rumble with a low warbling bass and swirling wind."
+    },
+    {
+      "id": "skill-warp",
+      "duration": 1.4,
+      "prompt": "Time warp, a slowing clock tick that stretches and drops in pitch with a tape-stop effect."
+    },
+    {
+      "id": "skill-rewind",
+      "duration": 1.4,
+      "prompt": "Rewind, a quick tape rewind squeal with a magical whoosh and a soft chime at the end."
+    },
+    {
+      "id": "skill-shrink",
+      "duration": 1.4,
+      "prompt": "Shrink hex, a descending cartoon zap with a pitch slide down and a small magic sparkle."
+    },
+    {
+      "id": "skill-bubble",
+      "duration": 1.4,
+      "prompt": "Bubble trap, a big wobbly bubble blown and released with a soft wet pop at the start."
+    },
+    {
+      "id": "skill-leech",
+      "duration": 1.4,
+      "prompt": "Life leech, a dark draining slurp with a low throbbing hum and a faint heartbeat."
+    },
+    {
+      "id": "skill-chain",
+      "duration": 1.4,
+      "prompt": "Chain lightning, crackling electric arcs jumping several times in quick succession."
+    },
+    {
+      "id": "skill-twin",
+      "duration": 1.4,
+      "prompt": "Shadow twin, a dark ghostly whoosh with a whispery echo and a low magical shimmer."
+    },
+    {
+      "id": "skill-thorns",
+      "duration": 1.4,
+      "prompt": "Thorn shell, wooden thorns and vines snapping out and creaking around a ball."
+    },
+    {
+      "id": "skill-spikewall",
+      "duration": 1.4,
+      "prompt": "Spike wall, iron spikes grinding up out of the ground with a heavy metal clank."
+    },
+    {
+      "id": "skill-mines",
+      "duration": 1.4,
+      "prompt": "Mine field, several small metal mines thudding onto dirt with beeping arming sounds."
+    },
+    {
+      "id": "skill-cluster",
+      "duration": 1.4,
+      "prompt": "Cluster bomb, a hollow launch thunk then a short whistle of a lobbed bomb."
+    },
+    {
+      "id": "skill-megabomb",
+      "duration": 1.4,
+      "prompt": "Mega bomb, a heavy iron bomb dropped with a thud and a loud fizzing fuse."
+    },
+    {
+      "id": "skill-blades",
+      "duration": 1.4,
+      "prompt": "Orbit blades, metal saw blades spinning up with a rising whirring ring."
+    },
+    {
+      "id": "skill-boomerang",
+      "duration": 1.4,
+      "prompt": "Boomerang, a wooden boomerang thrown, whirring away and whooshing back."
+    },
+    {
+      "id": "skill-laser",
+      "duration": 1.4,
+      "prompt": "Laser beam, a charging whine then a sustained buzzing sci-fi laser beam."
+    },
+    {
+      "id": "skill-turret",
+      "duration": 1.4,
+      "prompt": "Sentry turret, a mechanical turret unfolding with servo whirs and a click as it arms."
+    },
+    {
+      "id": "skill-blank",
+      "duration": 1.4,
+      "prompt": "Blank, a bright white shockwave whoomp with glassy shattering and a ringing tone."
+    },
+    {
       "id": "ui-click",
       "duration": 0.5,
       "prompt": "Satisfying UI button click, a short chunky mechanical metal switch click."
@@ -568,7 +668,7 @@
     },
     {
       "id": "ui-buy",
-      "duration": 1.0,
+      "duration": 1,
       "prompt": "Buying an item in a shop, a cash register cha-ching with jingling gold coins."
     },
     {

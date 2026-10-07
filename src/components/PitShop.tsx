@@ -1,3 +1,5 @@
+import { isPremium } from '../game/skills/premium';
+import { unlockAllOwned } from '../game/premium';
 import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { ArrowRight, Coins, ShoppingBag, Check, PackageCheck, Trophy } from 'lucide-react';
@@ -20,7 +22,8 @@ export default function PitShop({ account, onBuy, onClose }: Props) {
   const [wallet, setWallet] = useState(account);
   const [message, setMessage] = useState('');
   useEffect(() => setWallet(account), [account]);
-  const visible = ITEM_TYPES.filter((item) => filter === 'All' || ITEM_INFO[item].category === filter);
+  // premium skills are on sale once the premium unlock has opened them (the loadout shows them locked until then)
+  const visible = ITEM_TYPES.filter((item) => (filter === 'All' || ITEM_INFO[item].category === filter) && (!isPremium(item) || unlockAllOwned()));
 
   const cosmeticsAccountChanged = (next: RacerAccount) => {
     // Match the existing shop's callback contract while keeping the wallet accurate under this dialog.

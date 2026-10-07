@@ -15,6 +15,7 @@ import { ItemType, MARBLE_RADIUS, ITEM_TYPES, ITEM_INFO, MAX_ITEM_STACK } from '
 import { Game, Body, Marble } from '../engine';
 import * as skills from '../skills/effects';
 import { skillDef } from '../skills/catalog';
+import { premiumRemaining } from '../skills/premium';
 
 /**
  * What item boxes and item pegs give on a platformer course: only skills you do not have at the start (the owner: so
@@ -58,7 +59,7 @@ export function itemRemaining(game: Game, m: Marble, item: ItemType): number  {
     rocket: m.rocketUntil, jump: m.jumpUntil, aero: m.aeroUntil, anvil: m.anvilUntil, ghost: m.ghostUntil,
     shield: fx.shieldUntil, ram: fx.ramUntil, brake: fx.hoverUntil, overdrive: fx.overdriveUntil, reflect: fx.reflectUntil, charm: fx.charmUntil, drill: fx.drillUntil,
   };
-  return Math.max(0, (timers[item] ?? 0) - game.time);
+  return Math.max(0, (timers[item] ?? 0) - game.time, premiumRemaining(m, item, game.time));
 }
 
 export function availableItem(game: Game, m: Marble = game.player): ItemType | undefined  {

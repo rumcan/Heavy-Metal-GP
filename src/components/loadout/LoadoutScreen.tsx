@@ -2,7 +2,8 @@
 // (the shop is folded in). Saved as you go; locked skills say why. Replaces the old pit shop.
 import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { X, Coins, Lock } from 'lucide-react';
+import { X, Coins, Lock, Crown } from 'lucide-react';
+import UnlockAllButton from '../UnlockAllButton';
 import Dialog from '../Dialog';
 import ItemGlyph from '../ItemGlyph';
 import { GROUP_COLORS, SKILLS, STARTER_SKILLS } from '../../game/skills/catalog';
@@ -42,7 +43,7 @@ const GROUPS: { id: SkillGroup; label: string }[] = [
 const MODE_LABELS: Record<LoadoutMode, string> = { quick: 'Quick', championship: 'Championship', story: 'Story', online: 'Online' };
 const CATALOG: Catalog = Object.fromEntries(ITEM_TYPES.map((id) => {
   const d = SKILLS[id];
-  return [id, { price: ITEM_INFO[id].price, unlockLevel: d.unlockLevel, starter: (STARTER_SKILLS as readonly string[]).includes(id) }];
+  return [id, { price: ITEM_INFO[id].price, unlockLevel: d.unlockLevel, starter: (STARTER_SKILLS as readonly string[]).includes(id), premium: d.premium }];
 }));
 
 const PACK_NOTES: Record<PackResult, string | null> = {
@@ -72,13 +73,22 @@ export default function LoadoutScreen({ account, onBuy, onBuyCredits, onClose, m
   };
   const place = (item: ItemType) => {
     const why = lockReason(item, CATALOG, driver, false);
-    if (why) { setError(why === 'level' ? `${ITEM_INFO[item].name} unlocks at level ${CATALOG[item].unlockLevel}` : 'That skill is not available'); return; }
+    if (why) { setError(why === 'level' ? `${ITEM_INFO[item].name} unlocks at level ${CATALOG[item].unlockLevel}` : why === 'premium' ? `${ITEM_INFO[item].name} is a premium skill: Unlock everything to use it` : 'That skill is not available'); return; }
     setError(null);
     const next = slots.map((s) => (s === item ? null : s));
     next[at] = item;
     commit(next);
     const free = next.findIndex((s) => s === null);
     if (free >= 0) setAt(free);
+  };
+  const skillButton = (id: ItemType) => {
+    const why = lockReason(id, CATALOG, driver, false);
+    const on = slots.includes(id);
+    return <button key={id} className={`loadout-skill ${why ? 'is-locked' : ''} ${on ? 'is-slotted' : ''} ${SKILLS[id].premium ? 'is-premium' : ''}`} style={{ '--item-color': ITEM_INFO[id].color } as CSSProperties} onClick={() => place(id)} aria-disabled={!!why} title={`${ITEM_INFO[id].name}: ${ITEM_INFO[id].desc}`}>
+      <ItemGlyph item={id} size={18} />
+      <span><b>{ITEM_INFO[id].name}</b><small>{why === 'premium' ? <><Lock size={9} /> Premium</> : why ? <><Lock size={9} /> Level {SKILLS[id].unlockLevel}</> : `${ITEM_INFO[id].price} CR · own ${account.inventory[id]}`}</small></span>
+      {on && <i>{SLOT_KEYS[slots.indexOf(id)]}</i>}
+    </button>;
   };
   const clear = (i: number) => { const next = [...slots]; next[i] = null; commit(next); setAt(i); };
   const buy = (item: ItemType) => setError(onBuy(item) ?? null);
@@ -121,17 +131,14 @@ export default function LoadoutScreen({ account, onBuy, onBuyCredits, onClose, m
       {GROUPS.map((g) => <section key={g.id} aria-label={g.label}>
         <h3 style={{ color: GROUP_COLORS[g.id] }}>{g.label}</h3>
         <div className="loadout-skill-list">
-          {ITEM_TYPES.filter((id) => SKILLS[id].group === g.id).map((id) => {
-            const why = lockReason(id, CATALOG, driver, false);
-            const on = slots.includes(id);
-            return <button key={id} className={`loadout-skill ${why ? 'is-locked' : ''} ${on ? 'is-slotted' : ''}`} style={{ '--item-color': ITEM_INFO[id].color } as CSSProperties} onClick={() => place(id)} aria-disabled={!!why} title={`${ITEM_INFO[id].name}: ${ITEM_INFO[id].desc}`}>
-              <ItemGlyph item={id} size={18} />
-              <span><b>{ITEM_INFO[id].name}</b><small>{why ? <><Lock size={9} /> Level {SKILLS[id].unlockLevel}</> : `${ITEM_INFO[id].price} CR · own ${account.inventory[id]}`}</small></span>
-              {on && <i>{SLOT_KEYS[slots.indexOf(id)]}</i>}
-            </button>;
-          })}
+          {ITEM_TYPES.filter((id) => SKILLS[id].group === g.id && !SKILLS[id].premium).map(skillButton)}
         </div>
       </section>)}
+      {/* the owner's twenty premium spells and weapons: opened by Unlock everything */}
+      <section className="loadout-premium" aria-label="Premium spells and weapons">
+        <div className="loadout-premium-head"><h3><Crown size={14} /> Premium spells & weapons</h3><UnlockAllButton /></div>
+        <div className="loadout-skill-list">{ITEM_TYPES.filter((id) => SKILLS[id].premium).map(skillButton)}</div>
+      </section>
     </div>
     {preRace ? <div className="pause-actions loadout-prerace">
       <button className="button-primary" onClick={preRace.onRace} autoFocus>Race with this loadout</button>

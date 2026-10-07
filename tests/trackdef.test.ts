@@ -174,7 +174,7 @@ test('TrackDef: malformed defs are refused with a readable reason', () => {
     ['outside the pipe', { ...good, pieces: [{ t: 'breakable', x: 5000, y: 10, w: 30, h: 60, req: 5 }] }, /is 5000; expected -200..1100/],
     ['below the circuit height', { ...good, height: 900, pieces: [{ t: 'peg', x: 10, y: 5000, r: 9 }] }, /below the circuit's height/],
     ['bad peg colour', { ...good, pieces: [{ t: 'ppeg', x: 10, y: 10, color: 'red', r: 9 }] }, /color must be blue, orange or green/],
-    ['unknown item drop', { ...good, pieces: [{ t: 'ppeg', x: 10, y: 10, color: 'green', r: 13, item: 'laser' }] }, /item must be one of/],
+    ['unknown item drop', { ...good, pieces: [{ t: 'ppeg', x: 10, y: 10, color: 'green', r: 13, item: 'plasma' }] }, /item must be one of/],
     ['zero direction', { ...good, pieces: [{ t: 'hoop', x: 10, y: 10, dir: [0, 0] }] }, /dir must not be \[0, 0\]/],
     ['bad pad direction', { ...good, pieces: [{ t: 'pad', x: 10, y: 10, w: 40, dir: 0 }] }, /dir must be -1 or 1/],
     ['negative height', { ...good, height: -100 }, /height is -100/],

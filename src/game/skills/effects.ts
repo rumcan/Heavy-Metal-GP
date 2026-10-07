@@ -7,6 +7,7 @@ import type { ItemType } from '../types';
 import { MARBLE_RADIUS } from '../types';
 import { SKILLS } from './catalog';
 import { meta } from '../track';
+import * as premium from './premium';
 
 const { Body, Query, Bodies } = Matter;
 
@@ -106,7 +107,7 @@ export function preflight(game: Game, m: Marble, item: ItemType): string | null 
     case 'lightning': return leaderOf(game, m) ? null : 'Nobody to strike';
     case 'grapple': return grappleAnchor(game, m) ? null : 'Nothing to grab ahead';
     case 'blink': return blinkDestination(game, m) ? null : 'Blocked: Blink fizzled';
-    default: return null;
+    default: return premium.isPremium(item) ? premium.preflight(game, m, item) : null;
   }
 }
 
@@ -208,6 +209,7 @@ export function apply(game: Game, m: Marble, item: ItemType): void {
       break;
     }
     case 'charm': fx.charmUntil = t + dur; pop(game, m, '#34d399'); break;
+    default: if (premium.isPremium(item)) premium.apply(game, m, item); break;
     case 'bolt': {
       const target = decoyFor(game, m) ? null : nearestAhead(game, m, 600);
       const speed = SPEED_BOLT * (1 + tfx(m, 'projectileSpeedPct') / 100);
@@ -335,6 +337,7 @@ export function step(game: Game, dt: number): void {
     }
   }
   for (let i = game.decoys.length - 1; i >= 0; i--) if (game.decoys[i].until < t) game.decoys.splice(i, 1);
+  premium.step(game, dt);
   // per marble: the grapple pull and hovering
   for (const m of game.marbles) {
     const fx = m.fx;
