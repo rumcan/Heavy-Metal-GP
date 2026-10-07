@@ -20,7 +20,8 @@ import type { CameraRig, EditorCamera, Point } from './camera';
 import { drawCursorMark, drawGrid, drawRuler, viewWindow } from './overlay';
 import type { OverlayView } from './overlay';
 import { hitPieceAt, piecesInBox } from './build';
-import { hitSidePiece } from './build-side';
+import { hitSidePiece, hitSidePieceBelow } from './build-side';
+import { isRailPiece, ridePoints } from '../../game/platformer/crossings';
 import { handlesFor, baseBoxHandles, lockHandlePoint, orderHandlePoints } from './handles';
 import { groupHandles, unionBox } from './group';
 import type { Piece } from '../../game/trackdef';
@@ -201,6 +202,8 @@ interface Props {
   onToggleLock?: (pieceIndex: number) => void;
   /** Layer order: 'front' draws the piece over everything, 'back' under everything. */
   onReorder?: (pieceIndex: number, dir: 'front' | 'back') => void;
+  /** Crossing tracks: tap a crossing marker to swap which track passes in front. */
+  onSwapCrossing?: (zone: number) => void;
   /** Group transform drag (2+ selected): `start` = the selected pieces and their box when the drag began. */
   onGroupHandle?: (handleId: string, to: Point, start: { indices: number[]; pieces: Piece[] }, box: GroupBox) => void;
   /** Lock every piece in `indices` (the group padlock). */
@@ -254,6 +257,7 @@ export default function EditorCanvas(props: Props) {
   const inactiveRef = useRef(props.inactive);
   const onLockRef = useRef(props.onToggleLock);
   const onOrderRef = useRef(props.onReorder);
+  const onSwapRef = useRef(props.onSwapCrossing);
   const onGroupRef = useRef(props.onGroupHandle);
   const onLockManyRef = useRef(props.onLockMany);
   const onUngroupRef = useRef(props.onUngroup);
@@ -284,6 +288,7 @@ export default function EditorCanvas(props: Props) {
   inactiveRef.current = props.inactive;
   onLockRef.current = props.onToggleLock;
   onOrderRef.current = props.onReorder;
+  onSwapRef.current = props.onSwapCrossing;
   onGroupRef.current = props.onGroupHandle;
   onLockManyRef.current = props.onLockMany;
   onUngroupRef.current = props.onUngroup;
@@ -370,6 +375,8 @@ export default function EditorCanvas(props: Props) {
     };
     let pendingSettingsClick: HandleDrag | null = null;
     let pendingOrderClick: { index: number; dir: 'front' | 'back' } | null = null;
+    let pendingCrossingClick: number | null = null;
+    let cycleFrom: number | null = null;
     let pendingLockClick: number | null = null;
     let pendingGroupAction: { action: string; indices: number[] } | null = null;
     let pieceDrag: PieceDrag | null = null;
@@ -511,6 +518,7 @@ export default function EditorCanvas(props: Props) {
         // Single pointer down — decide mode
         downPoint = { x: event.clientX, y: event.clientY };
         pendingPlace = null;
+        cycleFrom = null;
         // If armed, placement preview takes precedence — but we still allow
         // handle/piece interaction? Spec says click palette tile then click canvas
         // to place. We'll treat armed + no shift as placement on click, not drag.
@@ -547,6 +555,12 @@ export default function EditorCanvas(props: Props) {
             pan = null;
             return;
           }
+          // crossing tracks: a tap on a crossing marker swaps which track passes in front
+          const mark = crossingMarks({ camera: camera(), width, height } as OverlayView).find((m) => Math.hypot(m.x - local.x, m.y - local.y) <= 14);
+          if (mark) {
+            pendingCrossingClick = mark.zone;
+            return;
+          }
         }
 
         const curTrack = trackRef.current;
@@ -561,6 +575,7 @@ export default function EditorCanvas(props: Props) {
         if (hit !== null) {
           const sel = selectedRef.current;
           const isSelected = sel.includes(hit);
+          cycleFrom = sideRef.current && isSelected && sel.length === 1 ? hit : null;
           const additive = event.shiftKey;
           if (!isSelected) {
             if (additive) onSelectRef.current([hit], true);
@@ -734,6 +749,8 @@ export default function EditorCanvas(props: Props) {
       pendingLockClick = null;
       const wasPendingOrderClick = pendingOrderClick;
       pendingOrderClick = null;
+      const wasPendingCrossingClick = pendingCrossingClick;
+      pendingCrossingClick = null;
 
       const down = downPoint;
       const isClick = down && Math.hypot(event.clientX - down.x, event.clientY - down.y) <= DRAG_SLOP;
@@ -751,6 +768,11 @@ export default function EditorCanvas(props: Props) {
         pieceDrag = null;
         endTxRef.current();
       }
+      if (wasPiece && isClick && cycleFrom !== null && sideRef.current) {
+        const next = hitSidePieceBelow(worldRaw, pbRef.current, cycleFrom, blockedSet());
+        if (next !== null) onSelectRef.current([next], false);
+      }
+      cycleFrom = null;
       if (wasBox) {
         // Box select commit
         const curTrack = trackRef.current;
@@ -794,6 +816,8 @@ export default function EditorCanvas(props: Props) {
         else onUngroupRef.current?.();
       } else if (wasPendingOrderClick && isClick) {
         onOrderRef.current?.(wasPendingOrderClick.index, wasPendingOrderClick.dir);
+      } else if (wasPendingCrossingClick !== null && isClick) {
+        onSwapRef.current?.(wasPendingCrossingClick);
       } else if (!wasHandle && !wasPiece && !wasBox && !wasPan && isClick) {
         // Empty click (no handle/piece/box/pan/place)
         // If hit nothing and not armed, clear selection
@@ -923,6 +947,31 @@ export default function EditorCanvas(props: Props) {
       drawHandleIcon(ctx, lk.x, lk.y, 'lock', true);
     };
 
+    /** Crossing markers (side-scrolling courses): one per crossing in the lane being edited, at the crossing's middle. */
+    const crossingMarks = (overlay: OverlayView): { zone: number; x: number; y: number }[] => {
+      const plan = gameRef.current?.track.platformer?.plan;
+      if (!sideRef.current || !plan?.crossings) return [];
+      const cam = overlay.camera, lane = Math.round(focusRef.current);
+      return plan.crossings.flatMap((z, zone) => (z.lane !== lane ? [] : [{ zone, x: ((z.x0 + z.x1) / 2 - cam.x) * cam.scale + overlay.width / 2, y: ((z.y0 + z.y1) / 2 - cam.y) * cam.scale + overlay.height / 2 }]));
+    };
+    const drawCrossings = (ctx: CanvasRenderingContext2D, overlay: OverlayView) => {
+      for (const m of crossingMarks(overlay)) {
+        ctx.save();
+        ctx.fillStyle = '#0b1220';
+        ctx.strokeStyle = '#facc15';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, 11, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#facc15';
+        ctx.font = 'bold 13px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('⇅', m.x, m.y + 1);
+        ctx.restore();
+      }
+    };
     const drawSelection = (ctx: CanvasRenderingContext2D, overlay: OverlayView) => {
       const curTrack = trackRef.current;
       const sel = selectedRef.current;
@@ -1077,6 +1126,26 @@ export default function EditorCanvas(props: Props) {
           ctx.moveTo(sA.x, sA.y);
           ctx.lineTo(sB.x, sB.y);
           ctx.stroke();
+          ctx.restore();
+        }
+        // crossing tracks: a rail shows which way it is ridden (chevrons) and its solid side (a short tick)
+        const railPiece = pieces[idx];
+        if (sideRef.current && railPiece && (railPiece.t === 'curve' || railPiece.t === 'ramp') && isRailPiece(railPiece)) {
+          const pts = ridePoints(railPiece)!.pts;
+          ctx.save();
+          ctx.strokeStyle = '#facc15';
+          ctx.lineWidth = 2;
+          for (const f of [0.25, 0.5, 0.75]) {
+            const k = Math.min(pts.length - 2, Math.floor(f * (pts.length - 1)));
+            const a = toScreen(pts[k]), b = toScreen(pts[k + 1]);
+            const ang = Math.atan2(b.y - a.y, b.x - a.x), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+            ctx.beginPath();
+            ctx.moveTo(mx + Math.cos(ang + 2.5) * 9, my + Math.sin(ang + 2.5) * 9);
+            ctx.lineTo(mx, my);
+            ctx.lineTo(mx + Math.cos(ang - 2.5) * 9, my + Math.sin(ang - 2.5) * 9);
+            ctx.stroke();
+            if (f === 0.5) { ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(mx - Math.sin(ang) * 16, my + Math.cos(ang) * 16); ctx.stroke(); ctx.setLineDash([]); }
+          }
           ctx.restore();
         }
       }
@@ -1371,6 +1440,7 @@ export default function EditorCanvas(props: Props) {
       if (rulerRef.current) drawRuler(ctx, overlayView);
       drawCursorMark(ctx, overlayView);
       drawSelection(ctx, overlayView);
+      drawCrossings(ctx, overlayView);
       drawHoverLock(ctx, overlayView);
       drawBox(ctx, overlayView);
       drawGhost(ctx, overlayView);

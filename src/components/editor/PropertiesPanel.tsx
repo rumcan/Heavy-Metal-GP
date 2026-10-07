@@ -10,7 +10,9 @@
  */
 import type { Piece } from '../../game/trackdef';
 import { SIGN_MAX_CHARS } from '../../game/trackdef';
-import { worldWidth } from './world';
+import { isSideWorld, worldWidth } from './world';
+import { reverseTrack, smoothJoins } from './joins';
+import { isRailPiece } from '../../game/platformer/crossings';
 import { clampToRange, SETTING_RANGES } from './pieceSettings';
 import { HANDLE_RANGES } from './handles';
 
@@ -19,6 +21,8 @@ interface Props {
   pieces: Piece[];
   onChange: (index: number, next: Piece) => void;
   onChangeMany?: (indices: number[], updater: (p: Piece) => Piece) => void;
+  /** Side-scrolling courses: move the selected piece one step in front of / behind the next piece it overlaps. */
+  onLayer?: (dir: 1 | -1) => void;
 }
 
 function NumField(props: { label: string; value: number; min?: number; max?: number; step?: number; onValue: (v: number) => void; desc?: string }) {
@@ -65,7 +69,7 @@ function clampNum(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
 }
 
-export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
+export default function PropertiesPanel({ selected, pieces, onChange, onLayer }: Props) {
   if (selected.length === 0) {
     return <p className="prop-empty">Select a piece to edit its properties. Shift+click or drag to select multiple.</p>;
   }
@@ -120,6 +124,17 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
             <input type="checkbox" checked={piece.cliff !== false} onChange={(e) => update({ cliff: e.target.checked ? undefined : false } as unknown as Piece)} />
           </div>
           <div className="prop-hint">Side-scrolling courses: on, rock, supports and trees under the track; off, the track floats on its beam.</div>
+          {isSideWorld() && (
+            <>
+              <div className="prop-field">
+                <button type="button" className="button-secondary" onClick={() => onChange(index, reverseTrack(piece))}>Reverse direction</button>
+                {piece.t === 'curve' && <button type="button" className="button-secondary" onClick={() => onChange(index, smoothJoins(pieces, index))}>Smooth joins</button>}
+              </div>
+              <div className="prop-hint">{isRailPiece(piece)
+                ? 'This track turns past upright: a ball rides it from its start dot to its end dot, with the solid side on the right of travel. Reverse it if the ball should ride the other face.'
+                : 'Drag an end onto another track end to join them. Smooth joins lines the bend up with the track it joins.'}</div>
+            </>
+          )}
         </>
       )}
 
@@ -646,6 +661,13 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
           <NumField label="Cycle Time (ms)" desc="How long it takes to complete one full back-and-forth movement or rotation." value={piece.period} min={1500} max={20000} step={100} onValue={(v) => update({ period: Math.round(clampNum(v, 1500, 20000)) } as unknown as Piece)} />
           <NumField label="Start Delay Offset (ms)" desc="Staggers the animation timing so multiple pieces don't move identically at the exact same time." value={piece.phase} min={0} max={20000} step={100} onValue={(v) => update({ phase: Math.round(clampNum(v, 0, 20000)) } as unknown as Piece)} />
         </>
+      )}
+
+      {onLayer && (
+        <div className="prop-field">
+          <button type="button" className="button-secondary" onClick={() => onLayer(1)}>Forward one</button>
+          <button type="button" className="button-secondary" onClick={() => onLayer(-1)}>Back one</button>
+        </div>
       )}
     </div>
   );
