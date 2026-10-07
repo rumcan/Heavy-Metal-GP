@@ -26,6 +26,7 @@ import { tileFor } from './palette';
 import { getTemplates, placeTemplate, type SavedTemplate } from './templates';
 import type { Point } from './camera';
 import { SNAP } from './camera';
+import { isSideWorld } from './world';
 import { fitGroupTranslation, translatePiece } from './translation';
 import { chosenPegArt, pegArtById, PEG_ART_R } from '../../game/peg-art';
 import { doubleLoopKit, loopKit, overpassKit } from '../../game/platformer/track-kits';
@@ -89,6 +90,9 @@ export function placementPieces(armed: string, at: Point, snap: boolean, templat
     // A premade scaffold tunnel: its rails, stamped as a group centred on the pointer. Null when it is wider than the track.
     const kit = scaffoldKitById(chosenScaffoldKit());
     const cx = snap ? Math.round(at.x / SNAP) * SNAP : at.x, cy = snap ? Math.round(at.y / SNAP) * SNAP : at.y;
+    // A course built sideways has no 900 px shaft to fit inside: the tunnel goes where you click, floating on its own
+    // scaffolding (no cliff under its rails).
+    if (isSideWorld()) return kit.pieces.map((p) => translatePiece({ ...p, cliff: false }, cx, cy));
     // The kit's drawn width (slabs included) must stay inside the walls: slide it in, or refuse one that is too wide.
     if (kit.width > W - SCAFFOLD_MARGIN * 2) return null;
     const x = Math.max(kit.width / 2 + SCAFFOLD_MARGIN, Math.min(W - kit.width / 2 - SCAFFOLD_MARGIN, cx));

@@ -60,8 +60,20 @@ test('every platformer tile lays a piece the def accepts, level and on the point
   const floor = placementPieces('ramp', at, true)![0];
   assert.equal(floor.t, 'ramp');
   if (floor.t === 'ramp') { assert.equal(floor.a[1], floor.b[1], 'a floor is level'); assert.equal((floor.a[0] + floor.b[0]) / 2, 3000, 'centred on the click'); }
-  const gate = placementPieces('gate-door', at, true)![0];
-  assert.ok(gate.t === 'gate' && gate.kind === 'door');
+  const gate = placementPieces('gate-ramp', at, true)![0];
+  assert.ok(gate.t === 'gate' && gate.kind === 'ramp');
+  // the owner removed the lane door and the wall from the sideways palette (doors in saved courses still work)
+  const ids = PLATFORMER_PALETTE.flatMap((g) => g.tiles.map((t) => t.id));
+  assert.ok(!ids.includes('gate-door') && !ids.includes('wall'));
+});
+
+test('a scaffold tunnel on a course built sideways lands where you click, floating (no cliff), not at the start', () => {
+  setEditorWorld({ width: 12000 });
+  const placed = placementPieces('scaffold', { x: 6000, y: 900 }, true)!;
+  assert.ok(placed.length > 1);
+  const xs = placed.flatMap((p) => (p.t === 'curve' ? [p.a[0], p.b[0]] : []));
+  assert.ok(Math.min(...xs) > 5000 && Math.max(...xs) < 7000, `around the click (x ${Math.min(...xs)}..${Math.max(...xs)})`);
+  assert.ok(placed.every((p) => p.t !== 'curve' || p.cliff === false), 'its rails float on their scaffolding');
 });
 
 test('the classic palette is untouched and a click in the pipe still lays the classic piece', () => {
