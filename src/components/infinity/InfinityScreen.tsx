@@ -2,8 +2,8 @@
 // rolling across a land that grows ahead of it. The HUD is one soft distance readout, a pause button, a mute button and
 // Hide UI (photo mode: only the world, tap anywhere to bring the buttons back).
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Camera, RotateCcw, EyeOff, Pause, Play, Volume2, VolumeX, ZoomIn, ZoomOut } from 'lucide-react';
-import { InfinityRun } from '../../game/platformer/infinity-world';
+import { ArrowLeft, ArrowRight, Camera, RotateCcw, EyeOff, Heart, Pause, Play, Volume2, VolumeX, ZoomIn, ZoomOut } from 'lucide-react';
+import { INFINITY_LIVES, InfinityRun } from '../../game/platformer/infinity-world';
 import { radio } from '../../game/sound/radio';
 import RadioPill from '../RadioPill';
 import HeatEdges from '../HeatEdges';
@@ -72,6 +72,10 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
   const [restarts, setRestarts] = useState(0);
   const [muted, setMuted] = useState(() => raceAudio.loadPreference());
   const [km, setKm] = useState(0);
+  /** Lives left (a death pit takes one), how many were lost (each loss shakes the hearts), and the run being over. */
+  const [lives, setLives] = useState(INFINITY_LIVES);
+  const [lost, setLost] = useState(0);
+  const [over, setOver] = useState(false);
   /** The Magic Engine is overheated (the red glow at the sides). */
   const [hot, setHot] = useState(false);
   // P2-25: fewer particles and no drifting motion; remembered with the records.
@@ -127,7 +131,8 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
     const seed = seedFromText(seedText);
     const run = new InfinityRun(seed, driver, { effects: true });
     const painter = new InfinityPainter(seed);
-    let shiftsSeen = 0;
+    let shiftsSeen = 0, lostSeen = 0;
+    setLives(run.lives); setLost(0); setOver(false);
     radio.setScene('infinity'); // the Infinity Skies station from the first moment (the frame loop refines day, night and biome)
     const audio = new InfinityAudio(seed);
     audioRef.current = audio;
@@ -178,6 +183,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
       if (event.code === 'Space') event.preventDefault(); // and it never presses the focused button
       if (down && !event.repeat) { raceAudio.unlock(); audio.start(); }
       if (down && !event.repeat && event.code === 'KeyM') { toggleMute(); return; }
+      if (runRef.current?.over) return; // the run is over: its own screen has the buttons
       if (down && !event.repeat && (event.code === 'KeyP' || event.code === 'Escape')) { setPaused(!pausedRef.current); return; }
       if (down && !event.repeat && event.code === 'KeyH') { setUiHidden((v) => !v); return; }
       if (down && (event.code === 'Equal' || event.code === 'NumpadAdd')) { setZoom(shownZoomRef.current * 1.2); return; }
@@ -304,6 +310,13 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
           for (const cue of cues) raceAudio.play(cue, listener);
         }
       }
+      // A death pit took a life: the hearts shake at once (not at the next HUD tick); the last one ends the run and its
+      // takings are banked straight away.
+      if (run.livesLost !== lostSeen) {
+        lostSeen = run.livesLost;
+        setLives(run.lives); setLost(run.livesLost);
+        if (run.over) { endRun(); setKm(run.km); setRings(run.rings); setOver(true); controls.current = { left: false, right: false, touch: 0, engine: false }; }
+      }
       if (fadeRef.current) fadeRef.current.style.opacity = String(Math.min(1, run.fade * 1.1).toFixed(2));
       hudTimer += dt; bankTimer += dt;
       if (hudTimer > 120) { hudTimer = 0; setKm(run.km); setRings(run.rings); setHot((game.player.engine?.lockedUntil ?? 0) > game.time && !pausedRef.current); }
@@ -350,6 +363,9 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
     {!uiHidden && <>
       <div className="infinity-hud" aria-live="off">
         <span className="infinity-km"><strong>{formatKm(km)}</strong><small>km</small></span>
+        <span key={lost} className={`infinity-lives${lost ? ' is-hit' : ''}`} aria-label={`${lives} of ${INFINITY_LIVES} lives`} title="Lives: fall into a pit and you lose one. Lose them all and the run is over.">
+          {Array.from({ length: INFINITY_LIVES }, (_, i) => <Heart key={i} size={17} className={i < lives ? 'on' : 'off'} aria-hidden="true" />)}
+        </span>
         <span className="infinity-rings" title={`Gold rings: ${RING_CREDITS} credits each`}><i aria-hidden="true" /><strong>{rings}</strong><small>+{rings * RING_CREDITS} CR</small></span>
         {savedNote && <span className="infinity-note" role="status">{savedNote}</span>}
       </div>
@@ -376,7 +392,17 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
         </div>
       </div>
     </>}
-    {paused && <Dialog titleId="infinity-pause-title" onClose={() => setPaused(false)} className="pause-dialog infinity-pause">
+    {over && <Dialog titleId="infinity-over-title" onClose={() => { setOver(false); setRestarts((n) => n + 1); }} className="pause-dialog infinity-pause infinity-over">
+      <span className="eyebrow">INFINITY / OUT OF LIVES</span>
+      <h2 id="infinity-over-title">The pit wins this one.</h2>
+      <p className="dialog-intro">You rolled {formatKm(km)} km on the seed “{seedText}” and picked up {rings} gold {rings === 1 ? 'ring' : 'rings'} (+{rings * RING_CREDITS} CR). Your distance and rings are banked.</p>
+      <div className="pause-actions">
+        <button className="button-primary" onClick={() => { setOver(false); setKm(0); setRestarts((n) => n + 1); }} autoFocus><RotateCcw size={15} />Try again</button>
+        <button className="button-secondary" onClick={onNewSeed}>New seed</button>
+        <button className="button-secondary" onClick={() => { endRunRef.current(); onLeave(); }}>Leave</button>
+      </div>
+    </Dialog>}
+    {paused && !over && <Dialog titleId="infinity-pause-title" onClose={() => setPaused(false)} className="pause-dialog infinity-pause">
       <span className="eyebrow">INFINITY</span>
       <h2 id="infinity-pause-title">Taking a breath.</h2>
       <p className="dialog-intro">{formatKm(km)} km so far on the seed “{seedText}”. Nothing is lost whenever you stop.</p>

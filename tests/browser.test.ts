@@ -787,6 +787,7 @@ for (const { label, options } of SCREEN_VIEWPORTS) {
       await canvas.waitFor();
       await page.locator('.infinity-km').waitFor();
       assert.match(await page.locator('.infinity-km').textContent() ?? '', /km/);
+      assert.equal(await page.locator('.infinity-lives svg.on').count(), 3, 'three lives to start');
       // Hide UI: the buttons go, a tap brings them back.
       await page.getByRole('button', { name: 'Hide the buttons' }).click();
       assert.equal(await page.getByRole('button', { name: 'Pause' }).count(), 0, 'the buttons are hidden');

@@ -123,6 +123,12 @@ export interface SmashBreak { id: string; lane: Lane; x: number; y: number; at: 
  * A goblin stand's spot (Infinity): the level stretch of the back lane after km `id` (absolute), its track height `y`.
  * Every chunk that overlaps it carries it, so a stand never depends on which chunks are built or where the origin is.
  */
+/**
+ * An Infinity death pit (the owner: a hole every km with a ramp to jump it; fall in and you lose a life): it cuts every
+ * lane from x0 to x1. `y` is the lip (the higher of its edges); a boost pad and a kicker ramp in each lane lead up to it.
+ * `id` is the km it belongs to.
+ */
+export interface PitSpot { id: number; x0: number; x1: number; y: number }
 export interface StandSpot { id: number; lane: Lane; x: number; w: number; y: number }
 /** A Workshop curve's beam, painted whole along its own shape (it may turn vertical or bend back on itself). */
 export interface BeamPath {
@@ -177,6 +183,8 @@ export interface CoursePlan {
   vents?: VentSpot[];
   /** Infinity: the goblin stands' spots (else coaster.ts finds flat stretches itself). */
   stands?: StandSpot[];
+  /** Infinity: the death pits in this stretch of land. */
+  pits?: PitSpot[];
   /** Gold rings to collect (Infinity only). */
   rings?: RingSpot[];
   seed: number;

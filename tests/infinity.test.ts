@@ -3,7 +3,7 @@
 // and near zero however far it goes; the same seed and inputs give the same run; a simple bot rolls for many km.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CHUNK_W, infinityChunk, isLoopChunk, shiftChunk, terrainY } from '../src/game/platformer/infinity';
+import { CHUNK_W, PIT_W, infinityChunk, isLoopChunk, pitChunk, pitKm, shiftChunk, terrainY } from '../src/game/platformer/infinity';
 import type { Lane } from '../src/game/platformer/course';
 
 const LANES: Lane[] = [0, 1, 2];
@@ -65,6 +65,7 @@ test('nothing hostile and no clutter: no wreckers or boxes, features stay inside
 
 test('chasms are never wider than a normal jump, and every chasm has its floor on both sides', () => {
   for (let n = 2; n < 300; n++) {
+    if (pitKm(n)) continue; // the death pits are wider on purpose (their own test)
     const c = infinityChunk(5, n);
     for (const lane of LANES) {
       const fl = c.floors.filter((f) => f.lane === lane).sort((p, q) => p.x0 - q.x0);
@@ -74,6 +75,34 @@ test('chasms are never wider than a normal jump, and every chasm has its floor o
       }
     }
   }
+});
+
+test('a death pit every km: across every lane, a boost pad and a kicker ramp before it on level ground, nothing else', () => {
+  const kms = new Set<number>();
+  for (let n = 0; n < 700; n++) {
+    const k = pitKm(n);
+    const c = infinityChunk(9, n);
+    assert.equal(c.pits.length, k ? 1 : 0, `chunk ${n}`);
+    if (!k) continue;
+    kms.add(k);
+    assert.equal(pitChunk(k), n);
+    const pit = c.pits[0];
+    assert.equal(pit.x1 - pit.x0, PIT_W);
+    assert.ok(pit.x0 >= c.x0 + 840 && pit.x1 <= c.x1 - 300, 'the run-up and the landing are inside the chunk');
+    for (const lane of LANES) {
+      const fl = c.floors.filter((f) => f.lane === lane);
+      assert.ok(!fl.some((f) => f.x1 > pit.x0 + 1 && f.x0 < pit.x1 - 1), `lane ${lane}: no floor over the pit`);
+      const kick = c.kickers.find((q) => q.lane === lane);
+      const boost = c.boosts.find((b) => b.lane === lane);
+      assert.ok(kick && kick.x + kick.w < pit.x0 && pit.x0 - (kick.x + kick.w) < 200, `lane ${lane}: a kicker just before the pit`);
+      assert.ok(boost && boost.x + boost.w <= kick.x, `lane ${lane}: a boost pad before the kicker`);
+      // the run-up is level from its start to the pit's lip
+      const run = fl.filter((f) => f.x0 >= pit.x0 - 500 && f.x1 <= pit.x0);
+      assert.ok(run.length > 5 && run.every((f) => Math.abs(f.y1 - f.y0) < 1), `lane ${lane}: a level run-up`);
+    }
+    assert.equal(c.gates.length + c.springs.length + c.loops.length + c.bridges.length + c.vents.length + c.smashes.length, 0, 'nothing else in a pit chunk');
+  }
+  for (let k = 1; k <= 10; k++) assert.ok(kms.has(k), `km ${k} has its pit`);
 });
 
 test('generating a chunk is fast (the frame must not hitch)', () => {
@@ -111,7 +140,8 @@ function bot(run: InfinityRun): void {
 }
 
 function drive(seed: number, km: number, onStep?: (run: InfinityRun) => void) {
-  const run = new InfinityRun(seed, driver, { effects: false });
+  // (as many lives as it takes: these tests are about the land and the world, the pits have tests of their own)
+  const run = new InfinityRun(seed, driver, { effects: false, lives: Infinity });
   let steps = 0, maxBodies = 0, maxCoord = 0;
   while (run.km < km && steps < 2_000_000) {
     bot(run);
@@ -203,6 +233,48 @@ test('falling is gentle and free: lifted back onto the last ground with a run-up
   assert.ok(run.game.player.body.position.y < run.game.track.height, 'rolling on the land again');
   assert.equal(run.game.player.health?.hp, run.game.player.health?.hp, 'nothing was lost');
   run.destroy();
+});
+
+test('lives: a run starts with 3, a death pit takes one and sets the ball back on the run-up, the last one ends the run', () => {
+  const run = new InfinityRun(4, driver, { effects: false });
+  assert.equal(run.lives, 3);
+  // roll to just before the first pit, then drop the ball into it
+  while (run.absoluteX() < pitChunk(1) * CHUNK_W - 300) { bot(run); run.step(); }
+  const drop = () => {
+    const plan = run.game.track.platformer!.plan, pit = plan.pits!.find((o) => o.id === 1)!;
+    Matter.Body.setPosition(run.game.player.body, { x: (pit.x0 + pit.x1) / 2, y: pit.y + 400 });
+    Matter.Body.setVelocity(run.game.player.body, { x: 0, y: 5 });
+    run.step();
+    return pit;
+  };
+  const pit = drop();
+  assert.equal(run.lives, 2);
+  assert.equal(run.livesLost, 1);
+  assert.ok(!run.over);
+  const p = run.game.player.body.position;
+  assert.ok(p.x < pit.x0 - 500 && p.x > pit.x0 - 900, 'back at the start of the run-up');
+  assert.ok(run.game.player.body.velocity.x > 5, 'rolling on toward the jump');
+  drop();
+  assert.equal(run.lives, 1);
+  drop();
+  assert.equal(run.lives, 0);
+  assert.ok(run.over, 'the run is over');
+  const at = run.absoluteX();
+  for (let i = 0; i < 100; i++) { bot(run); run.step(); }
+  assert.equal(run.absoluteX(), at, 'nothing moves once it is over');
+  run.destroy();
+});
+
+test('a ball that pushes on and jumps at the edge clears the pits; the bot keeps lives over 10 km on most seeds', () => {
+  let kept = 0;
+  for (const seed of [1, 2, 4, 6]) {
+    const run = new InfinityRun(seed, driver, { effects: false });
+    for (let i = 0; i < 400_000 && run.km < 10 && !run.over; i++) { bot(run); run.step(); }
+    console.log(`# seed ${seed}: ${run.km.toFixed(1)} km, ${run.lives} lives left`);
+    if (!run.over && run.km >= 10) kept++;
+    run.destroy();
+  }
+  assert.ok(kept >= 3, `only ${kept} of 4 runs made 10 km`);
 });
 
 test('distance never goes backwards, and the best is the farthest it ever got', () => {

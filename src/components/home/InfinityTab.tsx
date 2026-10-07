@@ -38,7 +38,7 @@ export default function InfinityTab({ garage, onGarage, account, onShop, rank, o
       <div className="home-picker-panel infinity-card">
         <div>
           <h2>An endless, calm roll</h2>
-          <p className="muted">No rivals, no timer, no finish line. The land grows ahead of you for as long as you keep rolling. Stop whenever you like.</p>
+          <p className="muted">No rivals, no timer, no finish line. The land grows ahead of you for as long as you keep rolling. Every km a pit cuts across the track: hit the ramp, jump and clear it. Fall in and you lose one of your 3 lives.</p>
         </div>
         <div className="infinity-best"><strong>{formatKm(records.bestKm)}</strong><span>KM · YOUR BEST</span></div>
         <div className="infinity-seeds" role="group" aria-label="Which land to roll">
