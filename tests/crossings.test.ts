@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Piece, TrackDef } from '../src/game/trackdef';
 import { SEG_MAX, isRail, piecePoints, ridePoints } from '../src/game/platformer/crossings';
-import { defFromPlan, newPlatformerDef, planFromTrackDef, settle } from '../src/game/platformer/def';
+import { defFromPlan, newPlatformerDef, planFromTrackDef, platformerIssues, settle } from '../src/game/platformer/def';
 import { planBodies } from '../src/game/platformer/build';
 import { PLATFORMER_COURSES, planOfficial } from '../src/game/platformer/course';
 import { loopKit, overpassKit } from '../src/game/platformer/track-kits';
@@ -82,4 +82,14 @@ test('settle keeps a spring on its own track at a crossing', () => {
   const out = settle(def);
   const pad = out.pieces.find((p) => p.t === 'pad') as { y: number };
   assert.equal(pad.y, 800);
+});
+
+test('course problems: a reversed middle curve, a hairpin, and a clean loop', () => {
+  const kit = loopKit(1600, 800);
+  const reversed = kit.map((p, i) => (i === 2 && p.t === 'curve' ? ({ ...p, a: p.b, b: p.a } as Piece) : p));
+  assert.ok(platformerIssues(defOf(reversed)).some((i) => i.message.includes('meet start to start')), 'reversed curve reported');
+  const hairpin: Piece = { t: 'curve', a: [0, 0], c: [60, -60], b: [0, -30] };
+  assert.ok(platformerIssues(defOf([hairpin])).some((i) => i.message.includes('bends too tightly')), 'hairpin reported');
+  const clean = platformerIssues(defOf(kit)).filter((i) => i.message.includes('start to start') || i.message.includes('bends too tightly'));
+  assert.deepEqual(clean, []);
 });
