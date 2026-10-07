@@ -167,7 +167,9 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
 
     const onKey = (event: KeyboardEvent, down: boolean) => {
       if (event.target instanceof HTMLElement && (['INPUT', 'TEXTAREA'].includes(event.target.tagName) || event.target.isContentEditable)) return;
-      if (event.code === 'Space' && event.target instanceof HTMLButtonElement) return;
+      // Space is the jump even right after tapping a button on screen (the owner); only a dialog's button keeps it
+      if (event.code === 'Space' && event.target instanceof HTMLElement && event.target.closest('[role="dialog"]')) return;
+      if (event.code === 'Space') event.preventDefault(); // and it never presses the focused button
       if (down && !event.repeat) { raceAudio.unlock(); audio.start(); }
       if (down && !event.repeat && event.code === 'KeyM') { toggleMute(); return; }
       if (down && !event.repeat && (event.code === 'KeyP' || event.code === 'Escape')) { setPaused(!pausedRef.current); return; }

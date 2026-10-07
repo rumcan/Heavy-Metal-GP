@@ -19,6 +19,8 @@ const TYPE_STEP = 2;
 const TYPE_MS = 17;
 const FAST_TYPE_MS = 8;
 const HOLD_MS = 220;
+/** Held (press or Space): a finished line moves on after this beat, so holding fast-forwards through the scene. */
+const HOLD_NEXT_MS = 350;
 const AUTO_PER_CHAR = 26;
 const AUTO_MIN = 1500;
 
@@ -78,12 +80,18 @@ export default function StoryScene({
   }, [scene.id, index, line, lines.length]);
   useEffect(() => () => stopVoice(), []);
 
-  // Typewriter, one blip every few characters. Reduced motion shows the whole line.
+  // Typewriter, one blip every few characters. Reduced motion shows the whole line. Switching to fast-forward speeds
+  // up the line being typed; it never starts it over (the owner: a long press just replayed the same bubble).
+  const typedLine = useRef<Line | undefined>(undefined);
+  const shownRef = useRef(shown);
+  shownRef.current = shown;
   useEffect(() => {
     if (!line) return;
     if (still) { setShown(line.text.length); return; }
-    setShown(0);
-    let count = 0;
+    let count = typedLine.current === line ? shownRef.current : 0;
+    typedLine.current = line;
+    setShown(count);
+    if (count >= line.text.length) return;
     let tick = 0;
     const id = window.setInterval(() => {
       count = Math.min(line.text.length, count + TYPE_STEP);
@@ -144,6 +152,13 @@ export default function StoryScene({
     const id = window.setTimeout(advance, wait);
     return () => window.clearTimeout(id);
   }, [autoAdvance, typing, speaking, line, showChoice, still, text.length, advance, scene.id, index]);
+
+  // Held: a finished line moves on by itself after a short beat (a choice still waits for a pick).
+  useEffect(() => {
+    if (!fast || typing || !line || showChoice) return;
+    const id = window.setTimeout(advance, HOLD_NEXT_MS);
+    return () => window.clearTimeout(id);
+  }, [fast, typing, line, showChoice, advance]);
 
   // Keyboard: Space/Enter advance (held = fast-forward), Escape skips.
   useEffect(() => {

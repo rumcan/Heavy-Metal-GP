@@ -144,6 +144,9 @@ function testDriveSlots(slots: Slots): Slots {
   return slots.map((s) => s ?? spare.shift() ?? null);
 }
 
+/** Two jump presses this close together (ms) fire the Jump skill. */
+const DOUBLE_JUMP_MS = 300;
+
 export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef, title, subtitle, onExit, onFinished, actions, championship = false, inventory, credits, onInventoryChange, payout, onShop, isCustom = false, story, loadoutMode, online, rating = null, tutorial, testDrive = false }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef<Game | null>(null);
@@ -235,8 +238,19 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
     tut?.press('skill', gameRef.current?.time ?? 0);
   }, []);
   /** P2-01: one press of the core jump. */
+  const lastJumpPress = useRef(-Infinity);
   const pressJump = useCallback(() => {
     // P2-13: keyboard, touch button and any other path all land here.
+    // A quick second press (Space twice, or the jump button) fires the Jump skill when you hold one (the owner).
+    const now = performance.now();
+    const double = now - lastJumpPress.current < DOUBLE_JUMP_MS;
+    lastJumpPress.current = double ? -Infinity : now;
+    if (double && (gameRef.current?.player.inventory.jump ?? 0) > 0 && !pausedRef.current && !doneRef.current) {
+      selectedRef.current = 'jump';
+      setSelected('jump');
+      useItem('jump');
+      return;
+    }
     const tut = tutorialRef.current;
     if (tut && !tut.allow('jump')) return;
     const session = sessionRef.current;
@@ -447,7 +461,10 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
 
     const onKey = (event: KeyboardEvent, down: boolean) => {
       if (doneRef.current || (event.target instanceof HTMLElement && (['INPUT', 'TEXTAREA'].includes(event.target.tagName) || event.target.isContentEditable))) return;
-      if (event.code === 'Space' && event.target instanceof HTMLButtonElement) return;
+      // Space on a focused button in a dialog (pause) presses that button. Anywhere else in the race it is the jump, even
+      // right after tapping a skill or the jump button (the owner: Space stopped jumping); the preventDefault below keeps
+      // it from pressing the focused button as well.
+      if (event.code === 'Space' && event.target instanceof HTMLElement && event.target.closest('[role="dialog"]')) return;
       if (['ArrowLeft', 'ArrowRight', 'Space'].includes(event.code)) event.preventDefault();
       if (down && (event.code === 'Equal' || event.code === 'NumpadAdd')) { setZoom(zoomRef.current * 1.2); return; }
       if (down && (event.code === 'Minus' || event.code === 'NumpadSubtract')) { setZoom(zoomRef.current / 1.2); return; }
