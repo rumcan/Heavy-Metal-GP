@@ -1028,6 +1028,7 @@ export default function App() {
       isCustom={!!customTrackDef || platformerPick}
       subtitle={quickSubtitle}
       loadoutMode="quick"
+      testDrive={!!pfTest}
       onExit={() => { if (pfTest) { setPfTest(null); setPhase('editor'); } else setPhase('menu'); }}
       onFinished={(results) => awardWinnings(results, undefined, 'quick')}
       actions={quickActions}
