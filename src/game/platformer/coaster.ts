@@ -125,6 +125,22 @@ function runsOf(plan: CoursePlan): Pt[][][] {
   return runs;
 }
 
+/**
+ * The top of the cliff under a lane at `x` (the painted rock's edge: the track plus its clearance), or null where the
+ * lane has no cliff there (a gap, or a Workshop floor that floats on its beam). Where runs overlap, the lowest cliff.
+ * The foreground pines stand on this (the owner: tied to the cliff, never the track).
+ */
+export function cliffTopAt(plan: CoursePlan, lane: Lane, x: number): number | null {
+  OX = plan.originX ?? 0; OY = plan.originY ?? 0;
+  let best: number | null = null;
+  for (const run of runsOf(plan)[lane]) {
+    if (floating.has(run) || x < run[0].x || x > run[run.length - 1].x) continue;
+    const y = yOn(run, x) + clearance(x);
+    if (best === null || y > best) best = y;
+  }
+  return best;
+}
+
 function yOn(run: Pt[], x: number): number {
   let lo = 0, hi = run.length - 1;
   while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (run[mid].x <= x) lo = mid; else hi = mid; }

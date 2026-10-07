@@ -11,7 +11,7 @@ import { drawBodies, drawBridgeChain, drawEffects, drawMarble } from '../render'
 import { drawSkillWorld } from '../skills/draw';
 import { GATE_RAMP_H, SPRING_W, floorAt } from './course';
 import type { CoursePlan, Floor, Lane, LaneGate } from './course';
-import { coasterReady, drawCoasterLane, drawGateRamp } from './coaster';
+import { cliffTopAt, coasterReady, drawCoasterLane, drawGateRamp } from './coaster';
 import { drawCloudLedge, drawKicker } from './sky-art';
 import { drawRoutes, setBridgeArt } from './routes';
 import { LEDGE_H } from './build';
@@ -1173,6 +1173,21 @@ export function trackLineY(plan: CoursePlan, focus: number, x: number): number |
   return y0 + (y1 - y0) * t;
 }
 
+/** The rows' drops are measured below the cliff top less this (world px): the back row's tips just over the cliff's edge. */
+const CLIFF_RISE = 130;
+
+/** The cliff top the pines stand on: the focused lane's (two lanes blended through a lane change). */
+function cliffLineY(plan: CoursePlan, focus: number, x: number): number | null {
+  const f = Math.max(0, Math.min(2, focus));
+  const l0 = Math.floor(f) as Lane, l1 = Math.min(2, l0 + 1) as Lane, t = f - l0;
+  const y0 = cliffTopAt(plan, l0, x);
+  if (t < 1e-3) return y0;
+  const y1 = cliffTopAt(plan, l1, x);
+  if (y0 === null) return y1;
+  if (y1 === null) return y0;
+  return y0 + (y1 - y0) * t;
+}
+
 /** Where the track sits below the screen's centre while the ball rolls (the camera frames the ball 10 px above it). */
 const FG_TRACK_BELOW = 15;
 
@@ -1222,10 +1237,14 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
   const line = new Float32Array(cols);
   let held = ch / 2 + FG_TRACK_BELOW * cam.scale;
   for (let c = 0; c < cols; c++) {
-    const y = plan ? trackLineY(plan, cam.focus ?? LANE_MIDDLE, cam.x + (c * COL - cw / 2) / cam.scale) : null;
-    if (y !== null) held = ch / 2 + (y - cam.y) * cam.scale; // over a gap, the line holds
+    const y = plan ? cliffLineY(plan, cam.focus ?? LANE_MIDDLE, cam.x + (c * COL - cw / 2) / cam.scale) : null;
+    if (y !== null) held = ch / 2 + (y - cam.y) * cam.scale; // over a gap or a floating floor, the line holds
     line[c] = held;
   }
+  // never steeper than a hillside: a step in the cliff is eased over, so the trees never stand up in a tower
+  const rise = COL * 0.6;
+  for (let c = 1; c < cols; c++) line[c] = Math.max(line[c - 1] - rise, Math.min(line[c - 1] + rise, line[c]));
+  for (let c = cols - 2; c >= 0; c--) line[c] = Math.max(line[c + 1] - rise, Math.min(line[c + 1] + rise, line[c]));
   const lineAt = (sx: number) => {
     const f = Math.max(0, Math.min(cols - 1.001, sx / COL));
     const c = Math.floor(f);
@@ -1236,7 +1255,7 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
   let prev: { top: number; height: number } | null = null;
   for (let i = 0; i < PINE_ALL; i++) {
     const r = pineRow(i);
-    const top = lineAt(cw / 2) + r.drop * fs * r.p, height = r.h * fs * r.p;
+    const top = lineAt(cw / 2) + (r.drop - CLIFF_RISE) * fs * r.p, height = r.h * fs * r.p;
     let alpha = 1;
     if (i >= PINE_ROWS.length && prev) alpha = Math.max(0, Math.min(1, (ch - (prev.top + prev.height * 0.75)) / (ch * 0.12)));
     if (alpha <= 0) break;
@@ -1254,7 +1273,7 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
       for (let k = 0; k < n; k++) {
         const sx = rx + k * sw;
         if (sx > cw || sx + sw < 0) continue;
-        const y = lineAt(sx + sw / 2) + r.drop * fs * r.p;
+        const y = lineAt(sx + sw / 2) + (r.drop - CLIFF_RISE) * fs * r.p;
         if (y >= ch) continue;
         ctx.fillRect(sx, y + height * 0.8, sw + 0.6, Math.max(0, ch - (y + height * 0.8)));
         drawImg(ctx, pines.c, k * srcW, 0, srcW, pines.c.height, sx, y, sw + 0.6, height);
