@@ -153,3 +153,17 @@ test('#99 base: a flipped piece keeps its flipped shape after a mirrored corner 
   assert.ok(Math.abs(next.w - 240) < 1e-9 && Math.abs(next.h - 220) < 1e-9, `rescaled (w=${next.w}, h=${next.h})`);
   assert.equal(next.x, W - 200, 'anchor (x) unchanged by a symmetric-centre resize');
 });
+
+test('rotate drag with the grid on snaps every 5° (72 points a turn); R still turns 15°', async () => {
+  const { applyRotateHandle, pieceAngle, pieceCentre, ROTATE_SNAP_DEG, ROTATE_STEP_DEG } = await import('../src/components/editor/rotate');
+  const c = pieceCentre(BLOCK);
+  assert.equal(ROTATE_SNAP_DEG, 5);
+  assert.equal(ROTATE_STEP_DEG, 15);
+  // the handle sits above the centre; pointing at heading h (from straight up, clockwise) turns the piece to h
+  const point = (deg: number) => { const a = ((deg - 90) * Math.PI) / 180; return { x: c.x + Math.cos(a) * 150, y: c.y + Math.sin(a) * 150 }; };
+  const turned = (deg: number) => Math.round((pieceAngle(applyRotateHandle(BLOCK, point(deg), true)) * 180) / Math.PI);
+  assert.equal(turned(7), 5);
+  assert.equal(turned(23), 25);
+  assert.equal(turned(41), 40);
+  assert.equal((turned(-12) + 360) % 360, 350);
+});
