@@ -232,6 +232,13 @@ export function inRailBox(game: Game, m: Marble, pad = 40): boolean {
   return !!plan?.tracks?.some((l) => l.rail && l.lane === lane && inBox(l.box, p, pad));
 }
 
+/** Is this marble in or near the box of any Workshop track line (rail or crossing floor) of its lane? (Under a long overpass, far from its crossing.) */
+function inTrackBox(game: Game, m: Marble, pad = 40): boolean {
+  const plan = game.track.platformer?.plan;
+  const lane = m.lane ?? LANE_MIDDLE, p = m.body.position;
+  return !!plan?.tracks?.some((l) => l.lane === lane && inBox(l.box, p, pad));
+}
+
 /** Is this marble in or near a crossing (pad px) of its lane? */
 function inCrossing(game: Game, m: Marble, pad = 40): boolean {
   const plan = game.track.platformer?.plan;
@@ -354,7 +361,7 @@ export function keepAboveFloor(game: Game, m: Marble): void {
   if (plan.bridges?.some((b) => b.lane === lane && p.x >= b.x0 - 20 && p.x <= b.x1 + 20)) return;
   if (plan.loops?.some((l) => l.lane === lane && p.x >= l.x - l.r - 40 && p.x <= l.x + l.pitch + l.r + 40)) return;
   // crossing tracks: under an overpass or inside a loop the floor below is not this ball's floor
-  if (inCrossing(game, m) || inRailBox(game, m)) return;
+  if (inCrossing(game, m) || inTrackBox(game, m)) return;
   const floor = floorAt(plan, lane as Lane, p.x);
   if (floor === null || p.y <= floor - MARBLE_RADIUS + 6 || p.y > floor + 160) return;
   Body.setPosition(m.body, { x: p.x, y: floor - MARBLE_RADIUS - 1 });
