@@ -50,3 +50,14 @@ test('a course with fewer lanes builds only its lanes, and says so about pieces 
   assert.equal(planFromTrackDef(course()).lanes, undefined);
   assert.ok(platformerIssues(course(1)).some((i) => /does not have/.test(i.message)));
 });
+
+test('extra sky above the start (build as high as you like) lowers the start and survives a share code', async () => {
+  const def: TrackDef = { ...course(1), sky: 3000, height: 4800, pieces: [{ t: 'ramp', a: [900, 3800], b: [2000, 3900] }] };
+  const check = validateTrackDef(def);
+  assert.ok(check.ok && check.def.sky === 3000);
+  if (!check.ok) return;
+  assert.equal(planFromTrackDef(check.def).startY, 3800);
+  const back = await decodeShareCode(await encodeShareCode(check.def));
+  assert.equal(back.sky, 3000);
+  assert.equal(back.lanes, 1);
+});

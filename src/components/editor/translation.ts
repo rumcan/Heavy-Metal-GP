@@ -25,6 +25,13 @@ function mapCoordinates(piece: Piece, point: (x: number, y: number) => Vec): Pie
 }
 
 /** Unconstrained on-screen translation, including flipped pieces. Safe for local coordinates. */
+/** The highest (smallest) y among a piece's authored points. */
+export function pieceTopY(piece: Piece): number {
+  let top = Infinity;
+  mapCoordinates(piece, (x, y) => { top = Math.min(top, y); return [x, y]; });
+  return top;
+}
+
 export function translatePiece(piece: Piece, dx: number, dy: number): Piece {
   return mapCoordinates(piece, (x, y) => [x + (piece.flip ? -dx : dx), y + dy]);
 }

@@ -70,7 +70,7 @@ import { buildEditorTrack } from './editor/build';
 import { buildPlatformerEditor } from './editor/build-side';
 import EditorMapSide from './editor/EditorMapSide';
 import { setEditorWorld } from './editor/world';
-import { PF_DEFAULT_WIDTH, PF_WIDTH_STEP, finishXOf, isPlatformerDef, settle } from '../game/platformer/def';
+import { PF_DEFAULT_WIDTH, PF_WIDTH_STEP, finishXOf, isPlatformerDef, settle, startYOf } from '../game/platformer/def';
 import { applyHandle, movePieces, mirrorPiece } from './editor/handles';
 import { snapEnd } from './editor/joins';
 import { movePast, toFront } from './editor/order';
@@ -99,6 +99,10 @@ import NewTrackDialog from './editor/NewTrackDialog';
 import CoachMarks from './editor/CoachMarks';
 import '../editor.css';
 import { getItem, setItem, removeItem } from '../game/storage';
+import { pieceTopY, translatePiece } from './editor/translation';
+
+/** The sky kept above everything in a side-scrolling course (world px), and how much more is added each time. */
+const SKY_MIN = 1000, SKY_GROW = 3000;
 
 interface Props {
   seed: number;
@@ -518,6 +522,30 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
     },
     [history, bumpHistory],
   );
+
+  // The owner: build as high as you like. Whenever the highest piece, the start or the top of the view comes within
+  // SKY_MIN of the top of the world, the course gains SKY_GROW of sky: everything shifts down by it (TrackDef.sky keeps
+  // the start platform with it) and the camera follows, so nothing seems to move. Never mid-drag (the piece in hand
+  // would jump): it waits for the pointer to come up.
+  const [pointerTick, setPointerTick] = useState(0);
+  const pointerDown = useRef(false);
+  useEffect(() => {
+    const down = () => { pointerDown.current = true; };
+    const up = () => { pointerDown.current = false; setPointerTick((n) => n + 1); };
+    window.addEventListener('pointerdown', down, true);
+    window.addEventListener('pointerup', up, true);
+    return () => { window.removeEventListener('pointerdown', down, true); window.removeEventListener('pointerup', up, true); };
+  }, []);
+  useEffect(() => {
+    if (!side || pointerDown.current) return;
+    const def = circuit.def;
+    // (the view counts once the canvas has reported it)
+    let top = Math.min(startYOf(def), status.bottom > 0 ? status.top : Infinity);
+    for (const p of def.pieces) top = Math.min(top, pieceTopY(p));
+    if (top >= SKY_MIN) return;
+    commit((d) => ({ ...d, sky: (d.sky ?? 0) + SKY_GROW, height: d.height + SKY_GROW, pieces: d.pieces.map((p) => translatePiece(p, 0, SKY_GROW)) }), { push: false });
+    rig.camera = { ...rig.camera, y: rig.camera.y + SKY_GROW };
+  }, [side, circuit.def, status.top, commit, rig, pointerTick]);
   /** Adds the next lane: the back lane first (it shows behind you from the main lane), then the front. */
   const addLane = useCallback(() => {
     if (laneCount >= 3) return;

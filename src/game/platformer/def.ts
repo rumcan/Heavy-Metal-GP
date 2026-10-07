@@ -21,6 +21,8 @@ export { curvePoints } from './crossings';
 
 /** The y of the flat start platform. A platformer def is built downwards from here, with room above it to climb. */
 export const PF_START_Y = 800;
+/** Where a course's start platform is: PF_START_Y, lowered by its extra sky (TrackDef.sky). */
+export const startYOf = (def: TrackDef): number => PF_START_Y + (def.sky ?? 0);
 /** Where the start platform ends (all three lanes are flat up to here). */
 export const PF_START_END = 900;
 /** The finish line stands this far from the right end of the course. */
@@ -115,10 +117,10 @@ export const finishXOf = (width: number): number => width - PF_FINISH_FROM_END;
 function fixedFloors(def: TrackDef, own: readonly Floor[]): Floor[] {
   const width = def.width ?? PF_DEFAULT_WIDTH;
   const runX = finishXOf(width) - RUN_OUT_BEFORE;
-  const runY = floorYAt(own, 1, runX) ?? PF_START_Y;
+  const runY = floorYAt(own, 1, runX) ?? startYOf(def);
   const out: Floor[] = [];
   for (const lane of lanesOf(def.lanes) as Lane[]) {
-    out.push({ lane, x0: -200, y0: PF_START_Y, x1: PF_START_END, y1: PF_START_Y });
+    out.push({ lane, x0: -200, y0: startYOf(def), x1: PF_START_END, y1: startYOf(def) });
     out.push({ lane, x0: runX, y0: runY, x1: width, y1: runY });
   }
   return out;
@@ -199,14 +201,14 @@ export function planFromTrackDef(def: TrackDef): CoursePlan {
   });
   // The race line (progress is measured along it): above the middle lane's floor, holding its last height over gaps.
   const path: { x: number; y: number }[] = [];
-  let lastY = PF_START_Y;
+  let lastY = startYOf(def);
   for (let x = 0; x <= width; x += 200) {
     lastY = floorYAt(floors, 1, x) ?? lastY;
     path.push({ x, y: lastY - 30 });
   }
   const finishX = finishXOf(width);
   const finishY = floorYAt(floors, 1, finishX) ?? lastY;
-  let maxY = PF_START_Y;
+  let maxY = startYOf(def);
   for (const f of floors) maxY = Math.max(maxY, f.y0, f.y1);
   const height = Math.max(def.height, maxY + 900);
   return {
@@ -215,7 +217,7 @@ export function planFromTrackDef(def: TrackDef): CoursePlan {
     ...(tp.tracks.length ? { tracks: tp.tracks } : {}),
     ...(tp.crossings.length ? { crossings: tp.crossings } : {}),
     ...(def.lanes ? { lanes: active } : {}),
-    startX: 520, startY: PF_START_Y, finishX, finishY,
+    startX: 520, startY: startYOf(def), finishX, finishY,
     springs, ledges, itemBoxes, wreckers, boosts, loops, bridges, ...(kickers.length ? { kickers } : {}),
   };
 }
@@ -240,7 +242,7 @@ export function platformerIssues(def: TrackDef): PlatformerIssue[] {
         case 'bridge': return { x: p.a[0], y: p.a[1] };
         case 'wrecker': return { x: p.pivot[0], y: p.pivot[1] };
         case 'loop': return { x: p.x, y: p.bottom };
-        default: return { x: 'x' in p ? (p as { x: number }).x : 0, y: 'y' in p ? (p as { y: number }).y : PF_START_Y };
+        default: return { x: 'x' in p ? (p as { x: number }).x : 0, y: 'y' in p ? (p as { y: number }).y : startYOf(def) };
       }
     })();
     const add = (message: string) => out.push({ message, x: here.x, y: here.y, piece: i });
