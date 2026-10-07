@@ -22,7 +22,7 @@ import { blendPoses, rememberPoses } from '../game/interpolate';
 import { RenderScale } from '../game/render-scale';
 import { PerfMeter } from '../game/perf-meter';
 import { HEAT_TIME_LIMIT, PHYSICS_STEP, formatTime } from '../game/physics';
-import { teamOf, ITEM_TYPES, emptyInventory, normalizeInventory } from '../game/types';
+import { teamOf, ITEM_TYPES, MAX_ITEM_STACK, emptyInventory, normalizeInventory } from '../game/types';
 import type { MarbleInfo, ItemType, TrackProfile, HeatResult, Inventory } from '../game/types';
 import type { TrackDef } from '../game/trackdef';
 import type { RacePayout } from '../game/economy';
@@ -34,7 +34,7 @@ import Dialog from './Dialog';
 import NetStats from './NetStats';
 import InventoryToolbar from './InventoryToolbar';
 import { loadSlots, slotSkills } from '../game/loadout-store';
-import type { LoadoutMode } from '../game/loadout-store';
+import type { LoadoutMode, Slots } from '../game/loadout-store';
 import RaceMinimap from './RaceMinimap';
 import RaceBubbles from './RaceBubbles';
 import type { SpeechBubble } from './RaceBubbles';
@@ -71,6 +71,8 @@ interface Props {
    * online). Absent reads the old shared bar — same as before P2-20.
    */
   loadoutMode?: LoadoutMode;
+  /** A Workshop test drive: every skill on the bar, unlimited charges, and the wallet's items are never touched. */
+  testDrive?: boolean;
   /**
    * MP-06: an ONLINE race. When this is set the screen does not own the world —
    * a `RaceSession` does, and it is either the simulation (host) or the picture
@@ -133,7 +135,16 @@ interface Hud {
 /** A driver still out 20 s after the most recent finish is classified Did Not Finish (story, championship, quick race). */
 const STRAGGLER_CUT = { ms: 20_000, humans: true };
 
-export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef, title, subtitle, onExit, onFinished, actions, championship = false, inventory, credits, onInventoryChange, payout, onShop, isCustom = false, story, loadoutMode, online, rating = null, tutorial }: Props) {
+/** A test drive's toolbar: every skill shows ∞. */
+const UNLIMITED_ALL = Object.fromEntries(ITEM_TYPES.map((item) => [item, -1])) as Partial<Record<ItemType, number>>;
+
+/** A test drive's bar: your own slots, the empty ones filled with skills not on it yet, so every key does something. */
+function testDriveSlots(slots: Slots): Slots {
+  const spare = ITEM_TYPES.filter((item) => !slots.includes(item));
+  return slots.map((s) => s ?? spare.shift() ?? null);
+}
+
+export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef, title, subtitle, onExit, onFinished, actions, championship = false, inventory, credits, onInventoryChange, payout, onShop, isCustom = false, story, loadoutMode, online, rating = null, tutorial, testDrive = false }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef<Game | null>(null);
   /** MP-06: the online session, when there is one. The host's simulation or the guest's picture. */
@@ -167,7 +178,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
   const [toast, setToast] = useState<{ message: string; color: string } | null>(null);
   const [results, setResults] = useState<HeatResult[] | null>(null);
   /** P2-10: the eight skills on the keys for this race (read once, so a race never changes mid-way). P2-20: the mode's own bar. */
-  const slotsRef = useRef(loadSlots(loadoutMode));
+  const slotsRef = useRef(testDrive ? testDriveSlots(loadSlots(loadoutMode)) : loadSlots(loadoutMode));
   const [mapTrack, setMapTrack] = useState<Track | null>(null);
   // ── MP-CHAT: race talk, as a bubble over the marble that said it ─────────
   /**
@@ -192,9 +203,10 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
   const myPlayerId = online?.seats.find((seat) => seat.slot === online.localSeat)?.playerId ?? '';
   /** Read by the room's message handler, which is subscribed once per race. */
   const chatSink = useRef<(msg: ChatMsg) => void>(() => {});
-  const initialInventory = useRef(normalizeInventory(inventory));
+  // A Workshop test drive races with a full stack of every skill (never spent, see `unlimitedItems` below).
+  const initialInventory = useRef(testDrive ? normalizeInventory(Object.fromEntries(ITEM_TYPES.map((item) => [item, MAX_ITEM_STACK]))) : normalizeInventory(inventory));
   // Results-only snapshots: online house stock is not a pickup or a trophy.
-  const resultStartKit = useRef(normalizeInventory(online ? houseInventory(online.settings)?.inventory ?? roster.find((m) => m.isPlayer)?.inventory : inventory));
+  const resultStartKit = useRef(normalizeInventory(online ? houseInventory(online.settings)?.inventory ?? roster.find((m) => m.isPlayer)?.inventory : testDrive ? initialInventory.current : inventory));
   const [resultEndKit, setResultEndKit] = useState<Inventory | null>(null);
   const inventoryCallback = useRef(onInventoryChange);
   inventoryCallback.current = onInventoryChange;
@@ -341,13 +353,14 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
         })
       : null;
     sessionRef.current = session;
-    const game = session ? session.game : new Game(seed, roster, { profile, gridOrder, inventory: initialInventory.current, story: story?.hooks, def: trackDef ?? undefined, dropPool: slotSkills(slotsRef.current), talents: loadAccount().talents, slots: slotsRef.current, ...(tutorialRef.current ? { aiItems: false } : { stragglerCut: STRAGGLER_CUT }) });
+    const game = session ? session.game : new Game(seed, roster, { profile, gridOrder, inventory: initialInventory.current, story: story?.hooks, def: trackDef ?? undefined, dropPool: slotSkills(slotsRef.current), talents: loadAccount().talents, slots: slotsRef.current, ...(testDrive ? { unlimitedItems: [...ITEM_TYPES] } : {}), ...(tutorialRef.current ? { aiItems: false } : { stragglerCut: STRAGGLER_CUT }) });
     // P2-13: a learner cannot be hurt — health off for the whole tutorial ride.
     if (tutorialRef.current) game.healthOn = false;
     // Online, this screen does not own the wallet: the race inventory is the
     // host's book until MP-09 puts each driver's own items on the grid, and a
     // pickup here must not empty the account it was bought with.
-    if (!session) game.onInventoryChange = (items) => inventoryCallback.current(items);
+    // (a test drive's unlimited stock is not the wallet's: it never writes back)
+    if (!session && !testDrive) game.onInventoryChange = (items) => inventoryCallback.current(items);
     setMapTrack(game.track);
     gameRef.current = game;
     // DEV probe: the live race, for debugging in the browser console. Stripped from production builds.
@@ -797,7 +810,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       <div className={`marble-state ${hud.frozen ? 'is-frozen' : ''}`}><span className="readout-caption">MARBLE STATUS</span><strong>{hud.frozen && <Snowflake size={14} />}{hud.state}</strong><span className="peg-readout"><i className="orange-peg" />{hud.pegs} pegs & rings</span></div>
       <div className="race-wallet"><Coins size={16} /><strong>{credits.toLocaleString()}</strong><span>CR</span></div>
       <div className="race-controls"><div className="nudge-controls"><span>FIND YOUR LINE</span><div><button className="nudge-button" aria-label="Nudge left" {...nudgeButton(-1)} disabled={hud.finished || preStart || paused}><ArrowLeft size={18} /><kbd>←</kbd></button><button className="nudge-button" aria-label="Nudge right" {...nudgeButton(1)} disabled={hud.finished || preStart || paused}><ArrowRight size={18} /><kbd>→</kbd></button></div></div><div className="thumb-controls"><button className="nudge-button jump-button" aria-label="Jump" onPointerDown={(e) => { e.preventDefault(); pressJump(); }} disabled={hud.finished || preStart || paused}>JUMP<kbd>↑</kbd></button><button className="nudge-button engine-button" aria-label="Magic Engine (hold)" onPointerDown={(e) => { const tut = tutorialRef.current; if (tut && !tut.allow('engine')) return; e.currentTarget.setPointerCapture(e.pointerId); controls.current.engine = true; tut?.press('engine', gameRef.current?.time ?? 0); }} onPointerUp={() => { controls.current.engine = false; }} onPointerCancel={() => { controls.current.engine = false; }} onLostPointerCapture={() => { controls.current.engine = false; }} disabled={hud.finished || preStart || paused}>ENGINE<kbd>↓</kbd></button></div></div>
-      </div>{/* (gone once you are finished or out: the fast-forward panel sits there) */}{!(hud.finished || hud.dnf) && <InventoryToolbar slots={slotsRef.current} unlimited={online?.settings.items} inventory={hud.inventory} remaining={hud.remaining} selected={selected} blocked={paused || hud.finished || preStart || hud.frozen || !!results} coolingDown={hud.coolingDown} onUse={deploy} />}
+      </div>{/* (gone once you are finished or out: the fast-forward panel sits there) */}{!(hud.finished || hud.dnf) && <InventoryToolbar slots={slotsRef.current} unlimited={testDrive ? UNLIMITED_ALL : online?.settings.items} inventory={hud.inventory} remaining={hud.remaining} selected={selected} blocked={paused || hud.finished || preStart || hud.frozen || !!results} coolingDown={hud.coolingDown} onUse={deploy} />}
     </footer>
     {paused && !results && <Dialog titleId="pause-title" onClose={() => { setConfirmExit(false); setPause(false); }} className="pause-dialog"><span className="eyebrow"><Timer size={15} /> {confirmExit ? 'RACE CONTROL' : 'TIME OUT'}</span><h2 id="pause-title">{confirmExit ? 'Leaving the grid?' : 'A quick pit stop.'}</h2><p className="dialog-intro">{confirmExit ? 'This heat will not be scored or paid. Used items stay spent; unused items and pickups stay in your inventory. Previous results are safe.' : 'The clock, every marble, and all item timers are paused. Your next move can wait.'}</p><div className="pause-actions"><button className="button-primary" onClick={() => { setConfirmExit(false); setPause(false); }}><Play size={17} />Back to the race</button>{!online && <button className="button-secondary" onClick={() => { setConfirmExit(false); setPause(false); setRestarts((n) => n + 1); }}><RotateCcw size={16} />Restart race</button>}<button className="button-secondary" onClick={confirmExit ? onExit : () => setConfirmExit(true)}>{confirmExit ? 'Leave heat' : 'Return to paddock'}<ChevronRight size={16} /></button></div></Dialog>}
     {results && <RaceResults results={results} roster={roster} title={title} subtitle={subtitle} actions={actions} championship={championship} payout={payout} credits={credits} startKit={resultStartKit.current} endKit={resultEndKit} onShop={onShop} isCustom={isCustom} rating={rating} />}
