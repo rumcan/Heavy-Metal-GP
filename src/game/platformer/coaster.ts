@@ -99,6 +99,8 @@ type Pt = { x: number; y: number };
 const runCache = new WeakMap<CoursePlan, Pt[][][]>();
 /** Runs of floors that float on their beam (a Workshop floor with its cliff switched off). */
 const floating = new WeakSet<Pt[]>();
+/** Runs of a Workshop curve's floors: their beam is painted whole from plan.beams, not run by run. */
+const beamless = new WeakSet<Pt[]>();
 function runsOf(plan: CoursePlan): Pt[][][] {
   let runs = runCache.get(plan);
   if (runs) return runs;
@@ -110,10 +112,11 @@ function runsOf(plan: CoursePlan): Pt[][][] {
     for (const f of floors) {
       // a new run after a chasm, and also at a STEP (the floor jumps up or down): joining across a step drew it as a
       // long gentle slope, so the painted track sat far above or below where the ball actually rolls
-      if (!last || Math.abs(f.x0 - last.x1) > 0.5 || Math.abs(f.y0 - last.y1) > 1 || !!f.noCliff !== !!last.noCliff) {
+      if (!last || Math.abs(f.x0 - last.x1) > 0.5 || Math.abs(f.y0 - last.y1) > 1 || !!f.noCliff !== !!last.noCliff || !!f.noBeam !== !!last.noBeam) {
         if (run.length) out.push(run);
         run = [{ x: f.x0, y: f.y0 }];
         if (f.noCliff) floating.add(run);
+        if (f.noBeam) beamless.add(run);
       }
       run.push({ x: f.x1, y: f.y1 });
       last = f;
@@ -177,6 +180,36 @@ function stripAlongX(ctx: CanvasRenderingContext2D, img: CanvasImageSource & { w
       done += piece;
     }
     ctx.restore();
+  }
+}
+
+/**
+ * A curve's beam along its points, segment by segment, always drawn on the upper side of the line (where the ball
+ * rolls): a segment running right to left is drawn from its other end, so the beam never flips to the far side where
+ * a curve doubles back. The texture runs on along the curve.
+ */
+function stripBeam(ctx: CanvasRenderingContext2D, img: CanvasImageSource & { width: number; height: number }, pts: Pt[], up: number, thick: number, u0: number) {
+  const tw = (img.width / img.height) * thick;
+  const srcPerPx = img.width / tw;
+  let u = ((u0 % tw) + tw) % tw;
+  for (let i = 0; i < pts.length - 1; i++) {
+    let a = pts[i], b = pts[i + 1];
+    if (b.x < a.x) [a, b] = [b, a];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len < 0.01) continue;
+    ctx.save();
+    ctx.translate(a.x, a.y);
+    ctx.rotate(Math.atan2(b.y - a.y, b.x - a.x));
+    let done = 0;
+    while (done < len - 0.01) {
+      let at = (u + done) % tw;
+      if (tw - at < 0.5) at = 0;
+      const piece = Math.max(0.5, Math.min(len - done, tw - at));
+      drawImg(ctx, img, at * srcPerPx, 0, Math.max(1, piece * srcPerPx), img.height, done - 0.8, -up, piece + 1.6, thick);
+      done += piece;
+    }
+    ctx.restore();
+    u = (u + len) % tw;
   }
 }
 
@@ -279,7 +312,7 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
     const pts = clip(run, left, right);
     if (!statics) { if (!floating.has(run)) torches(ctx, run, pts, lane, time); continue; }
     // a floating floor (its cliff switched off in the Workshop): just the beam
-    if (floating.has(run)) { stripAlongX(ctx, middle(ART.wood!), pts, RAIL_UP, TRACK_T); continue; }
+    if (floating.has(run)) { if (!beamless.has(run)) stripAlongX(ctx, middle(ART.wood!), pts, RAIL_UP, TRACK_T); continue; }
     // the goblin stands first: behind this lane's cliff and beam (and every nearer lane)
     const stands = plan.stands ? standsAt(ctx, plan.stands, run, pts, lane, drawnStands) : crowds(ctx, run, pts, lane);
     const cliff = pts.map((p) => ({ x: p.x, y: p.y + clearance(p.x) }));
@@ -312,8 +345,26 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
     crowdGapTrees(ctx, run, stands, lane);
     kmFlags(ctx, run, pts);
     // the track: a plain wooden beam (no chevron rail, per the owner)
-    stripAlongX(ctx, middle(ART.wood!), pts, RAIL_UP, TRACK_T);
+    if (!beamless.has(run)) stripAlongX(ctx, middle(ART.wood!), pts, RAIL_UP, TRACK_T);
     if (dynamics) torches(ctx, run, pts, lane, time);
+  }
+  // Workshop curves: the beam painted whole along each curve's own shape, with a dark wood stroke behind it so no seam
+  // or gap shows where it bends hard, turns vertical or doubles back (the same fix as the pinball Workshop's curves)
+  if (statics) for (const beam of plan.beams ?? []) {
+    if (beam.lane !== lane) continue;
+    let lo = Infinity, hi = -Infinity;
+    for (const p of beam.pts) { lo = Math.min(lo, p.x); hi = Math.max(hi, p.x); }
+    if (hi < left - 40 || lo > right + 40) continue;
+    ctx.save();
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#6a3f1c';
+    ctx.lineWidth = TRACK_T * 0.9;
+    ctx.beginPath();
+    beam.pts.forEach((p, i) => { const y = p.y - RAIL_UP + TRACK_T / 2; if (i) ctx.lineTo(p.x, y); else ctx.moveTo(p.x, y); });
+    ctx.stroke();
+    ctx.restore();
+    stripBeam(ctx, middle(ART.wood!), beam.pts, RAIL_UP, TRACK_T, beam.pts[0].x + OX);
   }
   if (statics) staticProps(ctx, plan, runs, lane, left, right);
   if (!dynamics) return true;

@@ -75,7 +75,7 @@ export function planOfficial(course: PlatformerCourse): CoursePlan {
 /** One stretch of floor: its top edge runs from (x0, y0) to (x1, y1). */
 /** `hidden`: ground a classic Workshop piece (an ice rail) provides: drivers and the planner sense it, but it is built and drawn by that piece. */
 /** `noCliff`: a Workshop floor that floats on its beam (no cliff, supports or trees painted under it). */
-export interface Floor { lane: Lane; x0: number; y0: number; x1: number; y1: number; hidden?: boolean; noCliff?: boolean }
+export interface Floor { lane: Lane; x0: number; y0: number; x1: number; y1: number; hidden?: boolean; noCliff?: boolean; /** a Workshop curve's floor: its beam is painted whole from plan.beams */ noBeam?: boolean }
 /** A raised block on a floor: jump it (its top is `y`, it sits on the floor below). */
 export interface Bump { lane: Lane; x: number; w: number; y: number; h: number; /** a classic block builds and draws it */ hidden?: boolean }
 /**
@@ -121,7 +121,11 @@ export interface SmashBreak { id: string; lane: Lane; x: number; y: number; at: 
  * Every chunk that overlaps it carries it, so a stand never depends on which chunks are built or where the origin is.
  */
 export interface StandSpot { id: number; lane: Lane; x: number; w: number; y: number }
+/** A Workshop curve's beam, painted whole along its own shape (it may turn vertical or bend back on itself). */
+export interface BeamPath { lane: Lane; pts: { x: number; y: number }[] }
 export interface CoursePlan {
+  /** Workshop curves' beams (their floors carry noBeam). */
+  beams?: BeamPath[];
   /** The lanes this course has (absent = all three; lanes.ts LANE_SETS). */
   lanes?: readonly number[];
   /**

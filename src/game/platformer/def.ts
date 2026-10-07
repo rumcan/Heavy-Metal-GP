@@ -40,16 +40,25 @@ export function newPlatformerDef(name: string, width = PF_DEFAULT_WIDTH, theme: 
 export const isPlatformerDef = (def: Pick<TrackDef, 'mode'> | null | undefined): boolean => def?.mode === 'platformer';
 
 /** A quadratic Bézier cut into straight floor slabs. */
-function curveFloors(lane: Lane, a: [number, number], c: [number, number], b: [number, number], n: number): Floor[] {
-  const out: Floor[] = [];
-  let px = a[0], py = a[1];
-  for (let i = 1; i <= n; i++) {
-    const t = i / n, u = 1 - t;
-    const x = u * u * a[0] + 2 * u * t * c[0] + t * t * b[0];
-    const y = u * u * a[1] + 2 * u * t * c[1] + t * t * b[1];
-    out.push(...slab(lane, px, py, x, y));
-    px = x; py = y;
+/**
+ * The points along a curve: at least `n` segments, and never longer than about 40 px each, so a tight bend stays
+ * round (the owner: a sharp bend broke into chunks with gaps).
+ */
+export function curvePoints(a: [number, number], c: [number, number], b: [number, number], n: number): { x: number; y: number }[] {
+  const approx = Math.hypot(c[0] - a[0], c[1] - a[1]) + Math.hypot(b[0] - c[0], b[1] - c[1]);
+  const segs = Math.max(n, Math.min(200, Math.ceil(approx / 40)));
+  const pts: { x: number; y: number }[] = [];
+  for (let i = 0; i <= segs; i++) {
+    const t = i / segs, u = 1 - t;
+    pts.push({ x: u * u * a[0] + 2 * u * t * c[0] + t * t * b[0], y: u * u * a[1] + 2 * u * t * c[1] + t * t * b[1] });
   }
+  return pts;
+}
+
+function curveFloors(lane: Lane, a: [number, number], c: [number, number], b: [number, number], n: number): Floor[] {
+  const pts = curvePoints(a, c, b, n);
+  const out: Floor[] = [];
+  for (let i = 1; i < pts.length; i++) out.push(...slab(lane, pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y).map((f) => ({ ...f, noBeam: true })));
   return out;
 }
 
@@ -131,6 +140,9 @@ export function planFromTrackDef(def: TrackDef): CoursePlan {
   const loops: LoopSpot[] = [], bridges: BridgeSpot[] = [];
   const kickers: Kicker[] = [];
   const extras: NonNullable<CoursePlan['extras']> = [];
+  // each Workshop curve's beam, painted whole along its shape (coaster.ts)
+  const beams: NonNullable<CoursePlan['beams']> = [];
+  for (const p of def.pieces) if (p.t === 'curve' && active.includes(laneOf(p))) beams.push({ lane: laneOf(p), pts: curvePoints(p.a, p.c, p.b, p.n ?? 12) });
   def.pieces.forEach((p, source) => {
     const lane = laneOf(p);
     if (!active.includes(lane)) return; // a lane the course does not have
@@ -173,6 +185,7 @@ export function planFromTrackDef(def: TrackDef): CoursePlan {
   const height = Math.max(def.height, maxY + 900);
   return {
     seed: def.seed ?? 0, style: 'flow', width, height, floors, bumps, gates, path, ...(extras.length ? { extras } : {}),
+    ...(beams.length ? { beams } : {}),
     ...(def.lanes ? { lanes: active } : {}),
     startX: 520, startY: PF_START_Y, finishX, finishY,
     springs, ledges, itemBoxes, wreckers, boosts, loops, bridges, ...(kickers.length ? { kickers } : {}),
