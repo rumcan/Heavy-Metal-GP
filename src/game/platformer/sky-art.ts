@@ -11,6 +11,11 @@ const CLOUDS = Object.keys(urls)
   .sort((a, b) => Number(/(\d+)\.webp$/.exec(a)![1]) - Number(/(\d+)\.webp$/.exec(b)![1]))
   .map((k) => load(urls[k]));
 const ready = (img: HTMLImageElement | null): img is HTMLImageElement => !!img && img.complete && img.naturalWidth > 0;
+/** Cloud picture `i` (0..9; 5..9 are the puffy ones), once loaded. */
+export function cloudPicture(i: number): HTMLImageElement | null {
+  const img = CLOUDS[((i % CLOUDS.length) + CLOUDS.length) % CLOUDS.length] ?? null;
+  return ready(img) ? img : null;
+}
 
 /** Where a cloud's deck (the line a ball rolls on) sits in its picture, from the top: the flat clouds' fluffy top rises above it. */
 const DECK = 0.42;

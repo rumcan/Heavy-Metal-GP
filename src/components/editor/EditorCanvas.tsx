@@ -1432,7 +1432,7 @@ export default function EditorCanvas(props: Props) {
       // Preserve def pieces on rig for handle hit testing
       // (TrackEditor writes rig.defPieces each render)
       if (sideRef.current && stage.track.platformer) {
-        renderPlatformer(ctx, stage, { x: rig.camera.x, y: rig.camera.y, scale: rig.camera.scale, focus: focusRef.current }, width, height, now);
+        renderPlatformer(ctx, stage, { x: rig.camera.x, y: rig.camera.y, scale: rig.camera.scale, focus: focusRef.current, islands: false }, width, height, now);
       } else {
         render(ctx, stage, rig.camera, width, height, now, { minimap: false, shake: false, workshopPreview: true });
       }
