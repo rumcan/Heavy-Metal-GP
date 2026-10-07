@@ -413,3 +413,9 @@
 .editor-lane-label { font: 9px var(--mono); letter-spacing: .6px; text-transform: uppercase; color: #6f8193; margin-right: 2px; }
 .editor-lane-tab { display: inline-flex; }
 .editor-lane-tab .editor-lane-remove { margin-left: -1px; padding: 5px 5px; color: #fca5a5; }
+
+/* The Workshop's quick test of a platformer course: the race fills the screen over the editor (which waits underneath). */
+.quick-test-overlay { position: fixed; inset: 0; z-index: 60; background: #0c1016; }
+.quick-test-overlay .race-top-actions kbd { margin-left: 5px; font-size: 9px; opacity: .7; }
+.quick-test-overlay .quick-test-stop { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; }
+@media (max-width: 600px) { .quick-test-overlay .race-top-actions kbd { display: none; } }

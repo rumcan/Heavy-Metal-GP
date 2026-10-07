@@ -15,6 +15,7 @@
 import RadioPill from './RadioPill';
 import { raceAudio } from '../game/audio';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import {
   ArrowLeft,
   ArrowUpToLine,
@@ -118,8 +119,12 @@ interface Props {
   onExit: () => void;
   /** Open the Community tracks screen (the draft is saved first). */
   onCommunity?: () => void;
-  /** P2-22: race a platformer course (the Workshop's Test drive for one; the app starts the race and returns here). */
-  onTestDrivePlatformer?: (def: TrackDef, opts: { watch: boolean }) => void;
+  /**
+   * P2-22: the Workshop's Test drive of a platformer course: the app builds the race (it owns the garage, the rivals
+   * and the skills) and the editor shows it in place of the canvas, like the pinball test, so one click starts it and
+   * Esc puts you back exactly where you were. `rivals` races the 9 AI marbles too; without it you test alone.
+   */
+  renderPlatformerTest?: (def: TrackDef, opts: { rivals: boolean; onExit: () => void }) => ReactNode;
 }
 
 interface Circuit {
@@ -313,7 +318,7 @@ function TrackNameInput({ value, onCommit }: { value: string; onCommit: (name: s
 /** Storage key for the id of the saved track the Workshop has open. */
 const ACTIVE_TRACK_KEY = 'heavy-metal-gp:workshop-active-track';
 
-export default function TrackEditor({ seed, profile, name, initialDef, driver, onExit, onCommunity, onTestDrivePlatformer }: Props) {
+export default function TrackEditor({ seed, profile, name, initialDef, driver, onExit, onCommunity, renderPlatformerTest }: Props) {
   const [publishOpen, setPublishOpen] = useState(false);
   const [templateSnapshot, setTemplateSnapshot] = useState<ReturnType<typeof snapshotTemplate> | null>(null);
   const [circuit, setCircuit] = useState<Circuit>(() => {
@@ -922,10 +927,8 @@ const handleSwapCrossing = useCallback((zone: number) => {
     setPickSpawn(false);
   }, []);
   const enterTest = useCallback(() => {
-    // A platformer course is raced by the app (the classic test drive only knows the pipe): it comes back here after.
-    if (isPlatformerDef(circuit.def)) { onTestDrivePlatformer?.(circuit.def, { watch: watchAi }); return; }
     setTesting(true);
-  }, [circuit.def, watchAi, onTestDrivePlatformer]);
+  }, []);
   const exitTest = useCallback(() => setTesting(false), []);
 
   // MB-05: validation, draft saving and share gating
@@ -1115,6 +1118,8 @@ const handleSwapCrossing = useCallback((zone: number) => {
     const onKey = (e: KeyboardEvent) => {
       // Child-owned modals (including coach marks) must also own their keys.
       if (editorModalOpen || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      // A platformer test is a whole race screen with its own keys (Space jumps, Esc stops it): leave them all to it.
+      if (testing && side) return;
       if (testing) {
         // While test drive is active its own canvas owns Esc and Space.
         // We only handle them here as a fallback if the test canvas lost focus.
@@ -1222,7 +1227,7 @@ const handleSwapCrossing = useCallback((zone: number) => {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [editorModalOpen, testing, selected, circuit.def.pieces, grid, pushHistory, handleDelete, handleDuplicate, handleGroup, handleUngroup, handleMirror, handleRotate, handleNudge, handleUndo, handleRedo]);
+  }, [editorModalOpen, testing, side, selected, circuit.def.pieces, grid, pushHistory, handleDelete, handleDuplicate, handleGroup, handleUngroup, handleMirror, handleRotate, handleNudge, handleUndo, handleRedo]);
 
   const editName = useCallback(
     (value: string) => {
@@ -1459,13 +1464,13 @@ const handleSwapCrossing = useCallback((zone: number) => {
               className={`button-primary editor-testdrive ${testing ? 'is-testing' : ''}`}
               onClick={testing ? exitTest : enterTest}
               aria-pressed={testing}
-              disabled={(!!buildError && !testing) || (side && !onTestDrivePlatformer)}
+              disabled={(!!buildError && !testing) || (side && !renderPlatformerTest)}
               title={buildError ? `Cannot test: ${buildError}` : testing ? 'Stop test and return to editor (Esc)' : 'Test drive this circuit — Esc returns, camera preserved'}
             >
               {testing ? <Pause size={14} /> : <Play size={14} />}
               {testing ? 'Stop test' : 'Test drive'}
             </button>
-            {!side && <button
+            {<button
               type="button"
               className={`editor-toggle ${ghost ? 'on' : ''}`}
               aria-pressed={ghost}
@@ -1493,11 +1498,13 @@ const handleSwapCrossing = useCallback((zone: number) => {
               </button>
             )}
             <span className={`editor-chip ${testing ? 'is-testing' : 'is-muted'}`} style={{ marginLeft: 'auto' }}>
-              {testing ? 'TESTING · Esc to return · Def & camera preserved' : pickSpawn ? 'PICK A POINT ON THE CIRCUIT' : watchAi ? 'AI DRIVES ALL 10 MARBLES' : ghost ? 'YOU + 9 AI RIVALS' : 'SOLO TEST · A/D nudge · Trail live'}
+              {testing ? 'TESTING · Esc to return · Def & camera preserved' : side ? (ghost ? 'YOU + 9 AI RIVALS · Esc stops · R restarts' : 'SOLO TEST · Esc stops · R restarts') : pickSpawn ? 'PICK A POINT ON THE CIRCUIT' : watchAi ? 'AI DRIVES ALL 10 MARBLES' : ghost ? 'YOU + 9 AI RIVALS' : 'SOLO TEST · A/D nudge · Trail live'}
             </span>
           </div>
 
-          {testing ? (
+          {testing && side ? (
+            <div className="quick-test-overlay">{renderPlatformerTest?.(circuit.def, { rivals: ghost, onExit: exitTest })}</div>
+          ) : testing ? (
             <TestDrive def={circuit.def} driver={driver} seed={seed} ghost={ghost} watch={watchAi} spawnAt={spawnAt} onExit={exitTest} />
           ) : (
             <>

@@ -114,6 +114,44 @@ function platformerProfile(course: string): TrackProfile {
   return profile;
 }
 
+interface QuickTestProps {
+  def: TrackDef; rivals: boolean; roster: MarbleInfo[]; seed: number;
+  inventory: Inventory; credits: number; onShop: () => void; onExit: () => void;
+}
+
+/**
+ * The Workshop's quick test of a platformer course, shown by the editor over its canvas: the course registered as
+ * `my-test`, you alone or with the 9 rivals, every skill unlimited, no lights, nothing paid and no kit spent.
+ * Everything RaceScreen rebuilds on is held still here, so the test never restarts by itself.
+ */
+function PlatformerQuickTest({ def, rivals, roster, seed, inventory, credits, onShop, onExit }: QuickTestProps) {
+  const pick = useMemo(() => registerCustomCourse('my-test', def.name, planFromTrackDef(settle(def))), [def]);
+  const field = useMemo(() => (rivals ? roster : roster.slice(0, 1)), [rivals, roster]);
+  const grid = useMemo(() => field.map((m) => m.id), [field]);
+  const noop = useCallback(() => {}, []);
+  return <RaceScreen
+    seed={seed}
+    roster={field}
+    profile={platformerProfile(platformerCourse(pick).id)}
+    trackDef={null}
+    gridOrder={grid}
+    title={def.name}
+    isCustom
+    subtitle={rivals ? 'WORKSHOP TEST / 10 MARBLES' : 'WORKSHOP TEST / SOLO'}
+    loadoutMode="quick"
+    testDrive
+    quickTest
+    onExit={onExit}
+    onFinished={noop}
+    actions={[]}
+    inventory={inventory}
+    credits={credits}
+    onInventoryChange={noop}
+    payout={null}
+    onShop={onShop}
+  />;
+}
+
 export default function App() {
   const [phase, setPhase] = useState<Phase>('menu');
   // Story: the chapter picked on the home Story tab (story mode starts it straight away), and the banner it brings back.
@@ -129,7 +167,6 @@ export default function App() {
   const [circuitIndex, setCircuitIndex] = useState(0);
   const [customTrackId, setCustomTrackId] = useState<string | null>(null);
   /** P2-22: the platformer course the Workshop is test-driving (raced as a quick race, then back to the Workshop). */
-  const [pfTest, setPfTest] = useState<TrackDef | null>(null);
   const [season, setSeason] = useState<SeasonState | null>(() => loadSeason());
   // P2-04: one garage per mode — { story, championship, quick, online } — each its own stats, livery and portrait.
   // A season that is running owns the championship garage, so it is read back from the season.
@@ -742,8 +779,6 @@ export default function App() {
     if (phase === 'menu' || phase === 'retune' || phase === 'hub' || phase === 'lobby' || phase === 'community') radio.setScene('menu');
     else if (phase === 'editor') radio.setScene('workshop');
   }, [phase]);
-  // The Workshop's Test drive of a platformer course: the pick is set, now start the heat.
-  useEffect(() => { if (pfTest && phase === 'editor') launchQuickRace(); }, [pfTest]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const rivals = useMemo(() => makeRivals(rivalSeed), [rivalSeed]);
   // Each mode races with its own garage: the grid a quick race and a new championship start from.
@@ -757,15 +792,15 @@ export default function App() {
   const customTrack = useMemo(() => (customTrackId ? loadTracksSync().find((t) => t.id === customTrackId) ?? null : null), [customTrackId, phase]);
   // The drop (pinball) tracks are retired: a saved drop track is never raced (a platformer course of your own is).
   const customTrackDef: TrackDef | null = customTrack && isPlatformerDef(customTrack.def) ? customTrack.def : null;
-  // P2-22: a saved platformer course (or a Workshop test drive) races as a platformer pick, registered under a my-... key.
+  // P2-22: a saved platformer course races as a platformer pick, registered under a my-... key.
   const quickPick = useMemo<string | null>(() => {
-    const def = pfTest ?? customTrackDef;
+    const def = customTrackDef;
     if (def && isPlatformerDef(def)) {
-      const key = pfTest ? 'my-test' : `my-${String(customTrackId).toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 24)}`;
+      const key = `my-${String(customTrackId).toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 24)}`;
       return registerCustomCourse(key, def.name, planFromTrackDef(settle(def)));
     }
     return isPlatformerPick(customTrackId) ? customTrackId : null;
-  }, [pfTest, customTrackDef, customTrackId]);
+  }, [customTrackDef, customTrackId]);
   const newSeed = useCallback(() => setSeed(Math.floor(Math.random() * 0xffffffff)), []);
 
   // ---- season helpers ----
@@ -894,7 +929,7 @@ export default function App() {
       driver={quickRoster[0]}
       onExit={() => setPhase('menu')}
       onCommunity={() => setPhase('community')}
-      onTestDrivePlatformer={(def) => setPfTest(def)}
+      renderPlatformerTest={(def, { rivals, onExit }) => <PlatformerQuickTest def={def} rivals={rivals} roster={quickRoster} seed={seed} inventory={account.inventory} credits={account.credits} onShop={openShop} onExit={onExit} />}
     />;
   }
 
@@ -1041,7 +1076,7 @@ export default function App() {
   // quick race
   const quickActions: RaceAction[] = [
     { label: 'Race again', onClick: launchQuickRace, primary: true },
-    pfTest ? { label: 'Back to the Workshop', onClick: () => { setPfTest(null); setPhase('editor'); } } : { label: 'Back to garage', onClick: () => setPhase('menu') },
+    { label: 'Back to garage', onClick: () => setPhase('menu') },
   ];
   // MB-08: quick race on a custom circuit — title/seed/profile follow the def when present.
   // Calendar circuits race the official archives: no quick-race layout is generated either.
@@ -1064,8 +1099,7 @@ export default function App() {
       isCustom={!!customTrackDef || platformerPick}
       subtitle={quickSubtitle}
       loadoutMode="quick"
-      testDrive={!!pfTest}
-      onExit={() => { if (pfTest) { setPfTest(null); setPhase('editor'); } else setPhase('menu'); }}
+      onExit={() => setPhase('menu')}
       onFinished={(results) => awardWinnings(results, undefined, 'quick')}
       actions={quickActions}
       inventory={account.inventory}
