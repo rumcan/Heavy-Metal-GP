@@ -2,11 +2,11 @@
 // it can be rebuilt on demand and the same seed always gives the same land. It is cut into chunks of CHUNK_W px: a chunk
 // depends only on (seed, index), never on its neighbours, and its floors meet the next chunk's exactly (they sample the
 // same height function). Features (chasms, bridges, springs and ledges, crates, lane gates, boost pads and now and then a
-// loop) sit well inside a chunk, so a neighbour never needs to know about them. Nothing hostile is ever built: no wrecking
-// balls, no item boxes, no wall a rolling ball cannot get over.
+// loop) sit well inside a chunk, so a neighbour never needs to know about them. Nothing hostile is built (no wrecking
+// balls, no item boxes, no wall a rolling ball cannot get over) except the one death pit a km, with its ramp to jump it.
 import { mulberry32 } from '../types';
 import { SPRING_W } from './course';
-import type { BoostSpot, Bump, Floor, HoopSpot, Kicker, Lane, LaneGate, Ledge, RingSpot, SmashSpot, Spring, StandSpot, VentSpot } from './course';
+import type { BoostSpot, Bump, Floor, HoopSpot, Kicker, Lane, LaneGate, Ledge, PitSpot, RingSpot, SmashSpot, Spring, StandSpot, VentSpot } from './course';
 import { LOOP_PITCH, LOOP_R, PLANK_H } from './routes';
 import type { BridgeSpot, LoopSpot } from './routes';
 
@@ -24,6 +24,25 @@ const GRADE = 0.1;
 const LANE_RISE = 90;
 const STEP = 40;
 const LANES: readonly Lane[] = [0, 1, 2];
+
+/**
+ * The death pits (the owner: "a hole once every 1km with a ramp to ramp over it"): one per km, across every lane, at the
+ * start of the first chunk that begins PIT_FROM past the km mark (clear of the goblin stands' level stretch). In each
+ * lane a boost pad and a kicker ramp lead up to it: a ball pushing on and jumping at the edge clears it, a coasting or
+ * slow one can drop in and lose a life.
+ */
+const PIT_FROM = 4600;
+export const PIT_W = 400;
+/** The level run-up before a pit and the level landing after it (each eases in from the land over 300 px). */
+export const PIT_RUN = 840;
+const PIT_LAND = 250;
+/** The chunk the pit of km `k` (1 and up) sits in. */
+export function pitChunk(k: number): number { return Math.ceil((k * PX_PER_KM + PIT_FROM) / CHUNK_W); }
+/** The km whose pit sits in chunk `index`, or 0 when it has none. */
+export function pitKm(index: number): number {
+  const k = Math.floor((index * CHUNK_W - PIT_FROM) / PX_PER_KM);
+  return k >= 1 && pitChunk(k) === index ? k : 0;
+}
 
 interface Waves { a1: number; l1: number; p1: number; a3: number; l3: number; p3: number; a4: number; l4: number; p4: number; a2: number[]; l2: number[]; p2: number[]; breathe: number }
 const waveCache = new Map<number, Waves>();
@@ -111,6 +130,7 @@ export interface InfinityChunk {
   hoops: HoopSpot[];
   smashes: SmashSpot[];
   vents: VentSpot[];
+  pits: PitSpot[];
 }
 
 /** A different random stream per chunk and purpose, stable for ever. */
@@ -140,7 +160,7 @@ export function infinityChunk(seed: number, index: number): InfinityChunk {
   // Gold rings to collect (the owner): each pays RING_CREDITS; stable ids, so a collected one stays collected while the
   // chunk is rebuilt.
   const ring = (lane: Lane, x: number, y: number) => chunk.rings.push({ id: `${index}:${chunk.rings.length}`, lane, x: Math.round(x), y: Math.round(y) });
-  const chunk: InfinityChunk = { index, x0, x1, floors: [], bumps: [], gates: [], springs: [], ledges: [], loops: [], bridges: [], boosts: [], kickers: [], rings: [], stands: [], hoops: [], smashes: [], vents: [] };
+  const chunk: InfinityChunk = { index, x0, x1, floors: [], bumps: [], gates: [], springs: [], ledges: [], loops: [], bridges: [], boosts: [], kickers: [], rings: [], stands: [], hoops: [], smashes: [], vents: [], pits: [] };
   // the goblin stands' spots: every km's level stretch on the back lane that overlaps this chunk
   for (let k = Math.max(1, Math.floor((x0 - STAND_FROM - STAND_LEN) / PX_PER_KM)); k * PX_PER_KM + STAND_FROM < x1; k++) {
     const a = k * PX_PER_KM + STAND_FROM;
@@ -151,10 +171,33 @@ export function infinityChunk(seed: number, index: number): InfinityChunk {
   const chasms = new Map<Lane, [number, number]>();
   const ledgeLanes = new Set<Lane>();
   const springLanes = new Set<Lane>();
-  const flat = new Map<Lane, [number, number, number, number]>(); // a loop's flat: [from, to, y, ramp length]
+  // a loop's (or a pit's) flat: [from, to, y, ramp length, blend]. A loop eases from the land's height at each end; a
+  // pit blends from the land itself (its slope too), so a pit's run-up can start right at a chunk's edge without a kink.
+  const flat = new Map<Lane, [number, number, number, number, boolean?]>();
   const busy = index >= 2;
 
-  if (busy && isLoopChunk(seed, index)) {
+  const pitK = pitKm(index);
+  if (pitK) {
+    // A death pit across every lane, with a boost pad and a kicker ramp in front of it in each lane, on level ground held
+    // at the land's height where the run-up starts (a ball rolling down a hill would fly past the ramp and drop in). Its
+    // far side is level with the lip, then eases back to the land. Placed where the land comes in least steeply.
+    let a = x0 + PIT_RUN, bestErr = Infinity;
+    for (let s = x0 + PIT_RUN; s + PIT_W + PIT_LAND <= x1 - 60; s += 10) {
+      const err = Math.max(...LANES.map((lane) => Math.abs(h(lane, s - PIT_RUN) - h(lane, s - PIT_RUN - 200))));
+      if (err < bestErr) { bestErr = err; a = s; }
+    }
+    const b = a + PIT_W;
+    for (const lane of LANES) {
+      chasms.set(lane, [a, b]);
+      flat.set(lane, [a - PIT_RUN, b + PIT_LAND, Math.round(h(lane, a - PIT_RUN)), PIT_LAND, true]);
+      chunk.boosts.push({ lane, x: a - 500, w: 200 });
+      chunk.kickers.push({ lane, x: a - 280, w: 150, h: 70 });
+      // a gold arc over the hole, along the path of a ball that clears it
+      const ly = Math.round(h(lane, a - PIT_RUN));
+      for (let k = 0; k < 5; k++) ring(lane, a - 40 + k * 95, ly - 110 - 120 * Math.sin((Math.PI * (k + 0.5)) / 5));
+    }
+    chunk.pits.push({ id: pitK, x0: a, x1: b, y: Math.round(Math.min(...LANES.map((lane) => h(lane, a - PIT_RUN)))) });
+  } else if (busy && isLoopChunk(seed, index)) {
     // A loop in one lane: a long flat for the run-up and the ring (a ramp down into it, a ramp down out of it), a boost
     // pad on the flat. The ball arrives rolling on level ground, never falling onto the ring. Skipped when the land has no
     // stretch in this chunk that suits it.
@@ -328,8 +371,8 @@ export function infinityChunk(seed: number, index: number): InfinityChunk {
         const y = (px: number) => {
           if (!lp || px < lp[0] || px > lp[1]) return h(lane, px);
           // Eased ramps (no corner to launch the ball off) in and out of the flat.
-          if (px < lp[0] + lp[3]) return h(lane, lp[0]) + smooth((px - lp[0]) / lp[3]) * (lp[2] - h(lane, lp[0]));
-          if (px > lp[1] - lp[3]) return lp[2] + smooth((px - (lp[1] - lp[3])) / lp[3]) * (h(lane, lp[1]) - lp[2]);
+          if (px < lp[0] + lp[3]) return lp[4] ? h(lane, px) + smooth((px - lp[0]) / lp[3]) * (lp[2] - h(lane, px)) : h(lane, lp[0]) + smooth((px - lp[0]) / lp[3]) * (lp[2] - h(lane, lp[0]));
+          if (px > lp[1] - lp[3]) return lp[4] ? lp[2] + smooth((px - (lp[1] - lp[3])) / lp[3]) * (h(lane, px) - lp[2]) : lp[2] + smooth((px - (lp[1] - lp[3])) / lp[3]) * (h(lane, lp[1]) - lp[2]);
           return lp[2];
         };
         chunk.floors.push({ lane, x0: x, y0: y(x), x1: nx, y1: y(nx) });
@@ -360,5 +403,6 @@ export function shiftChunk(c: InfinityChunk, dx: number, dy: number): InfinityCh
     hoops: c.hoops.map((o) => ({ ...o, x: o.x + dx, y: o.y + dy })),
     smashes: c.smashes.map((o) => ({ ...o, x: o.x + dx, y: o.y + dy })),
     vents: c.vents.map((o) => ({ ...o, x: o.x + dx, y: o.y + dy })),
+    pits: c.pits.map((o) => ({ ...o, x0: o.x0 + dx, x1: o.x1 + dx, y: o.y + dy })),
   };
 }

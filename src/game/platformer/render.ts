@@ -329,7 +329,53 @@ function effectLane(game: Game, depths: { m: Marble; z: number }[], e: Game['eff
  * fire rings (the classic fire-hoop art, flickering), smash crates (the owner's stacked SMASH crates) and the ones
  * bursting: the two crates fly apart and tumble, planks and splinters scatter, a puff of dust, all fading in ~1 s.
  */
+/** A death pit's warning: a wooden post with a yellow diamond and a black skull mark, which swings a little. */
+function drawPitSign(ctx: CanvasRenderingContext2D, x: number, ground: number | null, t: number) {
+  if (ground === null) return;
+  ctx.save();
+  ctx.translate(x, ground);
+  ctx.fillStyle = '#5b3a1e';
+  ctx.fillRect(-4, -92, 8, 92);
+  ctx.translate(0, -92);
+  ctx.rotate(Math.sin(t / 700 + x) * 0.04);
+  ctx.beginPath();
+  ctx.moveTo(0, -30); ctx.lineTo(30, 0); ctx.lineTo(0, 30); ctx.lineTo(-30, 0); ctx.closePath();
+  ctx.fillStyle = '#facc15';
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#1c1917';
+  ctx.stroke();
+  // the skull: a round head, two eyes, teeth
+  ctx.fillStyle = '#1c1917';
+  ctx.beginPath(); ctx.arc(0, -4, 10, 0, Math.PI * 2); ctx.fill();
+  ctx.fillRect(-6, 3, 12, 8);
+  ctx.fillStyle = '#facc15';
+  ctx.beginPath(); ctx.arc(-4, -5, 3, 0, Math.PI * 2); ctx.arc(4, -5, 3, 0, Math.PI * 2); ctx.fill();
+  ctx.fillRect(-2, 6, 1.5, 5); ctx.fillRect(1, 6, 1.5, 5);
+  ctx.restore();
+}
+
+/** A red-and-white hazard post at a pit's edge. */
+function drawPitPost(ctx: CanvasRenderingContext2D, x: number, ground: number | null) {
+  if (ground === null) return;
+  ctx.save();
+  for (let i = 0; i < 5; i++) {
+    ctx.fillStyle = i % 2 ? '#f8fafc' : '#dc2626';
+    ctx.fillRect(x - 5, ground - 50 + i * 10, 10, 10);
+  }
+  ctx.fillStyle = '#facc15';
+  ctx.beginPath(); ctx.arc(x, ground - 54, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
 function drawToys(ctx: CanvasRenderingContext2D, game: Game, plan: CoursePlan, lane: number, left: number, right: number, t: number) {
+  // Infinity's death pits: a warning sign before the run-up, and red-and-white posts at both edges of the hole.
+  for (const pit of plan.pits ?? []) {
+    if (pit.x1 + 100 < left || pit.x0 - 800 > right) continue;
+    drawPitSign(ctx, pit.x0 - 640, floorAt(plan, lane as Lane, pit.x0 - 640), t);
+    drawPitPost(ctx, pit.x0 - 6, floorAt(plan, lane as Lane, pit.x0 - 6));
+    drawPitPost(ctx, pit.x1 + 6, floorAt(plan, lane as Lane, pit.x1 + 6));
+  }
   for (const v of plan.vents ?? []) {
     if (v.lane !== lane || v.x + v.w < left || v.x - v.w > right) continue;
     ctx.save();

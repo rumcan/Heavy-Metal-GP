@@ -13,7 +13,7 @@ import { CAT_WALL } from '../track';
 import { planBodies, ALL_LANES, FLOOR_DEPTH } from './build';
 import { floorAt } from './course';
 import { applyLaneMask } from '../engine/platformer';
-import type { CoursePlan, Lane, SmashBreak } from './course';
+import type { CoursePlan, Lane, PitSpot, SmashBreak } from './course';
 import { CHUNK_W, INF_START_Y, ORIGIN_STEP, PX_PER_KM, infinityChunk, shiftChunk, terrainY } from './infinity';
 import type { InfinityChunk } from './infinity';
 
@@ -24,11 +24,17 @@ export const CHUNKS_AHEAD = 3;
 const RING_REACH = 34;
 /** How far under the last solid ground the ball may fall before it is lifted back. */
 const FALL_DEPTH = 650;
+/** Lives a run starts with (the owner: "Maybe you have 3 lives"). A death pit takes one; the last one ends the run. */
+export const INFINITY_LIVES = 3;
+/** How far below a pit's lip the ball must drop to be lost in it. */
+const PIT_DEPTH = 240;
 
 export interface InfinityOptions {
   /** Start with the Game's own recovery and effects off: this module does the gentle recovery. */
   effects?: boolean;
   theme?: TrackTheme;
+  /** Lives to start with (INFINITY_LIVES; the tests that drive a long way give the ball as many as it needs). */
+  lives?: number;
 }
 
 interface Live { chunk: InfinityChunk; bodies: Matter.Body[] }
@@ -51,6 +57,11 @@ export class InfinityRun {
   /** How many times the ball was lifted back (a calm 0 to 1 fade value for the screen, decaying). */
   fade = 0;
   falls = 0;
+  /** Lives left. A death pit takes one; at 0 the run is over (`over`) and stepping does nothing. */
+  lives = INFINITY_LIVES;
+  over = false;
+  /** Bumped each time a life is lost (the screen flashes and shakes its hearts). */
+  livesLost = 0;
   /** Counters for tests. */
   chunksBuilt = 0;
   originShifts = 0;
@@ -81,6 +92,7 @@ export class InfinityRun {
   constructor(seed: number, driver: MarbleInfo, opts: InfinityOptions = {}) {
     this.seed = seed >>> 0;
     this.theme = opts.theme ?? TRACK_THEMES.forest;
+    this.lives = opts.lives ?? INFINITY_LIVES;
     const first = this.local(this.abs(0));
     const track = this.trackOf([first]);
     // Chunk 0 only at first: a Game with more than 350 bodies would start streaming its track by height.
@@ -127,7 +139,7 @@ export class InfinityRun {
       bumps: chunks.flatMap((c) => c.bumps), gates: chunks.flatMap((c) => c.gates), ledges: chunks.flatMap((c) => c.ledges), springs: chunks.flatMap((c) => c.springs),
       loops: chunks.flatMap((c) => c.loops), bridges: chunks.flatMap((c) => c.bridges), boosts: chunks.flatMap((c) => c.boosts), kickers: chunks.flatMap((c) => c.kickers), rings: chunks.flatMap((c) => c.rings).filter((r) => !this.taken.has(r.id)),
       stands: [...new Map(chunks.flatMap((c) => c.stands).map((s) => [s.id, s])).values()],
-      hoops: chunks.flatMap((c) => c.hoops), vents: chunks.flatMap((c) => c.vents),
+      hoops: chunks.flatMap((c) => c.hoops), vents: chunks.flatMap((c) => c.vents), pits: chunks.flatMap((c) => c.pits),
       smashes: chunks.flatMap((c) => c.smashes).filter((s) => !this.taken.has(s.id)), smashFx: this.smashFx, itemBoxes: [], wreckers: [],
       path: [{ x: left, y: INF_START_Y - 30 }, { x: right, y: INF_START_Y - 30 }],
       startX: 520, startY: INF_START_Y, finishX: 1e12, finishY: 1e12,
@@ -199,6 +211,8 @@ export class InfinityRun {
   // ---------------------------------------------------------------- stepping
   /** Steers, jumps and the Magic Engine are the Game's own inputs: `game.nudge`, `game.jumpPressed`, `game.engineHeld`. */
   step(dt: number = PHYSICS_STEP): void {
+    // out of lives: the world stands still under the end screen (the fade clears, so the land shows behind it)
+    if (this.over) { this.fade = Math.max(0, this.fade - dt / 900); return; }
     const g = this.game;
     g.step(dt);
     const m = g.player;
@@ -210,6 +224,9 @@ export class InfinityRun {
     const floorY = floorAt(plan, lane, p.x);
     if (floorY !== null && Math.abs(p.y + MARBLE_RADIUS - floorY) < 8) this.solid = { lane, x: p.x, y: floorY };
     const last = this.solid;
+    // Dropped into a death pit: a life lost (and the run over at none).
+    const pit = (plan.pits ?? []).find((o) => p.x > o.x0 - MARBLE_RADIUS && p.x < o.x1 + MARBLE_RADIUS);
+    if (pit && p.y > this.pitLip(plan, lane, pit) + PIT_DEPTH) { this.loseLife(plan, lane, pit); return; }
     // Fallen: below the land under the ball (a chasm, or through the floor), judged against the ground at the ball's
     // own x. (It used to be the last ground touched: a fast ball flying a long way down the descending land counted as
     // a fall and was lifted back thousands of px: the owner's "reset when I go fast or far".)
@@ -247,6 +264,44 @@ export class InfinityRun {
   }
   private wedged = 0;
   private pinned = 0;
+
+  /** The lip of a pit in a lane: the higher of the ground at its two edges. */
+  private pitLip(plan: CoursePlan, lane: Lane, pit: PitSpot): number {
+    const a = floorAt(plan, lane, pit.x0 - 4), b = floorAt(plan, lane, pit.x1 + 4);
+    return Math.min(a ?? b ?? pit.y, b ?? a ?? pit.y);
+  }
+
+  /**
+   * A life lost in a pit. With lives left, the ball is set back down at the start of the pit's level run-up, rolling, so
+   * it gets another go at the boost pad and the jump; with none, the run is over (it stays where it fell, the screen shows the end).
+   */
+  private loseLife(plan: CoursePlan, lane: Lane, pit: PitSpot): void {
+    const g = this.game, m = g.player;
+    this.lives = Math.max(0, this.lives - 1);
+    this.livesLost++;
+    this.fade = 1;
+    g.sfx('ko', m, m.body.position.x, m.body.position.y);
+    if (this.lives === 0) {
+      this.over = true;
+      Matter.Body.setVelocity(m.body, { x: 0, y: 0 });
+      return;
+    }
+    let x = pit.x0 - 580;
+    for (let i = 0; i < 40 && floorAt(plan, lane, x) === null; i++) x -= 40;
+    const y = floorAt(plan, lane, x) ?? pit.y;
+    m.lane = lane;
+    m.laneFrom = lane;
+    m.laneAt = undefined;
+    applyLaneMask(g, m);
+    Matter.Body.setPosition(m.body, { x, y: y - MARBLE_RADIUS - 6 });
+    Matter.Body.setVelocity(m.body, { x: 9, y: -2 });
+    Matter.Body.setAngularVelocity(m.body, 0);
+    m.trail = [];
+    // a jump pressed over the pit is not carried into the new life (it would hop the ball onto the ramp's face)
+    m.jumpState = undefined;
+    g.jumpPressed = false;
+    this.solid = { lane, x, y };
+  }
 
   /** Is the ball FALL_DEPTH below the land at its x (over a chasm: below the higher of the ground on either side)? */
   private belowLand(plan: CoursePlan, lane: Lane, p: { x: number; y: number }): boolean {

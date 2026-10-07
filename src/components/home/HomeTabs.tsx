@@ -9,7 +9,7 @@ export const TAB_META: Record<HomeTab, { label: string; Icon: LucideIcon; blurb:
   championship: { label: 'Championship', Icon: Trophy, blurb: 'Six Grands Prix of three heats each' },
   quick: { label: 'Quick race', Icon: Flag, blurb: 'One heat on any circuit, calendar or custom' },
   online: { label: 'Online', Icon: Radio, blurb: 'Host, join by code, or queue for a ranked race' },
-  infinity: { label: 'Infinity', Icon: InfinityIcon, blurb: 'An endless, calm roll: no rivals, no timer' },
+  infinity: { label: 'Infinity', Icon: InfinityIcon, blurb: 'An endless roll: no rivals, no timer, 3 lives' },
   workshop: { label: 'Workshop', Icon: Hammer, blurb: 'Build, test and share your own circuits' },
 };
 

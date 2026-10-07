@@ -64,3 +64,12 @@
 .tally-flash { animation: tally-flash .28s ease-out; }
 @keyframes tally-flash { 0% { filter: brightness(1.9) drop-shadow(0 0 14px #ffd34a); transform: scale(1.06); } 100% { filter: none; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .tally-ring { animation: none; } }
+
+/* Lives (the death pits): three hearts beside the distance; they shake when one is lost. */
+.infinity-lives { display: inline-flex; align-items: center; gap: 3px; margin-left: 8px; padding: 6px 10px; border-radius: 999px; background: #0c141c66; vertical-align: top; }
+.infinity-lives svg.on { color: #ff4d5e; fill: #ff4d5e; filter: drop-shadow(0 0 4px #ff4d5e88); }
+.infinity-lives svg.off { color: #ffffff55; fill: none; }
+.infinity-lives.is-hit { animation: infinity-lives-hit .6s ease-out; }
+@keyframes infinity-lives-hit { 0%, 100% { transform: none; } 15% { transform: translateX(-5px) scale(1.12); } 35% { transform: translateX(5px); } 55% { transform: translateX(-3px); } 75% { transform: translateX(2px); } }
+@media (prefers-reduced-motion: reduce) { .infinity-lives.is-hit { animation: none; } }
+@media (max-width: 520px) { .infinity-lives { padding: 5px 8px; margin-left: 6px; } .infinity-lives svg { width: 14px; height: 14px; } }

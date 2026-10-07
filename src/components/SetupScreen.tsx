@@ -201,7 +201,7 @@ export default function SetupScreen(props: SetupScreenProps) {
         return { label: 'Host', onClick: onHostGame ?? (() => undefined), disabled: !doors || mpBusy || searching || offline, hint: !doors || offline ? NO_ROOM_SERVER_MESSAGE : 'A friendly room, up to six drivers.' };
       }
       case 'infinity':
-        return { label: 'Roll', onClick: props.onStartInfinity ?? (() => undefined), disabled: !props.onStartInfinity, hint: 'No rivals, no timer. Roll for as long as you like.' };
+        return { label: 'Roll', onClick: props.onStartInfinity ?? (() => undefined), disabled: !props.onStartInfinity, hint: 'No rivals, no timer. Clear the pit every km: 3 lives.' };
       case 'workshop':
         return { label: 'New track', onClick: () => setNewTrackOpen(true), hint: 'Build it, test it, race it.' };
     }
