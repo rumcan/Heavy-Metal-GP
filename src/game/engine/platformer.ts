@@ -369,6 +369,27 @@ export function keepAboveFloor(game: Game, m: Marble): void {
   if (v.y > 0) Body.setVelocity(m.body, { x: v.x, y: 0 });
 }
 
+/** A jump still counts with this much air (px) between the ball and the track under it: half a ball (the owner). */
+export const JUMP_REACH = MARBLE_RADIUS / 2;
+
+/**
+ * Is there something solid to this ball (its own lane's track, a crate, a rail, a classic piece) within JUMP_REACH under
+ * it? Three short rays straight down (middle and both sides), so a ball just off a bump or a slope can still jump.
+ * Only asked while a jump press is waiting, never every step.
+ */
+export function nearGround(game: Game, m: Marble): boolean {
+  const f = m.body.collisionFilter, p = m.body.position;
+  const solid = game.track.bodies.filter((b) => !b.isSensor && b !== m.body && ((b.collisionFilter.category ?? 0) & (f.mask ?? 0)) !== 0 && ((b.collisionFilter.mask ?? 0) & (f.category ?? 0)) !== 0
+    && b.bounds.min.x <= p.x + MARBLE_RADIUS && b.bounds.max.x >= p.x - MARBLE_RADIUS && b.bounds.min.y <= p.y + MARBLE_RADIUS * 2 && b.bounds.max.y >= p.y);
+  if (!solid.length) return false;
+  const reach = MARBLE_RADIUS + JUMP_REACH;
+  for (const dx of [0, -MARBLE_RADIUS * 0.5, MARBLE_RADIUS * 0.5]) {
+    const down = reach * Math.cos(Math.asin(Math.abs(dx) / reach)); // a side ray reaches the same circle around the ball
+    if (Matter.Query.ray(solid, { x: p.x + dx, y: p.y }, { x: p.x + dx, y: p.y + down }, 1).length) return true;
+  }
+  return false;
+}
+
 /** Move a marble to another lane: a small hop, and the camera/skin dolly runs off `laneAt`. */
 export function switchLane(game: Game, m: Marble, to: Lane): void {
   if ((m.lane ?? LANE_MIDDLE) === to) return;
