@@ -24,6 +24,7 @@ import treesUrl from '../../assets/game/platformer/trees.webp';
 import skyIslandsUrl from '../../assets/game/platformer/sky-islands.webp';
 import cannonUrl from '../../assets/game/cannon.webp';
 import treesFrontUrl from '../../assets/game/platformer/trees-front.webp';
+import treesFront2Url from '../../assets/game/platformer/trees-front-2.webp';
 import { CANNON_LEN, CANNON_SPEED, muzzle } from '../engine/platformer';
 import skyCloudsUrl from '../../assets/game/platformer/sky-clouds.webp';
 import airshipUrl from '../../assets/game/airship.webp';
@@ -37,7 +38,7 @@ setBridgeArt(drawBridgeChain);
 
 // Generated art (P2-00): a skin over the vector bodies. Every draw falls back to flat shapes until it loads.
 const load = (src: string) => (typeof Image !== 'undefined' ? Object.assign(new Image(), { src }) : null);
-const ART = { earth: load(earthUrl), grass: load(grassUrl), crate: load(crateUrl), door: load(doorUrl), far: load(farUrl), trees: load(treesUrl), skyIslands: load(skyIslandsUrl), cannon: load(cannonUrl), treesFront: load(treesFrontUrl), skyClouds: load(skyCloudsUrl), airship: load(airshipUrl), smash: load(smashCrateUrl), smashTop: load(smashTopUrl), smashBottom: load(smashBottomUrl) };
+const ART = { earth: load(earthUrl), grass: load(grassUrl), crate: load(crateUrl), door: load(doorUrl), far: load(farUrl), trees: load(treesUrl), skyIslands: load(skyIslandsUrl), cannon: load(cannonUrl), treesFront: load(treesFrontUrl), treesFront2: load(treesFront2Url), skyClouds: load(skyCloudsUrl), airship: load(airshipUrl), smash: load(smashCrateUrl), smashTop: load(smashTopUrl), smashBottom: load(smashBottomUrl) };
 const ready = (img: HTMLImageElement | null): img is HTMLImageElement => !!img && img.complete && img.naturalWidth > 0;
 const patterns = new WeakMap<CanvasRenderingContext2D, CanvasPattern>();
 function earthPattern(ctx: CanvasRenderingContext2D): CanvasPattern | null {
@@ -1065,14 +1066,17 @@ function betweenTrees(ctx: CanvasRenderingContext2D, game: Game, cam: PlatformCa
     const n = Math.max(1, Math.ceil(rw / PINE_SLICE)), sw = rw / n, srcW = pines.c.width / n;
     const scroll = st!.scrolls[far] * (1 + i * 0.04);
     ctx.fillStyle = pines.floor;
-    for (let rx = tileStart(cam, `b${far}:${i}`, scroll, rw, cw); rx < cw; rx += rw) {
+    const start = tileStart(cam, `b${far}:${i}`, scroll, rw, cw);
+    for (let rx = start.x, id = start.id; rx < cw; rx += rw, id++) {
+      const tile = pineTile(id, `b${far}:${i}`, (i + far) % 2 === 0);
+      const art = hazePines(tile.img, 0, tile.flip);
       for (let k = 0; k < n; k++) {
         const sx = rx + k * sw;
         if (sx > cw || sx + sw < 0) continue;
         const y = lineAt(sx + sw / 2) + r.drop * sf;
         if (y >= ch) continue;
         if (i === rows.length - 1) ctx.fillRect(sx, y + height * 0.8, sw + 0.6, Math.max(0, ch - (y + height * 0.8)));
-        drawImg(ctx, pines.c, k * srcW, 0, srcW, pines.c.height, sx, y, sw + 0.6, height);
+        drawImg(ctx, art.c, k * srcW, 0, srcW, art.c.height, sx, y, sw + 0.6, height);
       }
     }
   });
@@ -1084,7 +1088,7 @@ function betweenTrees(ctx: CanvasRenderingContext2D, game: Game, cam: PlatformCa
  * width) grows the row about the centre and never slides it sideways (the owner); rolling slides it at its speed.
  */
 const PHASES = new WeakMap<PlatformCamera, Map<string, { last: number; phase: number }>>();
-function tileStart(cam: PlatformCamera, key: string, scroll: number, rw: number, cw: number): number {
+function tileStart(cam: PlatformCamera, key: string, scroll: number, rw: number, cw: number): { x: number; id: number } {
   let rows = PHASES.get(cam);
   if (!rows) { rows = new Map(); PHASES.set(cam, rows); }
   let st = rows.get(key);
@@ -1092,8 +1096,22 @@ function tileStart(cam: PlatformCamera, key: string, scroll: number, rw: number,
   st.phase += (scroll - st.last) / rw;
   st.last = scroll;
   let x = cw / 2 - (((st.phase % 1) + 1) % 1) * rw;
-  while (x > 0) x -= rw;
-  return x;
+  let id = Math.floor(st.phase); // the tile starting at x: the same tile keeps its id as the row scrolls
+  while (x > 0) { x -= rw; id--; }
+  return { x, id };
+}
+
+/**
+ * Which of the owner's pine strips a tile shows, and mirrored or not (the owner: break up the uniformity): picked by a
+ * hash of the tile's own id and its row, so a tile keeps its look as it scrolls. Falls back to the first strip until
+ * the second has loaded.
+ */
+function pineTile(id: number, row: string, flipRow: boolean): { img: HTMLImageElement; flip: boolean } {
+  let h = Math.imul(id ^ 0x9e3779b9, 0x85ebca6b);
+  for (let i = 0; i < row.length; i++) h = Math.imul(h ^ row.charCodeAt(i), 0xc2b2ae35);
+  h ^= h >>> 15;
+  const second = ready(ART.treesFront2) && (h & 1) === 1;
+  return { img: (second ? ART.treesFront2 : ART.treesFront)!, flip: ((h >>> 1) & 1) === 1 ? !flipRow : flipRow };
 }
 
 /** The lanes to draw this frame: those behind the camera (visibleLanes) that this course has. */
@@ -1225,7 +1243,7 @@ const FG_TRACK_BELOW = 15;
  */
 const hazeCache = new Map<string, { img: HTMLImageElement; c: HTMLCanvasElement; floor: string }>();
 function hazePines(img: HTMLImageElement, haze: number, flip: boolean): { c: HTMLCanvasElement; floor: string } {
-  const key = haze + (flip ? 'f' : '');
+  const key = img.src + haze + (flip ? 'f' : '');
   const hit = hazeCache.get(key);
   if (hit?.img === img) return hit;
   const c = document.createElement('canvas');
@@ -1297,14 +1315,17 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
     // land shows between the rows
     ctx.fillStyle = i < PINE_ROWS.length - 1 ? pines.floor : '#080e0d';
     const n = Math.max(1, Math.ceil(rw / PINE_SLICE)), sw = rw / n, srcW = pines.c.width / n;
-    for (let rx = tileStart(cam, `f${i}`, scrolls[i], rw, cw); rx < cw; rx += rw) {
+    const start = tileStart(cam, `f${i}`, scrolls[i], rw, cw);
+    for (let rx = start.x, id = start.id; rx < cw; rx += rw, id++) {
+      const tile = pineTile(id, `f${i}`, (PINE_ROWS.length - 1 - i) % 2 === 0);
+      const art = hazePines(tile.img, 0, tile.flip);
       for (let k = 0; k < n; k++) {
         const sx = rx + k * sw;
         if (sx > cw || sx + sw < 0) continue;
         const y = lineAt(sx + sw / 2) + (r.drop - CLIFF_RISE) * fs * r.p;
         if (y >= ch) continue;
         ctx.fillRect(sx, y + height * 0.8, sw + 0.6, Math.max(0, ch - (y + height * 0.8)));
-        drawImg(ctx, pines.c, k * srcW, 0, srcW, pines.c.height, sx, y, sw + 0.6, height);
+        drawImg(ctx, art.c, k * srcW, 0, srcW, art.c.height, sx, y, sw + 0.6, height);
       }
     }
   }
