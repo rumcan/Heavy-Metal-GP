@@ -129,6 +129,8 @@ export interface Progress {
   level: number;
   owned: string[];
   achievements: AchievementId[];
+  /** Everything is unlocked (the RUN Bits purchase, src/game/premium.ts). */
+  unlockAll?: boolean;
 }
 
 /** The look every player starts with — all free choices. */
@@ -253,7 +255,7 @@ export function unlockOf(category: Category, id: string): Unlock | null {
 export function isUnlocked(category: Category, id: string, p: Progress): boolean {
   const unlock = unlockOf(category, id);
   if (unlock === null) return false;
-  if (unlock.kind === 'free') return true;
+  if (unlock.kind === 'free' || p.unlockAll) return true;
   if (unlock.kind === 'level') return p.level >= unlock.level;
   if (unlock.kind === 'credits') return p.owned.includes(`${category}:${id}`);
   return p.achievements.includes(unlock.id);

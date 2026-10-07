@@ -5,6 +5,7 @@
  * and its own device-cache key. It never touches `mrr-season-v1` (the free championship save), so quitting
  * one mode cannot damage the other. Pure functions and one storage key; no React, no DOM.
  */
+import { unlockAllOwned } from '../premium';
 import * as storage from '../storage';
 import { CALENDAR, computeStandings, newSeason } from '../season';
 import type { SeasonState } from '../season';
@@ -240,7 +241,7 @@ export function storyEnding(state: StoryState): EndingId | null {
 }
 
 export function chapterUnlocked(state: StoryState, chapter: number): boolean {
-  if (chapter <= 1) return true;
+  if (chapter <= 1 || unlockAllOwned()) return true; // every chapter when everything is unlocked (premium.ts)
   // A chapter is unlocked once the previous Grand Prix has all three heats in the story season.
   return (state.season.results[chapter - 2]?.length ?? 0) >= HEATS_PER_GP;
 }

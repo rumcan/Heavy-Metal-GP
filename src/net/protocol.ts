@@ -569,6 +569,8 @@ export interface BoxEvent {
   seat?: number;
   /** A platformer course: the trial skill the box put in the seat's Tab slot. */
   item?: ItemType;
+  /** Its uses when more than one (a Lucky Draw box). */
+  charges?: number;
 }
 
 /** An oil slick hit the track. */
@@ -1801,6 +1803,7 @@ function validateEvent(value: unknown): ProtocolError | null {
     }
     case 'box': {
       if (typeof e.taken !== 'boolean') return bad('Box event has no taken flag.');
+      if (e.charges !== undefined && !isInt(e.charges, 1, 9)) return bad('Box event has a bad charge count.');
       if (e.item !== undefined && !(ITEM_TYPES as readonly string[]).includes(e.item as string)) return forged(`Item "${String(e.item)}" is not an item this game has.`);
       if (e.seat !== undefined) {
         const err = seat(e.seat);

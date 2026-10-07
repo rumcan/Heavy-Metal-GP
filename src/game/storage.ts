@@ -22,6 +22,8 @@ export const STORAGE_KEYS = [
   'heavy-metal-gp:community-local:v1',
   'heavy-metal-gp:whats-new-seen',
   'heavy-metal-gp:voice',
+  'heavy-metal-gp:radio',
+  'heavy-metal-gp:unlock-all',
   'heavy-metal-templates',
 ] as const;
 

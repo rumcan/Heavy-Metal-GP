@@ -1,3 +1,4 @@
+import { unlockAllOwned } from './premium';
 import { ITEM_TYPES, MAX_ITEM_STACK, normalizeInventory, type Inventory } from './types';
 
 export const LOADOUT_SLOTS = 8;
@@ -89,8 +90,8 @@ export function lockReason(
   if (!info) {
     return 'unknown';
   }
-  if (info.starter) {
-    return null;
+  if (info.starter || unlockAllOwned()) {
+    return null; // a starter, or everything is unlocked (premium.ts)
   }
   if (d.level < info.unlockLevel) {
     return 'level';

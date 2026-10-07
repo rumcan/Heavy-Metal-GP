@@ -1,4 +1,6 @@
 import * as storage from './storage';
+import { talentTierLevel, unlockAllOwned } from './premium';
+
 import { emptyInventory, ITEM_INFO, ITEM_TYPES, MAX_ITEM_STACK, normalizeInventory } from './types';
 import type { HeatResult, Inventory, ItemType } from './types';
 import { settle } from './settlement';
@@ -29,7 +31,7 @@ export function freeTalentPoints(account: RacerAccount): number {
 /** P2-17: spend a point (the caller has checked it with `canRankUp`). */
 export function setTalents(account: RacerAccount, build: Build): RacerAccount {
   const p = progressOf(account);
-  return { ...account, talents: validateBuild(build, p.level, p.talentPoints) };
+  return { ...account, talents: validateBuild(build, talentTierLevel(p.level), p.talentPoints) };
 }
 
 /** P2-17: take every point back. The first respec is free, later ones cost 500 credits; false when it cannot be paid. */
@@ -105,6 +107,7 @@ export function cosmeticProgressOf(account: RacerAccount): CosmeticProgress {
     level: progressOf(account).level,
     owned: [...new Set(account.cosmeticOwned ?? [])],
     achievements: [...achievements],
+    ...(unlockAllOwned() ? { unlockAll: true } : {}),
   };
 }
 
@@ -410,7 +413,7 @@ export function parseAccount(raw: string | null): RacerAccount {
       cosmeticAchievements: readCosmeticAchievements(account.cosmeticAchievements),
       cosmeticKos: safeNumber(account.cosmeticKos),
       ...(readProgress(account.progress) ? { progress: readProgress(account.progress) } : {}), ...(account.campaignComplete === true ? { campaignComplete: true } : {}),
-      ...(readProgress(account.progress) && account.talents ? { talents: validateBuild(account.talents, readProgress(account.progress)!.level, readProgress(account.progress)!.talentPoints) } : {}),
+      ...(readProgress(account.progress) && account.talents ? { talents: validateBuild(account.talents, talentTierLevel(readProgress(account.progress)!.level), readProgress(account.progress)!.talentPoints) } : {}),
       ...(typeof account.respecs === 'number' && account.respecs > 0 ? { respecs: Math.floor(account.respecs) } : {}),
     };
   } catch { return createAccount(); }

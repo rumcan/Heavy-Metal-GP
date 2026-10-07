@@ -28,6 +28,10 @@ export function givePickup(game: Game, m: Marble): ItemType {
   m.pickup = item;
   m.lastPickupAt = game.time;
   m.aiUseAt = game.time + 800 + game.rng() * 1800;
+  // P2-20 Lucky Draw ("15 % of item boxes pay out twice"): the trial skill can be used twice. The talent check comes
+  // first, so a marble without it never spends an rng roll.
+  const luck = m.tfx?.boxLuckPct ?? 0;
+  m.pickupCharges = luck > 0 && game.rng() * 100 < luck ? 2 : 1;
   if (m.info.isPlayer) game.onEvent?.(`${ITEM_INFO[item].name}: press Tab to use it`, ITEM_INFO[item].color);
   return item;
 }
@@ -109,7 +113,10 @@ export function useItem(game: Game, m: Marble, item = game.availableItem(m)): bo
   // P2-17: Quick Hands may keep the charge; Nimble/Rapid shorten the pause between skills
   const refunded = !!fx && (fx.refundChancePct ?? 0) > 0 && game.rng() * 100 < fx.refundChancePct;
   // The Tab slot's pickup goes first (a trial skill, never refunded); otherwise one of your own charges.
-  if (m.pickup === item) m.pickup = null;
+  if (m.pickup === item) {
+    m.pickupCharges = (m.pickupCharges ?? 1) - 1;
+    if (m.pickupCharges <= 0) { m.pickup = null; m.pickupCharges = undefined; }
+  }
   else if (!game.unlimitedItems.has(item) && !refunded) m.inventory[item]--;
   m.itemCooldownUntil = game.time + Math.max(150, 450 * (1 + (fx?.skillCooldownPct ?? 0) / 100));
   game.sfx('item', m, p.x, p.y, { item });

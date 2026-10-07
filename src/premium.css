@@ -1,0 +1,13 @@
+/* UnlockAllButton.tsx: the gold "Unlock everything" pill in the header, and its badge once owned. */
+.unlock-all-wrap { position: relative; display: inline-flex; }
+.unlock-all { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 6px 0 10px; border-radius: 999px; border: 1px solid #f5c542; background: linear-gradient(180deg, #3a2a08, #1e1604); color: #fde68a; font: 800 11px var(--mono, ui-monospace, monospace); letter-spacing: .4px; text-transform: uppercase; cursor: pointer; box-shadow: 0 0 0 0 #f5c54266; animation: unlock-glow 3.2s ease-in-out infinite; white-space: nowrap; }
+.unlock-all:hover:not(:disabled) { background: linear-gradient(180deg, #4a360a, #2a1f06); }
+.unlock-all:disabled { opacity: .6; cursor: progress; }
+.unlock-all-price { display: inline-flex; align-items: center; gap: 3px; padding: 2px 7px; border-radius: 999px; background: #f5c542; color: #1e1604; font-weight: 900; }
+.unlock-all-price img { width: 14px; height: 14px; }
+.unlock-all.owned { cursor: default; animation: none; border-color: #4ade8099; background: #0b1f14; color: #86efac; padding: 0 10px; }
+.unlock-all-note { position: absolute; top: calc(100% + 6px); right: 0; z-index: 40; width: max-content; max-width: 260px; padding: 6px 10px; border-radius: 10px; background: #0b1219f2; border: 1px solid #2b3a4a; color: #e5edf5; font: 600 12px var(--sans, system-ui); text-transform: none; }
+@keyframes unlock-glow { 50% { box-shadow: 0 0 12px 1px #f5c54255; } }
+@media (prefers-reduced-motion: reduce) { .unlock-all { animation: none; } }
+/* phones: just the sparkle and the price */
+@media (max-width: 650px) { .unlock-all .unlock-all-label { display: none; } .unlock-all { padding: 0 4px 0 8px; } }

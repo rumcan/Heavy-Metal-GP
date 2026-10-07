@@ -34,6 +34,7 @@ import RankChip from './RankChip';
 import RulesDialog from './RulesDialog';
 import WalletButton from './WalletButton';
 import RadioPill from './RadioPill';
+import UnlockAllButton from './UnlockAllButton';
 import { storyPrimary } from '../game/story/opening';
 import type { StoryPick } from '../game/story/opening';
 import type { StoryNotice } from './story/StoryHub';
@@ -225,6 +226,7 @@ export default function SetupScreen(props: SetupScreenProps) {
           title="Your rank — open the ladder"
         ><RankChip model={rank} compact /></button>}
         {import.meta.env.DEV && <button className="text-button lab-link" onClick={() => setDialog('lab')}><FlaskConical size={16} /><span>Physics lab</span></button>}
+        <UnlockAllButton />
         <RadioPill />
         <WalletButton credits={account.credits} onClick={onShop} />
       </div>
