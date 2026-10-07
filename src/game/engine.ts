@@ -199,6 +199,8 @@ export interface Marble {
   loopStuckSince?: number;
   /** The Magic Engine pushed this step (the engine loop sound follows it). */
   engineOn?: boolean;
+  /** The engine key was held last step (letting go of a hot engine vents steam). */
+  engineKey?: boolean;
   /** The Tab slot (platformer races): one skill picked up from a box or an item peg, to try out. Used once; it never goes home. */
   pickup?: ItemType | null;
   /** Crossing tracks: the Workshop track segment this marble last touched (plan.tracks index, segment) and when. */

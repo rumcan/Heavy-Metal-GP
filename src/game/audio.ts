@@ -51,7 +51,7 @@ export const RECORDED: Partial<Record<SoundType, { ids: readonly string[]; vol: 
   light: { ids: ['race-beep'], vol: 0.7 },
   go: { ids: ['race-go'], vol: 0.8 },
   bang: { ids: ['cannon-1', 'cannon-2'], vol: 0.6, jitter: 0.06 },
-  jump: { ids: ['jump-1', 'jump-2'], vol: 0.45, jitter: 0.08 },
+  jump: { ids: ['jump-1'], vol: 0.32, jitter: 0.06 }, // the subtle take only (the owner: the cartoon whoosh was very annoying)
   lane: { ids: ['lane-change'], vol: 0.5, jitter: 0.05 },
   spring: { ids: ['spring-sheep'], vol: 0.6, jitter: 0.05 },
   pickup: { ids: ['item-box'], vol: 0.55, jitter: 0.04 },
@@ -73,7 +73,7 @@ export const RECORDED: Partial<Record<SoundType, { ids: readonly string[]; vol: 
 
 /** Sounds worth having decoded before the lights go out (the rest load the first time they are needed). */
 export const PREWARM: readonly string[] = [
-  'race-beep', 'race-go', 'cannon-1', 'cannon-2', 'jump-1', 'jump-2', 'land-soft', 'land-hard', 'roll-loop', 'wind-loop',
+  'race-beep', 'race-go', 'cannon-1', 'cannon-2', 'jump-1', 'land-soft', 'land-hard', 'roll-loop', 'wind-loop',
   'engine-loop', 'lane-change', 'item-box', 'trial-pickup', 'ring-1', 'ring-2', 'crate-smash-1', 'crate-smash-2', 'clack-1',
   'clack-2', 'finish-line', 'hit-1', 'hit-2', 'ui-click', 'ui-tab', 'ui-back', 'ui-open',
 ];

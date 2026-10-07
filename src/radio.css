@@ -22,3 +22,9 @@
   .radio-pill .radio-step, .radio-pill .radio-skip, .radio-pill .radio-vol, .radio-pill .radio-now { display: none; }
   .radio-pill[data-peek="1"] .radio-now { display: block; position: absolute; top: calc(100% + 6px); right: 0; max-width: 70vw; padding: 6px 10px; border-radius: 10px; background: #0b1219f2; border: 1px solid #2b3a4a; z-index: 30; }
 }
+
+/* HeatEdges.tsx: the overheated Magic Engine, a soft red glow at the sides of the race (never over the middle). */
+.heat-edges { position: absolute; inset: 0; z-index: 4; pointer-events: none; opacity: 0; transition: opacity .35s ease; background: linear-gradient(90deg, rgba(220, 38, 38, .26), rgba(220, 38, 38, 0) 11%, rgba(220, 38, 38, 0) 89%, rgba(220, 38, 38, .26)); }
+.heat-edges.on { opacity: 1; animation: heat-glow 1.3s ease-in-out infinite; }
+@keyframes heat-glow { 50% { opacity: .5; } }
+@media (prefers-reduced-motion: reduce) { .heat-edges.on { animation: none; } }

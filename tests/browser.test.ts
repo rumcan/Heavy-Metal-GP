@@ -256,7 +256,7 @@ test('Browser: mobile layout stays in-bounds and controls remain usable', { time
     await page.waitForSelector('.race-canvas');
     assert.ok(await page.getByRole('button', { name: 'Nudge left', exact: true }).isVisible());
     assert.ok(await page.getByRole('button', { name: 'Nudge right', exact: true }).isVisible());
-    assert.equal(await page.locator('.inventory-slot').count(), 8);
+    assert.equal(await page.locator('.inventory-slot').count(), 9, 'the eight skill keys and the Tab slot (a trial skill from a box)');
     assert.ok(await page.getByLabel('Course map', { exact: true }).isVisible());
     await page.getByRole('button', { name: 'Collapse minimap' }).click();
     assert.equal(await page.locator('.minimap-svg').count(), 0);
