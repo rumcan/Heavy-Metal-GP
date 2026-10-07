@@ -159,7 +159,9 @@ function encodeBinary(def: TrackDef): Uint8Array {
     // PIECE_SKINS, append-only). Old codes only ever hold 0..7.
     // 16 = a depth lane follows (P2-22 platformer courses; 0 back, 2 front, absent = the middle).
     const rotOn = !!p.rot, scOn = p.sc !== undefined && p.sc !== 1, skinOn = !!p.skin && PIECE_SKINS.includes(p.skin), laneOn = p.lane === 0 || p.lane === 2, cloudOn = p.t === 'ledge' && p.cloud !== undefined;
-    writeUVarint(out, (p.flip ? 1 : 0) | (rotOn ? 2 : 0) | (scOn ? 4 : 0) | (skinOn ? 8 : 0) | (laneOn ? 16 : 0) | (cloudOn ? 32 : 0));
+    // 64 = a platformer floor with no cliff under it (no value follows)
+    const noCliff = (p.t === 'ramp' || p.t === 'curve') && p.cliff === false;
+    writeUVarint(out, (p.flip ? 1 : 0) | (rotOn ? 2 : 0) | (scOn ? 4 : 0) | (skinOn ? 8 : 0) | (laneOn ? 16 : 0) | (cloudOn ? 32 : 0) | (noCliff ? 64 : 0));
     if (rotOn) writeUVarint(out, Math.round(((p.rot! % 360) + 360) % 360 * 100));
     if (scOn) writeUVarint(out, Math.round(p.sc! * 1000));
     if (skinOn) writeUVarint(out, PIECE_SKINS.indexOf(p.skin!) + 1);
@@ -832,6 +834,7 @@ function decodeBinary(bytes: Uint8Array, version = 1): TrackDef {
     if (p && xskin) p.skin = xskin;
     if (p && (xlane === 0 || xlane === 2)) p.lane = xlane;
     if (p && p.t === 'ledge' && xcloud !== undefined) p.cloud = xcloud;
+    if (p && (p.t === 'ramp' || p.t === 'curve') && flipFlag & 64) p.cliff = false;
     if (p) pieces.push(p);
   }
   // P2-22: a platformer course closes with a trailer (tag 1, then its width). Codes made before it simply end here.

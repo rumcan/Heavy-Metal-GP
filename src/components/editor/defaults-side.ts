@@ -8,7 +8,7 @@ export function sidePiece(type: Piece['t'], x: number, y: number): Piece | null 
   switch (type) {
     case 'ramp': return { t: 'ramp', a: [cx - 200, cy], b: [cx + 200, cy] };
     case 'ice': return { t: 'ice', a: [cx - 200, cy], b: [cx + 200, cy] };
-    case 'curve': return { t: 'curve', a: [cx - 300, cy], c: [cx, cy + 120], b: [cx + 300, cy] };
+    case 'curve': return { t: 'curve', a: [cx - 300, cy], c: [cx, cy + 120], b: [cx + 300, cy], cliff: false }; // a new curve floats (the owner); the panel switches its cliff on
     case 'pad': return { t: 'pad', x: cx, y: cy, w: 60, dir: 1 };
     case 'boost': return { t: 'boost', x: cx, y: cy, len: 200, thick: 20, dir: [1, 0] };
     case 'itembox': return { t: 'itembox', x: cx, y: cy };
