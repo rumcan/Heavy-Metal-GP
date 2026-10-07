@@ -20,8 +20,10 @@ import { moveHandle, movePiece } from './handles';
 
 export interface Point { x: number; y: number }
 
-/** Snap step for keyboard/button turns and for the rotate handle when the grid is on. */
+/** Step for keyboard/button turns (R / Shift+R). */
 export const ROTATE_STEP_DEG = 15;
+/** The angles a rotate-handle drag snaps to when the grid is on: every 5°, 72 a turn (the owner wanted more points). */
+export const ROTATE_SNAP_DEG = 5;
 
 const clampX = (x: number) => Math.max(0, Math.min(worldWidth(), x));
 /** Keep coordinates tidy (0.01 u) so repeated turns don't pile up float noise like 450.00000000000006. */
@@ -284,14 +286,14 @@ export function rotateHandlePoint(piece: Piece): Point {
   return { x: c.x + Math.sin(a) * offset, y: c.y - Math.cos(a) * offset };
 }
 
-/** Apply a rotate-handle drag: the piece turns so its handle points at `to`. Snaps to 15° when `snap`. */
+/** Apply a rotate-handle drag: the piece turns so its handle points at `to`. Snaps to 5° when `snap`. */
 export function applyRotateHandle(piece: Piece, to: Point, snap: boolean): Piece {
   const c = pieceCentre(piece);
   if (Math.hypot(to.x - c.x, to.y - c.y) < 6) return piece;
   // The handle sits at angle - 90°, so the piece's new angle is the pointer's angle + 90°.
   let target = Math.atan2(to.y - c.y, to.x - c.x) + Math.PI / 2;
   if (snap) {
-    const step = (ROTATE_STEP_DEG * Math.PI) / 180;
+    const step = (ROTATE_SNAP_DEG * Math.PI) / 180;
     target = Math.round(target / step) * step;
   }
   const delta = target - pieceAngle(piece);

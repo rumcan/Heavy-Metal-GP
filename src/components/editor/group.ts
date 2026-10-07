@@ -7,7 +7,7 @@
  */
 import type { Piece, Vec } from '../../game/trackdef';
 import { W } from '../../game/track';
-import { pieceCentre, rotatePiece, ROTATE_STEP_DEG } from './rotate';
+import { pieceCentre, rotatePiece, ROTATE_SNAP_DEG } from './rotate';
 import { translatePiece } from './translation';
 import { BASE_STALK } from './handles';
 
@@ -110,7 +110,7 @@ export function scaleGroup(pieces: Piece[], s: number, anchor: Point): Piece[] {
 
 /**
  * Apply a group handle drag. `start` are the selected pieces at drag start, `box` their shared box then.
- * Rotate: the group turns so the rotate pad points at `to` (15° steps with `snap`). Corner: uniform scale
+ * Rotate: the group turns so the rotate pad points at `to` (5° steps with `snap`). Corner: uniform scale
  * about the opposite corner by how far the pointer moved along the box's diagonal.
  */
 export function applyGroupHandle(start: Piece[], id: string, to: Point, box: GroupBox, snap: boolean): Piece[] {
@@ -119,7 +119,7 @@ export function applyGroupHandle(start: Piece[], id: string, to: Point, box: Gro
     if (Math.hypot(to.x - c.x, to.y - c.y) < 6) return start;
     let rad = Math.atan2(to.y - c.y, to.x - c.x) + Math.PI / 2;
     if (snap) {
-      const step = (ROTATE_STEP_DEG * Math.PI) / 180;
+      const step = (ROTATE_SNAP_DEG * Math.PI) / 180;
       rad = Math.round(rad / step) * step;
     }
     return rotateGroup(start, rad, c);
