@@ -44,12 +44,14 @@ test('every calendar round has a valid archived official circuit', () => {
   }
 });
 
-test('roundTrack races the Grand Prix platformer course, and the player swap-in still wins', () => {
+test('roundTrack races the Grand Prix platformer course (Monte Pipo and Suzuka: their pinball circuits), and the player swap-in still wins', () => {
   const season = newSeason(roster());
   for (const gp of CALENDAR) {
     const track = roundTrack(season, gp.id);
-    assert.equal(track?.mode, 'platformer', `round ${gp.id} races a platformer course (the drop tracks are retired)`);
-    assert.equal(track?.name, gp.name);
+    // the owner: the pinball circuits are raced in the championship and story for these two rounds only
+    if (gp.id === 1 || gp.id === 4) assert.notEqual(track?.mode, 'platformer', `round ${gp.id} races its pinball circuit`);
+    else assert.equal(track?.mode, 'platformer', `round ${gp.id} races a platformer course`);
+    assert.ok(track, `round ${gp.id} has a track`);
   }
 
   const mine: TrackDef = {

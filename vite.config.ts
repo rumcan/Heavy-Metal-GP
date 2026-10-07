@@ -107,7 +107,9 @@ function saveOfficialTrackPlugin(): Plugin {
             try {
               const targetDir = path.join(__dirname, "src/game/official-tracks");
               await fs.mkdir(targetDir, { recursive: true });
-              const targetFile = path.join(targetDir, `champ-${round}.json`);
+              // kind=platformer: the round's platformer course (gp-<round>.json); else its pinball circuit (champ-)
+              const kind = url.searchParams.get("kind") === "platformer" ? "gp" : "champ";
+              const targetFile = path.join(targetDir, `${kind}-${round}.json`);
               await fs.writeFile(targetFile, body, "utf-8");
               res.statusCode = 200;
               res.end("OK");

@@ -1,5 +1,5 @@
 import * as storage from './storage';
-import { championshipTrack } from './championship-tracks';
+import { seasonTrack } from './championship-tracks';
 import type { TrackDef } from './trackdef';
 import { GrandPrix, HeatResult, MarbleInfo, POINTS, FASTEST_BONUS, HEATS_PER_GP, TEAMS, Team, TrackProfile, CIRCUIT_LENGTH_MULTIPLIER, TRACK_THEMES, ThemeId } from './types';
 
@@ -41,7 +41,7 @@ export interface SeasonState {
 export function roundTrack(season: SeasonState, round: number): TrackDef | null {
   const custom = season.tracks?.[round];
   if (custom) return custom;
-  return championshipTrack(round);
+  return seasonTrack(round); // Monte Pipo and Suzuka: their pinball circuits (the owner)
 }
 
 /** Display name of a round's circuit: the custom track's name, or the Grand Prix name. */
