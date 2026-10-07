@@ -4,7 +4,7 @@ import Matter from 'matter-js';
 import type { Game, Marble } from '../engine';
 import { CONTROL_TUNING, engineStep, engineThrust, jumpStep, newEngine, newJump, steerVelocity } from '../controls';
 import { TICK } from '../engine';
-import { railJump, railSteer, tryDoor } from './platformer';
+import { nearGround, railJump, railSteer, tryDoor } from './platformer';
 
 /** Is this marble driven by a human (local or a guest)? Only humans get the engine and the core jump. */
 function handsOf(game: Game, m: Marble): { nudge: number; engine: boolean; jump: boolean } | null {
@@ -42,7 +42,10 @@ export function steer(game: Game, m: Marble, v: Matter.Vector, s: number): Matte
 
   // P2-00: on a platformer, a jump press inside a lane door goes through the door instead.
   if (hands.jump && game.track.platformer && tryDoor(game, m)) hands.jump = false;
-  const jump = jumpStep(m.jumpState ?? newJump(), game.time, grounded, hands.jump);
+  // A jump still counts with a little air under the ball (half its size): only looked for while a press is waiting.
+  const waiting = hands.jump || game.time - (m.jumpState?.pressedAt ?? -Infinity) <= CONTROL_TUNING.jumpBufferMs;
+  const canJump = grounded || (waiting && !!game.track.platformer && nearGround(game, m));
+  const jump = jumpStep(m.jumpState ?? newJump(), game.time, canJump, hands.jump);
   m.jumpState = jump.state;
   if (jump.jump) v = game.track.platformer ? railJump(game, m, v) : { x: v.x, y: Math.min(v.y, -CONTROL_TUNING.jumpSpeed) };
   return v;
