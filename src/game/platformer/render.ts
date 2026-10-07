@@ -1049,11 +1049,13 @@ function betweenTrees(ctx: CanvasRenderingContext2D, game: Game, cam: PlatformCa
   const COL = 24, cols = Math.ceil(cw / COL) + 2;
   const line = new Float32Array(cols);
   let held = ch / 2 + vf.lift * cam.scale;
+  let first = -1;
   for (let c = 0; c < cols; c++) {
     const y = floorAt(plan, far as Lane, cam.x + (c * COL - cw / 2) / sf) ?? groundUnder(plan, far as Lane, cam.x + (c * COL - cw / 2) / sf);
-    if (y !== null) held = ch / 2 + vf.lift * cam.scale + (y - cam.y) * sf;
+    if (y !== null) { held = ch / 2 + vf.lift * cam.scale + (y - cam.y) * sf; if (first < 0) first = c; }
     line[c] = held;
   }
+  if (first > 0) for (let c = 0; c < first; c++) line[c] = line[first]; // left of the first ground: its height, not the screen's
   const lineAt = (sx: number) => { const f = Math.max(0, Math.min(cols - 1.001, sx / COL)); const c = Math.floor(f); return line[c] + (line[c + 1] - line[c]) * (f - c); };
   const aspect = img.naturalWidth / img.naturalHeight;
   ctx.save();
@@ -1282,11 +1284,15 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
   const cols = Math.ceil(cw / COL) + 2;
   const line = new Float32Array(cols);
   let held = ch / 2 + FG_TRACK_BELOW * cam.scale;
+  let first = -1;
   for (let c = 0; c < cols; c++) {
     const y = plan ? cliffLineY(plan, cam.focus ?? LANE_MIDDLE, cam.x + (c * COL - cw / 2) / cam.scale) : null;
-    if (y !== null) held = ch / 2 + (y - cam.y) * cam.scale; // over a gap or a floating floor, the line holds
+    if (y !== null) { held = ch / 2 + (y - cam.y) * cam.scale; if (first < 0) first = c; } // over a gap or a floating floor, the line holds
     line[c] = held;
   }
+  // Before the first ground on screen (left of the start), the trees take that ground's height, so they move with the
+  // world: pinned to the screen they bobbed up and down as the camera moved (the owner).
+  if (first > 0) for (let c = 0; c < first; c++) line[c] = line[first];
   // never steeper than a hillside: a step in the cliff is eased over, so the trees never stand up in a tower
   const rise = COL * 0.6;
   for (let c = 1; c < cols; c++) line[c] = Math.max(line[c - 1] - rise, Math.min(line[c - 1] + rise, line[c]));
