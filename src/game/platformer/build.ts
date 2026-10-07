@@ -92,10 +92,27 @@ export function buildPlatformerTrack(seed: number, theme: TrackTheme, courseId?:
 export function planBodies(plan: CoursePlan): { bodies: Matter.Body[]; itemBoxes: Matter.Body[]; wreckers: Matter.Body[] } {
   const bodies: Matter.Body[] = [];
   for (const f of plan.floors) {
-    if (f.hidden) continue;
+    if (f.hidden || f.noBody) continue;
     const depth = Math.max(240, plan.height - Math.max(f.y0, f.y1));
     bodies.push(quad([{ x: f.x0, y: f.y0 }, { x: f.x1, y: f.y1 }, { x: f.x1, y: f.y1 + FLOOR_DEPTH }, { x: f.x0, y: f.y0 + FLOOR_DEPTH }], f.lane, 'floor', depth));
   }
+  // Crossing tracks: rails and crossing floors, one body per segment. A rail's body lies on the right-hand side of
+  // travel (it can run upright or upside down); a floor's hangs straight down as above. Segments inside a crossing
+  // collide in their passage's ply bit (engine/platformer.ts plyMask), all others as ordinary walls.
+  (plan.tracks ?? []).forEach((line, li) => {
+    for (let i = 0; i < line.pts.length - 1; i++) {
+      const a = line.pts[i], b = line.pts[i + 1];
+      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      if (len < 0.5) continue;
+      const tx = (b.x - a.x) / len, ty = (b.y - a.y) / len;
+      const n = line.rail ? { x: -ty, y: tx } : { x: 0, y: 1 };
+      const depth = line.rail ? -1 : Math.max(240, plan.height - Math.max(a.y, b.y));
+      const body = quad([a, b, { x: b.x + n.x * FLOOR_DEPTH, y: b.y + n.y * FLOOR_DEPTH }, { x: a.x + n.x * FLOOR_DEPTH, y: a.y + n.y * FLOOR_DEPTH }], line.lane, 'floor', depth);
+      body.collisionFilter.category = line.cats[i] || CAT_WALL;
+      body.plugin = { kind: 'floor', lane: line.lane, depth, line: li, seg: i, rail: line.rail, tx, ty, source: line.source };
+      bodies.push(body);
+    }
+  });
   for (const b of plan.bumps) if (!b.hidden) bodies.push(box(b.x, b.y, b.w, b.h + 20, b.lane as Lane, 'floor', b.h));
   // One-way ledges: their own collision category, so the engine can let a ball through from below.
   for (const l of plan.ledges ?? []) {

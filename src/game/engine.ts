@@ -197,6 +197,12 @@ export interface Marble {
   loopPhase?: 0 | 1;
   /** When this marble got stuck at the foot of a loop ring with no speed to climb it (undefined = not stuck). */
   loopStuckSince?: number;
+  /** Crossing tracks: the Workshop track segment this marble last touched (plan.tracks index, segment) and when. */
+  track?: { line: number; seg: number; at: number };
+  /** Crossing tracks: the last rail it touched, its direction of travel there (tx, ty) and when (steering along it). */
+  rail?: { tx: number; ty: number; at: number };
+  /** Crossing tracks: the passage it rides in the crossing it is in (set every step; the renderer layers by it). */
+  passage?: { zone: number; id: number };
   /** P2-07: who knocked this marble out (a marble id; -1 a hazard; -2 classified out as a straggler) and when (game time). */
   koBy?: number;
   koAt?: number;

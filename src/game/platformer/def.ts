@@ -16,6 +16,8 @@ import type { BoostSpot, Bump, CoursePlan, Floor, ItemBoxSpot, Kicker, Lane, Lan
 import { LOOP_R, PLANK_H } from './routes';
 import type { BridgeSpot, LoopSpot } from './routes';
 import { lanesOf } from '../lanes';
+import { curvePoints, ridePoints, trackPlanOf } from './crossings';
+export { curvePoints } from './crossings';
 
 /** The y of the flat start platform. A platformer def is built downwards from here, with room above it to climb. */
 export const PF_START_Y = 800;
@@ -40,21 +42,6 @@ export function newPlatformerDef(name: string, width = PF_DEFAULT_WIDTH, theme: 
 export const isPlatformerDef = (def: Pick<TrackDef, 'mode'> | null | undefined): boolean => def?.mode === 'platformer';
 
 /** A quadratic Bézier cut into straight floor slabs. */
-/**
- * The points along a curve: at least `n` segments, and never longer than about 40 px each, so a tight bend stays
- * round (the owner: a sharp bend broke into chunks with gaps).
- */
-export function curvePoints(a: [number, number], c: [number, number], b: [number, number], n: number): { x: number; y: number }[] {
-  const approx = Math.hypot(c[0] - a[0], c[1] - a[1]) + Math.hypot(b[0] - c[0], b[1] - c[1]);
-  const segs = Math.max(n, Math.min(200, Math.ceil(approx / 40)));
-  const pts: { x: number; y: number }[] = [];
-  for (let i = 0; i <= segs; i++) {
-    const t = i / segs, u = 1 - t;
-    pts.push({ x: u * u * a[0] + 2 * u * t * c[0] + t * t * b[0], y: u * u * a[1] + 2 * u * t * c[1] + t * t * b[1] });
-  }
-  return pts;
-}
-
 function curveFloors(lane: Lane, a: [number, number], c: [number, number], b: [number, number], n: number): Floor[] {
   const pts = curvePoints(a, c, b, n);
   const out: Floor[] = [];
@@ -70,12 +57,27 @@ function slab(lane: Lane, ax: number, ay: number, bx: number, by: number): Floor
 
 /** The floors the def's own pieces make (not the start platform or the run-out). */
 export function pieceFloors(def: TrackDef): Floor[] {
+  const tp = trackPlanOf(def, lanesOf(def.lanes));
   const out: Floor[] = [];
-  for (const p of def.pieces) {
+  def.pieces.forEach((p, i) => {
+    if (p.t !== 'ramp' && p.t !== 'ice' && p.t !== 'curve') return;
+    if (p.t !== 'ice' && tp.rails.has(i)) {
+      // A rail: only its stretches that run to the right like ground are floor (for springs, the drivers, the safety
+      // net). They are hidden: the rail's own line builds its body and its beam paints it.
+      const r = ridePoints(p)!;
+      for (let k = 1; k < r.pts.length; k++) {
+        const a = r.pts[k - 1], b = r.pts[k];
+        const len = Math.hypot(b.x - a.x, b.y - a.y);
+        if (len > 0.5 && (b.x - a.x) / len >= 0.5) out.push({ lane: laneOf(p), x0: a.x, y0: a.y, x1: b.x, y1: b.y, hidden: true, noCliff: true });
+      }
+      return;
+    }
     const float = (floors: Floor[]) => ((p.t === 'ramp' || p.t === 'curve') && p.cliff === false ? floors.map((f) => ({ ...f, noCliff: true })) : floors);
-    if (p.t === 'ramp' || p.t === 'ice') out.push(...float(slab(laneOf(p), p.a[0], p.a[1], p.b[0], p.b[1])));
-    else if (p.t === 'curve') out.push(...float(curveFloors(laneOf(p), p.a, p.c, p.b, p.n ?? 12)));
-  }
+    // A floor in a crossing: drawn and measured as before, but its body is built from its line and it never has a cliff.
+    const crossing = (floors: Floor[]) => (p.t !== 'ice' && tp.crossing.has(i) ? floors.map((f) => ({ ...f, noBody: true, noBeam: true, noCliff: true })) : floors);
+    if (p.t === 'ramp' || p.t === 'ice') out.push(...crossing(float(slab(laneOf(p), p.a[0], p.a[1], p.b[0], p.b[1]))));
+    else out.push(...crossing(float(curveFloors(laneOf(p), p.a, p.c, p.b, p.n ?? 12))));
+  });
   return out;
 }
 
@@ -86,6 +88,22 @@ export function floorYAt(floors: readonly Floor[], lane: Lane, x: number): numbe
     if (f.lane !== lane || x < f.x0 || x > f.x1) continue;
     const y = f.y0 + ((x - f.x0) / (f.x1 - f.x0)) * (f.y1 - f.y0);
     if (best === null || y < best) best = y;
+  }
+  return best;
+}
+
+/**
+ * The floor at x nearest to height y (where tracks cross, a spring or crate stays on the track it was put on), or
+ * null over a gap. Ties go to the higher surface, so where floors do not overlap it is exactly floorYAt.
+ */
+export function floorYNear(floors: readonly Floor[], lane: Lane, x: number, y: number): number | null {
+  let best: number | null = null;
+  for (const f of floors) {
+    if (f.lane !== lane || x < f.x0 || x > f.x1) continue;
+    const fy = f.y0 + ((x - f.x0) / (f.x1 - f.x0)) * (f.y1 - f.y0);
+    if (best === null) { best = fy; continue; }
+    const d = Math.abs(fy - y), bd = Math.abs(best - y);
+    if (d < bd - 0.5 || (Math.abs(d - bd) <= 0.5 && fy < best)) best = fy;
   }
   return best;
 }
@@ -117,7 +135,7 @@ export function settle(def: TrackDef): TrackDef {
   let changed = false;
   const pieces = def.pieces.map((p): Piece => {
     const lane = laneOf(p);
-    const snap = (x: number, y: number): number => floorYAt(floors, lane, x) ?? y;
+    const snap = (x: number, y: number): number => floorYNear(floors, lane, x, y) ?? y;
     if (p.t === 'pad') { const y = snap(p.x, p.y); if (y !== p.y) { changed = true; return { ...p, y }; } }
     else if (p.t === 'gate') { const y = snap(p.x + p.w / 2, p.y); if (y !== p.y) { changed = true; return { ...p, y }; } }
     else if (p.t === 'block') {
@@ -140,9 +158,17 @@ export function planFromTrackDef(def: TrackDef): CoursePlan {
   const loops: LoopSpot[] = [], bridges: BridgeSpot[] = [];
   const kickers: Kicker[] = [];
   const extras: NonNullable<CoursePlan['extras']> = [];
-  // each Workshop curve's beam, painted whole along its shape (coaster.ts)
+  // Each Workshop curve's beam, painted whole along its shape (coaster.ts); a rail's or a crossing piece's beam follows
+  // its track line (in ride order, on its solid side). Beams are drawn in piece order: a later piece is in front.
+  const tp = trackPlanOf(def, active);
+  const lineOf = new Map(tp.tracks.map((l) => [l.source, l]));
   const beams: NonNullable<CoursePlan['beams']> = [];
-  for (const p of def.pieces) if (p.t === 'curve' && active.includes(laneOf(p))) beams.push({ lane: laneOf(p), pts: curvePoints(p.a, p.c, p.b, p.n ?? 12) });
+  def.pieces.forEach((p, source) => {
+    if ((p.t !== 'curve' && p.t !== 'ramp') || !active.includes(laneOf(p))) return;
+    const line = lineOf.get(source);
+    if (line) beams.push({ lane: line.lane, pts: line.pts, oriented: line.rail, source });
+    else if (p.t === 'curve') beams.push({ lane: laneOf(p), pts: curvePoints(p.a, p.c, p.b, p.n ?? 12), source });
+  });
   def.pieces.forEach((p, source) => {
     const lane = laneOf(p);
     if (!active.includes(lane)) return; // a lane the course does not have
@@ -186,6 +212,8 @@ export function planFromTrackDef(def: TrackDef): CoursePlan {
   return {
     seed: def.seed ?? 0, style: 'flow', width, height, floors, bumps, gates, path, ...(extras.length ? { extras } : {}),
     ...(beams.length ? { beams } : {}),
+    ...(tp.tracks.length ? { tracks: tp.tracks } : {}),
+    ...(tp.crossings.length ? { crossings: tp.crossings } : {}),
     ...(def.lanes ? { lanes: active } : {}),
     startX: 520, startY: PF_START_Y, finishX, finishY,
     springs, ledges, itemBoxes, wreckers, boosts, loops, bridges, ...(kickers.length ? { kickers } : {}),

@@ -111,3 +111,13 @@ export function projectToScreen(
     scale: s,
   };
 }
+
+/**
+ * Crossing tracks: each way through a crossing (a passage) collides in its own category, one of these eight bits. A ball
+ * inside a crossing keeps only its own passage's bit in its mask; outside crossings it keeps all of them (every track is
+ * solid). The bits sit above the lane bits (0x1000..0x4000) and every other category in track.ts.
+ */
+export const PLY_COUNT = 8;
+export const CAT_PLY0 = 0x10000;
+export const ALL_PLY = 0xff0000;
+export const plyBit = (k: number): number => CAT_PLY0 << Math.max(0, Math.min(PLY_COUNT - 1, k));

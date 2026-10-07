@@ -4,11 +4,12 @@
 import { personalityOf } from '../ai-personality';
 import Matter from 'matter-js';
 import type { Game, Marble } from '../engine';
-import { laneCategory, LANE_SWITCH_MS, LANE_MIDDLE } from '../lanes';
+import { ALL_PLY, laneCategory, LANE_SWITCH_MS, LANE_MIDDLE } from '../lanes';
 import { progressAlong, pointAt } from '../course-path';
 import { GATE_RAMP_H, floorAt, SPRING_W } from '../platformer/course';
 import { CAT_ONEWAY } from '../platformer/build';
 import type { CoursePlan, Lane, LaneGate } from '../platformer/course';
+import type { CrossPassage, CrossZone } from '../platformer/course';
 import { CAT_WALL, CAT_SENSOR, CAT_FRAGILE, CAT_DANGER, CAT_LOOP_UP, CAT_LOOP_CLOSE, meta } from '../track';
 import { PLANK_H, bridgeLineAt, inLoopBox } from '../platformer/routes';
 import type { LoopSpot } from '../platformer/routes';
@@ -117,7 +118,133 @@ export function applyLaneMask(game: Game, m: Marble): void {
   if ((m.fx?.drillUntil ?? 0) > game.time) { m.body.collisionFilter.mask = CAT_SENSOR; return; }
   // P2-21: a loop ring is two halves on their own bits; a marble meets the half it is riding (see loopStep).
   const loopBit = game.track.platformer?.plan.loops?.length ? ((m.loopPhase ?? 0) === 1 ? CAT_LOOP_CLOSE : CAT_LOOP_UP) : 0;
-  m.body.collisionFilter.mask = CAT_WALL | CAT_SENSOR | (ghost ? 0 : laneCategory(lane) | CAT_FRAGILE | CAT_DANGER) | loopBit | (onLedgeSide(game, m) ? CAT_ONEWAY : 0);
+  m.body.collisionFilter.mask = CAT_WALL | CAT_SENSOR | (ghost ? 0 : laneCategory(lane) | CAT_FRAGILE | CAT_DANGER) | loopBit | (onLedgeSide(game, m) ? CAT_ONEWAY : 0) | plyMask(game, m);
+}
+
+// ---- Crossing tracks (Workshop): a ball rides the track it last touched; where tracks cross, the others are not there
+// for it. Outside crossings every track is solid (all ply bits); inside one, only its own passage's bit.
+
+/** How close (px, ball centre to track) a passage must be for a ball with no track of its own to be caught by it. */
+const PASS_REACH = 80;
+
+function segDist(p: Matter.Vector, a: Matter.Vector, b: Matter.Vector): number {
+  const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy || 1;
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2));
+  return Math.hypot(p.x - (a.x + dx * t), p.y - (a.y + dy * t));
+}
+
+function passageDistance(game: Game, P: CrossPassage, p: Matter.Vector): number {
+  const tracks = game.track.platformer!.plan.tracks!;
+  let best = Infinity;
+  for (const [li, s0, s1] of P.runs) { const pts = tracks[li].pts; for (let i = s0; i <= s1; i++) best = Math.min(best, segDist(p, pts[i], pts[i + 1])); }
+  return best;
+}
+
+/** The passage of zone `z` this marble rides: its last touched track, else (rolling) the nearest, (in the air) the front one. */
+function choosePassage(game: Game, m: Marble, z: CrossZone): CrossPassage | null {
+  const tracks = game.track.platformer!.plan.tracks!;
+  const t = m.track;
+  if (t && tracks[t.line]) {
+    // the passage holding the segment it touched, else the nearest run of that track, else of a track joined to it
+    for (const lines of [[t.line], tracks[t.line].joins]) {
+      let best: CrossPassage | null = null, bestGap = Infinity;
+      for (const P of z.passages) {
+        for (const [li, s0, s1] of P.runs) {
+          if (!lines.includes(li)) continue;
+          const gap = li === t.line ? (t.seg < s0 ? s0 - t.seg : t.seg > s1 ? t.seg - s1 : 0) : 0;
+          if (gap < bestGap) { bestGap = gap; best = P; }
+        }
+      }
+      if (best) return best;
+    }
+  }
+  const p = m.body.position;
+  const near = z.passages.map((P) => ({ P, d: passageDistance(game, P, p) })).filter((x) => x.d <= PASS_REACH);
+  if (!near.length) return null;
+  if (m.grounded < 5) return near.reduce((a, b) => (b.d < a.d - 4 || (Math.abs(b.d - a.d) <= 4 && b.P.depth > a.P.depth) ? b : a)).P;
+  return near.reduce((a, b) => (b.P.depth > a.P.depth ? b : a)).P;
+}
+
+/** The ply bits of this marble's mask (and its `passage`, for the renderer). */
+export function plyMask(game: Game, m: Marble): number {
+  m.passage = undefined;
+  const zones = game.track.platformer?.plan.crossings;
+  if (!zones?.length) return ALL_PLY;
+  const lane = m.lane ?? LANE_MIDDLE, p = m.body.position, pad = MARBLE_RADIUS;
+  for (let zi = 0; zi < zones.length; zi++) {
+    const z = zones[zi];
+    if (z.lane !== lane || p.x < z.x0 - pad || p.x > z.x1 + pad || p.y < z.y0 - pad || p.y > z.y1 + pad) continue;
+    const P = choosePassage(game, m, z);
+    if (!P) return ALL_PLY; // nothing of its own and nothing near: every track solid, the first touch decides
+    m.passage = { zone: zi, id: P.id };
+    const zoneBits = z.passages.reduce((bits, q) => bits | q.bit, 0);
+    return (ALL_PLY & ~zoneBits) | P.bit;
+  }
+  return ALL_PLY;
+}
+
+/** Called for every marble-floor contact: remember the Workshop track it touched (any other floor forgets it). */
+export function noteTrackContact(game: Game, m: Marble, other: Matter.Body): void {
+  const md = meta(other);
+  if (!md || (md.kind !== 'floor' && md.kind !== 'ledge')) return;
+  if (md.line === undefined || md.seg === undefined) { m.track = undefined; return; }
+  m.track = { line: md.line, seg: md.seg, at: game.time };
+  if (md.rail) {
+    m.rail = { tx: md.tx ?? 1, ty: md.ty ?? 0, at: game.time };
+    m.grounded = 0; // on a rail at any angle a ball can steer and jump (off the track's face)
+  }
+}
+
+/** The rail this marble is on right now, if it runs steep or upside down there (else null: ordinary steering). */
+export function onSteepRail(game: Game, m: Marble): { tx: number; ty: number } | null {
+  const r = m.rail;
+  if (!r || game.time - r.at > 40) return null;
+  return r.tx < 0.5 ? r : null;
+}
+
+/**
+ * Steering. On a steep or upside-down rail it pushes along the track (right = forward, the rail's direction of travel;
+ * left = back); there is no grip: a ball that runs out of speed falls. Anywhere else it is the usual sideways push.
+ */
+export function railSteer(game: Game, m: Marble, v: Matter.Vector, nudge: number, grounded: boolean, s: number): Matter.Vector {
+  const r = onSteepRail(game, m);
+  if (!r) return { x: steerVelocity(v.x, nudge, grounded, s), y: v.y };
+  const along = v.x * r.tx + v.y * r.ty;
+  if ((nudge > 0 && along >= CONTROL_TUNING.maxSteerVx) || (nudge < 0 && along <= -CONTROL_TUNING.maxSteerVx)) return v;
+  const push = CONTROL_TUNING.steerGround * nudge * s;
+  return { x: v.x + r.tx * push, y: v.y + r.ty * push };
+}
+
+/** A jump. On a steep or upside-down rail it pushes off the track's running face; anywhere else straight up as always. */
+export function railJump(game: Game, m: Marble, v: Matter.Vector): Matter.Vector {
+  const r = onSteepRail(game, m);
+  if (!r) return { x: v.x, y: Math.min(v.y, -CONTROL_TUNING.jumpSpeed) };
+  return { x: v.x + r.ty * CONTROL_TUNING.jumpSpeed, y: v.y - r.tx * CONTROL_TUNING.jumpSpeed };
+}
+
+const inBox = (b: { x0: number; y0: number; x1: number; y1: number }, p: Matter.Vector, pad: number) =>
+  p.x >= b.x0 - pad && p.x <= b.x1 + pad && p.y >= b.y0 - pad && p.y <= b.y1 + pad;
+
+/** Is this marble in or near a rail (pad px) of its lane? */
+export function inRailBox(game: Game, m: Marble, pad = 40): boolean {
+  const plan = game.track.platformer?.plan;
+  const lane = m.lane ?? LANE_MIDDLE, p = m.body.position;
+  return !!plan?.tracks?.some((l) => l.rail && l.lane === lane && inBox(l.box, p, pad));
+}
+
+/** Is this marble in or near a crossing (pad px) of its lane? */
+function inCrossing(game: Game, m: Marble, pad = 40): boolean {
+  const plan = game.track.platformer?.plan;
+  const lane = m.lane ?? LANE_MIDDLE, p = m.body.position;
+  return !!plan?.crossings?.some((z) => z.lane === lane && inBox(z, p, pad));
+}
+
+/** A rail of this marble's lane up to `reach` px ahead (the computer driver commits: full push, no hop). */
+export function railAhead(game: Game, m: Marble, reach = 420): boolean {
+  const plan = game.track.platformer?.plan;
+  if (!plan?.tracks?.length) return false;
+  const lane = m.lane ?? LANE_MIDDLE, p = m.body.position;
+  return plan.tracks.some((l) => l.rail && l.lane === lane && p.x > l.box.x0 - reach && p.x < l.box.x1 + 20 && p.y > l.box.y0 - 200 && p.y < l.box.y1 + 200);
 }
 
 /**
@@ -226,6 +353,8 @@ export function keepAboveFloor(game: Game, m: Marble): void {
   // rope bridges sag below the line between their anchors, and loops have their own rings: leave those alone
   if (plan.bridges?.some((b) => b.lane === lane && p.x >= b.x0 - 20 && p.x <= b.x1 + 20)) return;
   if (plan.loops?.some((l) => l.lane === lane && p.x >= l.x - l.r - 40 && p.x <= l.x + l.pitch + l.r + 40)) return;
+  // crossing tracks: under an overpass or inside a loop the floor below is not this ball's floor
+  if (inCrossing(game, m) || inRailBox(game, m)) return;
   const floor = floorAt(plan, lane as Lane, p.x);
   if (floor === null || p.y <= floor - MARBLE_RADIUS + 6 || p.y > floor + 160) return;
   Body.setPosition(m.body, { x: p.x, y: floor - MARBLE_RADIUS - 1 });
@@ -238,6 +367,7 @@ export function switchLane(game: Game, m: Marble, to: Lane): void {
   if ((m.lane ?? LANE_MIDDLE) === to) return;
   m.laneFrom = m.lane ?? LANE_MIDDLE;
   m.lane = to;
+  m.track = undefined; m.rail = undefined;
   m.laneAt = game.time;
   applyLaneMask(game, m);
   // Lanes have their own hills: if the new lane's floor is above the ball, the ball goes on top of it. Over a chasm in
@@ -341,7 +471,9 @@ export function laneGates(game: Game, m: Marble): void {
 /** Distance along the course path (a hint keeps it on its own stretch). */
 export function updateProgress(game: Game, m: Marble): void {
   const info = game.track.platformer!;
-  m.progress = progressAlong(info.path, m.body.position, m.progress);
+  const next = progressAlong(info.path, m.body.position, m.progress);
+  // a loop runs backwards for a while: never lose race position riding one
+  m.progress = m.progress !== undefined && inRailBox(game, m, 0) ? Math.max(m.progress, next) : next;
 }
 
 /** Crossing the finish line, in any lane. */
@@ -376,6 +508,7 @@ export function platformRecovery(game: Game, m: Marble, dt: number): void {
   m.lane = LANE_MIDDLE;
   m.laneFrom = LANE_MIDDLE;
   m.laneAt = undefined;
+  m.track = undefined; m.rail = undefined;
   applyLaneMask(game, m);
   Body.setPosition(m.body, { x: spot.x, y: floor - MARBLE_RADIUS - 4 });
   Body.setVelocity(m.body, { x: 0, y: 0 });
@@ -409,6 +542,7 @@ function loopRescue(game: Game, m: Marble): boolean {
   Body.setVelocity(m.body, { x: 6, y: 0 });
   Body.setAngularVelocity(m.body, 0);
   m.loopPhase = 0;
+  m.track = undefined; m.rail = undefined;
   applyLaneMask(game, m);
   m.trail = [];
   m.progress = progressAlong(game.track.platformer!.path, m.body.position, undefined);
@@ -523,14 +657,14 @@ const CLASSIC_DANGER = new Set(['blade', 'saw', 'crusher', 'boulder', 'mace', 's
 
 export function aiDrive(game: Game, m: Marble, v: Matter.Vector, s: number): Matter.Vector {
   const grounded = m.grounded < 5;
-  // P2-21: with a loop just ahead the driver commits: full push all the way in, no hop, no door (the ring is ridden on speed).
-  const loop = loopAhead(game, m);
+  // P2-21 / crossing tracks: with a loop or a rail just ahead the driver commits: full push, no hop, no door.
+  const commit = !!loopAhead(game, m) || railAhead(game, m);
   const brain = decide(sense(game, m, v.x, grounded));
-  const d = loop ? { ...brain, nudge: 1, jump: false, takeDoor: false } : brain;
-  if (d.nudge !== 0) v = { x: steerVelocity(v.x, d.nudge, grounded, s), y: v.y };
+  const d = commit ? { ...brain, nudge: 1, jump: false, takeDoor: false } : brain;
+  if (d.nudge !== 0) v = railSteer(game, m, v, d.nudge, grounded, s);
   if (grounded && game.time >= (m.aiJumpAt ?? 0)) {
     // Pushing but not moving: a rival (or anything else) is in the way. Hop it.
-    const blocked = !loop && v.x < 1.2 && game.time - game.raceStartTime > 1500;
+    const blocked = !commit && v.x < 1.2 && game.time - game.raceStartTime > 1500;
     if (d.jump || blocked) {
       m.aiJumpAt = game.time + CONTROL_TUNING.jumpCooldownMs;
       v = { x: v.x, y: Math.min(v.y, -CONTROL_TUNING.jumpSpeed) };
