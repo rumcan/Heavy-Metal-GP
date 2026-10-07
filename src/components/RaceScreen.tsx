@@ -80,6 +80,12 @@ interface Props {
   /** A Workshop test drive: every skill on the bar, unlimited charges, and the wallet's items are never touched. */
   testDrive?: boolean;
   /**
+   * The Workshop's quick test of a platformer course (the owner: as easy to start and stop as the pinball test): no
+   * start lights, Esc or Stop test goes straight back to the Workshop, R starts the test again, and the finish offers
+   * the same two.
+   */
+  quickTest?: boolean;
+  /**
    * MP-06: an ONLINE race. When this is set the screen does not own the world —
    * a `RaceSession` does, and it is either the simulation (host) or the picture
    * of one (guest). Everything else on this screen is unchanged: it still reads
@@ -153,13 +159,17 @@ function testDriveSlots(slots: Slots): Slots {
 /** Two jump presses this close together (ms) fire the Jump skill. */
 const DOUBLE_JUMP_MS = 300;
 
-export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef, title, subtitle, onExit, onFinished, actions, championship = false, inventory, credits, onInventoryChange, payout, onShop, isCustom = false, story, loadoutMode, online, rating = null, tutorial, testDrive = false }: Props) {
+export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef, title, subtitle, onExit, onFinished, actions, championship = false, inventory, credits, onInventoryChange, payout, onShop, isCustom = false, story, loadoutMode, online, rating = null, tutorial, testDrive = false, quickTest = false }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef<Game | null>(null);
   /** MP-06: the online session, when there is one. The host's simulation or the guest's picture. */
   const sessionRef = useRef<RaceSession | null>(null);
   const onlineRef = useRef(online);
   onlineRef.current = online;
+  const quickTestRef = useRef(quickTest);
+  quickTestRef.current = quickTest;
+  const onExitRef = useRef(onExit);
+  onExitRef.current = onExit;
   /** P2-13: the tutorial overlay's bridge, read by the input handlers and the HUD tick. */
   const tutorialRef = useRef(tutorial);
   tutorialRef.current = tutorial;
@@ -423,6 +433,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       if (msg.type === 'chat') chatSink.current(msg);
     };
     doneRef.current = false;
+    setResults(null);
     let toastTimer: ReturnType<typeof setTimeout> | undefined;
     game.onEvent = (message, color = '#d63e2e') => {
       clearTimeout(toastTimer);
@@ -459,7 +470,8 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
     let lookAhead = 0;
     let lights = 0;
     let finishHold = 0;
-    const lightsOutAt = 4200 + game.rng() * 1000;
+    // A Workshop quick test skips the lights: the gate opens as soon as the marbles have settled on the grid.
+    const lightsOutAt = quickTestRef.current ? 250 : 4200 + game.rng() * 1000;
     const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
     const leaves = new WindLeaves();
 
@@ -514,6 +526,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
         // puts it away before it puts the race away.
         if (composingRef.current) { closeCompose(); return; }
         if (onlineRef.current) { leaveRace(); return; }
+        if (quickTestRef.current) { onExitRef.current(); return; }
         if (!pausedRef.current) setPause(true);
         return;
       }
@@ -523,6 +536,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       // `preventDefault` matters: the bar mounts with the caret already in it,
       // and without this the same keystroke that opened it types a "t" at the
       // front of the first line.
+      if (event.code === 'KeyR' && down && !event.repeat && quickTestRef.current) { setPause(false); setRestarts((n) => n + 1); return; }
       if (event.code === 'KeyT' && down && !event.repeat && onlineRef.current) { event.preventDefault(); openCompose(); return; }
       if (pausedRef.current) return;
       // Tab: the trial skill you picked up (the Tab slot). It never moves the keyboard focus during a race.
@@ -804,7 +818,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
    * tab's permission, so leaving is the only honest way out of it.
    */
   const leaveRace = () => {
-    if (onlineRef.current) {
+    if (onlineRef.current || quickTestRef.current) {
       onExit();
       return;
     }
@@ -836,7 +850,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
 
   return <div className={`race-shell${mapTrack?.platformer ? ' is-platformer' : ''}`} {...mpProbe}>
     {online && <NetStats session={sessionRef.current} />}
-    <header className="race-topbar"><Brand compact /><div className="race-event"><span>{subtitle}</span><h1>{title}</h1></div><div className="race-clock"><span>RACE TIME</span><strong>{formatTime(hud.time)}</strong></div><div className="race-top-actions"><RadioPill compact />{import.meta.env.DEV && !results && !online && <div className="dev-skip-race" title="Dev only: finish this heat instantly with you in the chosen place"><span>SKIP</span>{([1, 3, 8, 'dnf'] as const).map((place) => <button key={place} className="text-button" onClick={() => devSkipRace(place)}>{place === 'dnf' ? 'DNF' : `P${place}`}</button>)}</div>}<button className="icon-button" onClick={toggleMute} aria-label={muted ? 'Unmute sound (M)' : 'Mute sound (M)'} aria-pressed={muted} title={muted ? 'Sound off (M)' : 'Sound on (M)'}>{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button><button className="icon-button" onClick={() => setPause(true)} aria-label="Pause race" disabled={!!results || !!online} title={online ? 'An online race cannot be paused' : 'Pause race'}><Pause size={18} /></button><button className="text-button" onClick={requestExit} disabled={!!results}>{online ? 'Leave race' : 'Exit'} <ArrowUpRightIcon /></button></div></header>
+    <header className="race-topbar"><Brand compact /><div className="race-event"><span>{subtitle}</span><h1>{title}</h1></div><div className="race-clock"><span>RACE TIME</span><strong>{formatTime(hud.time)}</strong></div><div className="race-top-actions"><RadioPill compact />{import.meta.env.DEV && !results && !online && <div className="dev-skip-race" title="Dev only: finish this heat instantly with you in the chosen place"><span>SKIP</span>{([1, 3, 8, 'dnf'] as const).map((place) => <button key={place} className="text-button" onClick={() => devSkipRace(place)}>{place === 'dnf' ? 'DNF' : `P${place}`}</button>)}</div>}<button className="icon-button" onClick={toggleMute} aria-label={muted ? 'Unmute sound (M)' : 'Mute sound (M)'} aria-pressed={muted} title={muted ? 'Sound off (M)' : 'Sound on (M)'}>{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button><button className="icon-button" onClick={() => setPause(true)} aria-label="Pause race" disabled={!!results || !!online} title={online ? 'An online race cannot be paused' : 'Pause race'}><Pause size={18} /></button>{quickTest ? <><button className="text-button" onClick={() => { setPause(false); setRestarts((n) => n + 1); }} title="Start the test again (R)"><RotateCcw size={15} />Restart <kbd>R</kbd></button><button className="button-primary quick-test-stop" onClick={onExit} title="Stop the test and go back to the Workshop (Esc)"><Pause size={15} />Stop test <kbd>Esc</kbd></button></> : <button className="text-button" onClick={requestExit} disabled={!!results}>{online ? 'Leave race' : 'Exit'} <ArrowUpRightIcon /></button>}</div></header>
     <div className="race-stage">
       <HeatEdges on={hud.overheated && !hud.finished && !hud.dnf} />
       <canvas ref={canvasRef} className="race-canvas" aria-label="2D marble race. Arrow keys nudge. Keys 1 to 8 deploy power-ups; plus and minus zoom; Space repeats the last item. P pauses." />
@@ -889,7 +903,7 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       </div>{/* (gone once you are finished or out: the fast-forward panel sits there) */}{!(hud.finished || hud.dnf) && <InventoryToolbar slots={slotsRef.current} unlimited={testDrive ? UNLIMITED_ALL : online?.settings.items} inventory={hud.inventory} remaining={hud.remaining} selected={selected} blocked={paused || hud.finished || preStart || hud.frozen || !!results} coolingDown={hud.coolingDown} onUse={deploy} pickup={hud.pickup} pickupCharges={hud.pickupCharges} onUsePickup={() => { if (hud.pickup) deploy(hud.pickup); }} />}
     </footer>
     {paused && !results && <Dialog titleId="pause-title" onClose={() => { setConfirmExit(false); setPause(false); }} className="pause-dialog"><span className="eyebrow"><Timer size={15} /> {confirmExit ? 'RACE CONTROL' : 'TIME OUT'}</span><h2 id="pause-title">{confirmExit ? 'Leaving the grid?' : 'A quick pit stop.'}</h2><p className="dialog-intro">{confirmExit ? 'This heat will not be scored or paid. Used items stay spent; unused items and pickups stay in your inventory. Previous results are safe.' : 'The clock, every marble, and all item timers are paused. Your next move can wait.'}</p><div className="pause-actions"><button className="button-primary" onClick={() => { setConfirmExit(false); setPause(false); }}><Play size={17} />Back to the race</button>{!online && <button className="button-secondary" onClick={() => { setConfirmExit(false); setPause(false); setRestarts((n) => n + 1); }}><RotateCcw size={16} />Restart race</button>}<button className="button-secondary" onClick={confirmExit ? onExit : () => setConfirmExit(true)}>{confirmExit ? 'Leave heat' : 'Return to paddock'}<ChevronRight size={16} /></button></div></Dialog>}
-    {results && <RaceResults results={results} roster={roster} title={title} subtitle={subtitle} actions={actions} championship={championship} payout={payout} credits={credits} startKit={resultStartKit.current} endKit={resultEndKit} onShop={onShop} isCustom={isCustom} rating={rating} />}
+    {results && <RaceResults results={results} roster={roster} title={title} subtitle={subtitle} actions={quickTest ? [{ label: 'Test again', onClick: () => setRestarts((n) => n + 1), primary: true }, { label: 'Back to the Workshop', onClick: onExit }] : actions} championship={championship} payout={payout} credits={credits} startKit={resultStartKit.current} endKit={resultEndKit} onShop={onShop} isCustom={isCustom} rating={rating} />}
   </div>;
 }
 

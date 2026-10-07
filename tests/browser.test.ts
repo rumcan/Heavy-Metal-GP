@@ -815,11 +815,12 @@ for (const { label, options } of SCREEN_VIEWPORTS) {
       // New track opens straight on the platformer starts (the drop tracks are retired).
       await page.locator('.home-actions').getByRole('button', { name: /New track/ }).click();
       await page.getByTestId('new-platformer').click();
-      const lanes = page.getByRole('group', { name: 'Lane being edited' });
+      // The lanes are tabs, built one at a time (a new course starts on the main lane; more can be added).
+      const lanes = page.getByRole('tablist', { name: /Lanes/ });
       await lanes.waitFor({ timeout: 60000 });
       // The Workshop's first-visit coach marks open over the canvas: dismiss them.
       await page.getByRole('button', { name: 'Dismiss tutorial' }).click({ timeout: 4000 }).catch(() => { /* not shown */ });
-      for (const name of ['Back', 'Middle', 'Front']) assert.ok(await lanes.getByRole('button', { name, exact: true }).isVisible(), name);
+      assert.ok(await lanes.getByRole('tab', { name: 'Main lane' }).isVisible(), 'the main lane tab');
       assert.ok(await page.getByRole('button', { name: 'Longer course' }).count() === 1);
       assert.ok(await page.getByRole('button', { name: 'Shorter course' }).count() === 1);
       const pieces = async () => Number((await page.locator('.editor-status').textContent() ?? '').match(/(\d+) PIECES/)?.[1] ?? NaN);
@@ -835,13 +836,15 @@ for (const { label, options } of SCREEN_VIEWPORTS) {
       await canvas.click({ position: { x: box.width * 0.6, y: box.height * 0.5 } });
       await page.waitForFunction((n) => (document.querySelector('.editor-status')?.textContent ?? '').includes(`${n + 1} PIECES`), before);
       await page.screenshot({ path: `${artifacts}/platformer-workshop-${slug}.png` });
+      // The quick test (the owner: as easy as the pinball one): one click races it in place, Esc goes straight back.
       await page.getByRole('button', { name: /^Test drive$/ }).click();
-      await dismissGate(page, 20000);
-      await page.waitForSelector('.race-canvas', { timeout: 60000 });
-      await page.getByRole('button', { name: /^Exit/ }).click();
-      const leave = page.getByRole('button', { name: /Leave heat|Back to the editor|Leave/ });
-      if (await leave.first().isVisible({ timeout: 3000 }).catch(() => false)) await leave.first().click();
-      await page.getByRole('group', { name: 'Lane being edited' }).waitFor({ timeout: 60000 });
+      await page.waitForSelector('.quick-test-overlay .race-canvas', { timeout: 60000 });
+      assert.equal(await page.getByRole('button', { name: /Lights out/ }).count(), 0, 'no loading screen in between');
+      await page.keyboard.press('KeyR');
+      await page.waitForSelector('.quick-test-overlay .race-canvas', { timeout: 60000 });
+      await page.keyboard.press('Escape');
+      await page.locator('.quick-test-overlay').waitFor({ state: 'detached', timeout: 20000 });
+      await page.getByRole('tablist', { name: /Lanes/ }).waitFor({ timeout: 60000 });
       assert.equal(await pieces(), before + 1, 'the floor is still there');
       assert.deepEqual(errors, []);
     } finally { await context.close(); }
@@ -875,12 +878,14 @@ for (const { label, options } of SCREEN_VIEWPORTS) {
       assert.ok(box);
       await canvas.click({ position: { x: box.width * 0.6, y: box.height * 0.5 } });
       await page.waitForFunction((n) => (document.querySelector('.editor-status')?.textContent ?? '').includes(`${n + 6} PIECES`), before);
+      // The quick test (the owner: as easy as the pinball one): one click races it in place, Esc goes straight back.
       await page.getByRole('button', { name: /^Test drive$/ }).click();
-      await dismissGate(page, 20000);
-      await page.waitForSelector('.race-canvas', { timeout: 60000 });
-      await page.getByRole('button', { name: /^Exit/ }).click();
-      const leave = page.getByRole('button', { name: /Leave heat|Back to the editor|Leave/ });
-      if (await leave.first().isVisible({ timeout: 3000 }).catch(() => false)) await leave.first().click();
+      await page.waitForSelector('.quick-test-overlay .race-canvas', { timeout: 60000 });
+      assert.equal(await page.getByRole('button', { name: /Lights out/ }).count(), 0, 'no loading screen in between');
+      await page.keyboard.press('KeyR');
+      await page.waitForSelector('.quick-test-overlay .race-canvas', { timeout: 60000 });
+      await page.keyboard.press('Escape');
+      await page.locator('.quick-test-overlay').waitFor({ state: 'detached', timeout: 20000 });
       await page.locator('.editor-canvas').waitFor({ timeout: 60000 });
       assert.equal(await pieces(), before + 6, 'the loop is still there');
       assert.deepEqual(errors, []);
