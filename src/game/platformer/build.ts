@@ -128,7 +128,8 @@ export function planBodies(plan: CoursePlan): { bodies: Matter.Body[]; itemBoxes
   const itemBoxes: Matter.Body[] = [];
   const wreckers: Matter.Body[] = [];
   for (const b of plan.itemBoxes ?? []) {
-    const body = Matter.Bodies.circle(b.x, b.y, 17, { isStatic: true, isSensor: true, label: 'itembox', collisionFilter: { category: CAT_SENSOR, mask: laneCategory(b.lane), group: 0 } });
+    // as big as the drawn box (44 px): at 17 a ball rolling under a box 46 px up missed it by a pixel
+    const body = Matter.Bodies.circle(b.x, b.y, 22, { isStatic: true, isSensor: true, label: 'itembox', collisionFilter: { category: CAT_SENSOR, mask: laneCategory(b.lane), group: 0 } });
     body.plugin = { kind: 'itembox', active: true, respawnAt: 0, lane: b.lane };
     bodies.push(body);
     itemBoxes.push(body);

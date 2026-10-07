@@ -563,6 +563,7 @@ export class RaceGuest {
       m.finishedAt = snap.times[i] ?? null;
       m.pegs = snap.pegs[i] ?? 0;
       if (snap.inventories[i]) m.inventory = { ...snap.inventories[i] };
+      if (snap.pickups) m.pickup = snap.pickups[i] ?? null;
       if (m.finishedAt !== null) this.game.park(m);
     });
 
@@ -596,6 +597,7 @@ export class RaceGuest {
     const marbles = this.game.marbles;
     switch (event.kind) {
       case 'peg': {
+        if (event.item && marbles[event.seat]) marbles[event.seat].pickup = event.item; // an item peg's trial skill (Tab slot)
         const body = this.bodyAt(event.i);
         if (!body || meta(body).destroyed) break;
         const color = meta(body).pegColor === 'orange' ? '#fb923c' : meta(body).pegColor === 'green' ? '#4ade80' : '#60a5fa';
@@ -623,6 +625,8 @@ export class RaceGuest {
         const body = this.bodyAt(event.i);
         if (!body) break;
         meta(body).active = !event.taken;
+        // the trial skill the box gave (the Tab slot), so the seat's HUD and use match the host
+        if (event.taken && event.item && event.seat !== undefined && marbles[event.seat]) marbles[event.seat].pickup = event.item;
         if (event.taken) this.ring(body.position.x, body.position.y, 18, '#facc15');
         break;
       }
@@ -659,6 +663,7 @@ export class RaceGuest {
       }
       case 'item': {
         const m = marbles[event.seat];
+        if (m && m.pickup === event.item) m.pickup = null; // the host uses the Tab slot's pickup first
         if (m) this.ring(m.body.position.x, m.body.position.y, 22, m.info.color);
         break;
       }

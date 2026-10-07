@@ -17,12 +17,25 @@ interface Props {
   unlimited?: Partial<Record<ItemType, number>>;
   /** P2-10: what is on each of the eight keys (null = an empty slot). */
   slots: (ItemType | null)[];
+  /** The Tab slot: a trial skill picked up from a box or an item peg (platformer races), null when empty. */
+  pickup?: ItemType | null;
+  onUsePickup?: () => void;
 }
 
-export default function InventoryToolbar({ inventory, remaining, selected, blocked, coolingDown, onUse, unlimited, slots }: Props) {
+export default function InventoryToolbar({ inventory, remaining, selected, blocked, coolingDown, onUse, unlimited, slots, pickup, onUsePickup }: Props) {
   return <section className="inventory-toolbar" aria-label="Race power-up toolbar">
     <div className="inventory-toolbar-heading"><span><PackageCheck size={13} />LOADOUT <b>{inventoryCount(inventory)}</b></span><small>TAP OR PRESS Q W E R / A S D F</small><span title="One charge per use. Unused items carry into your next race."><CircleHelp size={12} />SINGLE USE</span></div>
-    <div className="inventory-slots">{slots.map((slotItem, i) => {
+    <div className="inventory-slots">{onUsePickup && (() => {
+      // The Tab slot: one trial skill from a box or an item peg. Use it to pick up another.
+      const info = pickup ? ITEM_INFO[pickup] : null;
+      const art = pickup ? buttonArt[`../assets/ui/item-${pickup}.webp`] : undefined;
+      const active = !!pickup && remaining[pickup] > 0;
+      return <button key="tab-slot" className={`inventory-slot kit-slot pickup-slot ${pickup ? 'stocked' : 'empty'}`} style={info ? { '--item-color': info.color } as CSSProperties : undefined} disabled={!pickup || blocked || coolingDown || active} onClick={onUsePickup} aria-label={pickup ? `Use ${info!.name}, picked up (Tab)` : 'Tab slot: empty, roll through an item box'} title={pickup ? `${info!.name}: ${info!.desc} (picked up, use it to pick up another)` : 'Roll through an item box or an item peg to try a skill you have not unlocked'}>
+        {pickup && (art ? <img className="kit-slot-art" src={art} alt="" draggable={false} /> : <span className="kit-slot-art kit-slot-glyph"><ItemGlyph item={pickup} size={26} /></span>)}
+        <kbd>TAB</kbd><span className="kit-slot-count">{pickup ? 'TRY' : ''}</span>
+        {!pickup && <span className="kit-slot-state">EMPTY</span>}
+      </button>;
+    })()}{slots.map((slotItem, i) => {
       if (!slotItem) return <div key={`empty-${i}`} className="inventory-slot kit-slot empty slot-unassigned" aria-label={`Slot ${slotKeyLabel(i)} is empty`}><kbd>{slotKeyLabel(i)}</kbd></div>;
       const item = slotItem;
       const info = ITEM_INFO[item];

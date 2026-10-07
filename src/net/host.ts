@@ -535,6 +535,7 @@ export class RaceHost {
       boxes: this.game.boxStates(),
       oils: this.game.oils.map((o) => ({ x: r2(o.x), y: r2(o.y), r: r2(o.r), owner: o.ownerId, expiresAt: Math.round(o.expiresAt) })),
       inventories: this.game.marbles.map((m) => ({ ...m.inventory })),
+      pickups: this.game.marbles.map((m) => m.pickup ?? null),
       pegs: this.game.marbles.map((m) => m.pegs),
       times: this.game.marbles.map((m) => (m.finishedAt === null ? null : Math.round(m.finishedAt))),
       order: this.game.finishOrder.map((m) => m.info.id),

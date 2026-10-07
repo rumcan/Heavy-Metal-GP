@@ -197,6 +197,8 @@ export interface Marble {
   loopPhase?: 0 | 1;
   /** When this marble got stuck at the foot of a loop ring with no speed to climb it (undefined = not stuck). */
   loopStuckSince?: number;
+  /** The Tab slot (platformer races): one skill picked up from a box or an item peg, to try out. Used once; it never goes home. */
+  pickup?: ItemType | null;
   /** Crossing tracks: the Workshop track segment this marble last touched (plan.tracks index, segment) and when. */
   track?: { line: number; seg: number; at: number };
   /** Crossing tracks: the last rail it touched, its direction of travel there (tx, ty) and when (steering along it). */
@@ -1160,6 +1162,7 @@ export class Game {
       if (this.track.platformer) {
         platformer.laneGates(this, m);
         platformer.collectRings(this, m);
+        platformer.smashCrates(this, m);
         platformer.laneStep(this, m);
       }
 

@@ -14,6 +14,23 @@ import { ItemType, MARBLE_RADIUS, ITEM_TYPES, ITEM_INFO, MAX_ITEM_STACK } from '
 
 import { Game, Body, Marble } from '../engine';
 import * as skills from '../skills/effects';
+import { skillDef } from '../skills/catalog';
+
+/**
+ * What item boxes and item pegs give on a platformer course: only skills you do not have at the start (the owner: so
+ * people can try them out). One goes in the Tab slot; it is used once and never goes home.
+ */
+export const TRIAL_SKILLS: readonly ItemType[] = ITEM_TYPES.filter((id) => (skillDef(id)?.unlockLevel ?? 1) > 1);
+
+/** Put a random trial skill in this marble's Tab slot (it must be empty). Returns the skill. */
+export function givePickup(game: Game, m: Marble): ItemType {
+  const item = TRIAL_SKILLS[Math.floor(game.rng() * TRIAL_SKILLS.length)];
+  m.pickup = item;
+  m.lastPickupAt = game.time;
+  m.aiUseAt = game.time + 800 + game.rng() * 1800;
+  if (m.info.isPlayer) game.onEvent?.(`${ITEM_INFO[item].name}: press Tab to use it`, ITEM_INFO[item].color);
+  return item;
+}
 
 
 export function grantItem(game: Game, m: Marble, item: ItemType): boolean  {
@@ -46,7 +63,7 @@ export function availableItem(game: Game, m: Marble = game.player): ItemType | u
 
 export function canUseItem(game: Game, m: Marble, item: ItemType): boolean  {
   // P2-08: an EMP shuts skills off for a few seconds
-  return game.gateOpen && !m.frozen && m.finishedAt === null && !m.dnf && m.inventory[item] > 0 && game.time >= m.itemCooldownUntil && game.itemRemaining(m, item) === 0 && game.time >= (m.fx?.empUntil ?? 0);
+  return game.gateOpen && !m.frozen && m.finishedAt === null && !m.dnf && (m.inventory[item] > 0 || m.pickup === item) && game.time >= m.itemCooldownUntil && game.itemRemaining(m, item) === 0 && game.time >= (m.fx?.empUntil ?? 0);
 }
 
 /** The fastest anything rolls on a platformer course (px per 1/60 s: about 23 px per 120 Hz step, a third of a floor's depth). */
@@ -91,7 +108,9 @@ export function useItem(game: Game, m: Marble, item = game.availableItem(m)): bo
   const fx = m.tfx;
   // P2-17: Quick Hands may keep the charge; Nimble/Rapid shorten the pause between skills
   const refunded = !!fx && (fx.refundChancePct ?? 0) > 0 && game.rng() * 100 < fx.refundChancePct;
-  if (!game.unlimitedItems.has(item) && !refunded) m.inventory[item]--;
+  // The Tab slot's pickup goes first (a trial skill, never refunded); otherwise one of your own charges.
+  if (m.pickup === item) m.pickup = null;
+  else if (!game.unlimitedItems.has(item) && !refunded) m.inventory[item]--;
   m.itemCooldownUntil = game.time + Math.max(150, 450 * (1 + (fx?.skillCooldownPct ?? 0) / 100));
   game.sfx('item', m, p.x, p.y);
   game.emit({ kind: 'item', seat: m.info.id, item });
