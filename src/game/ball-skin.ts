@@ -1,10 +1,15 @@
 /**
  * P2-18: procedural marble cosmetics.
  *
- * A single small vector canvas is generated for each marble and kept in a
- * WeakMap. The hot render path only compares its appearance key and blits the
- * cached image at the marble's position/angle; no gradients or decals are
- * rebuilt per frame. Everything is drawn with Canvas2D — no texture assets.
+ * Two small vector canvases are generated for each marble and kept in a
+ * WeakMap: the SURFACE (base colour, material texture, decal) that spins, and
+ * the LIGHT (shading, reflections, glint, rim, outline) that stays put, so the
+ * highlight sits still while the ball turns under it. The hot render path only
+ * compares the appearance key and blits the two cached images; no gradients or
+ * decals are rebuilt per frame. Everything is drawn with Canvas2D.
+ *
+ * The spin is visual: it follows the distance the ball travelled (rollAngle),
+ * not the physics body's angle, which barely turns because the marble slides.
  */
 import type { Marble } from './engine';
 import {
@@ -35,7 +40,41 @@ export class BallSkinCache<T> {
   }
 }
 
-const sprites = new BallSkinCache<HTMLCanvasElement | null>();
+interface BallSprite { surface: HTMLCanvasElement; light: HTMLCanvasElement }
+const sprites = new BallSkinCache<BallSprite | null>();
+
+/** The most a ball turns in one drawn frame: past about a third of a turn the eye reads the spin backwards. */
+export const MAX_ROLL_STEP = 1.1;
+/** A jump this far between two frames is a respawn or a teleport, not rolling. */
+const TELEPORT = 90;
+
+export interface RollState { x: number; y: number; angle: number }
+
+/**
+ * Advance a ball's visual spin by the distance it moved: a ball that rolls d pixels turns d / r radians (clockwise
+ * when it goes right). Capped per frame so a very fast ball still reads as spinning forwards.
+ */
+export function advanceRoll(state: RollState | undefined, x: number, y: number, radius: number): RollState {
+  if (!state) return { x, y, angle: 0 };
+  const dx = x - state.x, dy = y - state.y;
+  const dist = Math.hypot(dx, dy);
+  let angle = state.angle;
+  if (dist > 0 && dist < TELEPORT) {
+    // the sign follows the horizontal direction; a ball falling straight down keeps its last spin
+    const dir = Math.abs(dx) > 0.01 ? Math.sign(dx) : 0;
+    const step = Math.min(MAX_ROLL_STEP, dist / radius);
+    angle = (angle + dir * step) % (Math.PI * 2);
+  }
+  return { x, y, angle };
+}
+
+const rolls = new WeakMap<object, RollState>();
+/** This marble's visual spin, advanced to where it is drawn now. */
+export function rollAngle(owner: object, x: number, y: number, radius: number): number {
+  const next = advanceRoll(rolls.get(owner), x, y, radius);
+  rolls.set(owner, next);
+  return next.angle;
+}
 
 /** Stable key in declared field order; invalid/untrusted looks normalize first. */
 export function ballSkinKey(raw: unknown): string {
@@ -68,14 +107,10 @@ function star(ctx: CanvasRenderingContext2D, x: number, y: number, outer: number
   ctx.fill();
 }
 
+/** The spinning surface's material: base colour and texture. Reflections belong to drawLight (they stay put). */
 function drawMaterial(ctx: CanvasRenderingContext2D, look: BallLook, cx: number, cy: number, r: number) {
-  const base = look.primary;
   const secondary = look.secondary;
-  const gradient = ctx.createRadialGradient(cx - r * 0.4, cy - r * 0.43, r * 0.05, cx, cy, r * 1.15);
-  gradient.addColorStop(0, shade(base, 1.72));
-  gradient.addColorStop(0.38, base);
-  gradient.addColorStop(1, shade(base, 0.4));
-  ctx.fillStyle = gradient;
+  ctx.fillStyle = look.primary;
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.fill();
@@ -87,15 +122,7 @@ function drawMaterial(ctx: CanvasRenderingContext2D, look: BallLook, cx: number,
   switch (look.material) {
     case 'steel':
     case 'chrome': {
-      const bands = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
-      bands.addColorStop(0, 'rgba(255,255,255,0.02)');
-      bands.addColorStop(0.3, 'rgba(255,255,255,0.62)');
-      bands.addColorStop(0.48, 'rgba(255,255,255,0.08)');
-      bands.addColorStop(0.72, 'rgba(10,18,28,0.28)');
-      bands.addColorStop(0.86, 'rgba(255,255,255,0.3)');
-      bands.addColorStop(1, 'rgba(255,255,255,0.02)');
-      ctx.fillStyle = bands;
-      ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+      // brushed lines turn with the ball (the reflection bands are in the light)
       ctx.strokeStyle = 'rgba(255,255,255,0.32)';
       ctx.lineWidth = 1.4;
       for (let x = cx - r; x < cx + r; x += r * 0.42) {
@@ -105,14 +132,15 @@ function drawMaterial(ctx: CanvasRenderingContext2D, look: BallLook, cx: number,
     }
     case 'brass':
     case 'gold': {
-      const metal = ctx.createLinearGradient(cx - r, cy - r * 0.7, cx + r, cy + r);
-      metal.addColorStop(0, 'rgba(255,255,220,0.52)');
-      metal.addColorStop(0.22, 'rgba(255,255,255,0.06)');
-      metal.addColorStop(0.48, 'rgba(80,35,0,0.23)');
-      metal.addColorStop(0.68, 'rgba(255,248,190,0.45)');
-      metal.addColorStop(1, 'rgba(40,20,0,0.3)');
-      ctx.fillStyle = metal;
-      ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+      // a few hammer marks so the spin shows on a plain metal ball
+      for (let i = 0; i < 14; i++) {
+        const a = i * 2.399963;
+        const distance = r * Math.sqrt(((i * 23) % 17) / 17) * 0.9;
+        ctx.beginPath();
+        ctx.arc(cx + Math.cos(a) * distance, cy + Math.sin(a) * distance, 2.2 + (i % 3), 0, Math.PI * 2);
+        ctx.fillStyle = i % 2 ? 'rgba(80,35,0,0.16)' : 'rgba(255,248,200,0.2)';
+        ctx.fill();
+      }
       break;
     }
     case 'rust':
@@ -187,6 +215,13 @@ function drawPattern(ctx: CanvasRenderingContext2D, look: BallLook, cx: number, 
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   switch (look.pattern) {
+    case 'plain':
+      // a faint seam and two dots, just enough to see the ball spin
+      ctx.strokeStyle = rgba(color, 0.62); ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(cx - r, cy); ctx.lineTo(cx + r, cy); ctx.stroke();
+      ctx.fillStyle = rgba(color, 0.75);
+      ctx.beginPath(); ctx.arc(cx, cy - r * 0.52, 6, 0, Math.PI * 2); ctx.arc(cx, cy + r * 0.52, 6, 0, Math.PI * 2); ctx.fill();
+      break;
     case 'stripes':
       ctx.strokeStyle = rgba(color, 0.86); ctx.lineWidth = 7;
       for (let x = cx - r * 1.6; x < cx + r * 1.6; x += 19) {
@@ -263,30 +298,73 @@ function drawPattern(ctx: CanvasRenderingContext2D, look: BallLook, cx: number, 
       }
       break;
   }
+  ctx.restore();
+}
+
+/**
+ * The light that stays put while the surface spins: shading from the upper left to a dark lower-right rim, the
+ * material's reflection bands, a glint, the rim light and the outline.
+ */
+function drawLight(ctx: CanvasRenderingContext2D, look: BallLook, cx: number, cy: number, r: number) {
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.clip();
+  const shading = ctx.createRadialGradient(cx - r * 0.4, cy - r * 0.43, r * 0.05, cx, cy, r * 1.15);
+  shading.addColorStop(0, 'rgba(255,255,255,0.5)');
+  shading.addColorStop(0.38, 'rgba(255,255,255,0)');
+  shading.addColorStop(0.7, 'rgba(0,0,0,0.18)');
+  shading.addColorStop(1, 'rgba(0,0,0,0.62)');
+  ctx.fillStyle = shading;
+  ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+  if (look.material === 'steel' || look.material === 'chrome') {
+    const bands = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
+    bands.addColorStop(0, 'rgba(255,255,255,0.02)');
+    bands.addColorStop(0.3, 'rgba(255,255,255,0.62)');
+    bands.addColorStop(0.48, 'rgba(255,255,255,0.08)');
+    bands.addColorStop(0.72, 'rgba(10,18,28,0.28)');
+    bands.addColorStop(0.86, 'rgba(255,255,255,0.3)');
+    bands.addColorStop(1, 'rgba(255,255,255,0.02)');
+    ctx.fillStyle = bands;
+    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+  } else if (look.material === 'brass' || look.material === 'gold') {
+    const metal = ctx.createLinearGradient(cx - r, cy - r * 0.7, cx + r, cy + r);
+    metal.addColorStop(0, 'rgba(255,255,220,0.52)');
+    metal.addColorStop(0.22, 'rgba(255,255,255,0.06)');
+    metal.addColorStop(0.48, 'rgba(80,35,0,0.23)');
+    metal.addColorStop(0.68, 'rgba(255,248,190,0.45)');
+    metal.addColorStop(1, 'rgba(40,20,0,0.3)');
+    ctx.fillStyle = metal;
+    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+  }
   // A fixed glint makes the sphere read as polished without hiding its decal.
   const glint = ctx.createRadialGradient(cx - r * 0.38, cy - r * 0.43, 1, cx - r * 0.38, cy - r * 0.43, r * 0.58);
   glint.addColorStop(0, 'rgba(255,255,255,0.48)'); glint.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = glint; ctx.beginPath(); ctx.arc(cx - r * 0.38, cy - r * 0.43, r * 0.58, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 2.5; ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx - 1.5, cy - 2, r - 3, Math.PI * 1.07, Math.PI * 1.74);
+  ctx.strokeStyle = 'rgba(255,255,255,0.46)'; ctx.lineWidth = 2; ctx.stroke();
 }
 
-function createSprite(look: BallLook): HTMLCanvasElement | null {
-  if (typeof document === 'undefined') return null;
+function canvas2d(): [HTMLCanvasElement, CanvasRenderingContext2D] | null {
   const canvas = document.createElement('canvas');
   canvas.width = SPRITE_SIZE;
   canvas.height = SPRITE_SIZE;
   const ctx = canvas.getContext('2d');
-  if (!ctx) return null;
-  drawMaterial(ctx, look, SPRITE_CENTER, SPRITE_CENTER, SPRITE_RADIUS);
-  drawPattern(ctx, look, SPRITE_CENTER, SPRITE_CENTER, SPRITE_RADIUS);
-  ctx.beginPath(); ctx.arc(SPRITE_CENTER, SPRITE_CENTER, SPRITE_RADIUS, 0, Math.PI * 2);
-  ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 2.5; ctx.stroke();
-  ctx.beginPath(); ctx.arc(SPRITE_CENTER - 1.5, SPRITE_CENTER - 2, SPRITE_RADIUS - 3, Math.PI * 1.07, Math.PI * 1.74);
-  ctx.strokeStyle = 'rgba(255,255,255,0.46)'; ctx.lineWidth = 2; ctx.stroke();
-  return canvas;
+  return ctx ? [canvas, ctx] : null;
 }
 
-/** Draw a cached ball sprite at any center/radius. Used by the live garage preview too. */
+function createSprite(look: BallLook): BallSprite | null {
+  if (typeof document === 'undefined') return null;
+  const surface = canvas2d(), light = canvas2d();
+  if (!surface || !light) return null;
+  drawMaterial(surface[1], look, SPRITE_CENTER, SPRITE_CENTER, SPRITE_RADIUS);
+  drawPattern(surface[1], look, SPRITE_CENTER, SPRITE_CENTER, SPRITE_RADIUS);
+  drawLight(light[1], look, SPRITE_CENTER, SPRITE_CENTER, SPRITE_RADIUS);
+  return { surface: surface[0], light: light[0] };
+}
+
+/** Draw a cached ball at any center/radius: the surface turned by `angle`, the light unturned. Used by the garage preview too. */
 export function drawCachedBall(
   ctx: CanvasRenderingContext2D,
   owner: object,
@@ -298,12 +376,15 @@ export function drawCachedBall(
 ): boolean {
   if (typeof document === 'undefined') return false;
   const look = sanitizeLook(rawLook);
-  const image = sprites.get(owner, JSON.stringify(look), () => createSprite(look));
-  if (!image) return false;
+  const sprite = sprites.get(owner, JSON.stringify(look), () => createSprite(look));
+  if (!sprite) return false;
   ctx.save();
   ctx.translate(x, y);
+  ctx.save();
   ctx.rotate(angle);
-  ctx.drawImage(image, -radius, -radius, radius * 2, radius * 2);
+  ctx.drawImage(sprite.surface, -radius, -radius, radius * 2, radius * 2);
+  ctx.restore();
+  ctx.drawImage(sprite.light, -radius, -radius, radius * 2, radius * 2);
   ctx.restore();
   return true;
 }
@@ -323,7 +404,7 @@ export function ballLookForMarble(marble: Marble): BallLook {
 /** Draw a race marble. Seat cosmetics and the global local-player look share the same cache. */
 export function drawBallSkin(ctx: CanvasRenderingContext2D, marble: Marble): boolean {
   const { x, y } = marble.body.position;
-  return drawCachedBall(ctx, marble, ballLookForMarble(marble), x, y, 14, marble.body.angle);
+  return drawCachedBall(ctx, marble, ballLookForMarble(marble), x, y, 14, rollAngle(marble, x, y, 14));
 }
 
 /** Draw the chosen trail using the already-recorded marble trail points. */

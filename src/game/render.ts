@@ -6,7 +6,7 @@ import { meta, W, T, cannonAim } from './track';
 import { MARBLE_RADIUS, ITEM_INFO, skinFor, themeIdFor } from './types';
 import { drawAura, drawSkillWorld } from './skills/draw';
 import { bodyFrame, contentBox, currentSkin, drawRail, drawSprite, drawStrip, setSkin, sprite } from './sprites';
-import { drawBallSkin, drawBallTrail, ballLookForMarble } from './ball-skin';
+import { drawBallSkin, drawBallTrail, ballLookForMarble, rollAngle } from './ball-skin';
 import { WIND_FAN_ART, windFanAnchor, windDustPose } from './wind-art';
 import { CATAPULT_ARM, CATAPULT_BASE, CATAPULT_ARM_AXIS, CATAPULT_ARM_LENGTH, CATAPULT_ARM_DRAW, catapultArtAngle, flipperArtAngle, flipperArtRect, warDrumArtRect, warDrumArtAngle } from './launcher-art';
 import repeatingBgUrl from '../assets/bg/repeating.webp';
@@ -327,7 +327,7 @@ export function drawMarble(ctx: CanvasRenderingContext2D, game: Game, m: Marble,
     g.addColorStop(0.5, base);
     g.addColorStop(1, shade(base, 0.55));
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = g; ctx.fill();
-    ctx.save(); ctx.translate(x, y); ctx.rotate(b.angle);
+    ctx.save(); ctx.translate(x, y); ctx.rotate(rollAngle(m, x, y, r)); // the marks spin; the highlight below stays put
     ctx.beginPath(); ctx.arc(0, 0, r * 0.55, 0.2, Math.PI * 0.9);
     ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 3; ctx.stroke();
     ctx.beginPath(); ctx.arc(0, 0, r * 0.55, Math.PI + 0.2, Math.PI * 1.9);

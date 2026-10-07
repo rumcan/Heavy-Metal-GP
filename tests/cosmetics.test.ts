@@ -9,7 +9,7 @@ import {
 } from '../src/game/cosmetics';
 import type { BallLook, Progress } from '../src/game/cosmetics';
 import { createAccount, cosmeticProgressOf, parseAccount, purchaseCosmetic, settleRace } from '../src/game/economy';
-import { BallSkinCache, ballSkinKey, ballLookForMarble } from '../src/game/ball-skin';
+import { BallSkinCache, ballSkinKey, ballLookForMarble, advanceRoll, MAX_ROLL_STEP } from '../src/game/ball-skin';
 import { fileGarage, rosterOf } from '../src/net/lobby';
 import { PROTOCOL_VERSION, validateGarage } from '../src/net/protocol';
 import type { Seat } from '../src/net/protocol';
@@ -173,4 +173,20 @@ test('multiplayer garages carry a look; catalogue-invalid ids become the default
 
   const forgedSeat = { ...filed[0], cosmeticLook: invalid } as Seat;
   assert.deepEqual(rosterOf([forgedSeat], 0)[0].cosmeticLook, DEFAULT_LOOK, 'received seats are sanitized too');
+});
+
+test('a ball spins by the distance it rolls, forwards at any speed, and not on a respawn', () => {
+  let s = advanceRoll(undefined, 0, 0, 14);
+  assert.equal(s.angle, 0);
+  s = advanceRoll(s, 7, 0, 14);
+  assert.ok(Math.abs(s.angle - 0.5) < 1e-9, 'rolling right half a radius turns half a radian clockwise');
+  s = advanceRoll(s, 0, 0, 14);
+  assert.ok(Math.abs(s.angle) < 1e-9, 'rolling back turns it back');
+  s = advanceRoll(s, 60, 0, 14);
+  assert.ok(Math.abs(s.angle - MAX_ROLL_STEP) < 1e-9, 'a very fast frame is capped so the spin never reads backwards');
+  const before = s.angle;
+  s = advanceRoll(s, 2000, -500, 14);
+  assert.equal(s.angle, before, 'a teleport is not rolling');
+  s = advanceRoll(s, 2000, -480, 14);
+  assert.equal(s.angle, before, 'falling straight down keeps the spin');
 });
