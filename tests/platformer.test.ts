@@ -8,7 +8,7 @@ import { buildPlatformerTrack, ALL_LANES } from '../src/game/platformer/build';
 import { laneCategory } from '../src/game/lanes';
 import { meta } from '../src/game/track';
 import { Game } from '../src/game/engine';
-import { PHYSICS_STEP } from '../src/game/physics';
+import { HEAT_TIME_LIMIT, PHYSICS_STEP } from '../src/game/physics';
 import { AI_COLORS, AI_NAMES, mulberry32, randomStats, TRACK_THEMES } from '../src/game/types';
 import type { MarbleInfo } from '../src/game/types';
 
@@ -120,7 +120,7 @@ test('official courses: every gate stands on floor in both lanes, and the whole 
     game.start();
     game.openGate();
     let t = 0;
-    for (; t < 150000 && !game.allFinished(); t += PHYSICS_STEP) game.step(PHYSICS_STEP);
+    for (; t < HEAT_TIME_LIMIT && !game.allFinished(); t += PHYSICS_STEP) game.step(PHYSICS_STEP); // courses are 4x their listed length
     assert.ok(game.allFinished(), `${course.name}: ${game.finishOrder.length}/10 finished after ${Math.round(t / 1000)} s`);
   }
 });
@@ -175,7 +175,7 @@ test('springs and one-way ledges: a ball passes up through a ledge, lands on it,
   game.openGate();
   let launched = 0, onLedge = 0;
   const seen = new Set<number>();
-  for (let i = 0; i < 9000 && !game.allFinished(); i++) {
+  for (let t = 0; t < HEAT_TIME_LIMIT && !game.allFinished(); t += PHYSICS_STEP) {
     game.step(PHYSICS_STEP);
     for (const m of game.marbles) {
       if (m.springAt === game.time) launched++;
@@ -202,7 +202,7 @@ test('map pieces on flow courses: power-up boxes get picked up, wrecking balls s
   game.openGate();
   const start = track.wreckers.map((w) => ({ ...w.position }));
   let picked = 0;
-  for (let i = 0; i < 18000 && !game.allFinished(); i++) {
+  for (let i = 0; i * PHYSICS_STEP < HEAT_TIME_LIMIT && !game.allFinished(); i++) {
     game.step(PHYSICS_STEP);
     if (i === 60) assert.ok(track.wreckers.some((w, k) => Math.abs(w.position.x - start[k].x) > 1), 'the wrecking balls swing');
   }
@@ -250,6 +250,7 @@ test('health: damage hurts, 0 HP is a DNF (last in the order, off the course), t
   game.openGate();
   for (let i = 0; i < 600; i++) game.step(PHYSICS_STEP);
   const victim = game.marbles[3], killer = game.marbles[5];
+  victim.fx = undefined; // the damage rules on their own (a trial skill from a box, a Shaman's Charm say, would change them)
   assert.equal(game.damage(victim, 25, killer.info.id, 'bolt'), false);
   assert.equal(victim.health!.hp, 75);
   assert.equal(game.damage(victim, 25, null, 'wrecker'), false, 'a second hit straight away is still in the grace period');
@@ -272,11 +273,12 @@ test('health: a race where everyone still racing finishes ends even with a DNF i
   game.openGate();
   game.damage(game.marbles[2], 500, null, 'crusher');
   assert.ok(game.marbles[2].dnf);
-  for (let t = 0; t < 120000 && !game.allFinished(); t += PHYSICS_STEP) game.step(PHYSICS_STEP);
+  for (let t = 0; t < HEAT_TIME_LIMIT && !game.allFinished(); t += PHYSICS_STEP) game.step(PHYSICS_STEP);
   assert.ok(game.allFinished());
   // everyone else finished, unless a rival's skill knocked them out on the way (aggressive drivers do)
   assert.equal(game.finishOrder.length + game.marbles.filter((m) => m.dnf && m.finishedAt === null).length, 10);
-  assert.ok(game.finishOrder.length >= 7);
+  // courses are 4x longer (the owner): more time for rivals' skills, so more knock-outs than on the old short courses
+  assert.ok(game.finishOrder.length >= 5, `${game.finishOrder.length} of 10 finished`);
 });
 
 test('the purse: a DNF in a quick race pays the Shaman 10 %; a KO pays 75; a finish pays the placement', async () => {

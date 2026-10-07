@@ -63,11 +63,14 @@ export function platformerCourse(id: string | null | undefined): PlatformerCours
 }
 
 /** The plan for an official course. */
+/** The owner: the race courses were too short. Every flow course (story, championship, quick race) is this many times its listed length. */
+export const COURSE_LENGTH_SCALE = 4;
+
 export function planOfficial(course: PlatformerCourse): CoursePlan {
   const custom = CUSTOM_COURSES.get(course.id);
   if (custom) return custom.plan;
   if (course.tutorial) return planTutorial();
-  if (course.flow) return planFlow(course.seed, course.length ? { ...FLOW_TUNING, length: course.length } : FLOW_TUNING);
+  if (course.flow) return planFlow(course.seed, { ...FLOW_TUNING, length: (course.length ?? FLOW_TUNING.length) * COURSE_LENGTH_SCALE });
   // block courses are drawn in the painted coaster style like every other course (as 'blocks' they used the old pixel tiles)
   return { ...planCourse(course.seed, course.length ? { ...COURSE_TUNING, length: course.length } : COURSE_TUNING), style: 'flow' };
 }
