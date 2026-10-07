@@ -65,6 +65,19 @@ export function buildPlatformerEditor(def: TrackDef): Built {
   }
 }
 
+/** The next piece under a point below `below` (further back), wrapping round to the top; null when there is no other. */
+export function hitSidePieceBelow(point: { x: number; y: number }, pieceBounds: Bounds[], below: number, blocked?: ReadonlySet<number>): number | null {
+  const n = pieceBounds.length;
+  for (let k = 1; k < n; k++) {
+    const i = (below - k + n) % n;
+    if (blocked?.has(i)) continue;
+    const { min, max } = pieceBounds[i] ?? {};
+    if (!min || !max) continue;
+    if (point.x >= min.x && point.x <= max.x && point.y >= min.y && point.y <= max.y) return i;
+  }
+  return null;
+}
+
 /** The topmost piece under a point among `pieceBounds`, skipping `blocked` indices (locked, or in another lane). */
 export function hitSidePiece(point: { x: number; y: number }, pieceBounds: Bounds[], blocked?: ReadonlySet<number>): number | null {
   for (let i = pieceBounds.length - 1; i >= 0; i--) {

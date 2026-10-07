@@ -28,6 +28,7 @@ import type { Point } from './camera';
 import { SNAP } from './camera';
 import { fitGroupTranslation, translatePiece } from './translation';
 import { chosenPegArt, pegArtById, PEG_ART_R } from '../../game/peg-art';
+import { doubleLoopKit, loopKit, overpassKit } from '../../game/platformer/track-kits';
 import { chosenScaffoldKit, scaffoldKitById, SCAFFOLD_MARGIN } from '../../game/scaffold-kits';
 
 /** One primitive of the ghost outline, in world units. */
@@ -92,6 +93,12 @@ export function placementPieces(armed: string, at: Point, snap: boolean, templat
     if (kit.width > W - SCAFFOLD_MARGIN * 2) return null;
     const x = Math.max(kit.width / 2 + SCAFFOLD_MARGIN, Math.min(W - kit.width / 2 - SCAFFOLD_MARGIN, cx));
     return kit.pieces.map((p) => translatePiece({ ...p }, x, cy));
+  }
+
+  if (tile.id === 'track-loop' || tile.id === 'track-double-loop' || tile.id === 'track-overpass') {
+    // Crossing tracks: a ready-made track shape from ordinary ramps and curves, placed as one group around the pointer.
+    const cx = snap ? Math.round(at.x / SNAP) * SNAP : at.x, cy = snap ? Math.round(at.y / SNAP) * SNAP : at.y;
+    return tile.id === 'track-loop' ? loopKit(cx, cy) : tile.id === 'track-double-loop' ? doubleLoopKit(cx, cy) : overpassKit(cx, cy);
   }
 
   return [{ ...defaultPiece(tile.t, at, snap), ...tile.preset } as Piece];

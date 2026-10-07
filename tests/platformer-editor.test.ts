@@ -53,7 +53,7 @@ test('every platformer tile lays a piece the def accepts, level and on the point
   for (const tile of PLATFORMER_PALETTE.flatMap((g) => g.tiles)) {
     assert.equal(tileFor(tile.id)?.id, tile.id, `${tile.id} is found by id`);
     const placed = placementPieces(tile.id, at, true);
-    assert.ok(placed && (placed.length === 1 || tile.id === 'scaffold' || tile.id === 'pegart'), `${tile.id} places one piece (scaffold kits and peg art place several)`);
+    assert.ok(placed && (placed.length === 1 || tile.id === 'scaffold' || tile.id === 'pegart' || tile.id.startsWith('track-')), `${tile.id} places one piece (scaffold kits, peg art and track kits place several)`);
     const check = validateTrackDef({ ...newPlatformerDef('t', 12000), pieces: placed! });
     assert.ok(check.ok, `${tile.id}: ${check.ok ? '' : check.error}`);
   }

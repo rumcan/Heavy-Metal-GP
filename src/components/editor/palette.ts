@@ -182,6 +182,9 @@ export const PLATFORMER_PALETTE: PaletteGroup[] = [
     tiles: [
       { id: 'ramp', t: 'ramp', label: 'Floor', sprite: 'rail-wood', hint: 'A straight floor. Drag its ends to set the slope. Marbles roll on top of it.' },
       { id: 'curve', t: 'curve', label: 'Curve', sprite: 'rail-wood', hint: 'A bent floor: a hill or a valley. Drag the middle dot to set the bend.' },
+      { id: 'track-loop', t: 'curve', label: 'Track loop', sprite: 'loop-ring', hint: 'A loop built from four curves with a run-up and a run-out. Every piece stays editable: drag the dots to reshape it. A ball needs speed to ride over the top; a slow one falls.' },
+      { id: 'track-double-loop', t: 'curve', label: 'Double loop', sprite: 'loop-ring', hint: 'Two track loops one after the other.' },
+      { id: 'track-overpass', t: 'ramp', label: 'Overpass', sprite: 'rail-wood', hint: 'Two tracks crossing: each ball keeps to the track it is on. Tap the crossing marker to swap which one passes in front.' },
       { id: 'ice', t: 'ice', label: 'Ice floor', sprite: 'strip-ice', hint: 'Almost frictionless: carry speed, lose control.' },
       { id: 'bridge', t: 'bridge', label: 'Rope bridge', sprite: 'bridge', hint: 'A sagging plank bridge over a chasm. It sways a little and holds weight.' },
       { id: 'loop', t: 'loop', label: 'Loop', sprite: 'loop-ring', hint: 'A loop ring. A marble with enough speed rides over the top; a slow one rolls back. Put a boost in the run-up.' },

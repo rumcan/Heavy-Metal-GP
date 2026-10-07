@@ -70,6 +70,8 @@ import EditorMapSide from './editor/EditorMapSide';
 import { setEditorWorld } from './editor/world';
 import { PF_DEFAULT_WIDTH, PF_WIDTH_STEP, finishXOf, isPlatformerDef, settle } from '../game/platformer/def';
 import { applyHandle, movePieces, mirrorPiece } from './editor/handles';
+import { snapEnd } from './editor/joins';
+import { movePast, toFront } from './editor/order';
 import { ROTATE_STEP_DEG, rotateSelection } from './editor/rotate';
 import { applyGroupHandle } from './editor/group';
 import type { GroupBox } from './editor/group';
@@ -660,6 +662,8 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
         const p = initialPiece || def.pieces[pieceIndex];
         if (!p) return def;
         def.pieces[pieceIndex] = applyHandle(p, handleId, to, grid, resizeAnchor);
+        // crossing tracks: a track end dragged near another track end snaps onto it (joined pieces ride as one track)
+        if (isPlatformerDef(def) && (handleId === 'a' || handleId === 'b')) def.pieces[pieceIndex] = snapEnd(def.pieces, pieceIndex, handleId);
         return def;
       });
     },
@@ -681,6 +685,31 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
   const selectionHasGroup = selected.some((i) => circuit.def.pieces[i]?.grp !== undefined);
 
   /** Group the selection (2+ pieces): they then select, move, rotate and scale as one. */
+const handleLayer = useCallback((dir: 1 | -1) => {
+  if (selected.length !== 1) return;
+  const i = selected[0], bounds = built.pieceBounds, me = bounds[i];
+  if (!me) return;
+  const overlaps = (k: number) => { const o = bounds[k]; return !!o && o.min.x <= me.max.x && me.min.x <= o.max.x && o.min.y <= me.max.y && me.min.y <= o.max.y; };
+  let j = i + dir;
+  while (j >= 0 && j < circuit.def.pieces.length && !overlaps(j)) j += dir;
+  if (j < 0 || j >= circuit.def.pieces.length) return;
+  const { newIndex } = movePast(circuit.def.pieces, i, j, dir);
+  commit((def) => ({ ...def, pieces: movePast(def.pieces, i, j, dir).pieces }), { select: [newIndex.get(i)!] });
+  setLocked((prev) => new Set([...prev].map((k) => newIndex.get(k) ?? k)));
+}, [selected, built.pieceBounds, circuit.def.pieces, commit]);
+
+/** Tap on a crossing marker: the next track down at that crossing comes to the front. */
+const handleSwapCrossing = useCallback((zone: number) => {
+  const plan = built.track?.platformer?.plan;
+  const z = plan?.crossings?.[zone];
+  if (!plan?.tracks || !z || z.passages.length < 2) return;
+  const next = [...z.passages].sort((a, b) => b.depth - a.depth)[1];
+  const sources = [...new Set(next.runs.map(([li]) => plan.tracks![li].source))];
+  const { newIndex } = toFront(circuit.def.pieces, sources);
+  commit((def) => ({ ...def, pieces: toFront(def.pieces, sources).pieces }), { select: [] });
+  setLocked((prev) => new Set([...prev].map((k) => newIndex.get(k) ?? k)));
+}, [built.track, circuit.def.pieces, commit]);
+
   const handleGroup = useCallback(() => {
     if (selected.length < 2) return;
     commit((def) => {
@@ -1221,7 +1250,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
           <div data-coach="palette"><PiecePalette side={side} active={armed} onPick={(id) => setArmed((cur) => (cur === id ? null : id))} onShowToast={(msg) => { setDraftMsg(msg); setTimeout(() => setDraftMsg(null), 3500); }} /></div>
           <div className="editor-inspector">
             <header className="eyebrow"><b>02</b> PROPERTIES</header>
-            <PropertiesPanel selected={selected} pieces={circuit.def.pieces} onChange={handlePropChange} onChangeMany={handleBulkChange} />
+            <PropertiesPanel selected={selected} pieces={circuit.def.pieces} onChange={handlePropChange} onChangeMany={handleBulkChange} onLayer={side ? handleLayer : undefined} />
           </div>
           <div data-coach="validate"><ValidationPanel result={validation} validating={validating} onJump={handleValidationJump} onValidate={handleValidate} /></div>
           <MyTracksPanel
@@ -1469,6 +1498,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
                 }}
                 locked={locked}
                 onGroupHandle={applyGroupHandleChange}
+                onSwapCrossing={handleSwapCrossing}
                 onReorder={(pieceIndex, dir) => {
                   const n = circuit.def.pieces.length;
                   const to = dir === 'front' ? n - 1 : 0;
@@ -1528,7 +1558,7 @@ export default function TrackEditor({ seed, profile, name, initialDef, driver, o
         <Dialog titleId="piece-settings-title" onClose={() => setSettingsOpen(false)} className="piece-settings-dialog">
           <h2 id="piece-settings-title">{tileFor(circuit.def.pieces[selected[0]]?.t)?.label ?? 'Piece'} settings</h2>
           <p className="dialog-intro">Changes apply immediately. Close this window to drag the piece or its size handles.</p>
-          <PropertiesPanel selected={selected} pieces={circuit.def.pieces} onChange={handlePropChange} onChangeMany={handleBulkChange} />
+          <PropertiesPanel selected={selected} pieces={circuit.def.pieces} onChange={handlePropChange} onChangeMany={handleBulkChange} onLayer={side ? handleLayer : undefined} />
           <button className="button-primary" onClick={() => setSettingsOpen(false)}>Done</button>
         </Dialog>
       )}
