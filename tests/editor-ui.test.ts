@@ -222,7 +222,8 @@ test('Palette: the ticket\'s groups, every piece a def can store, and the race a
   const markup = renderToStaticMarkup(createElement(PiecePalette, { active: 'spinner', onPick() {} }));
   for (const group of PALETTE) assert.ok(markup.includes(`>${group.label.replace('&', '&amp;')}<`), `the ${group.label} group is missing from the palette`);
   assert.equal((markup.match(/class="palette-tile[ "]/g) ?? []).length, TILES.length, 'a tile did not render');
-  assert.equal((markup.match(/<img/g) ?? []).length, TILES.filter((tile) => tile.sprite).length, 'every tile with art should show it');
+  // the sign has no sprite of its own: it shows the sign it lays (PiecePalette TILE_ART)
+  assert.equal((markup.match(/<img/g) ?? []).length, TILES.filter((tile) => tile.sprite || tile.id === 'sign').length, 'every tile with art should show it');
   assert.ok(markup.includes('class="palette-tile armed" aria-pressed="true"'), 'the armed tile does not announce itself');
   assert.equal((markup.match(/aria-pressed="true"/g) ?? []).length, 1, 'only one tile may be armed');
 });

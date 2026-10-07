@@ -5,8 +5,49 @@ import { getTemplates, deleteTemplate } from './templates';
 import { pegArts, pegArtById, chosenPegArt, choosePegArt } from '../../game/peg-art';
 import { scaffoldKits, scaffoldKitById, chosenScaffoldKit, chooseScaffoldKit, SCAFFOLD_MARGIN } from '../../game/scaffold-kits';
 import { W } from '../../game/track';
+import { piecePoints } from '../../game/platformer/crossings';
+import { doubleLoopKit, loopKit, overpassKit } from '../../game/platformer/track-kits';
+import type { Piece } from '../../game/trackdef';
+import signUrl from '../../assets/game/platformer/sign.webp';
+import doorUrl from '../../assets/game/platformer/door.webp';
+import cloudUrl from '../../assets/game/platformer/clouds/cloud-1.webp';
 
 const art = import.meta.glob<string>('../../assets/game/*.{webp,png}', { eager: true, import: 'default' });
+/** Tiles whose own piece has art outside the sprite folder: the thing a click lays. */
+const TILE_ART: Record<string, string> = { sign: signUrl, cloud: cloudUrl, 'gate-door': doorUrl };
+
+/** The Workshop track kits, drawn as the very pieces they place (their ramps and curves), fitted to the tile. */
+const KIT_PIECES: Record<string, () => Piece[]> = { 'track-loop': () => loopKit(0, 0), 'track-double-loop': () => doubleLoopKit(0, 0), 'track-overpass': () => overpassKit(0, 0) };
+
+function KitIcon({ id }: { id: string }) {
+  const lines = KIT_PIECES[id]().map((p) => piecePoints(p) ?? []);
+  const all = lines.flat();
+  const minX = Math.min(...all.map((q) => q.x)), maxX = Math.max(...all.map((q) => q.x));
+  const minY = Math.min(...all.map((q) => q.y)), maxY = Math.max(...all.map((q) => q.y));
+  const w = 64, h = 38, pad = 4;
+  const k = Math.min((w - pad * 2) / Math.max(1, maxX - minX), (h - pad * 2) / Math.max(1, maxY - minY));
+  const ox = (w - (maxX - minX) * k) / 2, oy = (h - (maxY - minY) * k) / 2;
+  const d = lines.map((pts) => pts.map((q, i) => `${i ? 'L' : 'M'}${(ox + (q.x - minX) * k).toFixed(1)} ${(oy + (q.y - minY) * k).toFixed(1)}`).join(' ')).join(' ');
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} aria-hidden="true">
+      <path d={d} fill="none" stroke="#4a2a12" strokeWidth={5} strokeLinecap="round" strokeLinejoin="round" />
+      <path d={d} fill="none" stroke="#c8873f" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** The lane ramp: the wooden jump wedge it lays, with the hop across to the other lane. */
+function LaneRampIcon() {
+  return (
+    <svg viewBox="0 0 64 38" width={64} height={38} aria-hidden="true">
+      <path d="M6 33 L52 33 L52 17 Z" fill="#a8692f" stroke="#4a2a12" strokeWidth={2} strokeLinejoin="round" />
+      <path d="M6 33 L52 17" stroke="#d99a55" strokeWidth={2} />
+      <path d="M40 14 Q48 2 58 8" fill="none" stroke="#facc15" strokeWidth={2.2} strokeLinecap="round" />
+      <path d="M53 5 L58 8 L54 12" fill="none" stroke="#facc15" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 const artFor = (name: string | null) => (name ? art[`../../assets/game/${name}.webp`] ?? art[`../../assets/game/${name}.png`] ?? null : null);
 
 interface Props {
@@ -144,7 +185,7 @@ export default function PiecePalette({ active, onPick, side = false }: Props) {
     {tab === 'base' && groups.map((group) => <section key={group.id} className="palette-group" aria-labelledby={`palette-${group.id}`}>
       <header className="palette-heading"><span className="eyebrow" id={`palette-${group.id}`}>{group.label}</span><small>{group.note}</small></header>
       <div className="palette-tiles">{group.tiles.map((tile) => {
-        const src = artFor(tile.sprite);
+        const src = TILE_ART[tile.id] ?? artFor(tile.sprite);
         const armed = active === tile.id;
         return (
           <Fragment key={tile.id}>
@@ -158,7 +199,7 @@ export default function PiecePalette({ active, onPick, side = false }: Props) {
               data-tile={tile.id}
             >
               <span className="palette-art">
-                {src ? <img src={src} alt="" draggable={false} style={tile.id === 'flipper-right' ? { transform: 'scaleX(-1)' } : undefined} /> : <i className="palette-art-fallback" aria-hidden="true" />}
+                {KIT_PIECES[tile.id] ? <KitIcon id={tile.id} /> : tile.id === 'gate-ramp' ? <LaneRampIcon /> : src ? <img src={src} alt="" draggable={false} style={tile.id === 'flipper-right' ? { transform: 'scaleX(-1)' } : undefined} /> : <i className="palette-art-fallback" aria-hidden="true" />}
               </span>
               <span className="palette-label">{tile.label}</span>
             </button>
