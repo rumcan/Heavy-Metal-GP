@@ -1,6 +1,6 @@
 // P2-10: pick up to eight skills for the keys Q W E R / A S D F, and buy charges for them, in one screen
 // (the shop is folded in). Saved as you go; locked skills say why. Replaces the old pit shop.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { X, Coins, Lock } from 'lucide-react';
 import Dialog from '../Dialog';
@@ -16,10 +16,15 @@ import type { RacerAccount } from '../../game/economy';
 import { ITEM_INFO, ITEM_TYPES, MAX_ITEM_STACK } from '../../game/types';
 import type { ItemType } from '../../game/types';
 import { SLOT_KEYS } from '../../game/loadout';
+import { CREDIT_PACK_CREDITS, CREDIT_PACK_PRICE_BITS } from '../../game/premium';
+import type { PackResult } from '../../game/premium';
+import { useBitsIcon } from '../useBitsIcon';
 
 interface Props {
   account: RacerAccount;
   onBuy: (item: ItemType) => string | undefined;
+  /** Buy 1,000 credits for a RUN Bit (App.buyCredits). */
+  onBuyCredits?: () => Promise<PackResult>;
   onClose: () => void;
   /** Open on this mode's bar (default Quick). */
   mode?: LoadoutMode;
@@ -40,7 +45,15 @@ const CATALOG: Catalog = Object.fromEntries(ITEM_TYPES.map((id) => {
   return [id, { price: ITEM_INFO[id].price, unlockLevel: d.unlockLevel, starter: (STARTER_SKILLS as readonly string[]).includes(id) }];
 }));
 
-export default function LoadoutScreen({ account, onBuy, onClose, mode: startMode = 'quick', preRace }: Props) {
+const PACK_NOTES: Record<PackResult, string | null> = {
+  bought: `+${CREDIT_PACK_CREDITS.toLocaleString()} credits`,
+  cancelled: null,
+  unavailable: 'Buying credits is not available here yet.',
+  pending: 'Your purchase is still being confirmed. Try again in a moment.',
+  error: 'Something went wrong. Try again.',
+};
+
+export default function LoadoutScreen({ account, onBuy, onBuyCredits, onClose, mode: startMode = 'quick', preRace }: Props) {
   // P2-20: one bar per mode; the switch picks which one is shown and saved.
   const [mode, setMode] = useState<LoadoutMode>(startMode);
   const [slots, setSlots] = useState<Slots>(() => loadSlots(startMode));
@@ -69,9 +82,24 @@ export default function LoadoutScreen({ account, onBuy, onClose, mode: startMode
   };
   const clear = (i: number) => { const next = [...slots]; next[i] = null; commit(next); setAt(i); };
   const buy = (item: ItemType) => setError(onBuy(item) ?? null);
+  const bitsIcon = useBitsIcon();
+  const [packBusy, setPackBusy] = useState(false);
+  const [packNote, setPackNote] = useState<string | null>(null);
+  useEffect(() => { if (!packNote) return; const id = window.setTimeout(() => setPackNote(null), 4000); return () => window.clearTimeout(id); }, [packNote]);
+  const buyPack = async () => {
+    if (!onBuyCredits || packBusy) return;
+    setPackBusy(true); setPackNote(null);
+    const result = await onBuyCredits();
+    setPackBusy(false);
+    setPackNote(PACK_NOTES[result]);
+  };
 
   return <Dialog titleId="loadout-title" onClose={onClose} className="loadout-dialog">
-    <div className="loadout-head"><h2 id="loadout-title">LOADOUT</h2><span className="loadout-wallet"><Coins size={14} />{account.credits.toLocaleString()} CR · LEVEL {level}</span></div>
+    <div className="loadout-head"><h2 id="loadout-title">LOADOUT</h2><span className="loadout-wallet"><Coins size={14} />{account.credits.toLocaleString()} CR · LEVEL {level}
+      {onBuyCredits && <button type="button" className="credit-pack" onClick={buyPack} disabled={packBusy} data-sound="none" aria-label={`Buy ${CREDIT_PACK_CREDITS.toLocaleString()} credits for ${CREDIT_PACK_PRICE_BITS} RUN Bit`} title="Buy credits with RUN Bits">
+        +{CREDIT_PACK_CREDITS.toLocaleString()} CR <span className="credit-pack-price">{bitsIcon ? <img src={bitsIcon} alt="" /> : null}{CREDIT_PACK_PRICE_BITS}{bitsIcon ? '' : ' Bit'}</span>
+      </button>}
+      {packNote && <span className="credit-pack-note" role="status">{packNote}</span>}</span></div>
     {!preRace && <div className="mode-switch loadout-mode" role="group" aria-label="Loadout mode">
       {LOADOUT_MODES.map((m) => <button key={m} className={m === mode ? 'selected' : ''} aria-pressed={m === mode} onClick={() => pickMode(m)}>{MODE_LABELS[m]}</button>)}
     </div>}

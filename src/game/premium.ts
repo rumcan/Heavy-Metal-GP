@@ -8,6 +8,10 @@
 // game asks RUN again (`entitlements.getQuantity`), so a refund takes it away and a new device gets it back; between
 // starts the answer is cached in storage.ts so the unlock works offline.
 //
+// The credit pack (the owner: "sell 1000 credits for 1 run bit on the loadout screen") is a consumable Shop item,
+// `credits_1000`: the purchase grants a consumable entitlement and the game at once consumes it into 1,000 credits
+// (redeemCreditPacks). A pack bought but not yet redeemed (the app closed in between) is redeemed on the next start.
+//
 // Every lock check in the game consults `unlockAllOwned()`: loadout.lockReason (skills, online too), cosmetics.isUnlocked,
 // talents' tier gate, story chapterUnlocked. Pure functions read a module flag that is false unless RUN said otherwise.
 import * as storage from './storage';
@@ -46,11 +50,16 @@ export function onUnlockAll(fn: (owned: boolean) => void): () => void {
 interface ShopLike {
   purchase(itemId: string, idempotencyKey: string): Promise<{ success: boolean; cancelled?: boolean }>;
 }
-interface EntitlementsLike { getQuantity(entitlementId: string): Promise<number> }
+interface EntitlementsLike {
+  getQuantity(entitlementId: string): Promise<number>;
+  consumeEntitlement?(entitlementId: string, quantity: number, callback?: (entitlement: unknown, referenceId: string) => void | Promise<void>, reason?: string): Promise<unknown>;
+}
 interface IapLike { getHardCurrencyBalance?(): Promise<number>; openStore?(): Promise<{ purchased: boolean; newBalance: number }> }
 interface SdkLike { shop?: ShopLike; entitlements?: EntitlementsLike; iap?: IapLike }
 
 let sdk: Promise<SdkLike | null> | null = null;
+/** Tests stand in for RUN. */
+export function setSdkForTest(fake: SdkLike | null): void { sdk = Promise.resolve(fake); }
 /** The SDK, loaded on first use (importing it touches `window`; node tests have none). */
 function api(): Promise<SdkLike | null> {
   if (!sdk) {
@@ -96,4 +105,54 @@ export async function buyUnlockAll(): Promise<UnlockResult> {
     if (/not.?found|unknown item|404|stale/i.test(code)) return 'unavailable';
     return 'error';
   }
+}
+
+/** The credit pack: one Shop item and its consumable entitlement, one string. */
+export const CREDIT_PACK_ID = 'credits_1000';
+export const CREDIT_PACK_CREDITS = 1000;
+export const CREDIT_PACK_PRICE_BITS = 1;
+
+let redeeming: Promise<number> = Promise.resolve(0);
+
+/**
+ * Turn every unredeemed pack this player holds on RUN into credits. `grant` is called once, with the credits, only
+ * after RUN has consumed the packs (so a pack is never paid twice). Calls queue behind each other. Returns the credits.
+ */
+export function redeemCreditPacks(grant: (credits: number) => void): Promise<number> {
+  const run = async (): Promise<number> => {
+    try {
+      const ent = (await api())?.entitlements;
+      if (!ent || typeof ent.getQuantity !== 'function' || typeof ent.consumeEntitlement !== 'function') return 0;
+      const packs = await ent.getQuantity(CREDIT_PACK_ID);
+      if (!(typeof packs === 'number' && Number.isFinite(packs) && packs > 0)) return 0;
+      const credits = packs * CREDIT_PACK_CREDITS;
+      let paid = false;
+      await ent.consumeEntitlement(CREDIT_PACK_ID, packs, () => { paid = true; grant(credits); }, 'credits');
+      return paid ? credits : 0;
+    } catch { return 0; /* offline: the packs wait on RUN for the next try */ }
+  };
+  redeeming = redeeming.then(run, run);
+  return redeeming;
+}
+
+export type PackResult = 'bought' | 'cancelled' | 'unavailable' | 'pending' | 'error';
+
+/** Buy one pack (RUN shows its confirmation and, when short, its top-up), then redeem it into credits. */
+export async function buyCreditPack(grant: (credits: number) => void): Promise<PackResult> {
+  const shop = (await api())?.shop;
+  if (!shop || typeof shop.purchase !== 'function') return 'unavailable';
+  // one key per press: a consumable has no other guard against a second charge
+  const key = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+  try {
+    const result = await shop.purchase(CREDIT_PACK_ID, key);
+    if (!result?.success) return 'cancelled';
+  } catch (error) {
+    const code = String((error as { code?: string; message?: string })?.code ?? (error as Error)?.message ?? '');
+    if (/USER_CANCELLED/i.test(code)) return 'cancelled';
+    if (/pending/i.test(code)) return 'pending';
+    if (/not.?found|unknown item|404|stale/i.test(code)) return 'unavailable';
+    return 'error';
+  }
+  await redeemCreditPacks(grant);
+  return 'bought';
 }

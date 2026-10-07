@@ -3,6 +3,7 @@
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import shop from '../rundot/shop.config.json';
+import { CREDIT_PACK_CREDITS, CREDIT_PACK_ID, CREDIT_PACK_PRICE_BITS, buyCreditPack, redeemCreditPacks, setSdkForTest } from '../src/game/premium';
 import { ALL_TIERS_LEVEL, UNLOCK_ALL_ID, UNLOCK_ALL_PRICE_BITS, UNLOCK_ALL_STORAGE_KEY, buyUnlockAll, onUnlockAll, setUnlockAll, talentTierLevel, unlockAllOwned } from '../src/game/premium';
 import { STORAGE_KEYS } from '../src/game/storage';
 import { lockReason } from '../src/game/loadout';
@@ -11,7 +12,7 @@ import { isUnlocked } from '../src/game/cosmetics';
 import { canRankUp, TALENTS, tierLevel } from '../src/game/talents';
 import { chapterUnlocked, newStory } from '../src/game/story/state';
 
-afterEach(() => setUnlockAll(false));
+afterEach(() => { setUnlockAll(false); setSdkForTest(null); });
 
 const CAT: Catalog = { rocket: { price: 90, unlockLevel: 1, starter: true }, charm: { price: 150, unlockLevel: 25, starter: false } };
 
@@ -74,4 +75,70 @@ test('the flag: listeners hear a change once; buying without RUN behind the page
   assert.deepEqual(heard, [true, false]);
   assert.equal(unlockAllOwned(), false);
   assert.equal(await buyUnlockAll(), 'unavailable');
+});
+
+/** A stand-in for RUN: a Bits wallet, a shop and an entitlement ledger. */
+function fakeRun(opts: { bits?: number; held?: number; consumeFails?: boolean } = {}) {
+  const run = { bits: opts.bits ?? 10, held: opts.held ?? 0, keys: [] as string[] };
+  setSdkForTest({
+    shop: {
+      async purchase(itemId: string, key: string) {
+        run.keys.push(key);
+        if (itemId !== CREDIT_PACK_ID || run.bits < CREDIT_PACK_PRICE_BITS) return { success: false };
+        run.bits -= CREDIT_PACK_PRICE_BITS; run.held += 1;
+        return { success: true };
+      },
+    },
+    entitlements: {
+      async getQuantity(id: string) { return id === CREDIT_PACK_ID ? run.held : 0; },
+      async consumeEntitlement(id: string, n: number, cb?: (e: unknown, ref: string) => void) {
+        if (opts.consumeFails) throw new Error('offline');
+        if (id !== CREDIT_PACK_ID || n > run.held) throw new Error('not enough');
+        run.held -= n; cb?.({}, 'ref'); return {};
+      },
+    },
+  });
+  return run;
+}
+
+test('the credit pack on RUN: 1,000 credits for one Bit, a consumable that is used up at once', () => {
+  const item = shop.items.find((i) => i.itemId === CREDIT_PACK_ID)!;
+  assert.ok(item && item.active && !item.unique);
+  assert.equal(item.category, 'consumable');
+  assert.deepEqual(item.price, { type: 'bucks', value: String(CREDIT_PACK_PRICE_BITS) });
+  assert.deepEqual(item.entitlements, [{ entitlementId: CREDIT_PACK_ID, quantity: 1, consumable: true }]);
+  assert.equal(CREDIT_PACK_CREDITS, 1000);
+  assert.equal(CREDIT_PACK_PRICE_BITS, 1);
+});
+
+test('buying a pack charges a Bit and puts 1,000 credits in the wallet once; the pack is used up', async () => {
+  const run = fakeRun();
+  const grants: number[] = [];
+  assert.equal(await buyCreditPack((c) => grants.push(c)), 'bought');
+  assert.equal(await buyCreditPack((c) => grants.push(c)), 'bought');
+  assert.deepEqual(grants, [1000, 1000]);
+  assert.equal(run.bits, 8);
+  assert.equal(run.held, 0, 'every pack was redeemed');
+  assert.equal(new Set(run.keys).size, 2, 'a fresh idempotency key per press');
+});
+
+test('a pack left on RUN (the app closed before redeeming) is paid on the next start; a failed consume pays nothing', async () => {
+  fakeRun({ held: 2 });
+  const grants: number[] = [];
+  assert.equal(await redeemCreditPacks((c) => grants.push(c)), 2000);
+  assert.equal(await redeemCreditPacks((c) => grants.push(c)), 0, 'nothing left to redeem');
+  assert.deepEqual(grants, [2000]);
+  const run = fakeRun({ held: 1, consumeFails: true });
+  assert.equal(await redeemCreditPacks((c) => grants.push(c)), 0);
+  assert.deepEqual(grants, [2000], 'no credits without RUN taking the pack');
+  assert.equal(run.held, 1, 'the pack waits for the next try');
+});
+
+test('no Bits: cancelled, nothing granted; no RUN: unavailable', async () => {
+  fakeRun({ bits: 0 });
+  const grants: number[] = [];
+  assert.equal(await buyCreditPack((c) => grants.push(c)), 'cancelled');
+  setSdkForTest(null);
+  assert.equal(await buyCreditPack((c) => grants.push(c)), 'unavailable');
+  assert.deepEqual(grants, []);
 });

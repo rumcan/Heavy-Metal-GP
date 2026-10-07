@@ -347,7 +347,15 @@
 .loadout-dialog { width: min(860px, 100%); }
 .loadout-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .loadout-head h2 { margin: 0; }
-.loadout-wallet { display: inline-flex; gap: 6px; align-items: center; font: 600 11px var(--mono); color: #d5e7ae; }
+.loadout-wallet { position: relative; display: inline-flex; gap: 6px; align-items: center; font: 600 11px var(--mono); color: #d5e7ae; }
+/* the credit pack: 1,000 credits for a RUN Bit */
+.credit-pack { display: inline-flex; align-items: center; gap: 5px; height: 24px; margin-left: 4px; padding: 0 4px 0 9px; border-radius: 999px; border: 1px solid #f5c542; background: linear-gradient(180deg, #3a2a08, #1e1604); color: #fde68a; font: 800 10px var(--mono); letter-spacing: .3px; cursor: pointer; white-space: nowrap; }
+.credit-pack:hover:not(:disabled) { background: linear-gradient(180deg, #4a360a, #2a1f06); }
+.credit-pack:disabled { opacity: .6; cursor: progress; }
+.credit-pack-price { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border-radius: 999px; background: #f5c542; color: #1e1604; font-weight: 900; }
+.credit-pack-price img { width: 12px; height: 12px; }
+@media (max-width: 650px) { .loadout-head { flex-wrap: wrap; } .loadout-wallet { flex-wrap: wrap; white-space: nowrap; } .credit-pack { margin-left: 0; } }
+.credit-pack-note { position: absolute; top: calc(100% + 4px); right: 0; z-index: 5; width: max-content; max-width: 240px; padding: 5px 9px; border-radius: 9px; background: #0b1219f2; border: 1px solid #2b3a4a; color: #e5edf5; font: 600 11px var(--sans, system-ui); }
 .loadout-error { margin: 6px 0; padding: 6px 10px; border-left: 3px solid #ef4444; background: #2a1316; font-size: 12px; color: #fecaca; }
 .loadout-slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0 14px; }
 .loadout-slot { position: relative; display: grid; border: 1px solid #2c3b4b; background: #0f1823; }
@@ -380,6 +388,12 @@
 @media (max-width: 700px), (max-height: 520px) {
   .loadout-slots { grid-template-columns: repeat(4, 1fr); }
   .loadout-groups { grid-template-columns: 1fr; max-height: 34vh; }
+}
+
+/* phones: two slots a row, so the bar fits 375 px */
+@media (max-width: 480px) {
+  .loadout-slots { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .loadout-dialog .mode-switch.loadout-mode button { flex: 1 1 auto; min-width: 0; padding-inline: 4px; letter-spacing: 0; font-size: 11px; }
 }
 
 /* P2-17: the talents screen. */

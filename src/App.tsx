@@ -1,4 +1,4 @@
-import { onUnlockAll, refreshUnlockAll, talentTierLevel, unlockAllOwned } from './game/premium';
+import { buyCreditPack, onUnlockAll, redeemCreditPacks, refreshUnlockAll, talentTierLevel, unlockAllOwned } from './game/premium';
 import { radio } from './game/sound/radio';
 import { raceAudio } from './game/audio';
 import * as storage from './game/storage';
@@ -589,6 +589,13 @@ export default function App() {
     raceAudio.ui(result.error ? 'error' : 'buy');
     return result.error;
   }, [publishAccount]);
+  // the credit pack (premium.ts): RUN consumes the pack, then the credits land in the wallet
+  const grantCredits = useCallback((credits: number) => {
+    publishAccount({ ...accountRef.current, credits: accountRef.current.credits + credits });
+    raceAudio.ui('buy');
+  }, [publishAccount]);
+  const buyCredits = useCallback(() => buyCreditPack(grantCredits), [grantCredits]);
+  useEffect(() => { void redeemCreditPacks(grantCredits); }, [grantCredits]); // a pack bought but never redeemed
   const inventoryChanged = useCallback((inventory: Inventory) => {
     publishAccount({ ...accountRef.current, inventory: { ...inventory } });
   }, [publishAccount]);
@@ -684,8 +691,8 @@ export default function App() {
         onRetry={openLadder}
         onClose={() => setLadderOpen(false)}
       />}
-      {shopOpen && <LoadoutScreen account={account} onBuy={buy} onClose={() => setShopOpen(false)} />}
-      {preRace && <LoadoutScreen account={account} onBuy={buy} mode={preRace.mode} onClose={() => setPreRace(null)} preRace={{
+      {shopOpen && <LoadoutScreen account={account} onBuy={buy} onBuyCredits={buyCredits} onClose={() => setShopOpen(false)} />}
+      {preRace && <LoadoutScreen account={account} onBuy={buy} onBuyCredits={buyCredits} mode={preRace.mode} onClose={() => setPreRace(null)} preRace={{
         onRace: () => { const go = preRace.go; setPreRace(null); go(); },
         onSame: () => { const go = preRace.go; setPreRace(null); go(); },
         ask: askLoadout,
