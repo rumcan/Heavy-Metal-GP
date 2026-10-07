@@ -66,8 +66,9 @@ export interface LedgePiece extends PieceBase { t: 'ledge'; x: number; y: number
 /** Platformer courses: a kicker ramp. Its foot is at (`x`, `y`) on the floor; it rises `h` over `w` to a lip that throws a fast ball into the air. */
 export interface KickerPiece extends PieceBase { t: 'kicker'; x: number; y: number; w: number; h: number }
 
-export interface RampPiece extends PieceBase { t: 'ramp'; a: Vec; b: Vec }
-export interface CurvePiece extends PieceBase { t: 'curve'; a: Vec; c: Vec; b: Vec; n?: number }
+/** `cliff: false` (platformer courses): the floor floats on its beam, no cliff, supports or trees painted under it. */
+export interface RampPiece extends PieceBase { t: 'ramp'; a: Vec; b: Vec; cliff?: false }
+export interface CurvePiece extends PieceBase { t: 'curve'; a: Vec; c: Vec; b: Vec; n?: number; cliff?: false }
 export interface IcePiece extends PieceBase { t: 'ice'; a: Vec; b: Vec }
 export interface LoopPiece extends PieceBase { t: 'loop'; x: number; bottom: number; r: number }
 export interface HoopPiece extends PieceBase { t: 'hoop'; x: number; y: number; dir: Vec }
@@ -960,7 +961,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
     case 'kicker':
       return { t: 'kicker', x: number(raw.x, `${at}.x`, -200, xMax(), problems), y: real(raw.y, `${at}.y`, problems), w: number(raw.w, `${at}.w`, 60, 400, problems), h: number(raw.h, `${at}.h`, 20, 200, problems), ...body };
     case 'ramp':
-      return { t: 'ramp', a: vec(raw.a, `${at}.a`, problems), b: vec(raw.b, `${at}.b`, problems), ...body };
+      return { t: 'ramp', a: vec(raw.a, `${at}.a`, problems), b: vec(raw.b, `${at}.b`, problems), ...(raw.cliff === false ? { cliff: false as const } : {}), ...body };
     case 'ice':
       return { t: 'ice', a: vec(raw.a, `${at}.a`, problems), b: vec(raw.b, `${at}.b`, problems), ...body };
     case 'curve':
@@ -970,6 +971,7 @@ function parsePiece(raw: unknown, at: string, problems: Problems): Piece | null 
         c: vec(raw.c, `${at}.c`, problems),
         b: vec(raw.b, `${at}.b`, problems),
         n: raw.n === undefined ? undefined : Math.round(number(raw.n, `${at}.n`, 2, 64, problems)),
+        ...(raw.cliff === false ? { cliff: false as const } : {}),
         ...body,
       };
     case 'trampoline':

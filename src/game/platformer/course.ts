@@ -74,7 +74,8 @@ export function planOfficial(course: PlatformerCourse): CoursePlan {
 
 /** One stretch of floor: its top edge runs from (x0, y0) to (x1, y1). */
 /** `hidden`: ground a classic Workshop piece (an ice rail) provides: drivers and the planner sense it, but it is built and drawn by that piece. */
-export interface Floor { lane: Lane; x0: number; y0: number; x1: number; y1: number; hidden?: boolean }
+/** `noCliff`: a Workshop floor that floats on its beam (no cliff, supports or trees painted under it). */
+export interface Floor { lane: Lane; x0: number; y0: number; x1: number; y1: number; hidden?: boolean; noCliff?: boolean }
 /** A raised block on a floor: jump it (its top is `y`, it sits on the floor below). */
 export interface Bump { lane: Lane; x: number; w: number; y: number; h: number; /** a classic block builds and draws it */ hidden?: boolean }
 /**

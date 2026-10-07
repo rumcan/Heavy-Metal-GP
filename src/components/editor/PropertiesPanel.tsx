@@ -113,6 +113,16 @@ export default function PropertiesPanel({ selected, pieces, onChange }: Props) {
         </>
       )}
 
+      {(piece.t === 'curve' || piece.t === 'ramp') && (
+        <>
+          <div className="prop-field">
+            <label>Cliff below</label>
+            <input type="checkbox" checked={piece.cliff !== false} onChange={(e) => update({ cliff: e.target.checked ? undefined : false } as unknown as Piece)} />
+          </div>
+          <div className="prop-hint">Side-scrolling courses: on, rock, supports and trees under the track; off, the track floats on its beam.</div>
+        </>
+      )}
+
       {piece.t === 'loop' && (
         <>
           <NumField label="Position X" value={piece.x} min={0} max={worldWidth()} onValue={(v) => update({ x: clampNum(v, 0, worldWidth()) } as unknown as Piece)} />

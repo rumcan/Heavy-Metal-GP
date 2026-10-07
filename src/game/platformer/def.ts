@@ -63,8 +63,9 @@ function slab(lane: Lane, ax: number, ay: number, bx: number, by: number): Floor
 export function pieceFloors(def: TrackDef): Floor[] {
   const out: Floor[] = [];
   for (const p of def.pieces) {
-    if (p.t === 'ramp' || p.t === 'ice') out.push(...slab(laneOf(p), p.a[0], p.a[1], p.b[0], p.b[1]));
-    else if (p.t === 'curve') out.push(...curveFloors(laneOf(p), p.a, p.c, p.b, p.n ?? 12));
+    const float = (floors: Floor[]) => ((p.t === 'ramp' || p.t === 'curve') && p.cliff === false ? floors.map((f) => ({ ...f, noCliff: true })) : floors);
+    if (p.t === 'ramp' || p.t === 'ice') out.push(...float(slab(laneOf(p), p.a[0], p.a[1], p.b[0], p.b[1])));
+    else if (p.t === 'curve') out.push(...float(curveFloors(laneOf(p), p.a, p.c, p.b, p.n ?? 12)));
   }
   return out;
 }

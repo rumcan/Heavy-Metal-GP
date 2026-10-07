@@ -97,6 +97,8 @@ type Pt = { x: number; y: number };
 
 /** Each lane's floors joined into runs between chasms. */
 const runCache = new WeakMap<CoursePlan, Pt[][][]>();
+/** Runs of floors that float on their beam (a Workshop floor with its cliff switched off). */
+const floating = new WeakSet<Pt[]>();
 function runsOf(plan: CoursePlan): Pt[][][] {
   let runs = runCache.get(plan);
   if (runs) return runs;
@@ -108,9 +110,10 @@ function runsOf(plan: CoursePlan): Pt[][][] {
     for (const f of floors) {
       // a new run after a chasm, and also at a STEP (the floor jumps up or down): joining across a step drew it as a
       // long gentle slope, so the painted track sat far above or below where the ball actually rolls
-      if (!last || Math.abs(f.x0 - last.x1) > 0.5 || Math.abs(f.y0 - last.y1) > 1) {
+      if (!last || Math.abs(f.x0 - last.x1) > 0.5 || Math.abs(f.y0 - last.y1) > 1 || !!f.noCliff !== !!last.noCliff) {
         if (run.length) out.push(run);
         run = [{ x: f.x0, y: f.y0 }];
+        if (f.noCliff) floating.add(run);
       }
       run.push({ x: f.x1, y: f.y1 });
       last = f;
@@ -258,7 +261,9 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
   for (const run of runs) {
     if (run[run.length - 1].x < left || run[0].x > right) continue;
     const pts = clip(run, left, right);
-    if (!statics) { torches(ctx, run, pts, lane, time); continue; }
+    if (!statics) { if (!floating.has(run)) torches(ctx, run, pts, lane, time); continue; }
+    // a floating floor (its cliff switched off in the Workshop): just the beam
+    if (floating.has(run)) { stripAlongX(ctx, middle(ART.wood!), pts, RAIL_UP, TRACK_T); continue; }
     // the goblin stands first: behind this lane's cliff and beam (and every nearer lane)
     const stands = plan.stands ? standsAt(ctx, plan.stands, run, pts, lane, drawnStands) : crowds(ctx, run, pts, lane);
     const cliff = pts.map((p) => ({ x: p.x, y: p.y + clearance(p.x) }));
