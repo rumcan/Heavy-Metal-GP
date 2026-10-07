@@ -2,6 +2,7 @@
 // Split out of engine.ts (P2-00a). Every function takes the Game as `game`; Game's methods delegate here.
 import Matter from 'matter-js';
 import { meta } from '../track';
+import { noteTrackContact } from './platformer';
 import * as holds from './holds';
 import { pendulumOmega, slideDir, rollAt, pathAt, beltDir } from '../elements';
 
@@ -26,9 +27,11 @@ export function onCollisionStart(game: Game, e: Matter.IEventCollision<Matter.En
     const ma = game.marbleOf(a);
     const mb = game.marbleOf(b);
     if (ma && !mb) {
+      if (game.track.platformer) noteTrackContact(game, ma, b);
       game.contactSurface(ma, b, pair, true);
       game.marbleHits(ma, b);
     } else if (mb && !ma) {
+      if (game.track.platformer) noteTrackContact(game, mb, a);
       game.contactSurface(mb, a, pair, true);
       game.marbleHits(mb, a);
     }
@@ -650,6 +653,7 @@ export function onCollisionActive(game: Game, e: Matter.IEventCollision<Matter.E
     if (!m || (ma && mb) || m.frozen || m.finishedAt !== null || !game.gateOpen) continue;
     const md = meta(other);
     if (!md) continue;
+    if (game.track.platformer) noteTrackContact(game, m, other);
     // P2-00: touching a platformer floor below the marble's middle counts as grounded.
     if (md.kind === 'floor' || md.kind === 'ledge') {
       const support = pair.collision.supports[0];

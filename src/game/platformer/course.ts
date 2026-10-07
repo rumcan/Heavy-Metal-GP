@@ -75,7 +75,7 @@ export function planOfficial(course: PlatformerCourse): CoursePlan {
 /** One stretch of floor: its top edge runs from (x0, y0) to (x1, y1). */
 /** `hidden`: ground a classic Workshop piece (an ice rail) provides: drivers and the planner sense it, but it is built and drawn by that piece. */
 /** `noCliff`: a Workshop floor that floats on its beam (no cliff, supports or trees painted under it). */
-export interface Floor { lane: Lane; x0: number; y0: number; x1: number; y1: number; hidden?: boolean; noCliff?: boolean; /** a Workshop curve's floor: its beam is painted whole from plan.beams */ noBeam?: boolean }
+export interface Floor { lane: Lane; x0: number; y0: number; x1: number; y1: number; hidden?: boolean; noCliff?: boolean; /** a Workshop curve's floor: its beam is painted whole from plan.beams */ noBeam?: boolean; /** Crossing tracks: a plain floor that is also a track line (plan.tracks builds its body; draw it, do not build it here) */ noBody?: boolean }
 /** A raised block on a floor: jump it (its top is `y`, it sits on the floor below). */
 export interface Bump { lane: Lane; x: number; w: number; y: number; h: number; /** a classic block builds and draws it */ hidden?: boolean }
 /**
@@ -122,10 +122,42 @@ export interface SmashBreak { id: string; lane: Lane; x: number; y: number; at: 
  */
 export interface StandSpot { id: number; lane: Lane; x: number; w: number; y: number }
 /** A Workshop curve's beam, painted whole along its own shape (it may turn vertical or bend back on itself). */
-export interface BeamPath { lane: Lane; pts: { x: number; y: number }[] }
+export interface BeamPath {
+  lane: Lane;
+  pts: { x: number; y: number }[];
+  /** A rail: the points are in ride order and the beam sits on the solid side of travel (else it is painted left to right). */
+  oriented?: boolean;
+  /** The piece's index in the def (beams are drawn in this order: higher is in front). */
+  source?: number;
+}
+/**
+ * Crossing tracks: a Workshop track piece built as its own line of segments (a rail, or a floor that takes part in a
+ * crossing). Points are in ride order. A rail is solid on the right-hand side of travel; a plain floor straight below.
+ */
+export interface TrackLine {
+  lane: Lane;
+  /** The piece's index in the def (its depth: a higher index is drawn in front). */
+  source: number;
+  pts: { x: number; y: number }[];
+  rail: boolean;
+  /** Collision category of each segment (pts.length - 1 entries): 0 = the ordinary CAT_WALL, else a ply bit. */
+  cats: number[];
+  /** Indices (in plan.tracks) of the lines whose ends meet this line's ends. */
+  joins: number[];
+  /** Bounding box of the points. */
+  box: { x0: number; y0: number; x1: number; y1: number };
+}
+/** One way through a crossing zone: runs of segments `[line, firstSeg, lastSeg]` (inclusive), one ply bit. */
+export interface CrossPassage { id: number; bit: number; depth: number; runs: [number, number, number][] }
+/** A box where tracks cross; inside it a ball collides only with its own passage. */
+export interface CrossZone { lane: Lane; x0: number; y0: number; x1: number; y1: number; passages: CrossPassage[] }
 export interface CoursePlan {
   /** Workshop curves' beams (their floors carry noBeam). */
   beams?: BeamPath[];
+  /** Crossing tracks: Workshop rails and crossing floors, built as lines (absent = none: every floor is in `floors`). */
+  tracks?: TrackLine[];
+  /** Crossing tracks: where tracks cross (absent = none). */
+  crossings?: CrossZone[];
   /** The lanes this course has (absent = all three; lanes.ts LANE_SETS). */
   lanes?: readonly number[];
   /**

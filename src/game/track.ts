@@ -337,6 +337,13 @@ export interface Meta {
   laneGate?: import('./platformer/course').LaneGate;
   /** P2-00: how far a floor block is drawn below its top edge (art only). */
   depth?: number;
+  /** Crossing tracks: the body is segment `seg` of plan.tracks[line] (piece `source`); a rail's direction of travel (tx, ty). */
+  line?: number;
+  seg?: number;
+  rail?: boolean;
+  tx?: number;
+  ty?: number;
+  source?: number;
 }
 
 /** Anchors for the art skin. Physics never reads these; sprites are drawn over the vector bodies. */

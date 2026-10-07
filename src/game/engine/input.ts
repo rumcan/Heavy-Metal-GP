@@ -4,7 +4,7 @@ import Matter from 'matter-js';
 import type { Game, Marble } from '../engine';
 import { CONTROL_TUNING, engineStep, engineThrust, jumpStep, newEngine, newJump, steerVelocity } from '../controls';
 import { TICK } from '../engine';
-import { tryDoor } from './platformer';
+import { railJump, railSteer, tryDoor } from './platformer';
 
 /** Is this marble driven by a human (local or a guest)? Only humans get the engine and the core jump. */
 function handsOf(game: Game, m: Marble): { nudge: number; engine: boolean; jump: boolean } | null {
@@ -27,7 +27,8 @@ export function steer(game: Game, m: Marble, v: Matter.Vector, s: number): Matte
   const hands = handsOf(game, m);
   if (!hands) return v;
   const grounded = m.grounded < 5;
-  if (hands.nudge !== 0) v = { x: steerVelocity(v.x, hands.nudge, grounded, s), y: v.y };
+  // crossing tracks: on a steep or upside-down Workshop rail, steering pushes along the track
+  if (hands.nudge !== 0) v = game.track.platformer ? railSteer(game, m, v, hands.nudge, grounded, s) : { x: steerVelocity(v.x, hands.nudge, grounded, s), y: v.y };
 
   // P2-08: Overdrive: the engine never overheats and pushes half as hard again
   const overdrive = (m.fx?.overdriveUntil ?? 0) > game.time;
@@ -43,6 +44,6 @@ export function steer(game: Game, m: Marble, v: Matter.Vector, s: number): Matte
   if (hands.jump && game.track.platformer && tryDoor(game, m)) hands.jump = false;
   const jump = jumpStep(m.jumpState ?? newJump(), game.time, grounded, hands.jump);
   m.jumpState = jump.state;
-  if (jump.jump) v = { x: v.x, y: Math.min(v.y, -CONTROL_TUNING.jumpSpeed) };
+  if (jump.jump) v = game.track.platformer ? railJump(game, m, v) : { x: v.x, y: Math.min(v.y, -CONTROL_TUNING.jumpSpeed) };
   return v;
 }
