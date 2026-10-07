@@ -11,7 +11,7 @@ import { drawBodies, drawBridgeChain, drawEffects, drawMarble } from '../render'
 import { drawSkillWorld } from '../skills/draw';
 import { GATE_RAMP_H, SPRING_W, floorAt } from './course';
 import type { CoursePlan, Floor, Lane, LaneGate } from './course';
-import { cliffTopAt, coasterReady, drawCoasterLane, drawGateRamp } from './coaster';
+import { cliffTopAt, coasterReady, drawBeamPath, drawCoasterLane, drawGateRamp } from './coaster';
 import { drawCloudLedge, drawKicker } from './sky-art';
 import { drawRoutes, setBridgeArt } from './routes';
 import { LEDGE_H } from './build';
@@ -897,6 +897,33 @@ function drawFlowGround(ctx: CanvasRenderingContext2D, plan: CoursePlan, lane: n
   }
 }
 
+/**
+ * Crossing tracks: where a ball rides a track that passes behind another, the zone is painted again back to front:
+ * each passage's beam, then the balls riding it. So a ball on the back track passes behind the front one.
+ */
+function drawOverpasses(ctx: CanvasRenderingContext2D, game: Game, lane: number, left: number, right: number, depths: { m: Marble; z: number }[], t: number) {
+  const plan = game.track.platformer!.plan;
+  if (!plan.crossings?.length || !coasterReady()) return;
+  plan.crossings.forEach((zone, zi) => {
+    if (zone.lane !== lane || zone.x1 < left || zone.x0 > right) return;
+    const balls = depths.filter(({ m, z }) => z === lane && m.passage?.zone === zi).map(({ m }) => m);
+    if (!balls.length) return;
+    const depthOf = (id: number) => zone.passages.find((P) => P.id === id)?.depth ?? -1;
+    const front = Math.max(...zone.passages.map((P) => P.depth));
+    if (balls.every((m) => depthOf(m.passage!.id) === front)) return; // nobody is behind another track
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(zone.x0, zone.y0 - 40, zone.x1 - zone.x0, zone.y1 - zone.y0 + 80);
+    ctx.clip();
+    for (const P of [...zone.passages].sort((a, b) => a.depth - b.depth)) {
+      const sources = new Set(P.runs.map(([li]) => plan.tracks![li].source));
+      for (const beam of plan.beams ?? []) if (beam.source !== undefined && sources.has(beam.source)) drawBeamPath(ctx, beam);
+      for (const m of balls) if (m.passage!.id === P.id) drawBall(ctx, game, m, t);
+    }
+    ctx.restore();
+  });
+}
+
 /** Render the race. `followed` is the marble the camera is on (never hidden behind a layer). */
 export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam: PlatformCamera, cw: number, ch: number, t: number, followed: Marble = game.player) {
   frameNo++;
@@ -938,6 +965,7 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
     } else drawLaneWorld(target, game, lane, left, right, bottom, t);
     // Marbles settled on this layer (a ball mid-change is drawn between layers, below).
     for (const { m, z } of depths) if (z === lane) drawBall(target, game, m, t);
+    drawOverpasses(target, game, lane, left, right, depths, t);
     // the game's effects (hits, pickups, hoop flashes, debris) that belong to this lane: the lane of the ball nearest
     // each one (effects carry no lane), so a hit in another lane is not drawn on yours
     drawEffects(target, game, (e) => effectLane(game, depths, e, cam.focus) === lane);
