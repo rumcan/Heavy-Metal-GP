@@ -66,6 +66,7 @@ for (const job of jobs) {
     const r = rundot(argv);
     const text = `${r.stdout}\n${r.stderr}`;
     const wait = /retry in (\d+) seconds?/i.exec(text);
+    if (/content moderation/i.test(text)) { console.log(`  refused by content moderation (${job.id}): reword its prompt`); break; }
     if (wait) { console.log(`  rate limited (${job.id}), waiting ${wait[1]} s`); await sleep((Number(wait[1]) + 3) * 1000); continue; }
     const json = text.split('\n').map((l) => l.trim()).filter((l) => l.startsWith('{')).pop();
     if (json && existsSync(job.out)) {

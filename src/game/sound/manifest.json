@@ -499,7 +499,7 @@
     {
       "id": "skill-decoy",
       "duration": 1.0,
-      "prompt": "Decoy appearing, a cartoon poof of smoke with a playful pop."
+      "prompt": "A decoy appearing: a quick puff of smoke whoosh and a light playful pop, like a magic trick."
     },
     {
       "id": "skill-grapple",
@@ -599,7 +599,7 @@
     {
       "id": "ws-delete",
       "duration": 0.7,
-      "prompt": "Removing a piece, a quick wooden crunch and a poof."
+      "prompt": "Taking a wooden track piece away: a quick wooden crunch and a soft swish."
     },
     {
       "id": "ws-snap",

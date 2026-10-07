@@ -125,6 +125,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
     const run = new InfinityRun(seed, driver, { effects: true });
     const painter = new InfinityPainter(seed);
     let shiftsSeen = 0;
+    radio.setScene('infinity'); // the Infinity Skies station from the first moment (the frame loop refines day, night and biome)
     const audio = new InfinityAudio(seed);
     audioRef.current = audio;
     audio.setMuted(raceAudio.muted);
