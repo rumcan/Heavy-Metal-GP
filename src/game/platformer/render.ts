@@ -1329,6 +1329,8 @@ function hazePines(img: HTMLImageElement, haze: number, flip: boolean): { c: HTM
 const ISLAND_ROWS: readonly number[] = [1, 3];
 const ISLAND_SLOT = 1500, ISLAND_CHANCE = 0.42;
 const SKY_SLOT = 2100, SKY_CHANCE = 0.55;
+/** The widest an island is drawn (a share of the screen's width) and how far it may rise over the trees (of its height). */
+const ISLAND_MAX_W = 0.3, ISLAND_MAX_RISE = 0.17;
 
 /** A soft see-through as an island passes in front of the ball (full again 60 px clear of it). */
 function islandAlpha(ball: { x: number; y: number } | undefined, x0: number, y0: number, x1: number, y1: number): number {
@@ -1338,7 +1340,7 @@ function islandAlpha(ball: { x: number; y: number } | undefined, x0: number, y0:
 }
 
 /** The islands of one foreground row whose slots are on screen, rising out of the pines (`treeTop`: the row's tops at a screen x). */
-function treeIslands(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, row: number, p: number, scroll: number, fs: number, treeTop: (sx: number) => number, t: number, ball?: { x: number; y: number }) {
+function treeIslands(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch: number, row: number, p: number, scroll: number, fs: number, treeTop: (sx: number) => number, t: number, ball?: { x: number; y: number }) {
   const key = `i${row}`;
   const rw = ISLAND_SLOT * fs * p;
   const start = tileStart(cam, key, scroll, rw, cw);
@@ -1346,13 +1348,15 @@ function treeIslands(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: num
     const art = islandIn(key, id, ISLAND_CHANCE);
     const img = art ? islandPicture(art.n) : null;
     if (!art || !img) continue;
-    const w = art.w * fs * p * (0.85 + 0.3 * islandHash(key, id, 1)), h = w * (img.naturalHeight / img.naturalWidth);
+    // never more than about a third of the screen (a race camera zoomed right in made them cover the track)
+    const w = Math.min(art.w * fs * p * (0.85 + 0.3 * islandHash(key, id, 1)), cw * ISLAND_MAX_W, ch * ISLAND_MAX_W * 1.6), h = w * (img.naturalHeight / img.naturalWidth);
     const cx = rx + rw * (0.25 + 0.5 * islandHash(key, id, 2));
     if (cx + w / 2 < 0 || cx - w / 2 > cw) continue;
     // its grass and buildings rise over the treetops (how far varies), bobbing gently and slowly rising and sinking
     const phase = islandHash(key, id, 3) * Math.PI * 2;
     const bob = (Math.sin(t / 2300 + phase) * 7 + Math.sin(t / 7100 + phase * 1.7) * 16) * fs * p;
-    const top = treeTop(cx) - h * art.rock * (0.75 + 0.25 * islandHash(key, id, 4)) + bob;
+    // and what rises over the treetops stays in the lower part of the screen, under the track
+    const top = treeTop(cx) - Math.min(h * art.rock * (0.75 + 0.25 * islandHash(key, id, 4)), ch * ISLAND_MAX_RISE) + bob;
     ctx.globalAlpha = islandAlpha(ball, cx - w / 2, top, cx + w / 2, treeTop(cx));
     drawImg(ctx, img, cx - w / 2, top, w, h);
   }
@@ -1360,7 +1364,7 @@ function treeIslands(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: num
 }
 
 /** The sky islands on screen: high over the track (`line`: the track on screen at a screen x; they hang over its height at the centre, so a slope does not tip them off the top), now and then on a cloud. */
-function skyIslands(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, p: number, scroll: number, fs: number, line: (sx: number) => number, t: number, ball?: { x: number; y: number }) {
+function skyIslands(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch: number, p: number, scroll: number, fs: number, line: (sx: number) => number, t: number, ball?: { x: number; y: number }) {
   const key = 'sky';
   const rw = SKY_SLOT * fs * p;
   const start = tileStart(cam, key, scroll, rw, cw);
@@ -1368,7 +1372,7 @@ function skyIslands(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
     const art = islandIn(key, id, SKY_CHANCE);
     const img = art ? islandPicture(art.n) : null;
     if (!art || !img) continue;
-    const w = art.w * fs * p * (0.42 + 0.14 * islandHash(key, id, 1)), h = w * (img.naturalHeight / img.naturalWidth);
+    const w = Math.min(art.w * fs * p * (0.42 + 0.14 * islandHash(key, id, 1)), cw * ISLAND_MAX_W, ch * ISLAND_MAX_W * 1.6), h = w * (img.naturalHeight / img.naturalWidth);
     const cx = rx + rw * (0.2 + 0.6 * islandHash(key, id, 2));
     if (cx + w / 2 < -40 || cx - w / 2 > cw + 40) continue;
     const phase = islandHash(key, id, 3) * Math.PI * 2;
@@ -1438,7 +1442,7 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
   if (islands) {
     // the sky islands hang over the track as it lies on screen (the camera's own line: the cliffs can be far below it)
     const track = (sx: number) => { const y = plan ? trackLineY(plan, cam.focus ?? LANE_MIDDLE, cam.x + (sx - cw / 2) / cam.scale) : null; return y === null ? ch / 2 : ch / 2 + (y - cam.y) * cam.scale; };
-    skyIslands(ctx, cam, cw, pineRow(PINE_ROWS.length).p, scrolls[PINE_ROWS.length], fs, track, t, seen);
+    skyIslands(ctx, cam, cw, ch, pineRow(PINE_ROWS.length).p, scrolls[PINE_ROWS.length], fs, track, t, seen);
   }
   // Back to front. The nearer rows past the front one (zoomed out) fade in as the ground under the row behind them
   // comes into view, and out again as it leaves (the owner: no snapping in and out).
@@ -1474,7 +1478,7 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
     }
     // islands rising out of this row (the rows in front hide their hanging rock)
     if (islands && ISLAND_ROWS.includes(i) && alpha >= 1) {
-      treeIslands(ctx, cam, cw, i, r.p, scrolls[i], fs, (sx) => lineAt(sx) + (r.drop - CLIFF_RISE) * fs * r.p, t, seen);
+      treeIslands(ctx, cam, cw, ch, i, r.p, scrolls[i], fs, (sx) => lineAt(sx) + (r.drop - CLIFF_RISE) * fs * r.p, t, seen);
     }
   }
   ctx.globalAlpha = 1;
