@@ -16,6 +16,7 @@ import type { TrackDef } from '../../game/trackdef';
 import { cachedValidation } from './validationCache';
 import { CALENDAR, gpSeed } from '../../game/season';
 import { officialTrack } from '../../game/official-tracks';
+import { PINBALL_ROUNDS, archivedPlatformerTrack, championshipTrack, generatedPlatformerTrack } from '../../game/championship-tracks';
 import { generateTrackDef } from '../../game/trackdef';
 import { isPlatformerDef } from '../../game/platformer/def';
 import { kindOfEntry } from '../../game/platformer/lists';
@@ -164,20 +165,23 @@ export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, on
         <div style={{ marginTop: 20, padding: 10, background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--line)', borderRadius: 4 }}>
           <header className="eyebrow" style={{ marginBottom: 6, display: 'block' }}>DEV TOOLS: CHAMPIONSHIP CIRCUITS</header>
           <p style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 10 }}>
-            The calendar races these archives — nothing is generated at race time. Generate a starting point (or load the saved circuit), fix it in the editor, then Archive to make it official. The page reloads and every demo and heat runs the new file.
+            Every round races a platformer course; in the championship and story, Monte Pipo and Suzuka race their pinball circuits. Generate a starting point (or load the saved one), fix it in the editor, then Archive to make it official. The page reloads and every race runs the new file.
           </p>
           {CALENDAR.map((gp) => {
-            const archived = officialTrack(gp.id);
+            const pinball = PINBALL_ROUNDS.has(gp.id);
+            const saved = pinball ? officialTrack(gp.id) : championshipTrack(gp.id);
+            const file = `src/game/official-tracks/${pinball ? 'champ' : 'gp'}-${gp.id}.json`;
             return (
               // Name on its own line, then the three buttons in an even grid, so Archive never runs off the panel.
               <div key={gp.id} style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 5, marginBottom: 8 }}>
-                <span style={{ gridColumn: '1 / -1', fontSize: 10, color: 'var(--text-muted)' }} title={gp.name}>{gp.short}</span>
+                <span style={{ gridColumn: '1 / -1', fontSize: 10, color: 'var(--text-muted)' }} title={gp.name}>{gp.short} · {pinball ? 'pinball circuit' : 'platformer course'}{!pinball && !archivedPlatformerTrack(gp.id) ? ' (not archived yet)' : ''}</span>
                 <button
                   className="button-secondary"
                   style={{ minWidth: 0, padding: '4px 6px', fontSize: 10 }}
-                  title={`Generate a fresh seeded ${gp.name} circuit into the editor`}
+                  title={pinball ? `Generate a fresh seeded ${gp.name} pinball circuit into the editor` : `Generate ${gp.name}'s platformer course from its seed into the editor`}
                   onClick={() => {
-                    onDevLoadOfficial(generateTrackDef(gpSeed(0, gp.id), gp.profile, gp.name));
+                    const def = pinball ? generateTrackDef(gpSeed(0, gp.id), gp.profile, gp.name) : generatedPlatformerTrack(gp.id);
+                    if (def) onDevLoadOfficial(def);
                   }}
                 >
                   Generate
@@ -185,10 +189,10 @@ export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, on
                 <button
                   className="button-secondary"
                   style={{ minWidth: 0, padding: '4px 6px', fontSize: 10 }}
-                  disabled={!archived}
-                  title={archived ? `Load the archived circuit round ${gp.id + 1} currently races (${archived.pieces.length} pieces)` : 'No valid archive for this round'}
+                  disabled={!saved}
+                  title={saved ? `Load the ${pinball ? 'pinball circuit' : 'platformer course'} round ${gp.id + 1} currently races (${saved.pieces.length} pieces)` : 'No valid archive for this round'}
                   onClick={() => {
-                    if (archived) onDevLoadOfficial(archived);
+                    if (saved) onDevLoadOfficial(saved);
                   }}
                 >
                   Load saved
@@ -196,13 +200,14 @@ export default function MyTracksPanel({ tracks, activeId, currentDef, onLoad, on
                 <button
                   className="button-primary"
                   style={{ minWidth: 0, padding: '4px 6px', fontSize: 10 }}
-                  title={`Write the current editor circuit to src/game/official-tracks/champ-${gp.id}.json`}
+                  title={`Write the current editor ${pinball ? 'circuit' : 'course'} to ${file}`}
                   onClick={() => {
-                    fetch(`/__dev/save-official-track?round=${gp.id}`, {
+                    if (isPlatformerDef(currentDef) === pinball) { alert(pinball ? `${gp.name} races a pinball circuit here: open a pinball circuit to archive it.` : `${gp.name} races a platformer course: open a platformer course to archive it.`); return; }
+                    fetch(`/__dev/save-official-track?round=${gp.id}${pinball ? '' : '&kind=platformer'}`, {
                       method: 'POST',
                       body: JSON.stringify(currentDef, null, 2),
                     }).then((res) => {
-                      if (res.ok) alert(`Saved to src/game/official-tracks/champ-${gp.id}.json — the game races it from the next reload.`);
+                      if (res.ok) alert(`Saved to ${file}: the game races it from the next reload.`);
                       else alert('Failed to save official track');
                     });
                   }}

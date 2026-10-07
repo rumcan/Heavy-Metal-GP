@@ -35,6 +35,7 @@ import TutorialPrologue from './TutorialPrologue';
 import TutorialRace from './TutorialRace';
 import type { StoryRaceProps } from './StoryRace';
 import '../../story.css';
+import { PINBALL_ROUNDS, seasonTrack } from '../../game/championship-tracks'; // Monte Pipo and Suzuka race their pinball circuits
 
 /** Stages of the story flow. Scene playback lives in `playing`, on top of whichever stage queued it. */
 type Stage =
@@ -448,6 +449,7 @@ export default function StoryMode({ driver, account, onAccount, onLevelUp, onSho
         seed={setup?.seed ?? storyRaceSeed(state, stage.chapter)}
         roster={setup?.roster ?? roster}
         profile={raceProfile ?? storyProfile(stage.chapter)}
+        trackDef={PINBALL_ROUNDS.has(gp.id) ? seasonTrack(gp.id) : null}
         gridOrder={raceGrid}
         title={gp.name}
         subtitle={`STORY · CHAPTER ${String(stage.chapter).padStart(2, '0')} / HEAT ${stage.heat} OF ${HEATS_PER_GP}`}
