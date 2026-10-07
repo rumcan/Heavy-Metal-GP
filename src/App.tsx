@@ -1,3 +1,4 @@
+import { onUnlockAll, refreshUnlockAll, talentTierLevel, unlockAllOwned } from './game/premium';
 import { radio } from './game/sound/radio';
 import { raceAudio } from './game/audio';
 import * as storage from './game/storage';
@@ -417,7 +418,7 @@ export default function App() {
       inventory: account.inventory,
       // P2-19: the build travels with the garage, validated HERE against this driver's own level and
       // points — the host checks it again, and trims anything a maxed driver could not have bought.
-      talents: validateBuild(account.talents ?? {}, progressOf(account).level, progressOf(account).talentPoints),
+      talents: validateBuild(account.talents ?? {}, talentTierLevel(progressOf(account).level), progressOf(account).talentPoints),
     }),
     [room, garages.online, account.inventory, account.talents, account.progress],
   );
@@ -709,6 +710,10 @@ export default function App() {
   };
 
   useEffect(() => saveSeason(season), [season]);
+  // The RUN Bits unlock (premium.ts): ask RUN at start (a refund or a new device is picked up), and re-render the whole
+  // game when it changes so every lock opens at once.
+  const [, setUnlockAll] = useState(unlockAllOwned());
+  useEffect(() => { const off = onUnlockAll(setUnlockAll); void refreshUnlockAll(); return off; }, []);
   // Sound: the first touch or key anywhere unlocks the sound and starts the radio (browsers allow it only after one).
   // Every button press in the menus clicks, tabs tick (a button can opt out with data-sound="none"; the race's own skill
   // keys and the canvas have their own sounds).

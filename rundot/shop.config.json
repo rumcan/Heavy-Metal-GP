@@ -1,0 +1,34 @@
+{
+  "items": [
+    {
+      "itemId": "unlock_all",
+      "name": "Unlock everything",
+      "description": "Every skill, every ball cosmetic, every talent tier and every story chapter, unlocked for good.",
+      "category": "non_consumable",
+      "price": {
+        "type": "bucks",
+        "value": "100"
+      },
+      "entitlements": [
+        {
+          "entitlementId": "unlock_all",
+          "quantity": 1,
+          "consumable": false
+        }
+      ],
+      "unique": true,
+      "active": true,
+      "regions": [],
+      "refundEligible": true,
+      "refundWindowHours": 24,
+      "tags": [
+        "unlock"
+      ],
+      "sortOrder": 1,
+      "releasedAt": null,
+      "expiresAt": null
+    }
+  ],
+  "sales": [],
+  "collections": []
+}

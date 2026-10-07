@@ -586,7 +586,7 @@ export function marbleHits(game: Game, m: Marble, other: Matter.Body) {
         const item = givePickup(game, m);
         game.sfx('trial', m, other.position.x, other.position.y);
         game.storyCounter('itemBoxes', m); // STORY HOOK (ST-07)
-        game.emit({ kind: 'box', i: game.indexOf(other), taken: true, seat: m.info.id, item });
+        game.emit({ kind: 'box', i: game.indexOf(other), taken: true, seat: m.info.id, item, ...(m.pickupCharges && m.pickupCharges > 1 ? { charges: m.pickupCharges } : {}) });
         game.effects.push({ type: 'ring', x: other.position.x, y: other.position.y, ttl: 18, maxTtl: 18, color: '#facc15' });
         break;
       }

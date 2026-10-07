@@ -203,6 +203,8 @@ export interface Marble {
   engineKey?: boolean;
   /** The Tab slot (platformer races): one skill picked up from a box or an item peg, to try out. Used once; it never goes home. */
   pickup?: ItemType | null;
+  /** How many uses the Tab slot's skill has left (2 after a Lucky Draw box; absent = 1). */
+  pickupCharges?: number;
   /** Crossing tracks: the Workshop track segment this marble last touched (plan.tracks index, segment) and when. */
   track?: { line: number; seg: number; at: number };
   /** Crossing tracks: the last rail it touched, its direction of travel there (tx, ty) and when (steering along it). */

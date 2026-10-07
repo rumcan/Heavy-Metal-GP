@@ -626,7 +626,7 @@ export class RaceGuest {
         if (!body) break;
         meta(body).active = !event.taken;
         // the trial skill the box gave (the Tab slot), so the seat's HUD and use match the host
-        if (event.taken && event.item && event.seat !== undefined && marbles[event.seat]) marbles[event.seat].pickup = event.item;
+        if (event.taken && event.item && event.seat !== undefined && marbles[event.seat]) { marbles[event.seat].pickup = event.item; marbles[event.seat].pickupCharges = event.charges ?? 1; }
         if (event.taken) this.ring(body.position.x, body.position.y, 18, '#facc15');
         break;
       }
@@ -663,7 +663,7 @@ export class RaceGuest {
       }
       case 'item': {
         const m = marbles[event.seat];
-        if (m && m.pickup === event.item) m.pickup = null; // the host uses the Tab slot's pickup first
+        if (m && m.pickup === event.item) { m.pickupCharges = (m.pickupCharges ?? 1) - 1; if (m.pickupCharges <= 0) { m.pickup = null; m.pickupCharges = undefined; } } // the host uses the Tab slot's pickup first
         if (m) this.ring(m.body.position.x, m.body.position.y, 22, m.info.color);
         break;
       }

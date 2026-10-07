@@ -175,6 +175,7 @@ test('Driver: Second Wind brings health back sooner than the plain wait', () => 
 });
 
 test('Driver: Lucky Draw can make an item box pay out twice', () => {
+  // On a platformer course a box puts a trial skill in the Tab slot; Lucky Draw makes it two uses instead of one.
   const openOnce = (g: Game): number => {
     g.start(); g.openGate();
     const m = g.player;
@@ -183,8 +184,10 @@ test('Driver: Lucky Draw can make an item box pay out twice', () => {
     (box.plugin as { active: boolean }).active = true;
     g.rng = () => 0; // pick index 0, then roll 0 — under any boxLuckPct, so the double fires
     g.marbleHits(m, box);
-    return ITEM_TYPES.reduce((a, id) => a + m.inventory[id], 0);
+    assert.ok(m.pickup, 'the box filled the Tab slot');
+    assert.equal(ITEM_TYPES.reduce((a, id) => a + m.inventory[id], 0), 0, 'and nothing went into your own skills');
+    return m.pickupCharges ?? 1;
   };
-  assert.equal(openOnce(raceWith({})), 1, 'no talent: one charge per box');
+  assert.equal(openOnce(raceWith({})), 1, 'no talent: one use per box');
   assert.equal(openOnce(raceWith({ 'lucky-draw': 1 })), 2, 'a 15 % roll doubles the box');
 });
