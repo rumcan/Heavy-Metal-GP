@@ -203,6 +203,11 @@ export interface TrackDef {
   width?: number;
   /** A platformer course's lane count (lanes.ts LANE_SETS: 1 = main only, 2 = main + back, 3 = all). Absent = 3. */
   lanes?: 1 | 2;
+  /**
+   * A platformer course's extra sky above its start (the owner: build as high as you like): the start platform sits
+   * this much lower, so every piece keeps a positive y however high it is built. Absent = 0.
+   */
+  sky?: number;
   /** Sector list for the HUD, minimap and story hooks. Omitted defs get Start/Custom/Finish. */
   segments?: SegmentInfo[];
   pieces: Piece[];
@@ -794,6 +799,11 @@ function validateTrackDefInner(value: unknown): TrackDefCheck {
       width = number(value.width, 'width', PLATFORMER_MIN_WIDTH, PLATFORMER_MAX_WIDTH, problems);
     }
   } else if (value.width !== undefined) problems.add('width only belongs to a platformer course.');
+  let sky: number | undefined;
+  if (value.sky !== undefined) {
+    if (mode !== 'platformer') problems.add('sky only belongs to a platformer course.');
+    else sky = Math.round(number(value.sky, 'sky', 0, MAX_HEIGHT, problems));
+  }
   let lanes: 1 | 2 | undefined;
   if (value.lanes !== undefined) {
     if (mode !== 'platformer') problems.add('lanes only belongs to a platformer course.');
@@ -840,6 +850,7 @@ function validateTrackDefInner(value: unknown): TrackDefCheck {
       height,
       ...(mode ? { mode, width } : {}),
       ...(lanes ? { lanes } : {}),
+      ...(sky ? { sky } : {}),
       ...(segments ? { segments } : {}),
       pieces: pieces.map(compact),
     }),
