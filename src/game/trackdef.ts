@@ -744,7 +744,7 @@ const xMax = () => (platformerWidth === null ? W + 200 : platformerWidth + 200);
 
 /** Platformer course limits. */
 export const PLATFORMER_MIN_WIDTH = 6000;
-export const PLATFORMER_MAX_WIDTH = 60000;
+export const PLATFORMER_MAX_WIDTH = 150000; // the owner made the race courses 4x longer (the longest GP is 128 000)
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

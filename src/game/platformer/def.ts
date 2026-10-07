@@ -336,7 +336,8 @@ export function defFromPlan(plan: CoursePlan, name: string, theme: TrackDef['the
         const A: [number, number] = [r(a.x0), r(a.y0)], B: [number, number] = [r(b.x1), r(b.y1)];
         if (part.length === 1) { pieces.push({ t: 'ramp', a: A, b: B, ...lanePart(lane) }); continue; }
         const mid = part[Math.floor(part.length / 2)];
-        const C: [number, number] = [r(2 * mid.x0 - (A[0] + B[0]) / 2), r(2 * mid.y0 - (A[1] + B[1]) / 2)];
+        // the bend point stays between the ends: past them the curve doubles back and would be a rail (crossings.ts isRail)
+        const C: [number, number] = [Math.min(B[0], Math.max(A[0], r(2 * mid.x0 - (A[0] + B[0]) / 2))), r(2 * mid.y0 - (A[1] + B[1]) / 2)];
         pieces.push({ t: 'curve', a: A, c: C, b: B, n: Math.min(12, Math.max(2, part.length)), ...lanePart(lane) });
       }
       run = [];
