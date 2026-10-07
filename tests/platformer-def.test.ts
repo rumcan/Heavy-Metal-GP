@@ -53,7 +53,10 @@ test('ramps and curves are floors in their own lane; a curve is cut into slabs',
   assert.equal(floorAt(plan, 2, 2500), Y - 200, 'the front-lane ledge floor');
   assert.equal(floorAt(plan, 0, 2500), null, 'nothing in the back lane there: a gap');
   const slabs = plan.floors.filter((f) => f.lane === 1 && f.x0 >= 3200 && f.x1 <= 4200);
-  assert.equal(slabs.length, 12);
+  // at least its 12 segments, and none longer than about 40 px, so a tight bend stays round (the owner)
+  assert.ok(slabs.length >= 12, `${slabs.length} slabs`);
+  assert.ok(slabs.every((f) => Math.hypot(f.x1 - f.x0, f.y1 - f.y0) <= 60), 'short slabs');
+  assert.ok(plan.beams?.some((b) => b.lane === 1 && b.pts.length === slabs.length + 1), 'its beam is painted whole');
 });
 
 test('every piece is the drop-track piece itself (classic art and behaviour), except the floors and the lane pieces', () => {
