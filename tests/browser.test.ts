@@ -848,6 +848,46 @@ for (const { label, options } of SCREEN_VIEWPORTS) {
   });
 }
 
+// Crossing tracks: the Workshop's Track loop kit lays six joined pieces, and a course with a loop in it test-drives.
+// (The tests have no way to read piece order, so the crossing marker swap is covered by the node tests; here: the
+// piece count and no page error.)
+for (const { label, options } of SCREEN_VIEWPORTS) {
+  test(`Browser: the platformer Workshop places a Track loop (six pieces) and test-drives it (${label})`, { timeout: 180000 }, async () => {
+    const context = await browser.newContext(options);
+    const page = await context.newPage();
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    try {
+      await ready(page);
+      await openTab(page, 'Workshop');
+      await page.locator('.home-actions').getByRole('button', { name: /New track/ }).click();
+      await page.getByTestId('new-platformer').click();
+      await page.locator('.editor-canvas').waitFor({ timeout: 60000 });
+      await page.getByRole('button', { name: 'Dismiss tutorial' }).click({ timeout: 4000 }).catch(() => { /* not shown */ });
+      const pieces = async () => Number((await page.locator('.editor-status').textContent() ?? '').match(/(\d+) PIECES/)?.[1] ?? NaN);
+      const before = await pieces();
+      const drawer = page.getByRole('button', { name: /^Pieces$/ });
+      if (await drawer.isVisible().catch(() => false)) await drawer.click();
+      await page.locator('[data-tile="track-loop"]').first().click();
+      if (await page.locator('.editor-drawer-close').isVisible().catch(() => false)) await page.locator('.editor-drawer-close').click();
+      const canvas = page.locator('.editor-canvas');
+      const box = await canvas.boundingBox();
+      assert.ok(box);
+      await canvas.click({ position: { x: box.width * 0.6, y: box.height * 0.5 } });
+      await page.waitForFunction((n) => (document.querySelector('.editor-status')?.textContent ?? '').includes(`${n + 6} PIECES`), before);
+      await page.getByRole('button', { name: /^Test drive$/ }).click();
+      await dismissGate(page, 20000);
+      await page.waitForSelector('.race-canvas', { timeout: 60000 });
+      await page.getByRole('button', { name: /^Exit/ }).click();
+      const leave = page.getByRole('button', { name: /Leave heat|Back to the editor|Leave/ });
+      if (await leave.first().isVisible({ timeout: 3000 }).catch(() => false)) await leave.first().click();
+      await page.locator('.editor-canvas').waitFor({ timeout: 60000 });
+      assert.equal(await pieces(), before + 6, 'the loop is still there');
+      assert.deepEqual(errors, []);
+    } finally { await context.close(); }
+  });
+}
+
 // Story (2026-10-04): starting Act 1 showed a blank screen (a hook after an early return in StoryMode threw the moment
 // the first scene began), and every chapter had to be picked twice (the home Story tab, then story mode's own chapter
 // list). One pick now starts the chapter, and its scenes, the loading screen and the race all render.

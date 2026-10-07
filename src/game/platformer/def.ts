@@ -15,7 +15,7 @@ import { SPRING_W } from './course';
 import type { BoostSpot, Bump, CoursePlan, Floor, ItemBoxSpot, Kicker, Lane, LaneGate, Ledge, Spring, WreckerSpot } from './course';
 import { LOOP_R, PLANK_H } from './routes';
 import type { BridgeSpot, LoopSpot } from './routes';
-import { lanesOf } from '../lanes';
+import { PLY_COUNT, lanesOf } from '../lanes';
 import { curvePoints, ridePoints, trackPlanOf } from './crossings';
 export { curvePoints } from './crossings';
 
@@ -276,6 +276,31 @@ export function platformerIssues(def: TrackDef): PlatformerIssue[] {
       gap += 50;
       if (gap > 300) { out.push({ message: `The middle lane has a gap near x ${Math.round(x)} that is too wide to jump (over 300): add a floor, a bridge or another route.`, x, y: PF_START_Y }); break; }
     } else gap = 0;
+  }
+  // Crossing tracks
+  const tp = trackPlanOf(def, lanesOf(def.lanes));
+  for (const z of tp.crossings) {
+    if (z.passages.length > PLY_COUNT) out.push({ message: `More than ${PLY_COUNT} tracks cross near x ${at((z.x0 + z.x1) / 2)}: spread them out.`, x: (z.x0 + z.x1) / 2, y: (z.y0 + z.y1) / 2 });
+  }
+  for (const [i, l] of tp.tracks.entries()) {
+    // a rail joined start to start (or end to end) with another track: one of them runs the wrong way
+    for (const j of l.joins) {
+      if (j <= i) continue;
+      const o = tp.tracks[j];
+      if (!l.rail && !o.rail) continue;
+      const s = (p: { x: number; y: number }, q: { x: number; y: number }) => Math.hypot(p.x - q.x, p.y - q.y) <= 24;
+      const A0 = l.pts[0], A1 = l.pts[l.pts.length - 1], B0 = o.pts[0], B1 = o.pts[o.pts.length - 1];
+      if ((s(A0, B0) || s(A1, B1)) && !(s(A1, B0) || s(A0, B1))) out.push({ message: `${def.pieces[l.source].t} #${l.source + 1} and ${def.pieces[o.source].t} #${o.source + 1} meet start to start (or end to end): press Reverse direction on one of them.`, x: A0.x, y: A0.y, piece: l.source });
+    }
+    // a rail bending tighter than a ball can follow
+    if (l.rail) {
+      for (let k = 1; k < l.pts.length - 1; k++) {
+        const a = l.pts[k - 1], b = l.pts[k], c = l.pts[k + 1];
+        const ab = Math.hypot(b.x - a.x, b.y - a.y), bc = Math.hypot(c.x - b.x, c.y - b.y), ca = Math.hypot(a.x - c.x, a.y - c.y);
+        const area2 = Math.abs((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
+        if (area2 > 1e-6 && (ab * bc * ca) / (2 * area2) < 50) { out.push({ message: `${def.pieces[l.source].t} #${l.source + 1} bends too tightly near x ${at(b.x)} for a ball to follow: open the bend.`, x: b.x, y: b.y, piece: l.source }); break; }
+      }
+    }
   }
   return out;
 }
