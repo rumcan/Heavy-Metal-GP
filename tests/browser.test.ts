@@ -862,7 +862,7 @@ for (const { label, options } of SCREEN_VIEWPORTS) {
       await openTab(page, 'Workshop');
       await page.locator('.home-actions').getByRole('button', { name: /New track/ }).click();
       await page.getByTestId('new-platformer').click();
-      await page.getByRole('group', { name: 'Lane being edited' }).waitFor({ timeout: 60000 });
+      await page.locator('.editor-canvas').waitFor({ timeout: 60000 });
       await page.getByRole('button', { name: 'Dismiss tutorial' }).click({ timeout: 4000 }).catch(() => { /* not shown */ });
       const pieces = async () => Number((await page.locator('.editor-status').textContent() ?? '').match(/(\d+) PIECES/)?.[1] ?? NaN);
       const before = await pieces();
@@ -881,7 +881,7 @@ for (const { label, options } of SCREEN_VIEWPORTS) {
       await page.getByRole('button', { name: /^Exit/ }).click();
       const leave = page.getByRole('button', { name: /Leave heat|Back to the editor|Leave/ });
       if (await leave.first().isVisible({ timeout: 3000 }).catch(() => false)) await leave.first().click();
-      await page.getByRole('group', { name: 'Lane being edited' }).waitFor({ timeout: 60000 });
+      await page.locator('.editor-canvas').waitFor({ timeout: 60000 });
       assert.equal(await pieces(), before + 6, 'the loop is still there');
       assert.deepEqual(errors, []);
     } finally { await context.close(); }
