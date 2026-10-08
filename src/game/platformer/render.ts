@@ -1005,6 +1005,12 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
   sky(ctx, cam, cw, ch, game.track.platformer!.plan.startY, t);
   // only the lanes this course has (a Workshop course may have 1 or 2)
   const lanes = courseLanes(game.track.platformer!.plan, cam.focus);
+  // The backdrop always has its haze (the owner): the fog over each track behind you hazes it too, so from the far track
+  // (no track behind you) it showed clear. It gets what the tracks behind will not give it this frame, at least the haze
+  // it has from the main track; from the front track (more fog behind you) it is as hazy as ever.
+  const clear = lanes.reduce((k, lane) => { const v = laneView(lane, cam.focus); return v.fog > 0.01 ? k * (1 - v.fog * 0.72) : k; }, 1);
+  const pre = 1 - (1 - laneView(0, 1).fog * 0.72) / clear;
+  if (pre > 0.005) { ctx.fillStyle = `rgba(${HAZE},${pre.toFixed(3)})`; ctx.fillRect(0, 0, cw, ch); }
   const depths = game.marbles.filter((m) => !m.hold || m.hold.kind === 'cart').map((m) => ({ m, z: marbleDepth(game, m) }));
 
   for (const lane of lanes) {
