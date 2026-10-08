@@ -451,7 +451,6 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
     let last = performance.now();
     let motionMs: number | null = null; // the frame time the motion runs on (frame-clock.ts)
     const trackCam = newTrackCamera(); // the platformer camera stands on the track (camera-y.ts), as Infinity's does
-    let platFramed = false;
     /** When the online session was last advanced (by a frame or by the background heartbeat). */
     let simAt = last;
     const advanceSession = (at: number) => {
@@ -696,11 +695,9 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
           lookAhead += (Math.max(-160, Math.min(260, following.body.velocity.x * 26)) - lookAhead) * (1 - Math.exp(-dt / 600));
           camera.x += (p.x + lookAhead - camera.x) * (1 - Math.exp(-dt / 220));
           camera.focus = marbleDepth(game, following);
-          // Up and down the camera stands on the track under it (the owner: nothing bobbing with the bumps): it lifts only
-          // to keep a ball high in the air on screen, as Infinity's does.
+          // Up and down the camera stands on the track under it (the owner: nothing bobbing with the bumps), as Infinity's does.
           const ground = trackLineY(game.track.platformer.plan, camera.focus, camera.x);
-          camera.y = trackCameraY(trackCam, { ground, ballY: p.y, height, scale: camera.scale, dtMs: dt, framed: platFramed });
-          platFramed = true;
+          camera.y = trackCameraY(trackCam, ground, p.y);
           camera.dtMs = dt;
           meter.time('draw', () => renderPlatformer(ctx, game, camera, width, height, pausedRef.current || doneRef.current ? game.time : now, following));
           leaves.paint(ctx, camera, width, height, pausedRef.current ? 0 : dt, reduceMotion); // leaves on the wind, as in Infinity

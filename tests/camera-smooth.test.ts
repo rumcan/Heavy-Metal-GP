@@ -111,7 +111,7 @@ test('the camera holds still on the track while the ball bobs over it (nothing b
   const r = rng(5);
   for (let i = 0; i < 300; i++) {
     const ballY = 600 + (r() - 0.5) * 60; // a bobbing ball, well inside the room
-    ys.push(trackCameraY(st, { ground: 600, ballY, height: 720, scale: 1, dtMs: FRAME, framed: i > 0 }));
+    ys.push(trackCameraY(st, 600, ballY));
   }
   for (const y of ys.slice(1)) assert.ok(Math.abs(y - (600 - 15)) < 1e-9, `the camera moved to ${y}`);
 });
@@ -120,18 +120,19 @@ test('on a steady slope the camera follows the track exactly (no lag behind it)'
   const st = newTrackCamera();
   for (let i = 0; i < 300; i++) {
     const ground = 600 + 0.8 * i * 16; // a grade of 0.8 px per px travelled, 16 px a frame
-    const y = trackCameraY(st, { ground, ballY: ground, height: 720, scale: 1, dtMs: FRAME, framed: i > 0 });
+    const y = trackCameraY(st, ground, ground);
     if (i > 0) assert.ok(Math.abs(y - (ground - 15)) < 1e-6, `frame ${i}: ${y} vs ${ground - 15}`);
   }
 });
 
-test('a ball high in the air lifts the camera (eased) to keep it on screen, and it comes back down when it lands', () => {
+test('the camera never lifts or drops for the ball (the owner: the scenery never moves vertically): a high jump or a fall leaves it on the track', () => {
   const st = newTrackCamera();
-  trackCameraY(st, { ground: 600, ballY: 600, height: 720, scale: 1, dtMs: FRAME, framed: false });
-  const room = 720 * 0.38;
-  let y = 0;
-  for (let i = 0; i < 120; i++) y = trackCameraY(st, { ground: 600, ballY: 600 - room - 200, height: 720, scale: 1, dtMs: FRAME, framed: true });
-  assert.ok(y < 600 - 15 - 150, `the camera lifted to ${y}`);
-  for (let i = 0; i < 300; i++) y = trackCameraY(st, { ground: 600, ballY: 600, height: 720, scale: 1, dtMs: FRAME, framed: true });
-  assert.ok(Math.abs(y - (600 - 15)) < 0.5, `back on the track: ${y}`);
+  trackCameraY(st, 600, 600);
+  for (let i = 0; i < 120; i++) assert.equal(trackCameraY(st, 600, 600 - 500), 585, 'a ball high in the air');
+  for (let i = 0; i < 120; i++) assert.equal(trackCameraY(st, 600, 1500), 585, 'a ball falling far below');
+  // no ground seen yet: the ball's height, then the last ground holds
+  const fresh = newTrackCamera();
+  assert.equal(trackCameraY(fresh, null, 300), 310);
+  assert.equal(trackCameraY(fresh, 500, 300), 485);
+  assert.equal(trackCameraY(fresh, null, 900), 485, 'over no ground near, the last one holds');
 });

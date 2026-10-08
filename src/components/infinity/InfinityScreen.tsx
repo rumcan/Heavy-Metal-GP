@@ -289,11 +289,11 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
         camera.x += (p.x + lookAhead - camera.x) * (1 - Math.exp(-dt / 220));
         // The camera stands on the track (the owner: nothing bobbing, and the trees must never move against the track):
         // it locks to the track under it exactly (trackLineY, the line the foreground pines are glued to), blending the
-        // two lanes' tracks through a lane change, so a jump or a bump does not move the picture. It only lifts (eased)
-        // to keep a ball high in the air (the clouds) on screen, and drops to keep a falling one.
+        // two lanes' tracks through a lane change, so a jump or a bump does not move the picture. It does not lift for a
+        // ball high in the air (the clouds) or drop for a falling one: the scenery never moves vertically (the owner).
         camera.focus = marbleDepth(game, game.player);
         const ground = trackLineY(game.track.platformer!.plan, camera.focus, camera.x);
-        camera.y = trackCameraY(trackCam, { ground, ballY: p.y, height, scale: camera.scale, dtMs: dt, framed });
+        camera.y = trackCameraY(trackCam, ground, p.y);
         camera.originX = run.origin.x; camera.originY = run.origin.y;
         camera.dtMs = dt;
         meter.time('draw', () => renderPlatformer(ctx, game, camera, width, height, pausedRef.current ? game.time : now, game.player));
