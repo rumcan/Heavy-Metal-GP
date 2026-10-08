@@ -5,7 +5,7 @@
 import type { BeamPath, CoursePlan, Floor, Lane } from './course';
 import { drawImg } from '../mip';
 import { SPRING_W, floorAt } from './course';
-import type { Kicker, LaneGate, StandSpot } from './course';
+import type { Kicker, LaneGate } from './course';
 import { GATE_RAMP_H } from './course';
 import type Matter from 'matter-js';
 import { LEDGE_H } from './build';
@@ -24,12 +24,9 @@ import torchUrl from '../../assets/game/torch.webp';
 import treesGroup1Url from '../../assets/game/trees-group-1.webp';
 import treesGroup2Url from '../../assets/game/trees-group-2.webp';
 import treesGroup3Url from '../../assets/game/trees-group-3.webp';
-import crowd1Url from '../../assets/game/crowd-1.webp';
-import crowd2Url from '../../assets/game/crowd-2.webp';
 import flagRaceUrl from '../../assets/game/flag-race.webp';
 
 import { drawCloudLedge, drawKicker } from './sky-art';
-import { LANE_BACK } from '../lanes';
 import { artImage } from '../art';
 
 // decoded up front by the warm-up (art.ts, preload.ts: off the main thread, the track's own art first), so a big
@@ -38,7 +35,7 @@ const load = (src: string) => artImage(src, 0);
 const ART = {
   wood: load(railWoodUrl), rock: load(rockFillUrl), moss: load(mossUrl), sheep: load(sheepUrl),
   crate: load(crateUrl), ball: load(wreckingBallUrl), towers: [load(tower1Url), load(tower2Url), load(tower3Url)], torch: load(torchUrl),
-  treeGroups: [load(treesGroup1Url), load(treesGroup2Url), load(treesGroup3Url)], crowds: [load(crowd1Url), load(crowd2Url)], flag: load(flagRaceUrl),
+  treeGroups: [load(treesGroup1Url), load(treesGroup2Url), load(treesGroup3Url)], flag: load(flagRaceUrl),
 };
 // loops are drawn in the pinball tracks' loop-ring art (routes.ts)
 setLoopRingSource(() => sprite('loop-ring'));
@@ -345,15 +342,12 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
   const statics = part !== 'dynamic', dynamics = part !== 'static';
   const rock = statics ? rockPattern(ctx) : null;
   if (rock && ART.rock && typeof DOMMatrix !== 'undefined') rock.setTransform(new DOMMatrix().translate(-(OX % ART.rock.naturalWidth), -(OY % ART.rock.naturalHeight)));
-  const drawnStands = new Set<number>(); // a stand spanning two runs is drawn once
   for (const run of runs) {
     if (run[run.length - 1].x < left || run[0].x > right) continue;
     const pts = clip(run, left, right);
     if (!statics) { if (!floating.has(run)) torches(ctx, run, pts, lane, time); continue; }
     // a floating floor (its cliff switched off in the Workshop): just the beam
     if (floating.has(run)) { if (!beamless.has(run)) stripAlongX(ctx, middle(ART.wood!), pts, RAIL_UP, TRACK_T); continue; }
-    // the goblin stands first: behind this lane's cliff and beam (and every nearer lane)
-    const stands = plan.stands ? standsAt(ctx, plan.stands, run, pts, lane, drawnStands) : crowds(ctx, run, pts, lane);
     const cliff = pts.map((p) => ({ x: p.x, y: p.y + clearance(p.x) }));
     // the cliff under this stretch of track: rock, darker lower down, moss on top
     ctx.beginPath();
@@ -381,7 +375,6 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
     // (no single goblin watchtowers: the owner)
     trestle(ctx, run, pts[0].x - SUPPORT_EVERY, pts[pts.length - 1].x + SUPPORT_EVERY, (x) => yOn(run, x) + clearance(x));
     treeGroups(ctx, run, pts, lane);
-    crowdGapTrees(ctx, run, stands, lane);
     kmFlags(ctx, run, pts);
     // the track: a plain wooden beam (no chevron rail, per the owner)
     if (!beamless.has(run)) stripAlongX(ctx, middle(ART.wood!), pts, RAIL_UP, TRACK_T);
@@ -412,38 +405,6 @@ export function drawCoasterLane(ctx: CanvasRenderingContext2D, plan: CoursePlan,
 }
 
 /**
- * Infinity's goblin stands, from the plan's spots (absolute km ids, the level stretch's height): as many stands as fit
- * on the stretch, centred on it, each drawn once per lane draw (the first run that overlaps it). Nothing here depends
- * on which chunks are built or on the world origin, so a stand never flashes out or moves (the owner).
- */
-function standsAt(ctx: CanvasRenderingContext2D, spots: StandSpot[], run: Pt[], pts: Pt[], lane: Lane, drawn: Set<number>): { x: number; w: number; base: number }[] {
-  const placed: { x: number; w: number; base: number }[] = [];
-  const a = pts[0].x, b = pts[pts.length - 1].x;
-  for (const s of spots) {
-    if (s.lane !== lane || drawn.has(s.id) || s.x + s.w < a || s.x > b) continue;
-    const img0 = ART.crowds[s.id % 2];
-    if (!ready(img0) || !ready(ART.crowds[(s.id + 1) % 2])) continue;
-    drawn.add(s.id);
-    const r = hash(s.id, lane + 31);
-    const want = r < 0.4 ? 1 : r < 0.8 ? 2 : 3;
-    const h = 300 + hash(s.id, lane + 32) * 60;
-    const one = (img0.naturalWidth / img0.naturalHeight) * h - 8;
-    const count = Math.max(1, Math.min(want, Math.floor(s.w / one)));
-    let x = s.x + (s.w - count * one) / 2;
-    const base = s.y + TRACK_T - RAIL_UP;
-    for (let i = 0; i < count; i++) {
-      const img = ART.crowds[(s.id + i) % 2]!;
-      const w = (img.naturalWidth / img.naturalHeight) * h;
-      drawImg(ctx, img, x, base - h, w, h);
-      placed.push({ x, w, base });
-      x += w - 8;
-    }
-  }
-  void run;
-  return placed;
-}
-
-/**
  * The red and white checkered flag at every km (the owner), in every lane: on a tall post planted just behind the beam
  * (the beam hides its foot), so it reads as a marker beside the track. Absolute km, so it never moves.
  */
@@ -451,8 +412,8 @@ function kmFlags(ctx: CanvasRenderingContext2D, run: Pt[], pts: Pt[]) {
   const img = ART.flag;
   if (!ready(img)) return;
   const a = pts[0].x, b = pts[pts.length - 1].x;
-  for (let k = Math.max(1, Math.ceil((a + OX) / CROWD_EVERY)); k * CROWD_EVERY - OX <= b; k++) {
-    const x = k * CROWD_EVERY - OX;
+  for (let k = Math.max(1, Math.ceil((a + OX) / KM_EVERY)); k * KM_EVERY - OX <= b; k++) {
+    const x = k * KM_EVERY - OX;
     if (x < run[0].x + 20 || x > run[run.length - 1].x - 20) continue;
     const foot = yOn(run, x) + TRACK_T - RAIL_UP;
     const h = 96, w = (img.naturalWidth / img.naturalHeight) * h;
@@ -466,83 +427,8 @@ function kmFlags(ctx: CanvasRenderingContext2D, run: Pt[], pts: Pt[]) {
   }
 }
 
-/** One stretch of the course per crowd: a km (the HUD's 10,000 px). */
-const CROWD_EVERY = 10_000;
-/**
- * The goblin crowd stands (the owner's art): once a km, on the back lane only, on a flat stretch of track (moved along
- * to the nearest one, or left out). Each stands level with the track (its base just under the beam); the drop from
- * the track to the cliff under it is filled with trees (crowdGapTrees), so no air shows under a stand. Drawn before
- * that lane's cliff and beam, so every track and cliff is in front of it. Sometimes one stand, sometimes two or three
- * side by side. Static: cached with the lane.
- */
-function crowds(ctx: CanvasRenderingContext2D, run: Pt[], pts: Pt[], lane: Lane): { x: number; w: number; base: number }[] {
-  const placed: { x: number; w: number; base: number }[] = [];
-  if (lane !== LANE_BACK) return placed;
-  const a = pts[0].x, b = pts[pts.length - 1].x;
-  const flat = (x0: number, x1: number) => {
-    if (x0 < run[0].x + 60 || x1 > run[run.length - 1].x - 60) return false;
-    let lo = Infinity, hi = -Infinity;
-    for (let i = 0; i <= 10; i++) { const y = yOn(run, x0 + ((x1 - x0) * i) / 10); lo = Math.min(lo, y); hi = Math.max(hi, y); }
-    return hi - lo <= 12;
-  };
-  for (let k = Math.floor((a - 6000) / CROWD_EVERY); k * CROWD_EVERY < b + 6000; k++) {
-    if (k < 1) continue;
-    const r = hash(k, lane + 31);
-    const want = r < 0.4 ? 1 : r < 0.8 ? 2 : 3;
-    const img0 = ART.crowds[k % 2];
-    if (!ready(img0) || !ready(ART.crowds[(k + 1) % 2])) continue;
-    const aspect = img0.naturalWidth / img0.naturalHeight;
-    // how tall a stand is: all of it above the track
-    const h = 300 + hash(k, lane + 32) * 60;
-    const span = (count: number) => aspect * h * count;
-    // the nearest flat stretch to the km mark, within 2,400 px either way, for as many of the stands as fit
-    let start: number | null = null, count = want;
-    for (; count >= 1 && start === null; count--) {
-      for (let step = 0; step <= 12 && start === null; step++) {
-        for (const sign of step ? [1, -1] : [1]) {
-          const x = k * CROWD_EVERY + sign * step * 200;
-          if (flat(x, x + span(count))) { start = x; break; }
-        }
-      }
-    }
-    count++;
-    if (start === null || start > b || start + span(count) < a) continue;
-    let x = start;
-    for (let i = 0; i < count; i++) {
-      const img = ART.crowds[(k + i) % 2];
-      if (!ready(img)) continue;
-      // the base on the track line, hidden behind the beam
-      const base = yOn(run, x) + TRACK_T - RAIL_UP;
-      const w = (img.naturalWidth / img.naturalHeight) * h;
-      drawImg(ctx, img, x, base - h, w, h);
-      placed.push({ x, w, base });
-      x += w - 8;
-    }
-  }
-  return placed;
-}
-
-/**
- * Under a stand, the drop from the track down to the cliff is filled with trees (the owner): two staggered layers of
- * the tree groups standing on the cliff top, tall enough to reach up behind the beam, so no air shows under a stand.
- * Drawn after the trestles and before the beam.
- */
-function crowdGapTrees(ctx: CanvasRenderingContext2D, run: Pt[], stands: { x: number; w: number; base: number }[], lane: Lane) {
-  for (const st of stands) {
-    for (const layer of [0, 1]) {
-      for (let x = st.x - 40 + layer * 45, n = 0; x < st.x + st.w + 40; x += 90, n++) {
-        const img = ART.treeGroups[Math.floor(hash(n + Math.round(st.x + OX) + layer * 7, lane + 47) * 3)];
-        if (!ready(img)) continue;
-        const foot = yOn(run, x) + clearance(x) + 22;
-        // up to the stand's base (behind the beam); the back layer (drawn first) a little shorter
-        const h = foot - st.base + 30 + hash(n, lane + 48 + layer) * 40 - (1 - layer) * 20;
-        const w = (img.naturalWidth / img.naturalHeight) * h;
-        drawImg(ctx, img, x - w / 2, foot - h, w, h);
-      }
-    }
-  }
-}
-
+/** One km (the HUD's 10,000 px): the spacing of the km flags. */
+const KM_EVERY = 10_000;
 /** Tree groups along the cliff top: about 70% of it. */
 const TREE_STEP = 230;
 /**
