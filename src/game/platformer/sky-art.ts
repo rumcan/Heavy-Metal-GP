@@ -3,9 +3,11 @@
 // Art only: the physics is the plan's one-way ledge and the kicker's floor wedge (build.ts).
 import type { CoursePlan, Kicker, Ledge } from './course';
 import { floorAt } from './course';
+import { artImage } from '../art';
 
 const urls = import.meta.glob<string>('../../assets/game/platformer/clouds/*.webp', { eager: true, import: 'default' });
-const load = (src: string) => (typeof Image !== 'undefined' ? Object.assign(new Image(), { src }) : null);
+// through art.ts: the warm-up decodes them before a race needs one
+const load = (src: string) => artImage(src, 1);
 /** The flat-bottomed clouds first (cloud-1..5, the platforms), then the puffy ones (cloud-6..10). */
 const CLOUDS = Object.keys(urls)
   .sort((a, b) => Number(/(\d+)\.webp$/.exec(a)![1]) - Number(/(\d+)\.webp$/.exec(b)![1]))

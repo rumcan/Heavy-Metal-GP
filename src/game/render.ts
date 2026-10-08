@@ -1,3 +1,4 @@
+import { artImage } from './art';
 import Matter from 'matter-js';
 import { drawImg } from './mip';
 import { Game, Marble } from './engine';
@@ -29,7 +30,8 @@ function drawSpriteContent(ctx: CanvasRenderingContext2D, name: string, x0: numb
   return drawSprite(ctx, name, x0 - cb.x0 * w + w / 2, y0 - cb.y0 * h + h / 2, w, h);
 }
 
-const loadImage = (src: string) => (typeof Image !== 'undefined' ? Object.assign(new Image(), { src }) : null);
+// through art.ts: the warm-up decodes them in idle moments (the drop tracks' backdrops come after the platformer's art)
+const loadImage = (src: string) => artImage(src, 2);
 const skyBg = loadImage(repeatingBgUrl);
 const entranceBg = loadImage(mineEntranceUrl);
 const mineBg = loadImage(mineUrl);
