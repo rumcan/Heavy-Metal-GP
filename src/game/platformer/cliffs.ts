@@ -19,14 +19,15 @@ export type CliffKind = 'back' | 'front';
  * screen's width and 1.3 times its height. `slot`: one cliff or none per this many px of the layer (in screen widths of
  * that same measure). `chance`: how many slots have one. `rise`: how far above the back track its cloud base stands (in
  * screen heights: further away looks higher). `sink`: how much of its height is under that line (its clouds behind the
- * track). `haze`: its own distance haze, on top of the back track's.
+ * track). `haze`: its own distance haze, on top of the back track's. `zoomPow`: how much of your zoom it takes (far
+ * away, a zoom barely changes it: zoom ** zoomPow; the owner: they are big and only get a little smaller zoomed out).
  */
-export interface CliffLayer { kind: CliffKind; p: number; width: number; slot: number; chance: number; rise: number; sink: number; haze: number }
+export interface CliffLayer { kind: CliffKind; p: number; width: number; slot: number; chance: number; rise: number; sink: number; haze: number; zoomPow: number }
 // (slow, the owner: faster than the painted backdrop behind them, nowhere near as fast as the track; their feet sunk
 // in the owner's cloud, never floating)
 export const CLIFF_LAYERS: readonly CliffLayer[] = [
-  { kind: 'back', p: 0.1, width: 0.5, slot: 0.95, chance: 0.85, rise: 0.02, sink: 0.14, haze: 0.22 },
-  { kind: 'front', p: 0.17, width: 0.74, slot: 1.35, chance: 0.7, rise: -0.02, sink: 0.18, haze: 0.05 },
+  { kind: 'back', p: 0.1, width: 0.55, slot: 1.0, chance: 0.85, rise: 0.02, sink: 0.14, haze: 0.22, zoomPow: 0.12 },
+  { kind: 'front', p: 0.17, width: 0.82, slot: 1.45, chance: 0.7, rise: -0.02, sink: 0.18, haze: 0.05, zoomPow: 0.22 },
 ];
 
 const pictures = new Map<string, HTMLImageElement | null>();
