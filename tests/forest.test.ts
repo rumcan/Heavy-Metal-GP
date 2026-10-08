@@ -6,7 +6,7 @@
 // - islands only stand over a quiet stretch of track.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ISLAND_PARALLAX, ISLAND_SLOT_W, busyStretches, forestLine, islandReach, islandSpots, islandWidth, quietTest } from '../src/game/platformer/forest';
+import { ISLAND_PARALLAX, ISLAND_QUIET_REACH, ISLAND_SLOT_W, busyStretches, forestLine, islandSpots, islandWidth, quietTest } from '../src/game/platformer/forest';
 import type { ForestView, IslandEnv, IslandPick } from '../src/game/platformer/forest';
 import { infinityChunk } from '../src/game/platformer/infinity';
 import type { CoursePlan } from '../src/game/platformer/course';
@@ -95,9 +95,8 @@ test('islands are big but a little smaller than before: half to two thirds of th
 
 test('islands only stand where nothing is going on on the track they cover on their way across the screen', () => {
   const g = slope(0.1);
-  const slot = 5, wx = (slot + 0.35 + 0.3 * PICK.at) * ISLAND_SLOT_W;
-  const w = islandWidth(CW, CH, PICK.size, 400);
-  const reach = islandReach(CW, w, 1.25);
+  const slot = 5, wx = (slot + 0.4 + 0.2 * PICK.at) * ISLAND_SLOT_W;
+  const reach = ISLAND_QUIET_REACH;
   const at = (busy: [number, number][]) => {
     const q = quietTest(busy);
     return islandSpots(camOn(g, wx, 1.0), CW, CH, env(g, { quiet: q })).length;
@@ -136,16 +135,15 @@ test('over Infinity land: islands come round now and then, and never over a loop
     const busy = busyStretches(plan), q = quietTest(busy);
     let islands = 0;
     for (let slot = 0; slot * ISLAND_SLOT_W < plan.width; slot++) {
-      const wx = (slot + 0.35 + 0.3 * 0.5) * ISLAND_SLOT_W;
-      const w = islandWidth(CW, CH, 0.5, 400), reach = islandReach(CW, w, 1.25);
+      const wx = (slot + 0.5) * ISLAND_SLOT_W, reach = ISLAND_QUIET_REACH;
       if (wx - reach < 3200 || !q(wx - reach, wx + reach)) continue;
       islands++;
-      for (const l of plan.loops ?? []) assert.ok(l.x + 300 < wx - reach || l.x - 300 > wx + reach, 'an island over a loop');
+      for (const l of plan.loops ?? []) assert.ok(l.x + (l.pitch ?? 0) + 250 < wx - reach || l.x - 250 > wx + reach, 'an island over a loop');
       for (const p of plan.pits ?? []) assert.ok(p.x1 < wx - reach || p.x0 > wx + reach, 'an island over a pit');
       for (const gt of plan.gates) assert.ok(gt.x + gt.w < wx - reach || gt.x > wx + reach, 'an island over a lane ramp');
     }
     const slots = Math.floor(plan.width / ISLAND_SLOT_W);
     console.log(`# seed ${seed}: an island over ${islands} of ${slots} slots (41 km)`);
-    assert.ok(islands >= 6, `seed ${seed}: only ${islands} quiet stretches in 41 km`);
+    assert.ok(islands >= 25, `seed ${seed}: only ${islands} islands in 41 km (the owner saw none in 10 km)`);
   }
 });

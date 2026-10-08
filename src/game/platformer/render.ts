@@ -94,6 +94,8 @@ const PALETTE = [
 const HAZE = '150,188,238';
 /** Screen px the backdrop rises per world px the course descends. */
 const BACKDROP_DESCENT = 0.12;
+/** The backdrop's sky (the painting's own blue at the top, a paler blue where the strip begins) and its cloud white. */
+const SKY_TOP = '43,144,242', SKY_LOW = '104,176,246', CLOUD_WHITE = '250,252,253';
 const TILE = 32;
 
 let offscreen: HTMLCanvasElement | null = null;
@@ -147,29 +149,44 @@ function sky(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch:
   g.addColorStop(1, '#c9d6d2');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, cw, ch);
-  // The owner's painted backdrop: the sunny islands band on top, then the cloud-islands band repeating below it
-  // for as far down as the course goes. It drifts slowly sideways and rises as you descend, so a race sinks from
-  // the sky into the clouds. A band of mist covers each join between two bands.
+  // The owner's painted strip of floating islands, not too big (two thirds of the screen tall), in the sky: blue above
+  // it with its top fading into that blue, its foot fading into white cloud, white below (the owner). It drifts slowly
+  // sideways and rises as you descend, so a long descent sinks from the sky into the clouds, where the cloud islands
+  // rise out of the white, faded into it at both edges.
   if (ready(ART.skyIslands) && ready(ART.skyClouds)) {
-    const h = ch * 1.12;
-    const top = -Math.max(0, cam.y + (cam.originY ?? 0) - startY) * BACKDROP_DESCENT;
-    const first = Math.max(0, Math.floor(-top / h));
-    for (let row = first; top + row * h < ch; row++) {
-      const img = row === 0 ? ART.skyIslands : ART.skyClouds;
-      const y = top + row * h;
-      const w = (img.naturalWidth / img.naturalHeight) * h;
-      let x = -((((cam.x + (cam.originX ?? 0)) * 0.03) + row * w * 0.37) % w);
+    const descent = Math.max(0, cam.y + (cam.originY ?? 0) - startY) * BACKDROP_DESCENT;
+    const h = ch * 0.66, y0 = ch * 0.08 - descent, foot = y0 + h;
+    const ox = (cam.x + (cam.originX ?? 0)) * 0.03;
+    const sk = ctx.createLinearGradient(0, 0, 0, Math.max(1, y0 + h * 0.1));
+    sk.addColorStop(0, `rgb(${SKY_TOP})`);
+    sk.addColorStop(1, `rgb(${SKY_LOW})`);
+    ctx.fillStyle = sk;
+    ctx.fillRect(0, 0, cw, ch);
+    const band = (img: HTMLImageElement, y: number, bh: number, shift: number, fadeTop: string, fadeIn: number, fadeOut: number) => {
+      if (y + bh < 0 || y > ch) return;
+      const w = (img.naturalWidth / img.naturalHeight) * bh;
+      let x = -((ox + shift) % w);
       if (x > 0) x -= w;
-      for (; x < cw; x += w) drawImg(ctx, img, x, y, w + 1, h + 1);
-    }
-    for (let row = Math.max(1, first); top + row * h - h * 0.1 < ch; row++) {
-      const y = top + row * h;
-      const mist = ctx.createLinearGradient(0, y - h * 0.1, 0, y + h * 0.1);
-      mist.addColorStop(0, 'rgba(222,233,252,0)');
-      mist.addColorStop(0.5, 'rgba(222,233,252,0.9)');
-      mist.addColorStop(1, 'rgba(222,233,252,0)');
-      ctx.fillStyle = mist;
-      ctx.fillRect(0, y - h * 0.1, cw, h * 0.2);
+      for (; x < cw; x += w) drawImg(ctx, img, x, y, w + 1, bh + 1);
+      const top = ctx.createLinearGradient(0, y, 0, y + bh * fadeIn);
+      top.addColorStop(0, `rgba(${fadeTop},1)`);
+      top.addColorStop(1, `rgba(${fadeTop},0)`);
+      ctx.fillStyle = top;
+      ctx.fillRect(0, y - 1, cw, bh * fadeIn + 1);
+      const bot = ctx.createLinearGradient(0, y + bh * (1 - fadeOut), 0, y + bh);
+      bot.addColorStop(0, `rgba(${CLOUD_WHITE},0)`);
+      bot.addColorStop(1, `rgba(${CLOUD_WHITE},1)`);
+      ctx.fillStyle = bot;
+      ctx.fillRect(0, y + bh * (1 - fadeOut), cw, bh * fadeOut + 1);
+    };
+    band(ART.skyIslands, y0, h, 0, SKY_LOW, 0.22, 0.3);
+    ctx.fillStyle = `rgb(${CLOUD_WHITE})`;
+    if (foot < ch) ctx.fillRect(0, Math.max(0, foot), cw, ch - Math.max(0, foot));
+    // far down a long descent: the cloud islands, band after band, each faded into the white
+    const h2 = ch * 0.8, y1 = foot + ch * 0.35;
+    for (let row = Math.max(0, Math.floor(-(y1 + h2) / h2)); y1 + row * h2 < ch; row++) {
+      const img = ART.skyClouds;
+      band(img, y1 + row * h2, h2, row * (img.naturalWidth / img.naturalHeight) * h2 * 0.37, CLOUD_WHITE, 0.2, 0.2);
     }
     balloons(ctx, cam, cw, ch, t);
     return;
@@ -988,6 +1005,12 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
   sky(ctx, cam, cw, ch, game.track.platformer!.plan.startY, t);
   // only the lanes this course has (a Workshop course may have 1 or 2)
   const lanes = courseLanes(game.track.platformer!.plan, cam.focus);
+  // The backdrop always has its haze (the owner): the fog over each track behind you hazes it too, so from the far track
+  // (no track behind you) it showed clear. It gets what the tracks behind will not give it this frame, at least the haze
+  // it has from the main track; from the front track (more fog behind you) it is as hazy as ever.
+  const clear = lanes.reduce((k, lane) => { const v = laneView(lane, cam.focus); return v.fog > 0.01 ? k * (1 - v.fog * 0.72) : k; }, 1);
+  const pre = 1 - (1 - laneView(0, 1).fog * 0.72) / clear;
+  if (pre > 0.005) { ctx.fillStyle = `rgba(${HAZE},${pre.toFixed(3)})`; ctx.fillRect(0, 0, cw, ch); }
   const depths = game.marbles.filter((m) => !m.hold || m.hold.kind === 'cart').map((m) => ({ m, z: marbleDepth(game, m) }));
 
   for (const lane of lanes) {
