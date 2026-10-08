@@ -63,12 +63,17 @@ export function forestLine(groundAt: (worldX: number) => number | null, view: Fo
 export const ISLAND_PARALLAX = 1.32;
 /**
  * One island or none per slot of this many world px (at the islands' depth), and the chance a slot has one: every
- * slot over quiet track does (quiet stretches are rare enough: about one every 3 to 4 km of Infinity).
+ * slot over quiet track does (about one island every 1.1 km of Infinity, never more than about 4.4 km without one).
  */
 export const ISLAND_SLOT_W = 2200;
 export const ISLAND_CHANCE = 1;
-/** The camera's widest automatic zoom, relative to your own (Infinity's speed zoom goes down to 0.55): the quiet check covers it. */
-const WIDEST = 0.55;
+/**
+ * How far either side of an island's spot (world px) the track must be quiet: the stretch it stands in front of while it
+ * crosses the middle of the screen, the same on every screen. (It used to cover its whole way across the screen at the
+ * widest zoom, which grows with the screen: on a 1900 px window it asked for 2.3 km of empty track, and in 10 km of
+ * Infinity not one island came, the owner.)
+ */
+export const ISLAND_QUIET_REACH = 400;
 
 /** What a slot holds: which picture (by its index in the caller's list), where in the slot, how big, how deep in the trees. */
 export interface IslandPick { art: number; at: number; size: number; sink: number }
@@ -102,16 +107,6 @@ export function islandWidth(cw: number, ch: number, size: number, artWidth: numb
   return Math.min(Math.max(cw, ch * 1.3) * (0.42 + 0.2 * size) * Math.sqrt(artWidth / 400), cw * 0.9);
 }
 
-/**
- * How far either side of an island's own spot (world px) the track it covers lies, on its whole way across the screen
- * at the widest zoom: it slides at ISLAND_PARALLAX while the track slides at 1, so the stretch behind it drifts by
- * (ISLAND_PARALLAX - 1) of the camera's travel; plus the part of it tall enough to stand in front of the track (its
- * lower half is in the trees and its top is narrower: about the middle 70 % of its width), plus a margin.
- */
-export function islandReach(cw: number, w: number, fs: number): number {
-  const s = fs * WIDEST, P = ISLAND_PARALLAX;
-  return ((P - 1) * (cw / 2 + w / 2)) / (s * P) + (w * 0.35) / s + 100;
-}
 
 /** The islands on screen this frame (each in a slot of the islands' depth, `pick` decides which), only over quiet track. */
 export function islandSpots(view: ForestView, cw: number, ch: number, env: IslandEnv): IslandSpot[] {
@@ -126,11 +121,11 @@ export function islandSpots(view: ForestView, cw: number, ch: number, env: Islan
     const a = env.aspect(p.art);
     if (a === null) continue;
     const w = islandWidth(cw, ch, p.size, env.widthOf(p.art)), h = w * a;
-    const wx = (k + 0.35 + 0.3 * p.at) * ISLAND_SLOT_W - ox;
+    // its spot in the slot (kept near the middle, so two neighbours never overlap even on a wide screen)
+    const wx = (k + 0.4 + 0.2 * p.at) * ISLAND_SLOT_W - ox;
     const x = cw / 2 + (wx - view.x) * s * P;
     if (x + w / 2 < 0 || x - w / 2 > cw) continue;
-    const reach = islandReach(cw, w, env.fs);
-    if (!env.quiet(wx - reach, wx + reach)) continue;
+    if (!env.quiet(wx - ISLAND_QUIET_REACH, wx + ISLAND_QUIET_REACH)) continue;
     const g = env.groundAt(wx);
     if (g === null) continue;
     // rigid at its own depth: its height moves only as the camera does (times its depth), never with the hills it
