@@ -10,9 +10,12 @@ import { laneFocus, laneView, visibleLanes, LANE_SWITCH_MS, LANE_MIDDLE } from '
 import { drawBodies, drawBridgeChain, drawEffects, drawMarble } from '../render';
 import { drawSkillWorld } from '../skills/draw';
 import { GATE_RAMP_H, SPRING_W, floorAt } from './course';
-import { islandHash, islandIn, islandPicture } from './islands';
+import { ISLANDS, islandPick, islandPicture } from './islands';
+import { ISLAND_CHANCE, busyStretches, forestLine, islandSpots, quietTest } from './forest';
+import { artImage, artReady } from '../art';
+import { afterArt } from '../preload';
 import type { CoursePlan, Floor, Lane, LaneGate } from './course';
-import { coasterReady, drawBeamPath, drawCoasterLane, drawGateRamp } from './coaster';
+import { coasterReady, drawBeamPath, drawCoasterLane, drawGateRamp, groundedTrackAt } from './coaster';
 import { drawCloudLedge, drawKicker } from './sky-art';
 import { drawRoutes, setBridgeArt } from './routes';
 import { LEDGE_H } from './build';
@@ -38,9 +41,10 @@ import { sprite } from '../sprites';
 setBridgeArt(drawBridgeChain);
 
 // Generated art (P2-00): a skin over the vector bodies. Every draw falls back to flat shapes until it loads.
-const load = (src: string) => (typeof Image !== 'undefined' ? Object.assign(new Image(), { src }) : null);
-const ART = { earth: load(earthUrl), grass: load(grassUrl), crate: load(crateUrl), door: load(doorUrl), far: load(farUrl), trees: load(treesUrl), skyIslands: load(skyIslandsUrl), cannon: load(cannonUrl), treesFront: load(treesFrontUrl), treesFront2: load(treesFront2Url), skyClouds: load(skyCloudsUrl), airship: load(airshipUrl), smash: load(smashCrateUrl), smashTop: load(smashTopUrl), smashBottom: load(smashBottomUrl) };
-const ready = (img: HTMLImageElement | null): img is HTMLImageElement => !!img && img.complete && img.naturalWidth > 0;
+// Every picture goes through art.ts, so the warm-up (preload.ts) decodes it before a race draws it.
+const load = (src: string, first = false) => artImage(src, first ? 0 : 1);
+const ART = { earth: load(earthUrl), grass: load(grassUrl), crate: load(crateUrl), door: load(doorUrl), far: load(farUrl), trees: load(treesUrl), skyIslands: load(skyIslandsUrl, true), cannon: load(cannonUrl), treesFront: load(treesFrontUrl, true), treesFront2: load(treesFront2Url, true), skyClouds: load(skyCloudsUrl, true), airship: load(airshipUrl), smash: load(smashCrateUrl), smashTop: load(smashTopUrl), smashBottom: load(smashBottomUrl) };
+const ready = artReady;
 const patterns = new WeakMap<CanvasRenderingContext2D, CanvasPattern>();
 function earthPattern(ctx: CanvasRenderingContext2D): CanvasPattern | null {
   if (!ready(ART.earth)) return null;
@@ -1110,28 +1114,18 @@ function betweenTrees(ctx: CanvasRenderingContext2D, game: Game, cam: PlatformCa
   ctx.save();
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.globalAlpha = vn.alpha;
-  const rows = [{ drop: 70, h: 170 }, { drop: 120, h: 185 }, { drop: 170, h: 200 }];
-  // distance: hazed like the track behind them (a little less for each nearer row) and softly out of focus
-  const between = (i: number) => ({ haze: (0.12 + vf.fog * 0.75) * (1 - i * 0.18), blur: 1 + vf.blur * 1.2 - i * 0.4 });
-  rows.forEach((r, i) => {
-    const look = between(i);
-    const pines = hazePines(img, look.haze, (i + far) % 2 === 0, look.blur);
+  BETWEEN_ROWS.forEach((r, i) => {
+    // distance: hazed like the track behind them (a little less for each nearer row) and softly out of focus
+    const look = betweenLook(vf, i);
     const height = r.h * sp, rw = aspect * height;
-    const n = Math.max(1, Math.ceil(rw / PINE_SLICE)), sw = rw / n, srcW = pines.c.width / n;
+    const pines = hazePines(img, look.haze, (i + far) % 2 === 0, look.blur, 0, height * dpr);
     const scroll = st!.scrolls[far] * (1 + i * 0.04);
     ctx.fillStyle = pines.floor;
     const start = tileStart(cam, `b${far}:${i}`, scroll, rw, cw);
     for (let rx = start.x, id = start.id; rx < cw; rx += rw, id++) {
       const tile = pineTile(id, `b${far}:${i}`, (i + far) % 2 === 0);
-      const art = hazePines(tile.img, look.haze, tile.flip, look.blur);
-      for (let k = 0; k < n; k++) {
-        const sx = rx + k * sw;
-        if (sx > cw || sx + sw < 0) continue;
-        const y = lineAt(sx + sw / 2) + r.drop * sf;
-        if (y >= ch) continue;
-        if (i === rows.length - 1) ctx.fillRect(sx, y + height * 0.8, sw + 0.6, Math.max(0, ch - (y + height * 0.8)));
-        drawImg(ctx, art.c, k * srcW, 0, srcW, art.c.height, sx, y, sw + 0.6, height);
-      }
+      const art = hazePines(tile.img, look.haze, tile.flip, look.blur, 0, height * dpr);
+      drawStrip(ctx, art.c, rx, rw, height, cw, ch, (sx) => lineAt(sx) + r.drop * sf, i === BETWEEN_ROWS.length - 1);
     }
   });
   ctx.restore();
@@ -1173,6 +1167,12 @@ function courseLanes(plan: CoursePlan, focus: number): number[] {
   return visibleLanes(focus).filter((l) => !plan.lanes || plan.lanes.includes(l));
 }
 
+/** The rows of a layer of pines between two tracks: their drop below the far track and their height (world px). */
+const BETWEEN_ROWS: readonly { drop: number; h: number }[] = [{ drop: 70, h: 170 }, { drop: 120, h: 185 }, { drop: 170, h: 200 }];
+/** A between-tracks row's look: hazed like the track behind it (a little less for each nearer row) and a little soft. */
+function betweenLook(vf: { fog: number; blur: number }, i: number): { haze: number; blur: number } {
+  return { haze: (0.12 + vf.fog * 0.75) * (1 - i * 0.18), blur: 1 + vf.blur * 1.2 - i * 0.4 };
+}
 /** Per camera: how far each between-tracks layer has scrolled (screen px), by its far lane. */
 const BETWEEN = new WeakMap<PlatformCamera, { camX: number; scrolls: number[] }>();
 /** The nearest-to-the-camera far lane that has a between layer this frame (its call moves the shared camera memory on). */
@@ -1218,8 +1218,6 @@ const PINE_ALL = PINE_ROWS.length + PINE_EXTRA;
  */
 const pineBlur = (p: number) => Math.max(0, (p - 1.18) * 22);
 const pineDark = (p: number) => Math.max(0, Math.min(0.42, (p - 1.2) * 1.3));
-/** How wide (screen px) each upright slice of a row is when it follows the slope: narrow enough that the steps vanish. */
-const PINE_SLICE = 24;
 
 /**
  * Where the foreground pines are this frame. They used to sit at cam.x * cam.scale * 1.35 (mod their width): the
@@ -1280,95 +1278,227 @@ export function trackLineY(plan: CoursePlan, focus: number, x: number): number |
   return y0 + (y1 - y0) * t;
 }
 
-/** How far below the track (world px) the line the foreground rows hang from lies. */
-const TREES_BELOW_TRACK = 90;
-/** The rows' drops are measured below that line less this (world px). */
+/** The rows' drops are measured below the forest's line less this (world px). */
 const CLIFF_RISE = 130;
+/**
+ * How far below the track the forest's line lies, in your own zoom (world px at fgScale): the back row's tips about a
+ * hundred px under the track. It used to be the cliff under the track (150 to 280 px lower, varying along the course),
+ * measured in the camera's speed zoom: the tree line rose and fell as you sped up and slowed down (the owner).
+ */
+const FOREST_DEPTH = 130;
 
+/** The track the pines follow: the focused lane's, standing on the ground (two lanes blended through a lane change). */
+function groundLineY(plan: CoursePlan, focus: number, x: number): number | null {
+  const f = Math.max(0, Math.min(2, focus));
+  const l0 = Math.floor(f) as Lane, l1 = Math.min(2, l0 + 1) as Lane, t = f - l0;
+  const y0 = groundedTrackAt(plan, l0, x);
+  if (t < 1e-3) return y0;
+  const y1 = groundedTrackAt(plan, l1, x);
+  if (y0 === null) return y1;
+  if (y1 === null) return y0;
+  return y0 + (y1 - y0) * t;
+}
+
+/** Where nothing is going on on a course (forest.ts busyStretches), worked out once per plan (Infinity makes a fresh one as its land streams in). */
+const quietCache = new WeakMap<CoursePlan, (x0: number, x1: number) => boolean>();
+function quietOf(plan: CoursePlan): (x0: number, x1: number) => boolean {
+  let q = quietCache.get(plan);
+  if (!q) { q = quietTest(busyStretches(plan)); quietCache.set(plan, q); }
+  return q;
+}
 
 /** Where the track sits below the screen's centre while the ball rolls (the camera frames the ball 10 px above it). */
 const FG_TRACK_BELOW = 15;
 
 /**
  * The owner's pines (bright and sharp as painted), mirrored for every other row so the rows never line up, washed with
- * distance haze (0..1, the sky's colour) and softened by `blur` (px at the art's size) for their depth: the layers
- * between the tracks are hazed and a little soft, the foreground rows nearest the lens are out of focus. Drawn once
- * per combination (both are rounded, so there are few); `floor` is the colour of their feet, for the band under them.
+ * distance haze (0..0.8, the sky's colour), softened by `blur` (px at the art's size) and shaded by `dark` for their
+ * depth: the layers between the tracks are hazed and a little soft, the foreground rows nearest the lens out of focus
+ * and a little darker. Each look is drawn once (the values are rounded, so there are few) and kept; `floor` is the
+ * colour of their feet, for the band under them.
+ *
+ * Perf: the cache is per picture (a WeakMap), never keyed by the picture's src (in the published single-file game
+ * that is a data URL hundreds of KB long: building and hashing it for every tile of every row each frame was a real
+ * cost). The looks are ordinary canvases (the GPU draws them; a canvas made for reading pixels back is drawn slowly),
+ * and their foot colour is worked out from the picture's own, read once, rather than read back from every look.
  */
-const hazeCache = new Map<string, { img: HTMLImageElement; c: HTMLCanvasElement; floor: string }>();
-function hazePines(img: HTMLImageElement, hazeIn: number, flip: boolean, blurIn = 0, darkIn = 0): { c: HTMLCanvasElement; floor: string } {
-  const haze = Math.round(Math.max(0, Math.min(0.8, hazeIn)) * 10) / 10, blur = Math.round(Math.max(0, Math.min(10, blurIn)));
-  const dark = Math.round(Math.max(0, Math.min(0.6, darkIn)) * 20) / 20;
-  const key = img.src + haze + ':' + blur + ':' + dark + (flip ? 'f' : '');
-  const hit = hazeCache.get(key);
-  if (hit?.img === img) { hazeCache.delete(key); hazeCache.set(key, hit); return hit; } // most recently used last
-  // Soft focus is the picture kept smaller (drawn back up to size on screen, smoothly): it costs a fraction of the
-  // memory of a full-size copy, and works on every browser (unlike a canvas filter). A sharp row keeps every pixel.
-  const k = blur > 0 ? 1 / (1 + blur * 0.5) : 1;
+interface PineLook { c: HTMLCanvasElement; floor: string; used: number; haze: number; blur: number; dark: number; h: number; flip: boolean }
+const pineLooks = new WeakMap<HTMLImageElement, Map<string, PineLook>>();
+let pineLookCount = 0, pineLookClock = 0;
+/** Looks kept at most (a lane change sweeps the haze through a few; zoomed out, the extra rows each have their own). */
+const PINE_LOOKS_KEEP = 96;
+const footColour = new WeakMap<HTMLImageElement, [number, number, number]>();
+/** The average colour of a picture's solid pixels along its bottom (read once per picture, on a small copy). */
+function footOf(img: HTMLImageElement): [number, number, number] {
+  let rgb = footColour.get(img);
+  if (rgb) return rgb;
+  rgb = [21, 35, 38];
+  try {
+    const w = 96, h = 6;
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const g = c.getContext('2d', { willReadFrequently: true })!;
+    g.drawImage(img, 0, Math.floor(img.naturalHeight * 0.9), img.naturalWidth, Math.max(1, Math.floor(img.naturalHeight * 0.08)), 0, 0, w, h);
+    const d = g.getImageData(0, 0, w, h).data;
+    let r = 0, gr = 0, bl = 0, n = 0;
+    for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 200) { r += d[i]; gr += d[i + 1]; bl += d[i + 2]; n++; }
+    if (n) rgb = [r / n, gr / n, bl / n];
+  } catch { /* a tainted canvas: the default */ }
+  footColour.set(img, rgb);
+  return rgb;
+}
+const HAZE_RGB = HAZE.split(',').map(Number) as [number, number, number];
+const SHADE_RGB: [number, number, number] = [6, 14, 10];
+
+/**
+ * How tall (px) a look is kept: the size it is drawn at (device px) times its softness, rounded UP to the next half
+ * octave (so a sharp row is never stretched, and a zoom or a new screen size needs a new look only now and then), and
+ * never more than the picture itself. A row drawn small is kept small: less memory, and shrunk once with the best
+ * filter instead of every frame with the fast one. Blur is in screen px, so it looks the same on every screen.
+ */
+function lookHeight(img: HTMLImageElement, blur: number, drawnH: number): number {
+  const want = Math.max(16, drawnH / (1 + blur * 0.5));
+  return Math.round(Math.min(img.naturalHeight, Math.pow(2, Math.ceil(Math.log2(want) * 2) / 2)));
+}
+
+function buildLook(img: HTMLImageElement, haze: number, flip: boolean, blur: number, dark: number, h: number): PineLook {
   const c = document.createElement('canvas');
-  c.width = Math.max(1, Math.round(img.naturalWidth * k)); c.height = Math.max(1, Math.round(img.naturalHeight * k));
-  const g = c.getContext('2d', { willReadFrequently: true })!;
+  c.height = h; c.width = Math.max(1, Math.round((img.naturalWidth * h) / img.naturalHeight));
+  const g = c.getContext('2d')!;
   g.imageSmoothingQuality = 'high';
   if (!flip) { g.translate(c.width, 0); g.scale(-1, 1); }
   g.drawImage(img, 0, 0, c.width, c.height);
   g.setTransform(1, 0, 0, 1, 0, 0);
-  if (haze > 0) {
+  if (haze > 0 || dark > 0) {
     g.globalCompositeOperation = 'source-atop';
-    g.fillStyle = `rgba(${HAZE},${haze})`;
-    g.fillRect(0, 0, c.width, c.height);
-    g.globalCompositeOperation = 'source-over';
-  }
-  if (dark > 0) {
+    if (haze > 0) { g.fillStyle = `rgba(${HAZE},${haze})`; g.fillRect(0, 0, c.width, c.height); }
     // the rows nearest the lens are in shade (the owner: slightly darker, for the perspective)
-    g.globalCompositeOperation = 'source-atop';
-    g.fillStyle = `rgba(6,14,10,${dark})`;
-    g.fillRect(0, 0, c.width, c.height);
+    if (dark > 0) { g.fillStyle = `rgba(${SHADE_RGB.join(',')},${dark})`; g.fillRect(0, 0, c.width, c.height); }
     g.globalCompositeOperation = 'source-over';
   }
-  // the average colour of the solid pixels along the bottom
-  let r = 0, gr = 0, bl = 0, n = 0;
-  try {
-    const d = g.getImageData(0, Math.floor(c.height * 0.9), c.width, Math.max(1, Math.floor(c.height * 0.08))).data;
-    for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 200) { r += d[i]; gr += d[i + 1]; bl += d[i + 2]; n++; }
-  } catch { /* a tainted canvas: fall back below */ }
-  const floor = n ? `rgb(${Math.round(r / n)},${Math.round(gr / n)},${Math.round(bl / n)})` : '#152326';
-  const out = { img, c, floor };
-  hazeCache.set(key, out);
-  // only so many looks kept (a lane change sweeps the haze through several): the least recently used goes
-  while (hazeCache.size > HAZE_KEEP) hazeCache.delete(hazeCache.keys().next().value as string);
-  return out;
+  const foot = footOf(img).map((v, i) => { const hz = v + (HAZE_RGB[i] - v) * haze; return Math.round(hz + (SHADE_RGB[i] - hz) * dark); });
+  return { c, floor: `rgb(${foot.join(',')})`, used: ++pineLookClock, haze, blur, dark, h, flip };
 }
-const HAZE_KEEP = 32;
 
 /**
- * The owner's islands, as big rock formations in the foreground forest (the owner: they only work very large in the
- * foreground; half of each under the trees, standing still like a rock formation). Each stands among the foreground
- * pines at the depth of row ISLAND_ROW (it slides with that row), its lower half hidden by the rows in front of it; about
- * half to two thirds of the screen wide, sized by the screen, not the zoom, so they are always that big. A slot is a
- * stretch of screen widths that holds one island or none.
+ * The look of a pine strip for a row: `drawnH` is how tall the row is drawn (device px). Built once and kept. A look
+ * that is not ready yet is never built in the middle of a frame when another can stand in: the nearest one is drawn
+ * this frame and the right one is built in an idle moment (the first ever look of a picture is built at once).
  */
-const ISLAND_ROW = 3; // the pine row they stand in; the rows in front of it cover their lower half
-const NEAR_SLOT = 1.7, NEAR_CHANCE = 0.6;
+function hazePines(img: HTMLImageElement, hazeIn: number, flip: boolean, blurIn = 0, darkIn = 0, drawnH = img.naturalHeight): { c: HTMLCanvasElement; floor: string } {
+  const haze = Math.round(Math.max(0, Math.min(0.8, hazeIn)) * 10) / 10, blur = Math.round(Math.max(0, Math.min(10, blurIn)));
+  const dark = Math.round(Math.max(0, Math.min(0.6, darkIn)) * 20) / 20;
+  const h = lookHeight(img, blur, drawnH);
+  const key = `${haze}:${blur}:${dark}:${h}${flip ? 'f' : ''}`;
+  let looks = pineLooks.get(img);
+  if (!looks) { looks = new Map(); pineLooks.set(img, looks); }
+  const hit = looks.get(key);
+  if (hit) { hit.used = ++pineLookClock; return hit; }
+  // the nearest look of this picture (the same way round) stands in while the right one is built
+  let near: PineLook | null = null, nearD = Infinity;
+  for (const l of looks.values()) {
+    if (l.flip !== flip) continue;
+    const d = Math.abs(l.haze - haze) * 10 + Math.abs(l.blur - blur) + Math.abs(l.dark - dark) * 10 + Math.abs(Math.log2(l.h / h));
+    if (d < nearD) { near = l; nearD = d; }
+  }
+  const make = () => {
+    const now = pineLooks.get(img);
+    if (!now || now.has(key)) return;
+    now.set(key, buildLook(img, haze, flip, blur, dark, h));
+    if (++pineLookCount > PINE_LOOKS_KEEP) dropOldestLook();
+  };
+  if (near) { queueLook(`${lookId(img)}:${key}`, make); near.used = ++pineLookClock; return near; }
+  make();
+  return looks.get(key)!;
+}
+/** The least recently drawn look goes (the pictures are few: both strips, every look of each). */
+function dropOldestLook(): void {
+  let oldest: { looks: Map<string, PineLook>; key: string; used: number } | null = null;
+  for (const img of [ART.treesFront, ART.treesFront2]) {
+    const looks = img ? pineLooks.get(img) : undefined;
+    if (!looks) continue;
+    for (const [key, look] of looks) if (!oldest || look.used < oldest.used) oldest = { looks, key, used: look.used };
+  }
+  if (oldest) { oldest.looks.delete(oldest.key); pineLookCount--; }
+}
+const lookIds = new WeakMap<HTMLImageElement, number>();
+let nextLookId = 0;
+const lookId = (img: HTMLImageElement) => { let n = lookIds.get(img); if (n === undefined) { n = nextLookId++; lookIds.set(img, n); } return n; };
 
-/** The islands standing in the forest this frame (`treeTop`: the tops of the pines in front of them at a screen x). */
-function forestIslands(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch: number, scroll: number, treeTop: (sx: number) => number) {
-  const key = 'rock';
-  const rw = cw * NEAR_SLOT;
-  const start = tileStart(cam, key, scroll, rw, cw);
-  for (let rx = start.x - rw, id = start.id - 1; rx < cw; rx += rw, id++) {
-    const art = islandIn(key, id, NEAR_CHANCE);
-    const img = art ? islandPicture(art.n) : null;
-    if (!art || !img) continue;
-    // the long flat ones a little wider, the tall spires a little narrower (their art widths, relative to the usual 400)
-    const base = Math.max(cw, ch * 1.3) * (0.5 + 0.22 * islandHash(key, id, 1)) * Math.sqrt(art.w / 400);
-    const w = Math.min(base, cw * 1.05), h = w * (img.naturalHeight / img.naturalWidth);
-    const cx = rx + rw * (0.3 + 0.4 * islandHash(key, id, 2));
-    if (cx + w / 2 < 0 || cx - w / 2 > cw) continue;
-    // half of it under the treetops in front (a little more or less from one to the next). Its height comes from the
-    // treeline at the middle of the screen, not where it is: sliding across the hills it never rides up or down.
-    const top = treeTop(cw / 2) - h * (0.42 + 0.12 * islandHash(key, id, 4));
-    // solid: it blocks the view of the track as it passes, like a real rock in front of the camera (the owner)
-    drawImg(ctx, img, cx - w / 2, top, w, h);
+/** Looks waiting to be built, one per idle moment (each takes a millisecond or two). */
+const lookQueue = new Map<string, () => void>();
+let lookQueueRunning = false;
+function queueLook(id: string, build: () => void): void {
+  if (lookQueue.has(id)) return;
+  lookQueue.set(id, build);
+  if (lookQueueRunning) return;
+  lookQueueRunning = true;
+  onIdle(buildNextLook);
+}
+function buildNextLook(): void {
+  const first = lookQueue.entries().next();
+  if (first.done) { lookQueueRunning = false; return; }
+  lookQueue.delete(first.value[0]);
+  first.value[1]();
+  onIdle(buildNextLook);
+}
+/** Soon, in a gap between frames (within a tenth of a second even while a race keeps every frame busy). */
+function onIdle(fn: () => void): void {
+  const w = globalThis as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number };
+  if (typeof w.requestIdleCallback === 'function') w.requestIdleCallback(fn, { timeout: 100 });
+  else setTimeout(fn, 16);
+}
+
+/**
+ * The warm-up (preload.ts runs it once the pictures are decoded): the looks the forest will use, built one per idle
+ * moment before any race, for this screen: every foreground row (sharp to soft, both ways round, both strips), and
+ * the layers between the tracks one and two tracks back (at the camera's usual zooms).
+ */
+afterArt((() => {
+  let todo: (() => void)[] | null = null;
+  return () => {
+    if (!todo) {
+      const imgs = [ART.treesFront, ART.treesFront2].filter(ready);
+      if (!imgs.length || typeof window === 'undefined') return true;
+      const fit = Math.max(0.42, Math.min(1.25, Math.min(window.innerWidth / 1000, window.innerHeight / 520)));
+      const dpr = window.devicePixelRatio || 1;
+      todo = [];
+      const add = (haze: number, blur: number, dark: number, drawnH: number) => { for (const img of imgs) for (const flip of [true, false]) todo!.push(() => { hazePines(img, haze, flip, blur, dark, drawnH); }); };
+      for (let i = 0; i < PINE_ALL; i++) { const r = pineRow(i); add(0, pineBlur(r.p), pineDark(r.p), r.h * fit * r.p * dpr); }
+      for (const zoom of [1, 0.6]) {
+        for (const [far, focus] of [[0, 1], [0, 2]]) {
+          const vf = laneView(far, focus), vn = laneView(far + 1, focus), sp = fit * zoom * Math.sqrt(vf.scale * vn.scale);
+          BETWEEN_ROWS.forEach((r, i) => { const look = betweenLook(vf, i); add(look.haze, look.blur, 0, r.h * sp * dpr); });
+        }
+      }
+    }
+    const next = todo.shift();
+    if (next) next();
+    // the queued ones (stand-ins asked for) are built by their own idle loop
+    return todo.length === 0;
+  };
+})());
+
+/**
+ * The owner's islands: big rock formations standing in the foreground forest, half under the trees (they only work very
+ * large in the foreground; standing still like a rock formation; solid, they block the view of the track as they pass:
+ * the owner). Each is pinned to one point of the land (forest.ts islandSpots) and drawn behind every row of pines, so
+ * it moves exactly as the hill it stands on does and never sinks into the trees or rises out of them.
+ */
+function drawIslands(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch: number, plan: CoursePlan, fs: number, treeDrop: number) {
+  const focus = cam.focus ?? LANE_MIDDLE;
+  const spots = islandSpots(cam, cw, ch, {
+    groundAt: (x) => groundLineY(plan, focus, x),
+    treeDrop,
+    quiet: quietOf(plan),
+    fs,
+    pick: (slot) => islandPick(slot, ISLAND_CHANCE),
+    widthOf: (art) => ISLANDS[art].w,
+    aspect: (art) => { const img = islandPicture(ISLANDS[art].n); return img ? img.naturalHeight / img.naturalWidth : null; },
+  });
+  for (const sp of spots) {
+    const img = islandPicture(ISLANDS[sp.art].n);
+    if (img) drawImg(ctx, img, sp.x - sp.w / 2, sp.top, sp.w, sp.h);
   }
 }
 
@@ -1378,58 +1508,102 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
   const { rows: scrolls } = foregroundScroll(cam);
   const aspect = img.naturalWidth / img.naturalHeight;
   // The pines are near the lens (the owner): they slide sideways faster than the track, each row at its own parallax
-  // speed (foregroundScroll), which is the depth. Up and down they hold still (the owner: no up and down movement of
-  // trees or islands): every row hangs a fixed drop below ONE line, the track at the middle of the screen. The camera
-  // locks to that very line (trackLineY), so while you roll the forest does not move on screen at all; it only goes
-  // with the world when the camera lifts to keep a ball high in the air on screen. (The rows used to follow the cliff
-  // under each column, so they rode up and down over every hill as it scrolled past, and an island sank into them.)
-  // Only your own zoom resizes them (fgScale).
+  // speed (foregroundScroll), which is the depth. Up and down, every row stands a fixed depth below the track you are
+  // on as it lies on the screen, column by column (forest.ts forestLine): the forest is angled with every hill and never
+  // moves against the track, on any lane, mid lane change. The depth and the drops are in your own zoom only (fgScale),
+  // so the tree line holds still when the camera zooms itself in and out with your speed.
   const fs = cam.fgScale ?? cam.scale;
-  const track = plan ? trackLineY(plan, cam.focus ?? LANE_MIDDLE, cam.x) : null;
-  const level = (track === null ? ch / 2 + FG_TRACK_BELOW * cam.scale : ch / 2 + (track - cam.y) * cam.scale) + TREES_BELOW_TRACK * cam.scale;
-  const lineAt = (_sx: number) => level;
-  const islands = cam.islands !== false;
+  const dpr = ctx.getTransform().a || 1;
+  const focus = cam.focus ?? LANE_MIDDLE;
+  const lineAt = forestLine((x) => (plan ? groundLineY(plan, focus, x) : null), cam, cw, ch, FOREST_DEPTH * fs, ch / 2 + (FG_TRACK_BELOW + FOREST_DEPTH) * fs);
+  const islands = cam.islands !== false && !!plan;
+  const FRONT = PINE_ROWS.length - 1;
   // Back to front. The nearer rows past the front one (zoomed out) fade in as the ground under the row behind them
   // comes into view, and out again as it leaves (the owner: no snapping in and out).
-  let prev: { top: number; height: number } | null = null;
-  for (let i = 0; i < PINE_ALL; i++) {
+  const rows: { i: number; r: { p: number; h: number; drop: number }; top: number; height: number; alpha: number }[] = [];
+  for (let i = 0, prev: { top: number; height: number } | null = null; i < PINE_ALL; i++) {
     const r = pineRow(i);
     const top = lineAt(cw / 2) + (r.drop - CLIFF_RISE) * fs * r.p, height = r.h * fs * r.p;
     let alpha = 1;
     if (i >= PINE_ROWS.length && prev) alpha = Math.max(0, Math.min(1, (ch - (prev.top + prev.height * 0.75)) / (ch * 0.12)));
     if (alpha <= 0) break;
     prev = { top, height };
+    rows.push({ i, r, top, height, alpha });
+  }
+  for (let j = 0; j < rows.length; j++) {
+    const { i, r, top, height, alpha } = rows[j];
+    // the islands stand right behind the front row of pines, which (with the rows past it) hides their lower half
+    if (i === FRONT && islands) drawIslands(ctx, cam, cw, ch, plan!, fs, (FOREST_DEPTH + (r.drop - CLIFF_RISE) * r.p) * fs);
     if (top >= ch) continue;
     // every other row mirrored, so neighbouring rows never line up (the front row is the art as painted)
     // in front of the track: no haze; the rows nearest the lens are out of focus
-    const focus = pineBlur(r.p), shade = pineDark(r.p);
-    const pines = hazePines(img, 0, (PINE_ROWS.length - 1 - i) % 2 === 0, focus, shade);
+    const soft = pineBlur(r.p), shade = pineDark(r.p);
+    const pines = hazePines(img, 0, (PINE_ROWS.length - 1 - i) % 2 === 0, soft, shade, height * dpr);
     const rw = aspect * height;
     ctx.globalAlpha = alpha;
     // under the row, a band in its own darkest colour to the screen's bottom (the rows in front cover the rest), so no
     // land shows between the rows
     ctx.fillStyle = i < PINE_ROWS.length - 1 ? pines.floor : '#080e0d';
-    const n = Math.max(1, Math.ceil(rw / PINE_SLICE)), sw = rw / n, srcW = pines.c.width / n;
     const start = tileStart(cam, `f${i}`, scrolls[i], rw, cw);
+    const drop = (r.drop - CLIFF_RISE) * fs * r.p;
+    // Perf: the band under a row only reaches the solid part of the row in front of it (that row covers the rest; the
+    // lower half of the pine art is solid). Only the front-most row (or one still fading in) fills to the screen's
+    // bottom. It used to fill to the bottom under every row: about half the CPU of a frame went on painting the same
+    // pixels over and over.
+    const next = rows[j + 1];
+    const nextSolid = next && next.alpha >= 1 ? (next.r.drop - CLIFF_RISE) * fs * next.r.p + next.height * 0.6 : null;
+    const band = nextSolid === null ? true : (sx: number) => lineAt(sx) + nextSolid;
     for (let rx = start.x, id = start.id; rx < cw; rx += rw, id++) {
       const tile = pineTile(id, `f${i}`, (PINE_ROWS.length - 1 - i) % 2 === 0);
-      const art = hazePines(tile.img, 0, tile.flip, focus, shade);
-      for (let k = 0; k < n; k++) {
-        const sx = rx + k * sw;
-        if (sx > cw || sx + sw < 0) continue;
-        const y = lineAt(sx + sw / 2) + (r.drop - CLIFF_RISE) * fs * r.p;
-        if (y >= ch) continue;
-        ctx.fillRect(sx, y + height * 0.8, sw + 0.6, Math.max(0, ch - (y + height * 0.8)));
-        drawImg(ctx, art.c, k * srcW, 0, srcW, art.c.height, sx, y, sw + 0.6, height);
-      }
-    }
-    // the islands stand in this row: the rows still to come (in front) hide their lower half
-    if (islands && i === ISLAND_ROW) {
-      const front = pineRow(ISLAND_ROW + 1);
-      forestIslands(ctx, cam, cw, ch, scrolls[i], (sx) => lineAt(sx) + (front.drop - CLIFF_RISE) * fs * front.p);
+      const art = hazePines(tile.img, 0, tile.flip, soft, shade, height * dpr);
+      drawStrip(ctx, art.c, rx, rw, height, cw, ch, (sx) => lineAt(sx) + drop, band);
     }
   }
   ctx.globalAlpha = 1;
+}
+
+/**
+ * One tile of a pine row standing on a line (`yAt`: screen y at a screen x), so the row follows every hill. The tile
+ * is drawn in runs along which the line is straight (to within half a pixel), each in ONE draw under a vertical shear:
+ * every column of the picture moves down by the line's slope, so the trunks stay upright and the row lies exactly
+ * along the slope, with no steps. Perf: it used to be one draw per 24 px slice, about a thousand draws a frame for the
+ * whole forest and nearly half of all drawing time; on rolling hills a tile is now one or two.
+ * `band`: also fill under the row in the current fill colour (no land shows between rows): to the screen's bottom
+ * (true), down to a line parallel to the row's (a function of screen x), or not at all (false).
+ */
+function drawStrip(ctx: CanvasRenderingContext2D, art: HTMLCanvasElement, rx: number, rw: number, height: number, cw: number, ch: number, yAt: (sx: number) => number, band: boolean | ((sx: number) => number)) {
+  const x0 = Math.max(rx, -2), x1 = Math.min(rx + rw, cw + 2);
+  if (x1 <= x0) return;
+  const STEP = 24, TOL = 0.5, fx = art.width / rw;
+  let a = x0;
+  while (a < x1) {
+    const ya = yAt(a);
+    // the longest run from a whose line stays within TOL of the straight chord across it
+    let b = Math.min(x1, a + STEP);
+    while (b < x1) {
+      const nb = Math.min(x1, b + STEP), yb = yAt(nb);
+      let straight = true;
+      for (let x = a + STEP; x < nb && straight; x += STEP) straight = Math.abs(yAt(x) - (ya + ((yb - ya) * (x - a)) / (nb - a))) <= TOL;
+      if (!straight) break;
+      b = nb;
+    }
+    const w = b - a, slope = (yAt(b) - ya) / w;
+    if (Math.min(ya, ya + slope * w) < ch) {
+      ctx.save();
+      // the look is already the size it is drawn at: plain bilinear filtering (the best quality filter has no fast path for a sheared picture)
+      ctx.imageSmoothingQuality = 'low';
+      ctx.transform(1, slope, 0, 1, 0, -slope * a); // (x, y) -> (x, y + slope * (x - a))
+      if (band) {
+        const from = ya + height * 0.8;
+        const to = band === true ? ch + Math.abs(slope) * w : band(a);
+        if (to > from) ctx.fillRect(a, from, w + 0.6, to - from);
+      }
+      const sx0 = Math.max(0, (a - rx) * fx);
+      ctx.drawImage(art, sx0, 0, Math.min(w * fx, art.width - sx0), art.height, a, ya, w + 0.6, height);
+      ctx.restore();
+    }
+    a = b;
+  }
 }
 
 function drawBall(ctx: CanvasRenderingContext2D, game: Game, m: Marble, t: number) {

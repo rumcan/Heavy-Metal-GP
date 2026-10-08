@@ -30,14 +30,11 @@ import flagRaceUrl from '../../assets/game/flag-race.webp';
 
 import { drawCloudLedge, drawKicker } from './sky-art';
 import { LANE_BACK } from '../lanes';
+import { artImage } from '../art';
 
-// decoded up front (off the main thread), so a big sprite seen for the first time mid-race never stalls a frame
-const load = (src: string) => {
-  if (typeof Image === 'undefined') return null;
-  const img = Object.assign(new Image(), { src });
-  img.decode?.().catch(() => {});
-  return img;
-};
+// decoded up front by the warm-up (art.ts, preload.ts: off the main thread, the track's own art first), so a big
+// sprite seen for the first time mid-race never stalls a frame
+const load = (src: string) => artImage(src, 0);
 const ART = {
   wood: load(railWoodUrl), rock: load(rockFillUrl), moss: load(mossUrl), sheep: load(sheepUrl),
   crate: load(crateUrl), ball: load(wreckingBallUrl), towers: [load(tower1Url), load(tower2Url), load(tower3Url)], torch: load(torchUrl),
@@ -139,6 +136,21 @@ export function cliffTopAt(plan: CoursePlan, lane: Lane, x: number): number | nu
   for (const run of runsOf(plan)[lane]) {
     if (floating.has(run) || x < run[0].x || x > run[run.length - 1].x) continue;
     const y = yOn(run, x) + clearance(x);
+    if (best === null || y > best) best = y;
+  }
+  return best;
+}
+
+/**
+ * The track's own height at x in a lane, over the runs that stand on a cliff (floating floors left out: no forest grows
+ * under a Workshop curve), the lowest where two overlap, or null. The foreground forest follows it (forest.ts).
+ */
+export function groundedTrackAt(plan: CoursePlan, lane: Lane, x: number): number | null {
+  OX = plan.originX ?? 0; OY = plan.originY ?? 0;
+  let best: number | null = null;
+  for (const run of runsOf(plan)[lane]) {
+    if (floating.has(run) || x < run[0].x || x > run[run.length - 1].x) continue;
+    const y = yOn(run, x);
     if (best === null || y > best) best = y;
   }
   return best;

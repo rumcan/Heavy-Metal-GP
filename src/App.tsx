@@ -1,6 +1,7 @@
 import { buyCreditPack, onUnlockAll, redeemCreditPacks, refreshUnlockAll, talentTierLevel, unlockAllOwned } from './game/premium';
 import { radio } from './game/sound/radio';
 import { raceAudio } from './game/audio';
+import { preloadArt } from './game/preload';
 import * as storage from './game/storage';
 import { APP_VERSION, SEEN_VERSION_KEY } from './game/version';
 import WhatsNew from './components/WhatsNew';
@@ -758,6 +759,9 @@ export default function App() {
   // game when it changes so every lock opens at once.
   const [, setUnlockAll] = useState(unlockAllOwned());
   useEffect(() => { const off = onUnlockAll(setUnlockAll); void refreshUnlockAll(); return off; }, []);
+  // Smooth from the first race (the owner): decode every canvas picture and build the forest's looks in idle moments
+  // while the menus are up (preload.ts), so nothing is decoded or built for the first time in the middle of a race.
+  useEffect(() => { preloadArt(); }, []);
   // Sound: the first touch or key anywhere unlocks the sound and starts the radio (browsers allow it only after one).
   // Every button press in the menus clicks, tabs tick (a button can opt out with data-sound="none"; the race's own skill
   // keys and the canvas have their own sounds).

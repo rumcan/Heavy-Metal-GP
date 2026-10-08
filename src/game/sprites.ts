@@ -1,16 +1,16 @@
 import type Matter from 'matter-js';
 import { drawImg } from './mip';
+import { artImage } from './art';
 
 /** Gameplay sprites sliced from the "game graphics kit" sheet (see assets/ui), plus placeholder PNGs. */
 const files = import.meta.glob<string>('../assets/game/*.{webp,png}', { eager: true, import: 'default' });
 const images = new Map<string, HTMLImageElement>();
-if (typeof Image !== 'undefined') {
-  for (const [path, url] of Object.entries(files)) {
-    const img = new Image();
-    img.src = url;
-    const file = path.slice(path.lastIndexOf('/') + 1);
-    images.set(file.slice(0, file.lastIndexOf('.')), img);
-  }
+for (const [path, url] of Object.entries(files)) {
+  // through art.ts: the warm-up decodes them in idle moments, after the platformer's own art
+  const img = artImage(url, 2);
+  if (!img) break;
+  const file = path.slice(path.lastIndexOf('/') + 1);
+  images.set(file.slice(0, file.lastIndexOf('.')), img);
 }
 
 /**

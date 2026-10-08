@@ -15,10 +15,12 @@ import { officialTrack } from './official-tracks';
 /** The calendar rounds raced on their pinball circuits in the championship and story: Monte Pipo (1) and Suzuka (4). */
 export const PINBALL_ROUNDS: ReadonlySet<number> = new Set([1, 4]);
 
-// The platformer archives (dev tools: Archive). Vite collects them; outside Vite (node tests) there are none.
-const archives: Record<string, unknown> = typeof import.meta.glob === 'function'
-  ? import.meta.glob('./official-tracks/gp-*.json', { eager: true, import: 'default' })
-  : {};
+// The platformer archives (dev tools: Archive), collected by Vite. Outside Vite (node tests) there is no
+// import.meta.glob: the call throws and there are none. (It used to test `typeof import.meta.glob` first: Vite rewrites the
+// call but leaves that test, which is false in the browser, so an archived course never loaded.)
+const archives: Record<string, unknown> = (() => {
+  try { return import.meta.glob('./official-tracks/gp-*.json', { eager: true, import: 'default' }); } catch { return {}; }
+})();
 
 /** A round's archived platformer course, if one was archived and still validates. */
 export function archivedPlatformerTrack(round: number): TrackDef | null {
