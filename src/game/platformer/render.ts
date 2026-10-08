@@ -12,8 +12,8 @@ import { drawSkillWorld } from '../skills/draw';
 import { GATE_RAMP_H, SPRING_W, floorAt } from './course';
 import { islandHash, islandIn, islandPicture } from './islands';
 import type { CoursePlan, Floor, Lane, LaneGate } from './course';
-import { cliffTopAt, coasterReady, drawBeamPath, drawCoasterLane, drawGateRamp } from './coaster';
-import { cloudPicture, drawCloudLedge, drawKicker } from './sky-art';
+import { coasterReady, drawBeamPath, drawCoasterLane, drawGateRamp } from './coaster';
+import { drawCloudLedge, drawKicker } from './sky-art';
 import { drawRoutes, setBridgeArt } from './routes';
 import { LEDGE_H } from './build';
 import earthUrl from '../../assets/game/platformer/earth.webp';
@@ -1067,9 +1067,7 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
     ctx.restore();
   }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  // the followed ball on screen: a foreground island that passes in front of it turns see-through
-  const ball = platformScreenPoint(game, followed, cam, cw, ch);
-  foreground(ctx, cam, cw, ch, game.track.platformer?.plan, t, ball);
+  foreground(ctx, cam, cw, ch, game.track.platformer?.plan);
 }
 
 /**
@@ -1113,8 +1111,11 @@ function betweenTrees(ctx: CanvasRenderingContext2D, game: Game, cam: PlatformCa
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.globalAlpha = vn.alpha;
   const rows = [{ drop: 70, h: 170 }, { drop: 120, h: 185 }, { drop: 170, h: 200 }];
+  // distance: hazed like the track behind them (a little less for each nearer row) and softly out of focus
+  const between = (i: number) => ({ haze: (0.12 + vf.fog * 0.75) * (1 - i * 0.18), blur: 1 + vf.blur * 1.2 - i * 0.4 });
   rows.forEach((r, i) => {
-    const pines = hazePines(img, 0, (i + far) % 2 === 0);
+    const look = between(i);
+    const pines = hazePines(img, look.haze, (i + far) % 2 === 0, look.blur);
     const height = r.h * sp, rw = aspect * height;
     const n = Math.max(1, Math.ceil(rw / PINE_SLICE)), sw = rw / n, srcW = pines.c.width / n;
     const scroll = st!.scrolls[far] * (1 + i * 0.04);
@@ -1122,7 +1123,7 @@ function betweenTrees(ctx: CanvasRenderingContext2D, game: Game, cam: PlatformCa
     const start = tileStart(cam, `b${far}:${i}`, scroll, rw, cw);
     for (let rx = start.x, id = start.id; rx < cw; rx += rw, id++) {
       const tile = pineTile(id, `b${far}:${i}`, (i + far) % 2 === 0);
-      const art = hazePines(tile.img, 0, tile.flip);
+      const art = hazePines(tile.img, look.haze, tile.flip, look.blur);
       for (let k = 0; k < n; k++) {
         const sx = rx + k * sw;
         if (sx > cw || sx + sw < 0) continue;
@@ -1210,6 +1211,13 @@ function pineRow(i: number): { p: number; h: number; drop: number } {
   return { p: front.p + 0.08 * k, h: front.h + 35 * k, drop: front.drop + 18 * k };
 }
 const PINE_ALL = PINE_ROWS.length + PINE_EXTRA;
+/**
+ * How out of focus a foreground row at depth p is (px at the art's size), and how much darker: sharp and bright near the
+ * track, the front rows nearest the lens clearly soft and a little in shade (the owner: blur the front row for the
+ * perspective and make it slightly darker).
+ */
+const pineBlur = (p: number) => Math.max(0, (p - 1.18) * 22);
+const pineDark = (p: number) => Math.max(0, Math.min(0.42, (p - 1.2) * 1.3));
 /** How wide (screen px) each upright slice of a row is when it follows the slope: narrow enough that the steps vanish. */
 const PINE_SLICE = 24;
 
@@ -1272,42 +1280,51 @@ export function trackLineY(plan: CoursePlan, focus: number, x: number): number |
   return y0 + (y1 - y0) * t;
 }
 
-/** The rows' drops are measured below the cliff top less this (world px): the back row's tips just over the cliff's edge. */
+/** How far below the track (world px) the line the foreground rows hang from lies. */
+const TREES_BELOW_TRACK = 90;
+/** The rows' drops are measured below that line less this (world px). */
 const CLIFF_RISE = 130;
 
-/** The cliff top the pines stand on: the focused lane's (two lanes blended through a lane change). */
-function cliffLineY(plan: CoursePlan, focus: number, x: number): number | null {
-  const f = Math.max(0, Math.min(2, focus));
-  const l0 = Math.floor(f) as Lane, l1 = Math.min(2, l0 + 1) as Lane, t = f - l0;
-  const y0 = cliffTopAt(plan, l0, x);
-  if (t < 1e-3) return y0;
-  const y1 = cliffTopAt(plan, l1, x);
-  if (y0 === null) return y1;
-  if (y1 === null) return y0;
-  return y0 + (y1 - y0) * t;
-}
 
 /** Where the track sits below the screen's centre while the ball rolls (the camera frames the ball 10 px above it). */
 const FG_TRACK_BELOW = 15;
 
 /**
- * The front pines washed with evening haze (mirrored for every other row, so the rows never line up), drawn once per
- * strength; `floor` is the colour of their feet, for the band under them.
+ * The owner's pines (bright and sharp as painted), mirrored for every other row so the rows never line up, washed with
+ * distance haze (0..1, the sky's colour) and softened by `blur` (px at the art's size) for their depth: the layers
+ * between the tracks are hazed and a little soft, the foreground rows nearest the lens are out of focus. Drawn once
+ * per combination (both are rounded, so there are few); `floor` is the colour of their feet, for the band under them.
  */
 const hazeCache = new Map<string, { img: HTMLImageElement; c: HTMLCanvasElement; floor: string }>();
-function hazePines(img: HTMLImageElement, haze: number, flip: boolean): { c: HTMLCanvasElement; floor: string } {
-  const key = img.src + haze + (flip ? 'f' : '');
+function hazePines(img: HTMLImageElement, hazeIn: number, flip: boolean, blurIn = 0, darkIn = 0): { c: HTMLCanvasElement; floor: string } {
+  const haze = Math.round(Math.max(0, Math.min(0.8, hazeIn)) * 10) / 10, blur = Math.round(Math.max(0, Math.min(10, blurIn)));
+  const dark = Math.round(Math.max(0, Math.min(0.6, darkIn)) * 20) / 20;
+  const key = img.src + haze + ':' + blur + ':' + dark + (flip ? 'f' : '');
   const hit = hazeCache.get(key);
-  if (hit?.img === img) return hit;
+  if (hit?.img === img) { hazeCache.delete(key); hazeCache.set(key, hit); return hit; } // most recently used last
+  // Soft focus is the picture kept smaller (drawn back up to size on screen, smoothly): it costs a fraction of the
+  // memory of a full-size copy, and works on every browser (unlike a canvas filter). A sharp row keeps every pixel.
+  const k = blur > 0 ? 1 / (1 + blur * 0.5) : 1;
   const c = document.createElement('canvas');
-  c.width = img.naturalWidth; c.height = img.naturalHeight;
+  c.width = Math.max(1, Math.round(img.naturalWidth * k)); c.height = Math.max(1, Math.round(img.naturalHeight * k));
   const g = c.getContext('2d', { willReadFrequently: true })!;
+  g.imageSmoothingQuality = 'high';
   if (!flip) { g.translate(c.width, 0); g.scale(-1, 1); }
-  g.drawImage(img, 0, 0);
+  g.drawImage(img, 0, 0, c.width, c.height);
   g.setTransform(1, 0, 0, 1, 0, 0);
-  g.globalCompositeOperation = 'source-atop';
-  g.fillStyle = `rgba(70,100,120,${haze})`; // 0: the owner wants no haze (kept for tuning)
-  g.fillRect(0, 0, c.width, c.height);
+  if (haze > 0) {
+    g.globalCompositeOperation = 'source-atop';
+    g.fillStyle = `rgba(${HAZE},${haze})`;
+    g.fillRect(0, 0, c.width, c.height);
+    g.globalCompositeOperation = 'source-over';
+  }
+  if (dark > 0) {
+    // the rows nearest the lens are in shade (the owner: slightly darker, for the perspective)
+    g.globalCompositeOperation = 'source-atop';
+    g.fillStyle = `rgba(6,14,10,${dark})`;
+    g.fillRect(0, 0, c.width, c.height);
+    g.globalCompositeOperation = 'source-over';
+  }
   // the average colour of the solid pixels along the bottom
   let r = 0, gr = 0, bl = 0, n = 0;
   try {
@@ -1317,129 +1334,61 @@ function hazePines(img: HTMLImageElement, haze: number, flip: boolean): { c: HTM
   const floor = n ? `rgb(${Math.round(r / n)},${Math.round(gr / n)},${Math.round(bl / n)})` : '#152326';
   const out = { img, c, floor };
   hazeCache.set(key, out);
+  // only so many looks kept (a lane change sweeps the haze through several): the least recently used goes
+  while (hazeCache.size > HAZE_KEEP) hazeCache.delete(hazeCache.keys().next().value as string);
   return out;
 }
+const HAZE_KEEP = 32;
 
 /**
- * The owner's floating islands in the foreground. Rows: which pine rows have islands rising out of them (each sits
- * behind the rows in front, which hide its hanging rock); a slot is a stretch of a row (world px at the row's depth)
- * that holds one island or none. Sky islands float high over the track, nearer still (the depth of the first row past
- * the front one), half of them on a bank of cloud.
+ * The owner's islands, as big rock formations in the foreground forest (the owner: they only work very large in the
+ * foreground; half of each under the trees, standing still like a rock formation). Each stands among the foreground
+ * pines at the depth of row ISLAND_ROW (it slides with that row), its lower half hidden by the rows in front of it; about
+ * half to two thirds of the screen wide, sized by the screen, not the zoom, so they are always that big. A slot is a
+ * stretch of screen widths that holds one island or none.
  */
-const ISLAND_ROWS: readonly number[] = [1, 3];
-const ISLAND_SLOT = 1500, ISLAND_CHANCE = 0.42;
-const SKY_SLOT = 2100, SKY_CHANCE = 0.55;
+const ISLAND_ROW = 3; // the pine row they stand in; the rows in front of it cover their lower half
+const NEAR_SLOT = 1.7, NEAR_CHANCE = 0.6;
 
-/** A soft see-through as an island passes in front of the ball (full again 60 px clear of it). */
-function islandAlpha(ball: { x: number; y: number } | undefined, x0: number, y0: number, x1: number, y1: number): number {
-  if (!ball) return 1;
-  const d = Math.max(x0 - ball.x, ball.x - x1, y0 - ball.y, ball.y - y1, 0);
-  return 0.35 + 0.65 * Math.min(1, d / 60);
-}
-
-/** The islands of one foreground row whose slots are on screen, rising out of the pines (`treeTop`: the row's tops at a screen x). */
-function treeIslands(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, row: number, p: number, scroll: number, fs: number, treeTop: (sx: number) => number, t: number, ball?: { x: number; y: number }) {
-  const key = `i${row}`;
-  const rw = ISLAND_SLOT * fs * p;
+/** The islands standing in the forest this frame (`treeTop`: the tops of the pines in front of them at a screen x). */
+function forestIslands(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch: number, scroll: number, treeTop: (sx: number) => number) {
+  const key = 'rock';
+  const rw = cw * NEAR_SLOT;
   const start = tileStart(cam, key, scroll, rw, cw);
-  for (let rx = start.x, id = start.id; rx < cw; rx += rw, id++) {
-    const art = islandIn(key, id, ISLAND_CHANCE);
+  for (let rx = start.x - rw, id = start.id - 1; rx < cw; rx += rw, id++) {
+    const art = islandIn(key, id, NEAR_CHANCE);
     const img = art ? islandPicture(art.n) : null;
     if (!art || !img) continue;
-    const w = art.w * fs * p * (0.85 + 0.3 * islandHash(key, id, 1)), h = w * (img.naturalHeight / img.naturalWidth);
-    const cx = rx + rw * (0.25 + 0.5 * islandHash(key, id, 2));
+    // the long flat ones a little wider, the tall spires a little narrower (their art widths, relative to the usual 400)
+    const base = Math.max(cw, ch * 1.3) * (0.5 + 0.22 * islandHash(key, id, 1)) * Math.sqrt(art.w / 400);
+    const w = Math.min(base, cw * 1.05), h = w * (img.naturalHeight / img.naturalWidth);
+    const cx = rx + rw * (0.3 + 0.4 * islandHash(key, id, 2));
     if (cx + w / 2 < 0 || cx - w / 2 > cw) continue;
-    // its grass and buildings rise over the treetops (how far varies), bobbing gently and slowly rising and sinking
-    const phase = islandHash(key, id, 3) * Math.PI * 2;
-    const bob = (Math.sin(t / 2300 + phase) * 7 + Math.sin(t / 7100 + phase * 1.7) * 16) * fs * p;
-    const top = treeTop(cx) - h * art.rock * (0.75 + 0.25 * islandHash(key, id, 4)) + bob;
-    ctx.globalAlpha = islandAlpha(ball, cx - w / 2, top, cx + w / 2, treeTop(cx));
+    // half of it under the treetops in front (a little more or less from one to the next). Its height comes from the
+    // treeline at the middle of the screen, not where it is: sliding across the hills it never rides up or down.
+    const top = treeTop(cw / 2) - h * (0.42 + 0.12 * islandHash(key, id, 4));
+    // solid: it blocks the view of the track as it passes, like a real rock in front of the camera (the owner)
     drawImg(ctx, img, cx - w / 2, top, w, h);
   }
-  ctx.globalAlpha = 1;
 }
 
-/** The sky islands on screen: high over the track (`line`: the track on screen at a screen x; they hang over its height at the centre, so a slope does not tip them off the top), now and then on a cloud. */
-function skyIslands(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, p: number, scroll: number, fs: number, line: (sx: number) => number, t: number, ball?: { x: number; y: number }) {
-  const key = 'sky';
-  const rw = SKY_SLOT * fs * p;
-  const start = tileStart(cam, key, scroll, rw, cw);
-  for (let rx = start.x, id = start.id; rx < cw; rx += rw, id++) {
-    const art = islandIn(key, id, SKY_CHANCE);
-    const img = art ? islandPicture(art.n) : null;
-    if (!art || !img) continue;
-    const w = art.w * fs * p * (0.42 + 0.14 * islandHash(key, id, 1)), h = w * (img.naturalHeight / img.naturalWidth);
-    const cx = rx + rw * (0.2 + 0.6 * islandHash(key, id, 2));
-    if (cx + w / 2 < -40 || cx - w / 2 > cw + 40) continue;
-    const phase = islandHash(key, id, 3) * Math.PI * 2;
-    const bob = Math.sin(t / 2900 + phase) * 9 * fs * p;
-    // its foot hangs in the top half of the sky over the track (the sky is a share of the screen, not of the zoom):
-    // high ones show only their hanging rock and waterfalls under the top edge, as if looked up at
-    const sky = Math.max(0, line(cw / 2));
-    const bottom = sky * (0.66 - 0.24 * islandHash(key, id, 4)) + bob;
-    const top = bottom - h;
-    if (bottom < -20) continue;
-    const alpha = islandAlpha(ball, cx - w / 2, top, cx + w / 2, bottom);
-    const cloudy = islandHash(key, id, 5) < 0.5;
-    const back = cloudy ? cloudPicture(5 + Math.floor(islandHash(key, id, 6) * 5)) : null;
-    const front = cloudy ? cloudPicture(5 + Math.floor(islandHash(key, id, 7) * 5)) : null;
-    // a bank of cloud at its foot: one puff behind the hanging rock, one across it in front
-    if (back) {
-      const bw = w * 1.15, bh = bw * (back.naturalHeight / back.naturalWidth);
-      ctx.globalAlpha = alpha * 0.85;
-      drawImg(ctx, back, cx - bw * 0.62, bottom - h * 0.32 - bh * 0.4, bw, bh);
-    }
-    ctx.globalAlpha = alpha;
-    drawImg(ctx, img, cx - w / 2, top, w, h);
-    if (front) {
-      const fw = w * 0.95, fh = fw * (front.naturalHeight / front.naturalWidth);
-      ctx.globalAlpha = alpha * 0.95;
-      drawImg(ctx, front, cx - fw * 0.38, bottom - h * 0.18 - fh * 0.5, fw, fh);
-    }
-  }
-  ctx.globalAlpha = 1;
-}
-
-function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch: number, plan?: CoursePlan, t = 0, ball?: { x: number; y: number; visible?: boolean }) {
+function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch: number, plan?: CoursePlan) {
   const img = ART.treesFront;
   if (!ready(img)) return;
   const { rows: scrolls } = foregroundScroll(cam);
   const aspect = img.naturalWidth / img.naturalHeight;
   // The pines are near the lens (the owner): they slide sideways faster than the track, each row at its own parallax
-  // speed (foregroundScroll), which is the depth. Up and down, every row is glued to the track you are on as it lies on
-  // the screen, column by column, a fixed drop below it (trackLineY: the same line the Infinity camera locks to). So
-  // the trees can never move against the track, on any lane, mid lane change, at any zoom; they lie along every hill;
-  // and only your own zoom resizes them (fgScale).
+  // speed (foregroundScroll), which is the depth. Up and down they hold still (the owner: no up and down movement of
+  // trees or islands): every row hangs a fixed drop below ONE line, the track at the middle of the screen. The camera
+  // locks to that very line (trackLineY), so while you roll the forest does not move on screen at all; it only goes
+  // with the world when the camera lifts to keep a ball high in the air on screen. (The rows used to follow the cliff
+  // under each column, so they rode up and down over every hill as it scrolled past, and an island sank into them.)
+  // Only your own zoom resizes them (fgScale).
   const fs = cam.fgScale ?? cam.scale;
-  const COL = 24;
-  const cols = Math.ceil(cw / COL) + 2;
-  const line = new Float32Array(cols);
-  let held = ch / 2 + FG_TRACK_BELOW * cam.scale;
-  let first = -1;
-  for (let c = 0; c < cols; c++) {
-    const y = plan ? cliffLineY(plan, cam.focus ?? LANE_MIDDLE, cam.x + (c * COL - cw / 2) / cam.scale) : null;
-    if (y !== null) { held = ch / 2 + (y - cam.y) * cam.scale; if (first < 0) first = c; } // over a gap or a floating floor, the line holds
-    line[c] = held;
-  }
-  // Before the first ground on screen (left of the start), the trees take that ground's height, so they move with the
-  // world: pinned to the screen they bobbed up and down as the camera moved (the owner).
-  if (first > 0) for (let c = 0; c < first; c++) line[c] = line[first];
-  // never steeper than a hillside: a step in the cliff is eased over, so the trees never stand up in a tower
-  const rise = COL * 0.6;
-  for (let c = 1; c < cols; c++) line[c] = Math.max(line[c - 1] - rise, Math.min(line[c - 1] + rise, line[c]));
-  for (let c = cols - 2; c >= 0; c--) line[c] = Math.max(line[c + 1] - rise, Math.min(line[c + 1] + rise, line[c]));
-  const lineAt = (sx: number) => {
-    const f = Math.max(0, Math.min(cols - 1.001, sx / COL));
-    const c = Math.floor(f);
-    return line[c] + (line[c + 1] - line[c]) * (f - c);
-  };
+  const track = plan ? trackLineY(plan, cam.focus ?? LANE_MIDDLE, cam.x) : null;
+  const level = (track === null ? ch / 2 + FG_TRACK_BELOW * cam.scale : ch / 2 + (track - cam.y) * cam.scale) + TREES_BELOW_TRACK * cam.scale;
+  const lineAt = (_sx: number) => level;
   const islands = cam.islands !== false;
-  const seen = ball && ball.visible !== false ? ball : undefined;
-  if (islands) {
-    // the sky islands hang over the track as it lies on screen (the camera's own line: the cliffs can be far below it)
-    const track = (sx: number) => { const y = plan ? trackLineY(plan, cam.focus ?? LANE_MIDDLE, cam.x + (sx - cw / 2) / cam.scale) : null; return y === null ? ch / 2 : ch / 2 + (y - cam.y) * cam.scale; };
-    skyIslands(ctx, cam, cw, pineRow(PINE_ROWS.length).p, scrolls[PINE_ROWS.length], fs, track, t, seen);
-  }
   // Back to front. The nearer rows past the front one (zoomed out) fade in as the ground under the row behind them
   // comes into view, and out again as it leaves (the owner: no snapping in and out).
   let prev: { top: number; height: number } | null = null;
@@ -1452,7 +1401,9 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
     prev = { top, height };
     if (top >= ch) continue;
     // every other row mirrored, so neighbouring rows never line up (the front row is the art as painted)
-    const pines = hazePines(img, 0, (PINE_ROWS.length - 1 - i) % 2 === 0);
+    // in front of the track: no haze; the rows nearest the lens are out of focus
+    const focus = pineBlur(r.p), shade = pineDark(r.p);
+    const pines = hazePines(img, 0, (PINE_ROWS.length - 1 - i) % 2 === 0, focus, shade);
     const rw = aspect * height;
     ctx.globalAlpha = alpha;
     // under the row, a band in its own darkest colour to the screen's bottom (the rows in front cover the rest), so no
@@ -1462,7 +1413,7 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
     const start = tileStart(cam, `f${i}`, scrolls[i], rw, cw);
     for (let rx = start.x, id = start.id; rx < cw; rx += rw, id++) {
       const tile = pineTile(id, `f${i}`, (PINE_ROWS.length - 1 - i) % 2 === 0);
-      const art = hazePines(tile.img, 0, tile.flip);
+      const art = hazePines(tile.img, 0, tile.flip, focus, shade);
       for (let k = 0; k < n; k++) {
         const sx = rx + k * sw;
         if (sx > cw || sx + sw < 0) continue;
@@ -1472,9 +1423,10 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
         drawImg(ctx, art.c, k * srcW, 0, srcW, art.c.height, sx, y, sw + 0.6, height);
       }
     }
-    // islands rising out of this row (the rows in front hide their hanging rock)
-    if (islands && ISLAND_ROWS.includes(i) && alpha >= 1) {
-      treeIslands(ctx, cam, cw, i, r.p, scrolls[i], fs, (sx) => lineAt(sx) + (r.drop - CLIFF_RISE) * fs * r.p, t, seen);
+    // the islands stand in this row: the rows still to come (in front) hide their lower half
+    if (islands && i === ISLAND_ROW) {
+      const front = pineRow(ISLAND_ROW + 1);
+      forestIslands(ctx, cam, cw, ch, scrolls[i], (sx) => lineAt(sx) + (front.drop - CLIFF_RISE) * fs * front.p);
     }
   }
   ctx.globalAlpha = 1;
