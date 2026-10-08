@@ -10,7 +10,7 @@ import { laneFocus, laneView, visibleLanes, LANE_SWITCH_MS, LANE_MIDDLE } from '
 import { drawBodies, drawBridgeChain, drawEffects, drawMarble } from '../render';
 import { drawSkillWorld } from '../skills/draw';
 import { GATE_RAMP_H, SPRING_W, floorAt } from './course';
-import { ISLANDS, islandPick, islandPicture } from './islands';
+import { ISLANDS, islandHash, islandPick, islandPicture } from './islands';
 import { CLIFF_LAYERS, cliffCloud, cliffClouds, cliffPicture, cliffSpots } from './cliffs';
 import type { CliffKind } from './cliffs';
 import { ISLAND_CHANCE, ISLAND_PARALLAX, ISLAND_SLOT_W, busyStretches, easeSlope, forestLine, islandSpots, lineSlope, quietTest, slopeParallax } from './forest';
@@ -1161,15 +1161,60 @@ function betweenTrees(ctx: CanvasRenderingContext2D, game: Game, cam: PlatformCa
     const height = r.h * sp, rw = aspect * height;
     const pines = hazePines(img, look.haze, (i + far) % 2 === 0, look.blur, 0, height * dpr);
     const scroll = st!.scrolls[far] * (1 + i * 0.04);
-    ctx.fillStyle = pines.floor;
+    const last = i === BETWEEN_ROWS.length - 1;
+    // under the last row: mist, not a flat green shape (the owner: it showed wherever the forest in front dipped)
+    ctx.fillStyle = last ? MIST : pines.floor;
     const start = tileStart(cam, `b${far}:${i}`, scroll, rw, cw);
     for (let rx = start.x, id = start.id; rx < cw; rx += rw, id++) {
       const tile = pineTile(id, `b${far}:${i}`, (i + far) % 2 === 0);
       const art = hazePines(tile.img, look.haze, tile.flip, look.blur, 0, height * dpr);
-      drawStrip(ctx, art.c, rx, rw, height, cw, ch, (sx) => lineAt(sx) + r.drop * sf, i === BETWEEN_ROWS.length - 1);
+      drawStrip(ctx, art.c, rx, rw, height, cw, ch, (sx) => lineAt(sx) + r.drop * sf, last);
+    }
+    // and the trees' feet sink into it: a line of the owner's cloud puffs along the foot of the row, sliding with it
+    const puff = cliffCloud();
+    if (last && puff) {
+      const pw = height * 2.4, ph = pw * (puff.naturalHeight / puff.naturalWidth), gap = pw * 0.5;
+      const cloud = mistPuff(puff, look.haze);
+      const at = tileStart(cam, `bm${far}`, scroll, gap, cw);
+      for (let x = at.x - gap, id = at.id - 1; x < cw + gap; x += gap, id++) {
+        const k = islandHash('mist', id, far), size = 0.85 + 0.3 * k;
+        const cx = x + gap / 2, foot = lineAt(Math.max(0, Math.min(cw, cx))) + r.drop * sf + height * 0.8;
+        const w = pw * size, h = ph * size;
+        ctx.save();
+        ctx.translate(cx, foot - h * 0.42);
+        if (k > 0.5) ctx.scale(-1, 1);
+        ctx.drawImage(cloud, -w / 2, 0, w, h);
+        ctx.restore();
+      }
     }
   });
   ctx.restore();
+}
+/** The mist under the trees between two tracks, and the cloud puffs their feet sink into: the backdrop's own haze, whitened. */
+const MIST = 'rgb(214,228,246)';
+const mistPuffs = new Map<string, HTMLCanvasElement | HTMLImageElement>();
+/** The cloud puff hazed like the trees it hides (made once per haze step). */
+function mistPuff(img: HTMLImageElement, haze: number): HTMLCanvasElement | HTMLImageElement {
+  const step = Math.round(Math.max(0, Math.min(0.8, haze)) * 10) / 10;
+  const key = String(step);
+  let c = mistPuffs.get(key);
+  if (!c) {
+    if (step <= 0) c = img;
+    else {
+      const cv = document.createElement('canvas');
+      cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+      const g = cv.getContext('2d');
+      if (g) {
+        g.drawImage(img, 0, 0);
+        g.globalCompositeOperation = 'source-atop';
+        g.fillStyle = `rgba(${HAZE},${step})`;
+        g.fillRect(0, 0, cv.width, cv.height);
+        c = cv;
+      } else c = img;
+    }
+    mistPuffs.set(key, c);
+  }
+  return c;
 }
 /**
  * Where a row's first tile starts on screen. The row's scroll is kept in whole tiles (a scroll step divided by the
@@ -1346,7 +1391,7 @@ function drawCliffs(ctx: CanvasRenderingContext2D, plan: CoursePlan, cam: Platfo
   const zoom = userZoom(cam, cw, ch);
   const dx = cam.x - st.camX;
   st.camX = cam.x;
-  if (Math.abs(dx) < 400) CLIFF_LAYERS.forEach((l, i) => { st!.u[i] += (dx * sf * l.p) / zoom; }); // a bigger jump is a teleport
+  if (Math.abs(dx) < 400) CLIFF_LAYERS.forEach((l, i) => { st!.u[i] += (dx * sf * l.p) / zoom ** l.zoomPow; }); // a bigger jump is a teleport
   else st.below = null;
   // Up and down they never move (the owner: stuff moving up and down is THE bug): the back track's place below the
   // camera is measured once (at the start, or after a jump across the land) and kept, so their height on the screen
@@ -1356,7 +1401,7 @@ function drawCliffs(ctx: CanvasRenderingContext2D, plan: CoursePlan, cam: Platfo
   const fs = cam.fgScale ?? cam.scale;
   const base = ch / 2 + v.lift * fs + st.below * fs * v.scale;
   CLIFF_LAYERS.forEach((layer, i) => {
-    const spots = cliffSpots(layer, st!.u[i], base, cw, ch, (n) => { const img = cliffPicture(layer.kind, n); return img ? img.naturalHeight / img.naturalWidth : null; }, zoom);
+    const spots = cliffSpots(layer, st!.u[i], base, cw, ch, (n) => { const img = cliffPicture(layer.kind, n); return img ? img.naturalHeight / img.naturalWidth : null; }, zoom ** layer.zoomPow);
     for (const sp of spots) {
       const img = cliffPicture(layer.kind, sp.n);
       if (!img) continue;
