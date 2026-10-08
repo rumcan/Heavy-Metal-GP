@@ -20,7 +20,9 @@ import { houseInventory } from '../net/host';
 import type { RaceLink } from '../net/session';
 import type { RaceSettings, Seat } from '../net/protocol';
 import { render } from '../game/render';
-import { marbleDepth, platformScreenPoint, renderPlatformer } from '../game/platformer/render';
+import { marbleDepth, platformScreenPoint, renderPlatformer, trackLineY } from '../game/platformer/render';
+import { smoothFrameMs } from '../game/frame-clock';
+import { newTrackCamera, trackCameraY } from '../game/platformer/camera-y';
 import { WindLeaves } from '../game/platformer/wind-leaves';
 import { W } from '../game/track';
 import type { Track } from '../game/track';
@@ -440,12 +442,15 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
       setToast({ message, color });
       toastTimer = setTimeout(() => setToast(null), 2400);
     };
-    const camera = { x: W / 2, y: game.track.startY + 150, scale: 1, focus: 1 };
+    const camera = { x: W / 2, y: game.track.startY + 150, scale: 1, focus: 1, dtMs: 1000 / 60 };
+    if (import.meta.env.DEV) { (window as unknown as { __race?: unknown; __raceCamera?: unknown }).__race = game; (window as unknown as { __raceCamera?: unknown }).__raceCamera = camera; } // (scratch probes)
     if (game.track.platformer) { camera.x = game.player.body.position.x + 200; camera.y = game.player.body.position.y - 40; camera.scale = 0.8; camera.focus = marbleDepth(game, game.player); }
     let width = 0;
     let height = 0;
     let raf = 0;
     let last = performance.now();
+    let motionMs: number | null = null; // the frame time the motion runs on (frame-clock.ts)
+    const trackCam = newTrackCamera(); // the platformer camera stands on the track (camera-y.ts), as Infinity's does
     /** When the online session was last advanced (by a frame or by the background heartbeat). */
     let simAt = last;
     const advanceSession = (at: number) => {
@@ -611,8 +616,11 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
     const loop = (now: number) => {
       if (renderScale.observe(now - last)) resize();
       meter.frame(now, now - last);
-      const dt = Math.max(0, Math.min(now - last, 50));
+      const rawMs = Math.max(0, Math.min(now - last, 50));
       last = now;
+      // The motion (physics, camera, zoom, parallax) runs on the smoothed frame time: uneven frames no longer judder.
+      motionMs = smoothFrameMs(motionMs, rawMs);
+      const dt = motionMs;
       if (!pausedRef.current && !doneRef.current) {
         // MP-06: online, the session does the work — the host steps the world
         // and publishes it, the guest plays out the frames it has been sent.
@@ -686,8 +694,11 @@ export default function RaceScreen({ seed, roster, profile, gridOrder, trackDef,
           // shook the whole view. Vertical follow is a touch slower so small hops do not bob the camera.
           lookAhead += (Math.max(-160, Math.min(260, following.body.velocity.x * 26)) - lookAhead) * (1 - Math.exp(-dt / 600));
           camera.x += (p.x + lookAhead - camera.x) * (1 - Math.exp(-dt / 220));
-          camera.y += (p.y + 10 - camera.y) * (1 - Math.exp(-dt / 260));
           camera.focus = marbleDepth(game, following);
+          // Up and down the camera stands on the track under it (the owner: nothing bobbing with the bumps), as Infinity's does.
+          const ground = trackLineY(game.track.platformer.plan, camera.focus, camera.x);
+          camera.y = trackCameraY(trackCam, ground, p.y);
+          camera.dtMs = dt;
           meter.time('draw', () => renderPlatformer(ctx, game, camera, width, height, pausedRef.current || doneRef.current ? game.time : now, following));
           leaves.paint(ctx, camera, width, height, pausedRef.current ? 0 : dt, reduceMotion); // leaves on the wind, as in Infinity
         } else {

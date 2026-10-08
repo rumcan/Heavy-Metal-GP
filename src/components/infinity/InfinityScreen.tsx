@@ -9,6 +9,8 @@ import RadioPill from '../RadioPill';
 import HeatEdges from '../HeatEdges';
 import { RING_CREDITS } from '../../game/platformer/course';
 import { marbleDepth, renderPlatformer, shiftForeground, trackLineY } from '../../game/platformer/render';
+import { smoothFrameMs } from '../../game/frame-clock';
+import { newTrackCamera, trackCameraY } from '../../game/platformer/camera-y';
 import type { PlatformCamera } from '../../game/platformer/render';
 import { laneView } from '../../game/lanes';
 import { PHYSICS_STEP } from '../../game/physics';
@@ -160,8 +162,9 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
     const camera: PlatformCamera = { x: game.player.body.position.x + 200, y: game.player.body.position.y - 40, scale: 0.8, focus: 1 };
     if (import.meta.env.DEV) (window as unknown as { __infinityCamera?: unknown }).__infinityCamera = camera; // (tests)
     let smoothSpeed = 0, shownZoom = zoomRef.current ?? autoZoom(0), fgPerScale = 1, wasManual = zoomRef.current !== null, framed = false;
-    let trackBase: number | null = null, airLift = 0;
+    const trackCam = newTrackCamera();
     let width = 0, height = 0, raf = 0, last = performance.now(), accumulator = 0, hudTimer = 0, bankTimer = 0, banked = 0, lookAhead = 0;
+    let motionMs: number | null = null; // the frame time the motion runs on (frame-clock.ts)
 
     const meter = new PerfMeter();
     const renderScale = new RenderScale();
@@ -231,9 +234,12 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
       raf = requestAnimationFrame(frame);
       if (renderScale.observe(now - last)) resize();
       meter.frame(now, now - last);
-      const dt = Math.min(now - last, 100);
+      const rawMs = Math.min(now - last, 100);
       last = now;
-      frameMs += (dt - frameMs) * 0.05;
+      // The motion (physics, camera, zoom, parallax) runs on the smoothed frame time: uneven frames no longer judder.
+      motionMs = smoothFrameMs(motionMs, rawMs);
+      const dt = motionMs;
+      frameMs += (rawMs - frameMs) * 0.05;
       if (!pausedRef.current) elapsed += dt;
       if (!pausedRef.current) {
         game.nudge = nudgeOf(controls.current);
@@ -283,17 +289,13 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
         camera.x += (p.x + lookAhead - camera.x) * (1 - Math.exp(-dt / 220));
         // The camera stands on the track (the owner: nothing bobbing, and the trees must never move against the track):
         // it locks to the track under it exactly (trackLineY, the line the foreground pines are glued to), blending the
-        // two lanes' tracks through a lane change, so a jump or a bump does not move the picture. It only lifts (eased)
-        // to keep a ball high in the air (the clouds) on screen, and drops to keep a falling one.
+        // two lanes' tracks through a lane change, so a jump or a bump does not move the picture. It does not lift for a
+        // ball high in the air (the clouds) or drop for a falling one: the scenery never moves vertically (the owner).
         camera.focus = marbleDepth(game, game.player);
-        const line = trackLineY(game.track.platformer!.plan, camera.focus, camera.x);
-        if (line !== null) trackBase = line - 15;
-        else if (trackBase === null) trackBase = p.y + 10;
-        const room = (height * 0.38) / camera.scale;
-        const lift = Math.max(p.y - room, Math.min(p.y + room, trackBase)) - trackBase;
-        airLift = framed ? airLift + (lift - airLift) * (1 - Math.exp(-dt / 260)) : lift;
-        camera.y = trackBase + airLift;
+        const ground = trackLineY(game.track.platformer!.plan, camera.focus, camera.x);
+        camera.y = trackCameraY(trackCam, ground, p.y);
         camera.originX = run.origin.x; camera.originY = run.origin.y;
+        camera.dtMs = dt;
         meter.time('draw', () => renderPlatformer(ctx, game, camera, width, height, pausedRef.current ? game.time : now, game.player));
         const grounded = game.player.grounded < 5;
         meter.time('fx', () => painter.paint(ctx, {

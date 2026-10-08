@@ -32,8 +32,14 @@ export interface ForestView {
 /** The line is sampled every COL screen px, from BEYOND of a screen width past each edge. */
 const COL = 24;
 const BEYOND = 0.6;
-/** Never steeper than a hillside on screen (px up per px along): a step in the track is eased over, so the trees never stand up in a tower. */
-const MAX_SLOPE = 0.6;
+/**
+ * Never steeper than this (px up per px along): a step in the track is eased over, so the trees never stand up in a
+ * tower. It must sit above the track's own grade: Infinity's steepest floor is about 1.2, and a lower clamp left the
+ * line (and the trees on it) lagging a steep stretch, so they climbed up the screen against the track by up to 60 px
+ * and dropped back when it eased (measured on the Infinity course). Real slopes are followed exactly now; only a step
+ * (a floor a whole drop away from the last one, over a few px) is eased.
+ */
+export const MAX_SLOPE = 1.5;
 
 /**
  * The line the pines stand on, as a function of screen x: the track (`groundAt`, world px at a world x, or null where
@@ -69,7 +75,11 @@ export function forestLine(groundAt: (worldX: number) => number | null, view: Fo
  */
 export const PARALLAX_DRIFT = 0.004;
 
-/** The steepest the line is (px up or down per px along) from a third of a screen left of the screen to a third right of it (a slope coming on is seen early). */
+/**
+ * The steepest the line is (px up or down per px along) from a third of a screen left of the screen to a third right of it
+ * (a slope coming on is seen early). The steepest column, not the average: a steep stretch of a few columns is what
+ * makes a row climb against the track (an average over the screen missed it and let rows climb 0.03 px per px).
+ */
 export function lineSlope(line: (sx: number) => number, cw: number): number {
   let worst = 0;
   for (let sx = -cw * 0.3; sx < cw * 1.3; sx += COL) worst = Math.max(worst, Math.abs(line(sx + COL) - line(sx)) / COL);
@@ -85,9 +95,32 @@ export function slopeParallax(p: number, slope: number): number {
   return 1 + Math.sign(d) * Math.min(Math.abs(d), PARALLAX_DRIFT / Math.max(slope, 1e-6));
 }
 
-/** The slope the rows go by this frame: a slope coming on takes effect within a few frames, level ground comes back slowly. */
-export function easeSlope(eased: number, now: number): number {
-  return eased + (now - eased) * (now > eased ? 0.35 : 0.03);
+/**
+ * How long (ms) the slope the rows go by takes to follow the track's: symmetric, a slope coming on or going off changes
+ * the rows' sideways speed over about a second, never in a frame (the owner: nothing jitters on a hill).
+ */
+export const SLOPE_TAU_MS = 1000;
+
+/**
+ * The slope the rows go by this frame: the steepest slope in view (lineSlope) smoothed over time, frame-rate
+ * independent (1 - exp(-dt / tau)), the same both ways. It used to step by a fixed fraction per frame (0.35 up, 0.03
+ * down), so every row's sideways speed jumped with the frame rate and with each bump in view.
+ */
+export function smoothSlope(eased: number, now: number, dtMs: number, tauMs = SLOPE_TAU_MS): number {
+  return eased + (now - eased) * (1 - Math.exp(-Math.max(0, dtMs) / tauMs));
+}
+
+/**
+ * How long (ms) a row's parallax factor takes to follow its target. The factor is steep for shallow slopes (a row may
+ * slide a little faster than the track only as long as its climb stays under PARALLAX_DRIFT), so even a smoothed
+ * slope can move it by about 1% in a frame as a gentle rise starts; easing the factor itself, over 0.15 s,
+ * keeps it to a fraction of a percent (the Infinity course's worst case, in every lane).
+ */
+export const PARALLAX_TAU_MS = 150;
+
+/** A row's effective parallax, eased toward its target (`slopeParallax`) over PARALLAX_TAU_MS, frame-rate independent. */
+export function easeParallax(eased: number, target: number, dtMs: number): number {
+  return eased + (target - eased) * (1 - Math.exp(-Math.max(0, dtMs) / PARALLAX_TAU_MS));
 }
 
 /** The islands' depth: just behind the front row of pines (parallax 1.35), so on level ground they slide a touch slower than it. */
