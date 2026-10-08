@@ -1,1 +1,1 @@
-{"version":"0.0.1","configurations":[{"name":"dev","runtimeExecutable":"npm","runtimeArgs":["run","dev","--","--port","5173"],"port":5173}]}
+{"version":"0.0.1","configurations":[{"name":"dev","runtimeExecutable":"npm","runtimeArgs":["run","dev","--","--port","5173"],"port":5173},{"name":"ui","runtimeExecutable":"node","runtimeArgs":["C:/Users/Francois Smit/AppData/Local/Temp/perf/serve.mjs","C:/Work Admin/PERSONAL/Repos/Heavy-Metal-GP/.wt/islands","5180"],"port":5180}]}

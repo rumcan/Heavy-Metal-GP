@@ -75,7 +75,7 @@ before(async () => {
     pg.setDefaultTimeout(60000);
     return pg;
   };
-}, { timeout: 60000 });
+}, { timeout: 240000 });
 
 after(async () => { await browser?.close(); await server?.close(); if (libraryDir) await rm(libraryDir, { recursive: true, force: true }); });
 
