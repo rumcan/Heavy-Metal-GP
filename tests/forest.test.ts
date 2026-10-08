@@ -8,10 +8,14 @@
 // - islands only stand over a quiet stretch of track.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ISLAND_PARALLAX, ISLAND_QUIET_REACH, ISLAND_SLOT_W, ISLAND_SPOTS, PARALLAX_DRIFT, busyStretches, easeSlope, forestLine, islandSpotIn, islandSpots, islandWidth, lineSlope, quietTest, slopeParallax } from '../src/game/platformer/forest';
+import { ISLAND_PARALLAX, ISLAND_QUIET_REACH, ISLAND_SLOT_W, ISLAND_SPOTS, MAX_SLOPE, PARALLAX_DRIFT, busyStretches, easeParallax, forestLine, islandSpotIn, islandSpots, islandWidth, lineSlope, quietTest, slopeParallax, smoothSlope } from '../src/game/platformer/forest';
 import type { ForestView, IslandEnv, IslandLayer, IslandPick } from '../src/game/platformer/forest';
 import { chunkTracks, infinityChunk } from '../src/game/platformer/infinity';
-import type { CoursePlan } from '../src/game/platformer/course';
+import type { CoursePlan, Lane } from '../src/game/platformer/course';
+import { laneGroundAt } from '../src/game/platformer/ground';
+
+/** One 60 Hz frame (ms): the parallax is smoothed per frame at this rate. */
+const FRAME_MS = 1000 / 60;
 
 const CW = 1280, CH = 720;
 /** A straight downhill track (Infinity's mean grade is 0.1): world y at world x. */
@@ -47,7 +51,7 @@ test('the tree line holds over a gap and is eased over a step (never a tower), a
   const stepped = (x: number) => (x > 4000 && x < 4300 ? null : x < 5000 ? 600 : 300);
   const view: ForestView = { x: 4800, y: 585, scale: 1 };
   const line = forestLine(stepped, view, CW, CH, 100, 0);
-  for (let sx = 0; sx < CW; sx += 24) assert.ok(Math.abs(line(sx + 24) - line(sx)) <= 24 * 0.6 + 0.01, `steep at ${sx}`);
+  for (let sx = 0; sx < CW; sx += 24) assert.ok(Math.abs(line(sx + 24) - line(sx)) <= 24 * MAX_SLOPE + 0.01, `steep at ${sx}`);
   const gapAt = CW / 2 + (4150 - view.x) * view.scale;
   const leftOfGap = CW / 2 + (3990 - view.x) * view.scale;
   assert.ok(Math.abs(line(gapAt) - line(leftOfGap)) < 1, 'over the gap the line holds the height to its left');
@@ -63,11 +67,12 @@ const hills = (x: number) => 600 + 0.1 * x + 90 * Math.sin(x / 1100) + 20 * Math
  */
 function climb(ground: (x: number) => number, p: number, fixed: boolean): number {
   const s = 1.0, depth = 160, step = 22;
-  let camX = 2000, slope = 0, sx = CW * 0.8, against = 0, scrolled = 0;
+  let camX = 2000, slope = 0, eased = p, sx = CW * 0.8, against = 0, scrolled = 0;
   let line = forestLine(ground, camOn(ground, camX, s), CW, CH, depth, 0);
   for (let f = 0; f < 600; f++) {
-    slope = easeSlope(slope, lineSlope(line, CW));
-    const pe = fixed ? p : slopeParallax(p, slope);
+    slope = smoothSlope(slope, lineSlope(line, CW), FRAME_MS);
+    eased = easeParallax(eased, slopeParallax(p, slope), FRAME_MS);
+    const pe = fixed ? p : eased;
     camX += step;
     const next = forestLine(ground, camOn(ground, camX, s), CW, CH, depth, 0);
     const nx = sx - step * s * pe;
@@ -85,7 +90,9 @@ test('on a slope the pines slide with the track: they never climb up and down it
     const now = climb(hills, p, false), before = climb(hills, p, true);
     console.log(`# depth ${p}: ${now.toFixed(4)} px against the track per px (it was ${before.toFixed(4)})`);
     assert.ok(now <= PARALLAX_DRIFT * 1.6, `depth ${p}: ${now.toFixed(4)} px against the track per px scrolled`);
-    assert.ok(before > now * 2.5, 'the full depth on a slope did climb against the track');
+    // (the time-smoothed slope lags a steep stretch by about a second: the managed climb is a little above the old one,
+    // still well under the cap, and the full depth climbs several times more)
+    assert.ok(before > now * 2, 'the full depth on a slope did climb against the track');
   }
 });
 
@@ -109,14 +116,15 @@ function env(over: Partial<IslandEnv> = {}): IslandEnv {
 
 test('an island stands in the trees where it is (never sinking into them or rising out of them) and slides with its layer', () => {
   const s = 1.0, depth = 160, drop = 50;
-  let camX = 3.6 * ISLAND_SLOT_W, slope = 0;
+  let camX = 3.6 * ISLAND_SLOT_W, slope = 0, pe = 1;
   const layer: IslandLayer = { u: camX, pe: 1 };
-  let gap0: number | null = null, lastX: number | null = null, seen = 0;
+  let gap0: number | null = null, lastX: number | null = null, lastAdvance = 0, seen = 0;
   for (let f = 0; f < 700; f++) {
     const view = camOn(hills, camX, s);
     const line = forestLine(hills, view, CW, CH, depth, 0);
-    slope = easeSlope(slope, lineSlope(line, CW));
-    layer.pe = slopeParallax(ISLAND_PARALLAX, slope);
+    slope = smoothSlope(slope, lineSlope(line, CW), FRAME_MS);
+    pe = easeParallax(pe, slopeParallax(ISLAND_PARALLAX, slope), FRAME_MS);
+    layer.pe = pe;
     const treesAt = (sx: number) => line(sx) + drop;
     const spots = islandSpots(view, layer, CW, CH, env({ treesAt })).filter((sp) => Math.abs(sp.x - CW / 2) < CW * 0.6);
     const sp = spots.find((o) => Math.round((layer.u + (o.x - CW / 2) / s) / ISLAND_SLOT_W - 0.5) === 4);
@@ -127,12 +135,13 @@ test('an island stands in the trees where it is (never sinking into them or risi
       const gap = sp.top - trees;
       if (gap0 === null) gap0 = gap;
       assert.ok(Math.abs(gap - gap0) < 1e-6, `the island moved in the trees by ${(gap - gap0).toFixed(2)} px`);
-      if (lastX !== null) assert.ok(Math.abs((lastX - sp.x) - 20 * s * layer.pe) < 1e-6, 'it slides at the speed of its layer');
+      // it moved by the layer's advance of the frame before (layer px times the zoom)
+      if (lastX !== null) assert.ok(Math.abs((lastX - sp.x) - lastAdvance * s) < 1e-6, 'it slides at the speed of its layer');
       lastX = sp.x;
     }
+    layer.u += 20 * pe;
+    lastAdvance = 20 * pe;
     camX += 20;
-    layer.u += 20 * slopeParallax(ISLAND_PARALLAX, easeSlope(slope, lineSlope(forestLine(hills, camOn(hills, camX, s), CW, CH, depth, 0), CW)));
-    layer.pe = slopeParallax(ISLAND_PARALLAX, slope);
   }
   assert.ok(seen > 20, `the island was on screen for ${seen} frames`);
 });
@@ -213,5 +222,88 @@ test('over Infinity land: islands come round now and then, and never over a loop
     const slots = Math.floor(plan.width / ISLAND_SLOT_W);
     console.log(`# seed ${seed}: an island in ${islands} of ${slots} km (41 km)`);
     assert.ok(islands >= slots * 0.75, `seed ${seed}: only ${islands} islands in 41 km (the owner: one a km)`);
+  }
+});
+
+// ------------------------------------------------------------------ Infinity terrain (the daily seed's land)
+
+/** The daily seed's number (infinity-store seedFromText of 'day-2026-10-08'): the land the owner's runs were measured on. */
+const DAILY_SEED = 23364627;
+/** Roll the camera along each lane of the first 20 chunks (32 km): the lane the ball is in decides the ground (`focus`). */
+const LANES = [0, 1, 2] as const;
+const PLAN_CHUNKS = 20;
+
+/**
+ * Roll the Infinity camera along `lane` at `speed` px per second and hand every frame's forest line to `each`. The
+ * ground is laneGroundAt (the continuous ground the camera stands on); the camera sits 15 px above it, at scale 1.
+ */
+function rollInfinity(speed: number, lane: Lane, each: (f: { x: number; line: (sx: number) => number; ground: (x: number) => number | null }) => void) {
+  const plan = infinityPlan(DAILY_SEED, 0, PLAN_CHUNKS);
+  const ground = (x: number) => laneGroundAt(plan, lane, x);
+  const x1 = PLAN_CHUNKS * 1600 - 800;
+  for (let t = 0, x = 800; x < x1; t += FRAME_MS, x = 800 + (speed * t) / 1000) {
+    const view = { x, y: (ground(x) ?? 0) - 15, scale: 1 };
+    each({ x, line: forestLine(ground, view, CW, CH, 130 * 1.25, CH / 2 + (15 + 130) * 1.25), ground });
+  }
+}
+
+test('over Infinity land the front row’s parallax changes by at most 0.5% per 16 ms, in every lane (the owner: nothing jitters on a hill)', () => {
+  for (const lane of LANES) for (const speed of [660, 1000, 1200]) {
+    let e = 0, pe = 1.35, prevPe: number | null = null, worst = 0, at = 0, first = true;
+    rollInfinity(speed, lane, ({ x, line }) => {
+      e = first ? lineSlope(line, CW) : smoothSlope(e, lineSlope(line, CW), FRAME_MS);
+      pe = first ? slopeParallax(1.35, e) : easeParallax(pe, slopeParallax(1.35, e), FRAME_MS);
+      first = false;
+      if (prevPe !== null) { const r = Math.abs(pe - prevPe) / pe; if (r > worst) { worst = r; at = x; } }
+      prevPe = pe;
+    });
+    console.log(`# lane ${lane}, ${speed} px/s: the front row's parallax changes by ${(100 * worst).toFixed(2)}% per 16 ms at worst (at x=${at.toFixed(0)})`);
+    assert.ok(worst <= 0.005, `lane ${lane}, ${speed} px/s: ${(100 * worst).toFixed(2)}% per 16 ms at x=${at.toFixed(0)}`);
+  }
+});
+
+// (the steady climb is held to PARALLAX_DRIFT x1.6 above; while a steep stretch comes on, the smoothing lags it by a
+// fraction of a second, and at top speed the rows climb at most PARALLAX_DRIFT x2.5 per px for that time: 0.2 px a frame)
+test('over Infinity land the trees climb against the track no faster than PARALLAX_DRIFT x2.5 per px, even as a steep stretch comes on', () => {
+  for (const lane of LANES) for (const speed of [660, 1200]) {
+    let e = 0, pe = 1.35, first = true, worst = 0;
+    rollInfinity(speed, lane, ({ x, line, ground }) => {
+      e = first ? lineSlope(line, CW) : smoothSlope(e, lineSlope(line, CW), FRAME_MS);
+      pe = first ? slopeParallax(1.35, e) : easeParallax(pe, slopeParallax(1.35, e), FRAME_MS);
+      first = false;
+      // the track's own grade under the camera, and how far the row slides against it (per px of track travel)
+      const g = (ground(x + 8) ?? ground(x) ?? 0) - (ground(x - 8) ?? ground(x) ?? 0);
+      worst = Math.max(worst, Math.abs(g / 16) * Math.abs(pe - 1));
+    });
+    console.log(`# lane ${lane}, ${speed} px/s: the trees climb ${worst.toFixed(4)} px per px of track at worst`);
+    assert.ok(worst <= PARALLAX_DRIFT * 2.5, `lane ${lane}, ${speed} px/s: ${worst.toFixed(4)} px against the track per px`);
+  }
+});
+
+test('over Infinity land the tree line sits exactly on the track’s own floors (no lag on its steepest stretches)', () => {
+  for (const lane of LANES) {
+    const plan = infinityPlan(DAILY_SEED, 0, PLAN_CHUNKS);
+    const ground = (x: number) => laneGroundAt(plan, lane, x);
+    let checked = 0, worst = 0;
+    for (let x = 800; x < PLAN_CHUNKS * 1600 - 800; x += 60) {
+      const view = { x, y: (ground(x) ?? 0) - 15, scale: 1 };
+      const line = forestLine(ground, view, CW, CH, 130, CH / 2 + 145);
+      // only where the ground is continuous across the whole span the line is built from (no step in view). The bound is
+      // a fixed grade above Infinity's steepest floor (about 1.2), not the clamp: a clamp below the grade must fail here.
+      const steady = Array.from({ length: 80 }, (_, i) => x - 1000 + i * 25).every((wx, i, all) => i === 0 || Math.abs((ground(wx) ?? 0) - (ground(all[i - 1]) ?? 0)) <= 25 * 1.3);
+      if (!steady) continue;
+      // at the line's own columns (every 24 px: the line is interpolated between them, so a kink is cut across the gap)
+      for (let sx = 0; sx <= CW; sx += 24) {
+        const wx = x + (sx - CW / 2) / view.scale;
+        const g = ground(wx);
+        if (g === null) continue;
+        const want = CH / 2 + (g - view.y) * view.scale + 130;
+        worst = Math.max(worst, Math.abs(line(sx) - want));
+        checked++;
+      }
+    }
+    console.log(`# lane ${lane}: ${checked} tree-line points on Infinity's ground: worst ${worst.toFixed(2)} px off the track`);
+    assert.ok(checked > 500, 'enough steady stretches to judge');
+    assert.ok(worst < 1.5, `lane ${lane}: the line is ${worst.toFixed(2)} px off the ground`);
   }
 });

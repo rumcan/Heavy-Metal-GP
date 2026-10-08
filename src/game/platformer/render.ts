@@ -13,7 +13,8 @@ import { GATE_RAMP_H, SPRING_W, floorAt } from './course';
 import { ISLANDS, islandHash, islandPick, islandPicture } from './islands';
 import { CLIFF_LAYERS, cliffCloud, cliffClouds, cliffPicture, cliffSpots } from './cliffs';
 import type { CliffKind } from './cliffs';
-import { ISLAND_CHANCE, ISLAND_PARALLAX, ISLAND_SLOT_W, busyStretches, easeSlope, forestLine, islandSpots, lineSlope, quietTest, slopeParallax } from './forest';
+import { ISLAND_CHANCE, ISLAND_PARALLAX, ISLAND_SLOT_W, busyStretches, easeParallax, forestLine, islandSpots, lineSlope, quietTest, slopeParallax, smoothSlope } from './forest';
+import { laneGroundAt } from './ground';
 import { artImage, artReady } from '../art';
 import { afterArt } from '../preload';
 import type { CoursePlan, Floor, Lane, LaneGate } from './course';
@@ -76,7 +77,14 @@ export interface PlatformCamera {
    */
   originX?: number;
   originY?: number;
+  /** The frame's time (ms) the motion runs on, for the parallax smoothing (absent: 60 Hz). */
+  dtMs?: number;
 }
+
+/** The frame time (ms) the parallax is smoothed by: the caller's, else a 60 Hz frame. */
+const camDt = (cam: PlatformCamera) => cam.dtMs ?? 1000 / 60;
+/** A smoothed value that starts at its target (NaN = not set yet): nothing eases in from full depth at the start of a run. */
+const easeTo = (eased: number, target: number, dtMs: number) => (Number.isNaN(eased) ? target : easeParallax(eased, target, dtMs));
 
 /** A marble's depth right now (fractional while its lane change runs). */
 export function marbleDepth(game: Game, m: Marble): number {
@@ -1128,14 +1136,14 @@ function betweenTrees(ctx: CanvasRenderingContext2D, game: Game, cam: PlatformCa
   const p = Math.sqrt(vf.scale * vn.scale);
   const sf = cam.scale * vf.scale, sp = cam.scale * p;
   let st = BETWEEN.get(cam);
-  if (!st) { st = { camX: cam.x, scrolls: [0, 0], slopes: [0, 0] }; BETWEEN.set(cam, st); }
+  if (!st) { st = { camX: cam.x, scrolls: [0, 0], slopes: [0, 0], pes: [NaN, NaN] }; BETWEEN.set(cam, st); }
   // up and down: glued to the far track on screen
   const COL = 24, cols = Math.ceil(cw / COL) + 2;
   const line = new Float32Array(cols);
   let held = ch / 2 + vf.lift * cam.scale;
   let first = -1;
   for (let c = 0; c < cols; c++) {
-    const y = floorAt(plan, far as Lane, cam.x + (c * COL - cw / 2) / sf) ?? groundUnder(plan, far as Lane, cam.x + (c * COL - cw / 2) / sf);
+    const y = laneGroundAt(plan, far as Lane, cam.x + (c * COL - cw / 2) / sf);
     if (y !== null) { held = ch / 2 + vf.lift * cam.scale + (y - cam.y) * sf; if (first < 0) first = c; }
     line[c] = held;
   }
@@ -1147,8 +1155,9 @@ function betweenTrees(ctx: CanvasRenderingContext2D, game: Game, cam: PlatformCa
   if (far === Math.min(far, 1)) {
     let steep = 0;
     for (let c = 1; c < cols; c++) steep = Math.max(steep, Math.abs(line[c] - line[c - 1]) / COL);
-    st.slopes[far] = easeSlope(st.slopes[far], steep);
-    if (Math.abs(dx) < 400) st.scrolls[far] += dx * sf * slopeParallax(sp / sf, st.slopes[far]);
+    st.slopes[far] = smoothSlope(st.slopes[far], steep, camDt(cam));
+    st.pes[far] = easeTo(st.pes[far], slopeParallax(sp / sf, st.slopes[far]), camDt(cam));
+    if (Math.abs(dx) < 400) st.scrolls[far] += dx * sf * st.pes[far];
   }
   if (far === lastBetweenLane(cam, plan)) st.camX = cam.x;
   const aspect = img.naturalWidth / img.naturalHeight;
@@ -1260,7 +1269,7 @@ function betweenLook(vf: { fog: number; blur: number }, i: number): { haze: numb
   return { haze: (0.12 + vf.fog * 0.75) * (1 - i * 0.18), blur: 1 + vf.blur * 1.2 - i * 0.4 };
 }
 /** Per camera: how far each between-tracks layer has scrolled (screen px), by its far lane. */
-const BETWEEN = new WeakMap<PlatformCamera, { camX: number; scrolls: number[]; slopes: number[] }>();
+const BETWEEN = new WeakMap<PlatformCamera, { camX: number; scrolls: number[]; slopes: number[]; pes: number[] }>();
 /** The nearest-to-the-camera far lane that has a between layer this frame (its call moves the shared camera memory on). */
 function lastBetweenLane(cam: PlatformCamera, plan: CoursePlan): number {
   const lanes = courseLanes(plan, cam.focus);
@@ -1271,7 +1280,7 @@ function lastBetweenLane(cam: PlatformCamera, plan: CoursePlan): number {
  * Per camera: how far each row of pines has scrolled (screen px) and where they sit vertically, the slope they go by
  * (eased), and the islands' layer: how far along it is (world px) and each slot's quiet-or-not.
  */
-const FG = new WeakMap<PlatformCamera, { camX: number; camY: number; scrolls: number[]; lagY: number; slope: number; islandU: number; islandPe: number; islandMemo: Map<number, number | null>; islandFade: number; islandShow: boolean; islandT: number }>();
+const FG = new WeakMap<PlatformCamera, { camX: number; camY: number; scrolls: number[]; pes: number[]; slope: number; islandU: number; islandPe: number; islandMemo: Map<number, number | null>; islandFade: number; islandShow: boolean; islandT: number }>();
 
 /**
  * The foreground forest (the owner: many rows, bigger and lower as you zoom in): rows of the owner's pines, back to
@@ -1317,26 +1326,24 @@ const pineDark = (p: number) => Math.max(0, Math.min(0.42, (p - 1.2) * 1.3));
  * islands) slides with the track, so the trees never climb up and down the slope against it (the owner); on level
  * ground each row slides at its own depth (forest.ts slopeParallax).
  */
-export function foregroundScroll(cam: PlatformCamera, slope = 0): { x: number; y: number; rows: number[] } {
+export function foregroundScroll(cam: PlatformCamera, slope = 0): { x: number; rows: number[] } {
   let st = FG.get(cam);
   if (!st) {
-    st = { camX: cam.x, camY: cam.y, scrolls: Array.from({ length: PINE_ALL }, () => 0), lagY: cam.y, slope, islandU: 0, islandPe: 1, islandMemo: new Map(), islandFade: 1, islandShow: true, islandT: 0 };
+    st = { camX: cam.x, camY: cam.y, scrolls: Array.from({ length: PINE_ALL }, () => 0), pes: Array.from({ length: PINE_ALL }, () => NaN), slope, islandU: 0, islandPe: NaN, islandMemo: new Map(), islandFade: 1, islandShow: true, islandT: 0 };
     FG.set(cam, st);
   }
-  st.slope = easeSlope(st.slope, slope);
+  st.slope = smoothSlope(st.slope, slope, camDt(cam));
   const dx = cam.x - st.camX;
-  st.islandPe = slopeParallax(ISLAND_PARALLAX, st.slope);
+  for (let i = 0; i < PINE_ALL; i++) st.pes[i] = easeTo(st.pes[i], slopeParallax(pineRow(i).p, st.slope), camDt(cam));
+  st.islandPe = easeTo(st.islandPe, slopeParallax(ISLAND_PARALLAX, st.slope), camDt(cam));
   if (Math.abs(dx) < 400) { // a bigger jump is a teleport: do not spin
-    for (let i = 0; i < PINE_ALL; i++) st.scrolls[i] += dx * cam.scale * slopeParallax(pineRow(i).p, st.slope);
+    for (let i = 0; i < PINE_ALL; i++) st.scrolls[i] += dx * cam.scale * st.pes[i];
     st.islandU += (dx * cam.scale * st.islandPe) / (cam.fgScale ?? cam.scale); // in your own zoom's px (IslandLayer)
   } else st.islandMemo.clear(); // the islands ahead stand in front of other track now
   if (st.islandMemo.size > 64) for (const k of st.islandMemo.keys()) if ((k + 2) * ISLAND_SLOT_W < st.islandU - 20000) st.islandMemo.delete(k);
   st.camX = cam.x;
   st.camY = cam.y;
-  st.lagY += (cam.y - st.lagY) * 0.08;
-  if (Math.abs(cam.y - st.lagY) > 600) st.lagY = cam.y;
-  const y = Math.max(-24, Math.min(24, (st.lagY - cam.y) * cam.scale * 0.35));
-  return { x: st.scrolls[PINE_ROWS.length - 1], y, rows: st.scrolls };
+  return { x: st.scrolls[PINE_ROWS.length - 1], rows: st.scrolls };
 }
 
 /**
@@ -1350,7 +1357,7 @@ export function shiftForeground(cam: PlatformCamera, dx: number, dy: number): vo
   if (cl) cl.camX += dx;
   const st = FG.get(cam);
   if (!st) return;
-  st.camX += dx; st.camY += dy; st.lagY += dy;
+  st.camX += dx; st.camY += dy;
 }
 
 /** Per camera: how far each layer of cliffs has slid, and how far the back track lies below the camera (measured once). */
@@ -1433,15 +1440,15 @@ export function groundUnder(plan: CoursePlan, lane: Lane, x: number): number | n
 }
 
 /**
- * The track the camera stands on, at world `x`: the focused lane's floor (mid lane change, the two lanes' floors
- * blended by the camera's depth), the smoothed ground over a chasm. The Infinity camera locks to it and the
- * foreground pines are glued to it on screen, so the two can never drift apart (the owner: trees must not move
- * against the track, on any lane). null with no ground near.
+ * The track the camera stands on, at world `x`: the focused lane's ground (laneGroundAt: the floor, and the straight
+ * line across a chasm), blended between the two lanes through a lane change by the camera's depth. The Infinity camera
+ * locks to it, so the picture holds still on screen and nothing jumps at a chasm's edge (the owner: nothing bobbing,
+ * and the trees must not move against the track, on any lane). null with no ground near.
  */
 export function trackLineY(plan: CoursePlan, focus: number, x: number): number | null {
   const f = Math.max(0, Math.min(2, focus));
   const l0 = Math.floor(f) as Lane, l1 = Math.min(2, l0 + 1) as Lane, t = f - l0;
-  const at = (l: Lane) => floorAt(plan, l, x) ?? groundUnder(plan, l, x);
+  const at = (l: Lane) => laneGroundAt(plan, l, x);
   const y0 = at(l0);
   if (t < 1e-3) return y0;
   const y1 = at(l1);
