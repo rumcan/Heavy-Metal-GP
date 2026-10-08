@@ -1,5 +1,6 @@
-// The owner's painted backdrop strip (assets/new-art/reapeatable_bg3.png: the sky band with the floating islands) for
-// the platformer's sky (render.ts, the top band). The game repeats it sideways, so its two ends are made to meet: the
+// The owner's painted backdrop strip (assets/new-art/reapeatable_bg-new.png: blue sky over a sea of white cloud) for the
+// platformer's sky (render.ts, the top band). It replaced the floating-islands painting (reapeatable_bg3.png, which the
+// main menu's Infinity card still shows as sky-islands.webp). The game repeats it sideways, so its two ends are made to meet: the
 // last BAND px are cross-faded over the first BAND px (the strip gets BAND px shorter). Kept at the painting's full size,
 // lightly compressed (the owner: the old one was "a bit too optimised").
 // Run: node scripts/assets/backdrop.mjs
@@ -8,8 +9,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
-const SRC = process.env.BACKDROP_SRC ?? join(ROOT, '..', '..', 'assets', 'new-art', 'reapeatable_bg3.png'); // the main checkout keeps the owner's art (git-ignored)
-const OUT = join(ROOT, 'src', 'assets', 'game', 'platformer', 'sky-islands.webp');
+const SRC = process.env.BACKDROP_SRC ?? join(ROOT, '..', '..', 'assets', 'new-art', 'reapeatable_bg-new.png'); // the main checkout keeps the owner's art (git-ignored)
+const OUT = join(ROOT, 'src', 'assets', 'game', 'platformer', 'sky-backdrop.webp');
 const BAND = 200;
 
 const { data, info } = await sharp(SRC).removeAlpha().raw().toBuffer({ resolveWithObject: true });
@@ -26,4 +27,4 @@ for (let y = 0; y < H; y++) {
   }
 }
 const res = await sharp(out, { raw: { width: w, height: H, channels: 3 } }).webp({ quality: 88, effort: 6 }).toFile(OUT);
-console.log(`sky-islands.webp ${res.width}x${res.height} ${(res.size / 1024).toFixed(0)} KB`);
+console.log(`sky-backdrop.webp ${res.width}x${res.height} ${(res.size / 1024).toFixed(0)} KB`);

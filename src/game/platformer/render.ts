@@ -27,12 +27,11 @@ import crateUrl from '../../assets/game/platformer/crate.webp';
 import doorUrl from '../../assets/game/platformer/door.webp';
 import farUrl from '../../assets/game/platformer/far.webp';
 import treesUrl from '../../assets/game/platformer/trees.webp';
-import skyIslandsUrl from '../../assets/game/platformer/sky-islands.webp';
+import skyIslandsUrl from '../../assets/game/platformer/sky-backdrop.webp';
 import cannonUrl from '../../assets/game/cannon.webp';
 import treesFrontUrl from '../../assets/game/platformer/trees-front.webp';
 import treesFront2Url from '../../assets/game/platformer/trees-front-2.webp';
 import { CANNON_LEN, CANNON_SPEED, muzzle } from '../engine/platformer';
-import skyCloudsUrl from '../../assets/game/platformer/sky-clouds.webp';
 import airshipUrl from '../../assets/game/airship.webp';
 import smashCrateUrl from '../../assets/game/smash-crate.webp';
 import smashTopUrl from '../../assets/game/smash-crate-top.webp';
@@ -45,7 +44,7 @@ setBridgeArt(drawBridgeChain);
 // Generated art (P2-00): a skin over the vector bodies. Every draw falls back to flat shapes until it loads.
 // Every picture goes through art.ts, so the warm-up (preload.ts) decodes it before a race draws it.
 const load = (src: string, first = false) => artImage(src, first ? 0 : 1);
-const ART = { earth: load(earthUrl), grass: load(grassUrl), crate: load(crateUrl), door: load(doorUrl), far: load(farUrl), trees: load(treesUrl), skyIslands: load(skyIslandsUrl, true), cannon: load(cannonUrl), treesFront: load(treesFrontUrl, true), treesFront2: load(treesFront2Url, true), skyClouds: load(skyCloudsUrl, true), airship: load(airshipUrl), smash: load(smashCrateUrl), smashTop: load(smashTopUrl), smashBottom: load(smashBottomUrl) };
+const ART = { earth: load(earthUrl), grass: load(grassUrl), crate: load(crateUrl), door: load(doorUrl), far: load(farUrl), trees: load(treesUrl), skyIslands: load(skyIslandsUrl, true), cannon: load(cannonUrl), treesFront: load(treesFrontUrl, true), treesFront2: load(treesFront2Url, true), airship: load(airshipUrl), smash: load(smashCrateUrl), smashTop: load(smashTopUrl), smashBottom: load(smashBottomUrl) };
 const ready = artReady;
 const patterns = new WeakMap<CanvasRenderingContext2D, CanvasPattern>();
 function earthPattern(ctx: CanvasRenderingContext2D): CanvasPattern | null {
@@ -112,8 +111,8 @@ function backdropDescent(cam: PlatformCamera, want: number): number {
   st.d += Math.max(-step, Math.min(step, want - st.d));
   return st.d;
 }
-/** The backdrop's sky (the painting's own blue at the top, a paler blue where the strip begins) and its cloud white. */
-const SKY_TOP = '43,144,242', SKY_LOW = '104,176,246', CLOUD_WHITE = '250,252,253';
+/** The backdrop's sky (the painting's own blue at its top, and just below it) and its cloud white (its foot), so it meets them seamlessly. */
+const SKY_TOP = '9,134,248', SKY_LOW = '21,139,249', CLOUD_WHITE = '253,253,253';
 const TILE = 32;
 
 let offscreen: HTMLCanvasElement | null = null;
@@ -167,13 +166,12 @@ function sky(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch:
   g.addColorStop(1, '#c9d6d2');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, cw, ch);
-  // The owner's painted strip of floating islands, not too big (two thirds of the screen tall), in the sky: blue above
-  // it with its top fading into that blue, its foot fading into white cloud, white below (the owner). It drifts slowly
-  // sideways and rises as you descend, so a long descent sinks from the sky into the clouds, where the cloud islands
-  // rise out of the white, faded into it at both edges.
-  if (ready(ART.skyIslands) && ready(ART.skyClouds)) {
+  // The owner's painted sky and clouds (it replaced the floating-islands painting): from the top of the screen down to
+  // nine tenths of it, its top meeting the same blue above, its foot fading into white cloud, white below (the owner).
+  // It drifts slowly sideways and only creeps up as you descend (backdropDescent).
+  if (ready(ART.skyIslands)) {
     const descent = backdropDescent(cam, Math.max(0, cam.y + (cam.originY ?? 0) - startY) * BACKDROP_DESCENT);
-    const h = ch * 0.66, y0 = ch * 0.08 - descent, foot = y0 + h;
+    const h = ch * 0.95, y0 = -ch * 0.05 - descent, foot = y0 + h;
     const ox = (cam.x + (cam.originX ?? 0)) * 0.03;
     const sk = ctx.createLinearGradient(0, 0, 0, Math.max(1, y0 + h * 0.1));
     sk.addColorStop(0, `rgb(${SKY_TOP})`);
@@ -197,15 +195,9 @@ function sky(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch:
       ctx.fillStyle = bot;
       ctx.fillRect(0, y + bh * (1 - fadeOut), cw, bh * fadeOut + 1);
     };
-    band(ART.skyIslands, y0, h, 0, SKY_LOW, 0.22, 0.3);
+    band(ART.skyIslands, y0, h, 0, SKY_LOW, 0.06, 0.2);
     ctx.fillStyle = `rgb(${CLOUD_WHITE})`;
     if (foot < ch) ctx.fillRect(0, Math.max(0, foot), cw, ch - Math.max(0, foot));
-    // far down a long descent: the cloud islands, band after band, each faded into the white
-    const h2 = ch * 0.8, y1 = foot + ch * 0.35;
-    for (let row = Math.max(0, Math.floor(-(y1 + h2) / h2)); y1 + row * h2 < ch; row++) {
-      const img = ART.skyClouds;
-      band(img, y1 + row * h2, h2, row * (img.naturalWidth / img.naturalHeight) * h2 * 0.37, CLOUD_WHITE, 0.2, 0.2);
-    }
     balloons(ctx, cam, cw, ch, t);
     return;
   }

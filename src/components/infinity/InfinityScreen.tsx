@@ -159,7 +159,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
     const game = run.game;
     const camera: PlatformCamera = { x: game.player.body.position.x + 200, y: game.player.body.position.y - 40, scale: 0.8, focus: 1 };
     if (import.meta.env.DEV) (window as unknown as { __infinityCamera?: unknown }).__infinityCamera = camera; // (tests)
-    let smoothSpeed = 0, shownZoom = zoomRef.current ?? autoZoom(0), shownFg = zoomRef.current ?? 1, framed = false;
+    let smoothSpeed = 0, shownZoom = zoomRef.current ?? autoZoom(0), fgPerScale = 1, wasManual = zoomRef.current !== null, framed = false;
     let trackBase: number | null = null, airLift = 0;
     let width = 0, height = 0, raf = 0, last = performance.now(), accumulator = 0, hudTimer = 0, bankTimer = 0, banked = 0, lookAhead = 0;
 
@@ -264,14 +264,17 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
         shownZoomRef.current = shownZoom;
         const fit = Math.max(0.42, Math.min(1.25, Math.min(width / 1000, height / 520)));
         const target = fit * shownZoom;
+        // The trees, islands and cliffs (fgScale): the automatic speed zoom leaves them still, but your own zoom grows
+        // and shrinks them exactly as it does the track: while you hold a zoom, fgScale IS the camera's scale times a
+        // factor fixed when you took over from the automatic zoom, so they grow by the same factor at the same moment
+        // (the owner: they eased differently, grew by a different amount and slid sideways against the track).
+        const manual = zoomRef.current !== null;
+        if (manual && !wasManual && framed) fgPerScale = (camera.fgScale ?? fit) / camera.scale;
+        wasManual = manual;
         // the first frame starts at the right zoom (nothing eases into place when a run starts)
         camera.scale = framed ? camera.scale + (target - camera.scale) * (1 - Math.exp(-dt / 180)) : target;
-        // the trees, islands and cliffs: sized by your own zoom only (the automatic speed zoom leaves them still), eased
-        // exactly as the camera eases your zoom (the same two steps), so everything grows and shrinks together (the
-        // owner: the pictures grew and shrank at different times from the track)
-        shownFg += ((zoomRef.current ?? 1) - shownFg) * (1 - Math.exp(-dt / 120));
-        const fgWant = fit * shownFg;
-        camera.fgScale = framed && camera.fgScale !== undefined ? camera.fgScale + (fgWant - camera.fgScale) * (1 - Math.exp(-dt / 180)) : fgWant;
+        if (manual) camera.fgScale = camera.scale * fgPerScale;
+        else camera.fgScale = framed && camera.fgScale !== undefined ? camera.fgScale + (fit - camera.fgScale) * (1 - Math.exp(-dt / 180)) : fit;
         framed = true;
         // the land the screen shows, out to the back lane (drawn smallest, so widest): the run keeps all of it built
         run.viewHalfWidth = width / 2 / (camera.scale * laneView(0, camera.focus).scale);
