@@ -1113,8 +1113,11 @@ function betweenTrees(ctx: CanvasRenderingContext2D, game: Game, cam: PlatformCa
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.globalAlpha = vn.alpha;
   const rows = [{ drop: 70, h: 170 }, { drop: 120, h: 185 }, { drop: 170, h: 200 }];
+  // distance: hazed like the track behind them (a little less for each nearer row) and softly out of focus
+  const between = (i: number) => ({ haze: (0.12 + vf.fog * 0.75) * (1 - i * 0.18), blur: 1 + vf.blur * 1.2 - i * 0.4 });
   rows.forEach((r, i) => {
-    const pines = hazePines(img, 0, (i + far) % 2 === 0);
+    const look = between(i);
+    const pines = hazePines(img, look.haze, (i + far) % 2 === 0, look.blur);
     const height = r.h * sp, rw = aspect * height;
     const n = Math.max(1, Math.ceil(rw / PINE_SLICE)), sw = rw / n, srcW = pines.c.width / n;
     const scroll = st!.scrolls[far] * (1 + i * 0.04);
@@ -1122,7 +1125,7 @@ function betweenTrees(ctx: CanvasRenderingContext2D, game: Game, cam: PlatformCa
     const start = tileStart(cam, `b${far}:${i}`, scroll, rw, cw);
     for (let rx = start.x, id = start.id; rx < cw; rx += rw, id++) {
       const tile = pineTile(id, `b${far}:${i}`, (i + far) % 2 === 0);
-      const art = hazePines(tile.img, 0, tile.flip);
+      const art = hazePines(tile.img, look.haze, tile.flip, look.blur);
       for (let k = 0; k < n; k++) {
         const sx = rx + k * sw;
         if (sx > cw || sx + sw < 0) continue;
@@ -1210,6 +1213,8 @@ function pineRow(i: number): { p: number; h: number; drop: number } {
   return { p: front.p + 0.08 * k, h: front.h + 35 * k, drop: front.drop + 18 * k };
 }
 const PINE_ALL = PINE_ROWS.length + PINE_EXTRA;
+/** How out of focus a foreground row at depth p is (px at the art's size): sharp near the track, soft near the lens. */
+const pineBlur = (p: number) => Math.max(0, (p - 1.15) * 7);
 /** How wide (screen px) each upright slice of a row is when it follows the slope: narrow enough that the steps vanish. */
 const PINE_SLICE = 24;
 
@@ -1291,12 +1296,15 @@ function cliffLineY(plan: CoursePlan, focus: number, x: number): number | null {
 const FG_TRACK_BELOW = 15;
 
 /**
- * The front pines washed with evening haze (mirrored for every other row, so the rows never line up), drawn once per
- * strength; `floor` is the colour of their feet, for the band under them.
+ * The owner's pines (bright and sharp as painted), mirrored for every other row so the rows never line up, washed with
+ * distance haze (0..1, the sky's colour) and softened by `blur` (px at the art's size) for their depth: the layers
+ * between the tracks are hazed and a little soft, the foreground rows nearest the lens are out of focus. Drawn once
+ * per combination (both are rounded, so there are few); `floor` is the colour of their feet, for the band under them.
  */
 const hazeCache = new Map<string, { img: HTMLImageElement; c: HTMLCanvasElement; floor: string }>();
-function hazePines(img: HTMLImageElement, haze: number, flip: boolean): { c: HTMLCanvasElement; floor: string } {
-  const key = img.src + haze + (flip ? 'f' : '');
+function hazePines(img: HTMLImageElement, hazeIn: number, flip: boolean, blurIn = 0): { c: HTMLCanvasElement; floor: string } {
+  const haze = Math.round(Math.max(0, Math.min(0.8, hazeIn)) * 20) / 20, blur = Math.round(Math.max(0, Math.min(8, blurIn)));
+  const key = img.src + haze + ':' + blur + (flip ? 'f' : '');
   const hit = hazeCache.get(key);
   if (hit?.img === img) return hit;
   const c = document.createElement('canvas');
@@ -1305,9 +1313,24 @@ function hazePines(img: HTMLImageElement, haze: number, flip: boolean): { c: HTM
   if (!flip) { g.translate(c.width, 0); g.scale(-1, 1); }
   g.drawImage(img, 0, 0);
   g.setTransform(1, 0, 0, 1, 0, 0);
-  g.globalCompositeOperation = 'source-atop';
-  g.fillStyle = `rgba(70,100,120,${haze})`; // 0: the owner wants no haze (kept for tuning)
-  g.fillRect(0, 0, c.width, c.height);
+  if (haze > 0) {
+    g.globalCompositeOperation = 'source-atop';
+    g.fillStyle = `rgba(${HAZE},${haze})`;
+    g.fillRect(0, 0, c.width, c.height);
+    g.globalCompositeOperation = 'source-over';
+  }
+  if (blur > 0) {
+    // soft focus: shrink and grow back (works on every browser, unlike a canvas filter)
+    const k = 1 / (1 + blur * 0.5);
+    const small = document.createElement('canvas');
+    small.width = Math.max(1, Math.round(c.width * k)); small.height = Math.max(1, Math.round(c.height * k));
+    const sg = small.getContext('2d')!;
+    sg.imageSmoothingQuality = 'high';
+    sg.drawImage(c, 0, 0, small.width, small.height);
+    g.clearRect(0, 0, c.width, c.height);
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(small, 0, 0, c.width, c.height);
+  }
   // the average colour of the solid pixels along the bottom
   let r = 0, gr = 0, bl = 0, n = 0;
   try {
@@ -1406,7 +1429,9 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
     prev = { top, height };
     if (top >= ch) continue;
     // every other row mirrored, so neighbouring rows never line up (the front row is the art as painted)
-    const pines = hazePines(img, 0, (PINE_ROWS.length - 1 - i) % 2 === 0);
+    // in front of the track: no haze; the rows nearest the lens are out of focus
+    const focus = pineBlur(r.p);
+    const pines = hazePines(img, 0, (PINE_ROWS.length - 1 - i) % 2 === 0, focus);
     const rw = aspect * height;
     ctx.globalAlpha = alpha;
     // under the row, a band in its own darkest colour to the screen's bottom (the rows in front cover the rest), so no
@@ -1416,7 +1441,7 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
     const start = tileStart(cam, `f${i}`, scrolls[i], rw, cw);
     for (let rx = start.x, id = start.id; rx < cw; rx += rw, id++) {
       const tile = pineTile(id, `f${i}`, (PINE_ROWS.length - 1 - i) % 2 === 0);
-      const art = hazePines(tile.img, 0, tile.flip);
+      const art = hazePines(tile.img, 0, tile.flip, focus);
       for (let k = 0; k < n; k++) {
         const sx = rx + k * sw;
         if (sx > cw || sx + sw < 0) continue;
