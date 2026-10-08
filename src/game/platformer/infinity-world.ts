@@ -14,7 +14,7 @@ import { planBodies, ALL_LANES, FLOOR_DEPTH } from './build';
 import { floorAt } from './course';
 import { applyLaneMask } from '../engine/platformer';
 import type { CoursePlan, Lane, PitSpot, SmashBreak } from './course';
-import { CHUNK_W, INF_START_Y, ORIGIN_STEP, PX_PER_KM, infinityChunk, shiftChunk, terrainY } from './infinity';
+import { CHUNK_W, INF_START_Y, ORIGIN_STEP, PX_PER_KM, chunkTracks, infinityChunk, shiftChunk, terrainY } from './infinity';
 import type { InfinityChunk } from './infinity';
 
 /** Chunks kept behind the ball's chunk (about three screens) and built ahead of it. */
@@ -137,7 +137,7 @@ export class InfinityRun {
     return {
       seed: this.seed, originX: this.origin.x, originY: this.origin.y, style: 'flow', width: right, height: Math.round(maxY + 900), floors,
       bumps: chunks.flatMap((c) => c.bumps), gates: chunks.flatMap((c) => c.gates), ledges: chunks.flatMap((c) => c.ledges), springs: chunks.flatMap((c) => c.springs),
-      loops: chunks.flatMap((c) => c.loops), bridges: chunks.flatMap((c) => c.bridges), boosts: chunks.flatMap((c) => c.boosts), kickers: chunks.flatMap((c) => c.kickers), rings: chunks.flatMap((c) => c.rings).filter((r) => !this.taken.has(r.id)),
+      ...chunkTracks(chunks), bridges: chunks.flatMap((c) => c.bridges), boosts: chunks.flatMap((c) => c.boosts), kickers: chunks.flatMap((c) => c.kickers), rings: chunks.flatMap((c) => c.rings).filter((r) => !this.taken.has(r.id)),
       stands: [...new Map(chunks.flatMap((c) => c.stands).map((s) => [s.id, s])).values()],
       hoops: chunks.flatMap((c) => c.hoops), vents: chunks.flatMap((c) => c.vents), pits: chunks.flatMap((c) => c.pits),
       smashes: chunks.flatMap((c) => c.smashes).filter((s) => !this.taken.has(s.id)), smashFx: this.smashFx, itemBoxes: [], wreckers: [],
@@ -226,7 +226,11 @@ export class InfinityRun {
     const last = this.solid;
     // Dropped into a death pit: a life lost (and the run over at none).
     const pit = (plan.pits ?? []).find((o) => p.x > o.x0 - MARBLE_RADIUS && p.x < o.x1 + MARBLE_RADIUS);
-    if (pit && p.y > this.pitLip(plan, lane, pit) + PIT_DEPTH) { this.loseLife(plan, lane, pit); return; }
+    if (pit && p.y > this.pitLip(plan, lane, pit) + PIT_DEPTH) { this.loseLife(plan, lane, pit.x0, pit.y); return; }
+    // Dropped into any other hole in the floor (a chasm whose bridge or spring it missed): a life too, the same as a pit
+    // (the owner kept falling into one hole and was only lifted back, never losing a heart).
+    const hole = pit ? null : this.holeUnder(plan, lane, p.x);
+    if (hole && p.y > hole.lip + PIT_DEPTH) { this.loseLife(plan, lane, hole.x0, hole.lip); return; }
     // Fallen: below the land under the ball (a chasm, or through the floor), judged against the ground at the ball's
     // own x. (It used to be the last ground touched: a fast ball flying a long way down the descending land counted as
     // a fall and was lifted back thousands of px: the owner's "reset when I go fast or far".)
@@ -272,10 +276,23 @@ export class InfinityRun {
   }
 
   /**
-   * A life lost in a pit. With lives left, the ball is set back down at the start of the pit's level run-up, rolling, so
-   * it gets another go at the boost pad and the jump; with none, the run is over (it stays where it fell, the screen shows the end).
+   * The hole in the floor of `lane` under x, if there is one: where it starts and its lip (the higher of its two edges).
+   * null on floor, and where there is no floor near on both sides (not a hole: the edge of the land).
    */
-  private loseLife(plan: CoursePlan, lane: Lane, pit: PitSpot): void {
+  private holeUnder(plan: CoursePlan, lane: Lane, x: number): { x0: number; lip: number } | null {
+    if (floorAt(plan, lane, x) !== null) return null;
+    let x0 = x, left: number | null = null, right: number | null = null;
+    for (let d = 10; d <= 600 && left === null; d += 10) { left = floorAt(plan, lane, x - d); x0 = x - d; }
+    for (let d = 10; d <= 600 && right === null; d += 10) right = floorAt(plan, lane, x + d);
+    return left === null || right === null ? null : { x0, lip: Math.min(left, right) };
+  }
+
+  /**
+   * A life lost in a pit or a hole starting at `x0`. With lives left, the ball is set back down at the start of the level
+   * run-up before it, rolling, so it gets another go at the boost pad and the jump; with none, the run is over (it stays
+   * where it fell, the screen shows the end).
+   */
+  private loseLife(plan: CoursePlan, lane: Lane, x0: number, lipY: number): void {
     const g = this.game, m = g.player;
     this.lives = Math.max(0, this.lives - 1);
     this.livesLost++;
@@ -286,9 +303,9 @@ export class InfinityRun {
       Matter.Body.setVelocity(m.body, { x: 0, y: 0 });
       return;
     }
-    let x = pit.x0 - 580;
+    let x = x0 - 580;
     for (let i = 0; i < 40 && floorAt(plan, lane, x) === null; i++) x -= 40;
-    const y = floorAt(plan, lane, x) ?? pit.y;
+    const y = floorAt(plan, lane, x) ?? lipY;
     m.lane = lane;
     m.laneFrom = lane;
     m.laneAt = undefined;

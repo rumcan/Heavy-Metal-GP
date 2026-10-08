@@ -11,7 +11,9 @@ import { drawBodies, drawBridgeChain, drawEffects, drawMarble } from '../render'
 import { drawSkillWorld } from '../skills/draw';
 import { GATE_RAMP_H, SPRING_W, floorAt } from './course';
 import { ISLANDS, islandPick, islandPicture } from './islands';
-import { ISLAND_CHANCE, busyStretches, forestLine, islandSpots, quietTest } from './forest';
+import { CLIFF_LAYERS, cliffCloud, cliffClouds, cliffPicture, cliffSpots } from './cliffs';
+import type { CliffKind } from './cliffs';
+import { ISLAND_CHANCE, ISLAND_PARALLAX, ISLAND_SLOT_W, busyStretches, easeSlope, forestLine, islandSpots, lineSlope, quietTest, slopeParallax } from './forest';
 import { artImage, artReady } from '../art';
 import { afterArt } from '../preload';
 import type { CoursePlan, Floor, Lane, LaneGate } from './course';
@@ -94,6 +96,22 @@ const PALETTE = [
 const HAZE = '150,188,238';
 /** Screen px the backdrop rises per world px the course descends. */
 const BACKDROP_DESCENT = 0.12;
+/**
+ * How fast the backdrop may follow that (screen px a second): a creep you never see. It used to follow the camera
+ * straight, and a drop off a cliff or into a dip jerked the painted islands up and down (the owner: the very back
+ * islands moved up and down as the ball went down a cliff). A long descent still sinks it into the clouds, slowly.
+ */
+const BACKDROP_CREEP = 3;
+const backdropState = new WeakMap<PlatformCamera, { d: number; t: number }>();
+function backdropDescent(cam: PlatformCamera, want: number): number {
+  const now = performance.now();
+  let st = backdropState.get(cam);
+  if (!st) { st = { d: want, t: now }; backdropState.set(cam, st); }
+  const step = (BACKDROP_CREEP * Math.min(200, now - st.t)) / 1000;
+  st.t = now;
+  st.d += Math.max(-step, Math.min(step, want - st.d));
+  return st.d;
+}
 /** The backdrop's sky (the painting's own blue at the top, a paler blue where the strip begins) and its cloud white. */
 const SKY_TOP = '43,144,242', SKY_LOW = '104,176,246', CLOUD_WHITE = '250,252,253';
 const TILE = 32;
@@ -154,7 +172,7 @@ function sky(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch:
   // sideways and rises as you descend, so a long descent sinks from the sky into the clouds, where the cloud islands
   // rise out of the white, faded into it at both edges.
   if (ready(ART.skyIslands) && ready(ART.skyClouds)) {
-    const descent = Math.max(0, cam.y + (cam.originY ?? 0) - startY) * BACKDROP_DESCENT;
+    const descent = backdropDescent(cam, Math.max(0, cam.y + (cam.originY ?? 0) - startY) * BACKDROP_DESCENT);
     const h = ch * 0.66, y0 = ch * 0.08 - descent, foot = y0 + h;
     const ox = (cam.x + (cam.originX ?? 0)) * 0.03;
     const sk = ctx.createLinearGradient(0, 0, 0, Math.max(1, y0 + h * 0.1));
@@ -1014,6 +1032,8 @@ export function renderPlatformer(ctx: CanvasRenderingContext2D, game: Game, cam:
   const depths = game.marbles.filter((m) => !m.hold || m.hold.kind === 'cart').map((m) => ({ m, z: marbleDepth(game, m) }));
 
   for (const lane of lanes) {
+    // the owner's big cliff mountains stand in the sky right behind the back track
+    if (lane === 0 && cam.islands !== false) drawCliffs(ctx, game.track.platformer!.plan, cam, cw, ch);
     const v = laneView(lane, cam.focus);
     const s = cam.scale * v.scale;
     const halfW = cw / 2 / s;
@@ -1115,12 +1135,8 @@ function betweenTrees(ctx: CanvasRenderingContext2D, game: Game, cam: PlatformCa
   if (vn.alpha <= 0.01) return;
   const p = Math.sqrt(vf.scale * vn.scale);
   const sf = cam.scale * vf.scale, sp = cam.scale * p;
-  // sideways: its own scroll, at its depth
   let st = BETWEEN.get(cam);
-  if (!st) { st = { camX: cam.x, scrolls: [0, 0] }; BETWEEN.set(cam, st); }
-  const dx = cam.x - st.camX;
-  if (Math.abs(dx) < 400 && far === Math.min(far, 1)) st.scrolls[far] += dx * sp;
-  if (far === lastBetweenLane(cam, plan)) st.camX = cam.x;
+  if (!st) { st = { camX: cam.x, scrolls: [0, 0], slopes: [0, 0] }; BETWEEN.set(cam, st); }
   // up and down: glued to the far track on screen
   const COL = 24, cols = Math.ceil(cw / COL) + 2;
   const line = new Float32Array(cols);
@@ -1133,6 +1149,16 @@ function betweenTrees(ctx: CanvasRenderingContext2D, game: Game, cam: PlatformCa
   }
   if (first > 0) for (let c = 0; c < first; c++) line[c] = line[first]; // left of the first ground: its height, not the screen's
   const lineAt = (sx: number) => { const f = Math.max(0, Math.min(cols - 1.001, sx / COL)); const c = Math.floor(f); return line[c] + (line[c + 1] - line[c]) * (f - c); };
+  // sideways: its own scroll, at its depth on level ground, with the far track on a slope (so the trees never climb
+  // up and down the slope against the track: forest.ts slopeParallax)
+  const dx = cam.x - st.camX;
+  if (far === Math.min(far, 1)) {
+    let steep = 0;
+    for (let c = 1; c < cols; c++) steep = Math.max(steep, Math.abs(line[c] - line[c - 1]) / COL);
+    st.slopes[far] = easeSlope(st.slopes[far], steep);
+    if (Math.abs(dx) < 400) st.scrolls[far] += dx * sf * slopeParallax(sp / sf, st.slopes[far]);
+  }
+  if (far === lastBetweenLane(cam, plan)) st.camX = cam.x;
   const aspect = img.naturalWidth / img.naturalHeight;
   ctx.save();
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1197,15 +1223,18 @@ function betweenLook(vf: { fog: number; blur: number }, i: number): { haze: numb
   return { haze: (0.12 + vf.fog * 0.75) * (1 - i * 0.18), blur: 1 + vf.blur * 1.2 - i * 0.4 };
 }
 /** Per camera: how far each between-tracks layer has scrolled (screen px), by its far lane. */
-const BETWEEN = new WeakMap<PlatformCamera, { camX: number; scrolls: number[] }>();
+const BETWEEN = new WeakMap<PlatformCamera, { camX: number; scrolls: number[]; slopes: number[] }>();
 /** The nearest-to-the-camera far lane that has a between layer this frame (its call moves the shared camera memory on). */
 function lastBetweenLane(cam: PlatformCamera, plan: CoursePlan): number {
   const lanes = courseLanes(plan, cam.focus);
   return lanes.length >= 2 ? lanes[lanes.length - 2] : -1;
 }
 
-/** Per camera: how far each row of pines has scrolled (screen px) and where they sit vertically. */
-const FG = new WeakMap<PlatformCamera, { camX: number; camY: number; scrolls: number[]; lagY: number }>();
+/**
+ * Per camera: how far each row of pines has scrolled (screen px) and where they sit vertically, the slope they go by
+ * (eased), and the islands' layer: how far along it is (world px) and each slot's quiet-or-not.
+ */
+const FG = new WeakMap<PlatformCamera, { camX: number; camY: number; scrolls: number[]; lagY: number; slope: number; islandU: number; islandPe: number; islandMemo: Map<number, number | null>; islandFade: number; islandShow: boolean; islandT: number }>();
 
 /**
  * The foreground forest (the owner: many rows, bigger and lower as you zoom in): rows of the owner's pines, back to
@@ -1247,12 +1276,24 @@ const pineDark = (p: number) => Math.max(0, Math.min(0.42, (p - 1.2) * 1.3));
  * camera zooms out at speed, and a tiny zoom change times a world x in the tens of thousands threw them hundreds of
  * pixels at once. Now each frame scrolls each row by that frame's camera movement only (at the current zoom and its
  * depth), so a zoom never slides them, and a respawn or restart (a big jump) does not spin them.
+ * `slope`: how steep the forest's line is on screen this frame (forest.ts lineSlope). On a slope every row (and the
+ * islands) slides with the track, so the trees never climb up and down the slope against it (the owner); on level
+ * ground each row slides at its own depth (forest.ts slopeParallax).
  */
-export function foregroundScroll(cam: PlatformCamera): { x: number; y: number; rows: number[] } {
+export function foregroundScroll(cam: PlatformCamera, slope = 0): { x: number; y: number; rows: number[] } {
   let st = FG.get(cam);
-  if (!st) { st = { camX: cam.x, camY: cam.y, scrolls: Array.from({ length: PINE_ALL }, () => 0), lagY: cam.y }; FG.set(cam, st); }
+  if (!st) {
+    st = { camX: cam.x, camY: cam.y, scrolls: Array.from({ length: PINE_ALL }, () => 0), lagY: cam.y, slope, islandU: 0, islandPe: 1, islandMemo: new Map(), islandFade: 1, islandShow: true, islandT: 0 };
+    FG.set(cam, st);
+  }
+  st.slope = easeSlope(st.slope, slope);
   const dx = cam.x - st.camX;
-  if (Math.abs(dx) < 400) for (let i = 0; i < PINE_ALL; i++) st.scrolls[i] += dx * cam.scale * pineRow(i).p; // a bigger jump is a teleport: do not spin
+  st.islandPe = slopeParallax(ISLAND_PARALLAX, st.slope);
+  if (Math.abs(dx) < 400) { // a bigger jump is a teleport: do not spin
+    for (let i = 0; i < PINE_ALL; i++) st.scrolls[i] += dx * cam.scale * slopeParallax(pineRow(i).p, st.slope);
+    st.islandU += (dx * cam.scale * st.islandPe) / (cam.fgScale ?? cam.scale); // in your own zoom's px (IslandLayer)
+  } else st.islandMemo.clear(); // the islands ahead stand in front of other track now
+  if (st.islandMemo.size > 64) for (const k of st.islandMemo.keys()) if ((k + 2) * ISLAND_SLOT_W < st.islandU - 20000) st.islandMemo.delete(k);
   st.camX = cam.x;
   st.camY = cam.y;
   st.lagY += (cam.y - st.lagY) * 0.08;
@@ -1266,11 +1307,82 @@ export function foregroundScroll(cam: PlatformCamera): { x: number; y: number; r
  * the track (a jump lifts the ball and the camera, not the trees). The track height is eased so the line of trees
  * follows the course's slopes smoothly instead of every bump, and it holds over a chasm.
  */
-/** The world moved by (dx, dy) under this camera (Infinity's floating origin): carry the foreground's memory along. */
+/** The world moved by (dx, dy) under this camera (Infinity's floating origin): carry the foreground's (and the cliffs') memory along. */
 export function shiftForeground(cam: PlatformCamera, dx: number, dy: number): void {
+  const cl = CLIFFS.get(cam);
+  if (cl) cl.camX += dx;
   const st = FG.get(cam);
   if (!st) return;
   st.camX += dx; st.camY += dy; st.lagY += dy;
+}
+
+/** Per camera: how far each layer of cliffs has slid, and how far the back track lies below the camera (measured once). */
+const CLIFFS = new WeakMap<PlatformCamera, { camX: number; u: number[]; below: number | null }>();
+/** A cliff picture with its layer's own distance haze laid over it (made once per picture). */
+const hazedCliffs = new Map<string, HTMLCanvasElement | null>();
+function hazedCliff(img: HTMLImageElement, kind: CliffKind, n: number, haze: number): CanvasImageSource {
+  if (haze <= 0.01) return img;
+  const key = `${kind}${n}`;
+  let c = hazedCliffs.get(key);
+  if (c === undefined) {
+    c = document.createElement('canvas');
+    c.width = img.naturalWidth; c.height = img.naturalHeight;
+    const g = c.getContext('2d');
+    if (g) {
+      g.drawImage(img, 0, 0);
+      g.globalCompositeOperation = 'source-atop';
+      g.fillStyle = `rgba(${HAZE},${haze})`;
+      g.fillRect(0, 0, c.width, c.height);
+    } else c = null;
+    hazedCliffs.set(key, c);
+  }
+  return c ?? img;
+}
+
+/**
+ * The owner's cliff mountains, behind the back track (cliffs.ts): the back layer furthest away and smallest, the front
+ * layer before it, larger and on the track. Each layer slides at its own depth, much slower than the back track; up
+ * and down they hold still on the screen (only your zoom and a lane change move them). The back track's haze (drawn
+ * after it) hazes them too.
+ */
+function drawCliffs(ctx: CanvasRenderingContext2D, plan: CoursePlan, cam: PlatformCamera, cw: number, ch: number) {
+  if (plan.lanes && !plan.lanes.includes(0)) return;
+  const v = laneView(0, cam.focus);
+  const sf = cam.scale * v.scale;
+  let st = CLIFFS.get(cam);
+  if (!st) { st = { camX: cam.x, u: CLIFF_LAYERS.map(() => 0), below: null }; CLIFFS.set(cam, st); }
+  const zoom = userZoom(cam, cw, ch);
+  const dx = cam.x - st.camX;
+  st.camX = cam.x;
+  if (Math.abs(dx) < 400) CLIFF_LAYERS.forEach((l, i) => { st!.u[i] += (dx * sf * l.p) / zoom; }); // a bigger jump is a teleport
+  else st.below = null;
+  // Up and down they never move (the owner: stuff moving up and down is THE bug): the back track's place below the
+  // camera is measured once (at the start, or after a jump across the land) and kept, so their height on the screen
+  // changes only with your own zoom and a lane change, never with the hills or the speed zoom. (They used to stand on
+  // the back track at the middle of the screen, and bobbed with every hill it went over.)
+  if (st.below === null) { const g = groundUnder(plan, 0, cam.x); if (g === null) return; st.below = g - cam.y; }
+  const fs = cam.fgScale ?? cam.scale;
+  const base = ch / 2 + v.lift * fs + st.below * fs * v.scale;
+  CLIFF_LAYERS.forEach((layer, i) => {
+    const spots = cliffSpots(layer, st!.u[i], base, cw, ch, (n) => { const img = cliffPicture(layer.kind, n); return img ? img.naturalHeight / img.naturalWidth : null; }, zoom);
+    for (const sp of spots) {
+      const img = cliffPicture(layer.kind, sp.n);
+      if (!img) continue;
+      ctx.drawImage(hazedCliff(img, layer.kind, sp.n, layer.haze), sp.x - sp.w / 2, sp.top, sp.w, sp.h);
+      // its feet in the owner's cloud (hazed like the cliff), so it never floats
+      const cl = cliffCloud();
+      if (!cl) continue;
+      const puff = hazedCliff(cl, layer.kind, 0, layer.haze);
+      for (const c of cliffClouds(sp, cl.naturalHeight / cl.naturalWidth)) {
+        if (!c.flip) { ctx.drawImage(puff, c.x - c.w / 2, c.top, c.w, c.h); continue; }
+        ctx.save();
+        ctx.translate(c.x, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(puff, -c.w / 2, c.top, c.w, c.h);
+        ctx.restore();
+      }
+    }
+  });
 }
 
 /**
@@ -1505,30 +1617,75 @@ afterArt((() => {
 /**
  * The owner's islands: big rock formations standing in the foreground forest, half under the trees (they only work very
  * large in the foreground; standing still like a rock formation; solid, they block the view of the track as they pass:
- * the owner). Each is pinned to one point of the land (forest.ts islandSpots) and drawn behind every row of pines, so
- * it moves exactly as the hill it stands on does and never sinks into the trees or rises out of them.
+ * the owner). Each stands in the front row of pines where it is (forest.ts islandSpots), drawn behind every row of
+ * them, so it moves with the trees and never sinks into them or rises out of them.
  */
-function drawIslands(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch: number, plan: CoursePlan, fs: number, treeDrop: number) {
-  const focus = cam.focus ?? LANE_MIDDLE;
-  const spots = islandSpots(cam, cw, ch, {
-    groundAt: (x) => groundLineY(plan, focus, x),
-    treeDrop,
+function drawIslands(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch: number, plan: CoursePlan, treesAt: (sx: number) => number, dpr: number) {
+  const st = FG.get(cam);
+  if (!st) return;
+  const fs = cam.fgScale ?? cam.scale;
+  const spots = islandSpots(cam, { u: st.islandU, pe: st.islandPe, px: fs, world: fs / cam.scale }, cw, ch, {
+    treesAt,
     quiet: quietOf(plan),
-    fs,
+    memo: st.islandMemo,
+    zoom: userZoom(cam, cw, ch),
     pick: (slot) => islandPick(slot, ISLAND_CHANCE),
     widthOf: (art) => ISLANDS[art].w,
     aspect: (art) => { const img = islandPicture(ISLANDS[art].n); return img ? img.naturalHeight / img.naturalWidth : null; },
   });
+  // Zoomed in, they grow (the owner: as the pines do). At their own resolution they go soft, and zoomed in past it they
+  // fade out quickly, on the clock (not with the zoom), and stay away until you zoom back out; then they fade back in.
+  const over = (sp: { art: number; w: number }) => { const img = islandPicture(ISLANDS[sp.art].n); return img ? (sp.w * dpr) / img.naturalWidth : 0; };
+  const most = spots.reduce((m, sp) => Math.max(m, over(sp)), 0);
+  if (spots.length) { if (most > ISLAND_HIDE_AT) st.islandShow = false; else if (most < ISLAND_SHOW_AT) st.islandShow = true; }
+  const now = performance.now(), dt = st.islandT ? Math.min(100, now - st.islandT) : 0;
+  st.islandT = now;
+  st.islandFade = Math.max(0, Math.min(1, st.islandFade + (st.islandShow ? dt : -dt) / ISLAND_FADE_MS));
+  if (st.islandFade <= 0) return;
+  ctx.save();
   for (const sp of spots) {
     const img = islandPicture(ISLANDS[sp.art].n);
-    if (img) drawImg(ctx, img, sp.x - sp.w / 2, sp.top, sp.w, sp.h);
+    if (!img) continue;
+    ctx.globalAlpha = st.islandFade;
+    drawImg(ctx, img, sp.x - sp.w / 2, sp.top, sp.w, sp.h);
+    const soft = Math.max(0, Math.min(1, (over(sp) - ISLAND_SOFT_FROM) / (ISLAND_HIDE_AT - ISLAND_SOFT_FROM)));
+    const blurred = soft > 0.02 ? softIsland(img) : null;
+    if (blurred) { ctx.globalAlpha = st.islandFade * soft; drawImg(ctx, blurred, sp.x - sp.w / 2, sp.top, sp.w, sp.h); }
   }
+  ctx.restore();
+}
+
+/** An island goes soft from this much past its own resolution (drawn px over picture px), fades out past ISLAND_HIDE_AT, comes back under ISLAND_SHOW_AT. */
+const ISLAND_SOFT_FROM = 0.8, ISLAND_HIDE_AT = 1.3, ISLAND_SHOW_AT = 1.15;
+/** How long an island takes to fade out or in (ms). */
+const ISLAND_FADE_MS = 260;
+/** A soft copy of each island picture (half size, blurred), laid over it as it nears its own resolution. Made once. */
+const softIslands = new Map<HTMLImageElement, HTMLCanvasElement | null>();
+function softIsland(img: HTMLImageElement): HTMLCanvasElement | null {
+  let c = softIslands.get(img);
+  if (c === undefined) {
+    c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(img.naturalWidth / 2)); c.height = Math.max(1, Math.round(img.naturalHeight / 2));
+    const g = c.getContext('2d');
+    if (g) { g.filter = 'blur(3px)'; g.drawImage(img, 0, 0, c.width, c.height); } else c = null;
+    softIslands.set(img, c);
+  }
+  return c;
+}
+
+/**
+ * Your own zoom (1 = as the screen frames it): Infinity's fgScale is its fit to the screen times your zoom (the
+ * automatic speed zoom left out). Elsewhere (no fgScale) 1.
+ */
+function userZoom(cam: PlatformCamera, cw: number, ch: number): number {
+  if (cam.fgScale === undefined) return 1;
+  const fit = Math.max(0.42, Math.min(1.25, Math.min(cw / 1000, ch / 520)));
+  return cam.fgScale / fit;
 }
 
 function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: number, ch: number, plan?: CoursePlan) {
   const img = ART.treesFront;
   if (!ready(img)) return;
-  const { rows: scrolls } = foregroundScroll(cam);
   const aspect = img.naturalWidth / img.naturalHeight;
   // The pines are near the lens (the owner): they slide sideways faster than the track, each row at its own parallax
   // speed (foregroundScroll), which is the depth. Up and down, every row stands a fixed depth below the track you are
@@ -1539,6 +1696,7 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
   const dpr = ctx.getTransform().a || 1;
   const focus = cam.focus ?? LANE_MIDDLE;
   const lineAt = forestLine((x) => (plan ? groundLineY(plan, focus, x) : null), cam, cw, ch, FOREST_DEPTH * fs, ch / 2 + (FG_TRACK_BELOW + FOREST_DEPTH) * fs);
+  const { rows: scrolls } = foregroundScroll(cam, lineSlope(lineAt, cw));
   const islands = cam.islands !== false && !!plan;
   const FRONT = PINE_ROWS.length - 1;
   // Back to front. The nearer rows past the front one (zoomed out) fade in as the ground under the row behind them
@@ -1556,7 +1714,7 @@ function foreground(ctx: CanvasRenderingContext2D, cam: PlatformCamera, cw: numb
   for (let j = 0; j < rows.length; j++) {
     const { i, r, top, height, alpha } = rows[j];
     // the islands stand right behind the front row of pines, which (with the rows past it) hides their lower half
-    if (i === FRONT && islands) drawIslands(ctx, cam, cw, ch, plan!, fs, (FOREST_DEPTH + (r.drop - CLIFF_RISE) * r.p) * fs);
+    if (i === FRONT && islands) { const d = (r.drop - CLIFF_RISE) * fs * r.p; drawIslands(ctx, cam, cw, ch, plan!, (sx) => lineAt(sx) + d, dpr); }
     if (top >= ch) continue;
     // every other row mirrored, so neighbouring rows never line up (the front row is the art as painted)
     // in front of the track: no haze; the rows nearest the lens are out of focus
