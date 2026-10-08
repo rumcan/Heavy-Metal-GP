@@ -12,7 +12,7 @@ const SRC = process.env.ISLAND_SRC ?? join(ROOT, '..', '..', 'assets', 'new-art'
 const OUT = join(ROOT, 'src', 'assets', 'game', 'platformer', 'islands');
 mkdirSync(OUT, { recursive: true });
 /** The longest side the game ever needs (a near island fills about half a big screen). */
-const MAX_SIDE = 700;
+const MAX_SIDE = 1200; // the owner: read well at about 1200 x 1200, optimised (not full resolution)
 
 for (let n = 1; n <= 15; n++) {
   const { data, info } = await sharp(join(SRC, `fireground_island_${n}.png`)).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
@@ -52,7 +52,7 @@ for (let n = 1; n <= 15; n++) {
   const res = await sharp(data, { raw: { width: W, height: H, channels: 4 } })
     .extract({ left: x0, top: y0, width: w, height: h })
     .resize(Math.round(w * k), Math.round(h * k))
-    .webp({ quality: 72, alphaQuality: 85 })
+    .webp({ quality: 68, alphaQuality: 70, effort: 6, smartSubsample: true })
     .toFile(out);
   console.log(`island-${n}.webp ${res.width}x${res.height} ${(res.size / 1024).toFixed(0)} KB`);
 }
