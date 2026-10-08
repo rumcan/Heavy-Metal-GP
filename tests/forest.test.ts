@@ -2,13 +2,15 @@
 // The foreground forest and the owner's islands (src/game/platformer/forest.ts):
 // - the tree line follows the track's hills and never moves against it, and does NOT move when the camera zooms
 //   itself with your speed (the owner: "make sure the tree line DOES NOT MOVE DOWN");
-// - an island never bobs and never sinks into the trees or rises out of them as it passes;
+// - on a slope the trees and islands slide with the track, so they never climb up and down it against the track (the
+//   owner: tilted trees moved up and down as the ball passed); on level ground they keep their depth;
+// - an island never sinks into the trees or rises out of them as it passes;
 // - islands only stand over a quiet stretch of track.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ISLAND_PARALLAX, ISLAND_QUIET_REACH, ISLAND_SLOT_W, busyStretches, forestLine, islandSpots, islandWidth, quietTest } from '../src/game/platformer/forest';
-import type { ForestView, IslandEnv, IslandPick } from '../src/game/platformer/forest';
-import { infinityChunk } from '../src/game/platformer/infinity';
+import { ISLAND_PARALLAX, ISLAND_QUIET_REACH, ISLAND_SLOT_W, ISLAND_SPOTS, PARALLAX_DRIFT, busyStretches, easeSlope, forestLine, islandSpotIn, islandSpots, islandWidth, lineSlope, quietTest, slopeParallax } from '../src/game/platformer/forest';
+import type { ForestView, IslandEnv, IslandLayer, IslandPick } from '../src/game/platformer/forest';
+import { chunkTracks, infinityChunk } from '../src/game/platformer/infinity';
 import type { CoursePlan } from '../src/game/platformer/course';
 
 const CW = 1280, CH = 720;
@@ -51,34 +53,86 @@ test('the tree line holds over a gap and is eased over a step (never a tower), a
   assert.ok(Math.abs(line(gapAt) - line(leftOfGap)) < 1, 'over the gap the line holds the height to its left');
 });
 
-// ------------------------------------------------------------------ islands
-const PICK: IslandPick = { art: 0, at: 0.5, size: 0.5, sink: 0.5 };
-function env(ground: (x: number) => number | null, over: Partial<IslandEnv> = {}): IslandEnv {
-  return { groundAt: ground, treeDrop: 200, quiet: () => true, fs: 1.25, pick: () => PICK, widthOf: () => 400, aspect: () => 0.75, ...over };
+/** Rolling hills like Infinity's: its mean grade, a big swell and a ripple. */
+const hills = (x: number) => 600 + 0.1 * x + 90 * Math.sin(x / 1100) + 20 * Math.sin(x / 400);
+
+/**
+ * Roll the camera down `ground` and follow one pine of a row at depth `p` (the row scrolls by the camera's movement
+ * times slopeParallax, as render.ts foregroundScroll does, or at its full depth with `fixed`): how far it moved up or
+ * down against the track under it, per screen px the track scrolled.
+ */
+function climb(ground: (x: number) => number, p: number, fixed: boolean): number {
+  const s = 1.0, depth = 160, step = 22;
+  let camX = 2000, slope = 0, sx = CW * 0.8, against = 0, scrolled = 0;
+  let line = forestLine(ground, camOn(ground, camX, s), CW, CH, depth, 0);
+  for (let f = 0; f < 600; f++) {
+    slope = easeSlope(slope, lineSlope(line, CW));
+    const pe = fixed ? p : slopeParallax(p, slope);
+    camX += step;
+    const next = forestLine(ground, camOn(ground, camX, s), CW, CH, depth, 0);
+    const nx = sx - step * s * pe;
+    // the pine's move up or down, less the move of the track point that was under it
+    against += Math.abs((next(nx) - line(sx)) - (next(sx - step * s) - line(sx)));
+    scrolled += step * s;
+    sx = nx < -100 ? CW * 0.9 : nx;
+    line = next;
+  }
+  return against / scrolled;
 }
 
-test('on a steady slope an island keeps the same height in the trees all the way across the screen (no sinking), and never bobs', () => {
-  const g = slope(0.12);
-  const fs = 1.25, depth = 130 * fs, frontDrop = (168 - 130) * 1.35 * fs;
-  const e = env(g, { treeDrop: depth + frontDrop });
-  let gap0: number | null = null, top0: number | null = null, y0 = 0;
-  let seen = 0;
-  // the camera rolls down the hill past slot 4's island
-  for (let camX = 3 * ISLAND_SLOT_W; camX < 7 * ISLAND_SLOT_W; camX += 37) {
-    const view = camOn(g, camX, 1.0);
-    const spots = islandSpots(view, CW, CH, e).filter((s) => Math.abs(s.x - CW / 2) < CW * 0.6);
-    const line = forestLine(g, view, CW, CH, depth, 0);
-    for (const s of spots) {
-      // the island of slot 4 (its spot at its own depth: the screen x back through the islands' parallax)
-      if (Math.floor((camX + (s.x - CW / 2) / (view.scale * ISLAND_PARALLAX)) / ISLAND_SLOT_W) !== 4) continue;
+test('on a slope the pines slide with the track: they never climb up and down it against the track (the owner)', () => {
+  for (const p of [1.07, 1.35, 2.0]) {
+    const now = climb(hills, p, false), before = climb(hills, p, true);
+    console.log(`# depth ${p}: ${now.toFixed(4)} px against the track per px (it was ${before.toFixed(4)})`);
+    assert.ok(now <= PARALLAX_DRIFT * 1.6, `depth ${p}: ${now.toFixed(4)} px against the track per px scrolled`);
+    assert.ok(before > now * 2.5, 'the full depth on a slope did climb against the track');
+  }
+});
+
+test('on level ground every row keeps its depth; on a slope it slides with the track, smoothly in between', () => {
+  for (const p of PINE_DEPTHS) assert.equal(slopeParallax(p, 0), p);
+  assert.ok(slopeParallax(1.35, 0.1) <= 1 + PARALLAX_DRIFT / 0.1 + 1e-9);
+  let prev = slopeParallax(1.35, 0);
+  for (let g = 0.001; g < 0.5; g += 0.001) { const v = slopeParallax(1.35, g); assert.ok(v <= prev + 1e-9 && prev - v < 0.05, `at ${g}`); prev = v; }
+  assert.equal(slopeParallax(0.8, 0), 0.8, 'a layer slower than the track too');
+  assert.ok(Math.abs(slopeParallax(0.8, 0.2) - 1) <= PARALLAX_DRIFT / 0.2 + 1e-9);
+  assert.equal(lineSlope(() => 300, CW), 0);
+  assert.ok(Math.abs(lineSlope((sx) => 0.25 * sx, CW) - 0.25) < 1e-6);
+});
+const PINE_DEPTHS = [1.03, 1.17, 1.35, 1.9];
+
+// ------------------------------------------------------------------ islands
+const PICK: IslandPick = { art: 0, at: 0.5, size: 0.5, sink: 0.5 };
+function env(over: Partial<IslandEnv> = {}): IslandEnv {
+  return { treesAt: () => 500, quiet: () => true, pick: () => PICK, widthOf: () => 400, aspect: () => 0.75, ...over };
+}
+
+test('an island stands in the trees where it is (never sinking into them or rising out of them) and slides with its layer', () => {
+  const s = 1.0, depth = 160, drop = 50;
+  let camX = 3.6 * ISLAND_SLOT_W, slope = 0;
+  const layer: IslandLayer = { u: camX, pe: 1 };
+  let gap0: number | null = null, lastX: number | null = null, seen = 0;
+  for (let f = 0; f < 700; f++) {
+    const view = camOn(hills, camX, s);
+    const line = forestLine(hills, view, CW, CH, depth, 0);
+    slope = easeSlope(slope, lineSlope(line, CW));
+    layer.pe = slopeParallax(ISLAND_PARALLAX, slope);
+    const treesAt = (sx: number) => line(sx) + drop;
+    const spots = islandSpots(view, layer, CW, CH, env({ treesAt })).filter((sp) => Math.abs(sp.x - CW / 2) < CW * 0.6);
+    const sp = spots.find((o) => Math.round((layer.u + (o.x - CW / 2) / s) / ISLAND_SLOT_W - 0.5) === 4);
+    if (sp) {
       seen++;
-      const trees = line(s.x) + frontDrop; // the front row's tops where the island stands
-      const gap = s.top - trees;
-      if (gap0 === null) { gap0 = gap; top0 = s.top; y0 = view.y; }
-      assert.ok(Math.abs(gap - gap0) < 1.5, `the island moved against the trees by ${(gap - gap0).toFixed(2)} px`);
-      // rigid: its height changes only as the camera's does, times its depth
-      assert.ok(Math.abs((s.top - top0!) + (view.y - y0) * view.scale * ISLAND_PARALLAX) < 0.5, 'the island bobbed');
+      // the tops of the trees across its middle (averaged, so a wobble of one sampled point never jitters it)
+      const trees = [-2, -1, 0, 1, 2].reduce((t, i) => t + treesAt(sp.x + (i * sp.w) / 10), 0) / 5;
+      const gap = sp.top - trees;
+      if (gap0 === null) gap0 = gap;
+      assert.ok(Math.abs(gap - gap0) < 1e-6, `the island moved in the trees by ${(gap - gap0).toFixed(2)} px`);
+      if (lastX !== null) assert.ok(Math.abs((lastX - sp.x) - 20 * s * layer.pe) < 1e-6, 'it slides at the speed of its layer');
+      lastX = sp.x;
     }
+    camX += 20;
+    layer.u += 20 * slopeParallax(ISLAND_PARALLAX, easeSlope(slope, lineSlope(forestLine(hills, camOn(hills, camX, s), CW, CH, depth, 0), CW)));
+    layer.pe = slopeParallax(ISLAND_PARALLAX, slope);
   }
   assert.ok(seen > 20, `the island was on screen for ${seen} frames`);
 });
@@ -93,18 +147,30 @@ test('islands are big but a little smaller than before: half to two thirds of th
   }
 });
 
-test('islands only stand where nothing is going on on the track they cover on their way across the screen', () => {
+test('islands only stand where nothing is going on: at the first quiet spot of their km, none in a busy one, decided once', () => {
   const g = slope(0.1);
-  const slot = 5, wx = (slot + 0.4 + 0.2 * PICK.at) * ISLAND_SLOT_W;
-  const reach = ISLAND_QUIET_REACH;
-  const at = (busy: [number, number][]) => {
-    const q = quietTest(busy);
-    return islandSpots(camOn(g, wx, 1.0), CW, CH, env(g, { quiet: q })).length;
-  };
-  assert.equal(at([]), 1, 'a quiet stretch: the island is there');
-  assert.equal(at([[wx + reach - 50, wx + reach + 50]]), 0, 'something at the edge of its reach: no island');
-  assert.equal(at([[wx - 20, wx + 20]]), 0, 'something right behind it: no island');
-  assert.equal(at([[wx + reach + 50, wx + reach + 400]]), 1, 'something past its reach: the island is there');
+  const slot = 5, mid = (slot + 0.5) * ISLAND_SLOT_W, reach = ISLAND_QUIET_REACH;
+  const spotOf = (busy: [number, number][]) => islandSpotIn(slot, (wx) => wx, quietTest(busy));
+  assert.equal(spotOf([]), 0.5, 'a quiet km: the island in the middle of it');
+  const moved = spotOf([[mid + reach - 50, mid + reach + 50]]);
+  assert.ok(moved !== null && moved < 0.5 && moved > 0.4, `something at its middle: the next quiet spot (${moved})`);
+  assert.equal(spotOf([[slot * ISLAND_SLOT_W, (slot + 1) * ISLAND_SLOT_W]]), null, 'a busy km: no island');
+  const at = (busy: [number, number][]) => islandSpots(camOn(g, mid, 1.0), { u: mid, pe: 1 }, CW, CH, env({ quiet: quietTest(busy) })).length;
+  assert.equal(at([]), 1);
+  assert.equal(at([[slot * ISLAND_SLOT_W, (slot + 1) * ISLAND_SLOT_W]]), 0);
+  // decided once: a slot that came up busy stays without an island (it never pops in on screen)
+  const memo = new Map<number, number | null>();
+  islandSpots(camOn(g, mid, 1.0), { u: mid, pe: 1 }, CW, CH, env({ quiet: () => false, memo }));
+  assert.equal(islandSpots(camOn(g, mid, 1.0), { u: mid, pe: 1 }, CW, CH, env({ quiet: () => true, memo })).length, 0);
+});
+
+test('one island a km at most, never two near each other, and they grow and shrink with your zoom', () => {
+  assert.ok(ISLAND_SLOT_W >= 10_000, 'a slot is a km');
+  const gap = Math.min(...ISLAND_SPOTS) + (1 - Math.max(...ISLAND_SPOTS));
+  assert.ok(gap * ISLAND_SLOT_W >= 3900, 'two islands are at least 0.4 km apart');
+  const g = slope(0.1), mid = 5.5 * ISLAND_SLOT_W;
+  const w = (zoom: number) => islandSpots(camOn(g, mid, 1.0), { u: mid, pe: 1 }, CW, CH, env({ zoom }))[0].w;
+  assert.ok(Math.abs(w(2) / w(1) - 2) < 1e-9 && Math.abs(w(0.5) / w(1) - 0.5) < 1e-9);
 });
 
 test('quietTest: clear and busy stretches', () => {
@@ -123,7 +189,7 @@ function infinityPlan(seed: number, from: number, to: number): CoursePlan {
   return {
     seed, style: 'flow', width: chunks[chunks.length - 1].x1, height: 1e6,
     floors: chunks.flatMap((c) => c.floors), bumps: [], gates: chunks.flatMap((c) => c.gates), ledges: chunks.flatMap((c) => c.ledges),
-    springs: chunks.flatMap((c) => c.springs), loops: chunks.flatMap((c) => c.loops), bridges: chunks.flatMap((c) => c.bridges),
+    springs: chunks.flatMap((c) => c.springs), ...chunkTracks(chunks), bridges: chunks.flatMap((c) => c.bridges),
     boosts: [], kickers: chunks.flatMap((c) => c.kickers), rings: [], pits: chunks.flatMap((c) => c.pits),
     path: [], startX: 520, startY: 600, finishX: 1e12, finishY: 1e12,
   } as unknown as CoursePlan;
@@ -135,15 +201,17 @@ test('over Infinity land: islands come round now and then, and never over a loop
     const busy = busyStretches(plan), q = quietTest(busy);
     let islands = 0;
     for (let slot = 0; slot * ISLAND_SLOT_W < plan.width; slot++) {
-      const wx = (slot + 0.5) * ISLAND_SLOT_W, reach = ISLAND_QUIET_REACH;
-      if (wx - reach < 3200 || !q(wx - reach, wx + reach)) continue;
+      const f = islandSpotIn(slot, (wx) => wx, q), reach = ISLAND_QUIET_REACH;
+      if (f === null) continue;
+      const wx = (slot + f) * ISLAND_SLOT_W;
+      if (wx - reach < 3200) continue;
       islands++;
-      for (const l of plan.loops ?? []) assert.ok(l.x + (l.pitch ?? 0) + 250 < wx - reach || l.x - 250 > wx + reach, 'an island over a loop');
+      (plan.tracks ?? []).forEach((t) => assert.ok(t.box.x1 + 250 < wx - reach || t.box.x0 - 250 > wx + reach, 'an island over a loop'));
       for (const p of plan.pits ?? []) assert.ok(p.x1 < wx - reach || p.x0 > wx + reach, 'an island over a pit');
       for (const gt of plan.gates) assert.ok(gt.x + gt.w < wx - reach || gt.x > wx + reach, 'an island over a lane ramp');
     }
     const slots = Math.floor(plan.width / ISLAND_SLOT_W);
-    console.log(`# seed ${seed}: an island over ${islands} of ${slots} slots (41 km)`);
-    assert.ok(islands >= 25, `seed ${seed}: only ${islands} islands in 41 km (the owner saw none in 10 km)`);
+    console.log(`# seed ${seed}: an island in ${islands} of ${slots} km (41 km)`);
+    assert.ok(islands >= slots * 0.75, `seed ${seed}: only ${islands} islands in 41 km (the owner: one a km)`);
   }
 });

@@ -6,9 +6,13 @@
 // balls, no item boxes, no wall a rolling ball cannot get over) except the one death pit a km, with its ramp to jump it.
 import { mulberry32 } from '../types';
 import { SPRING_W } from './course';
-import type { BoostSpot, Bump, Floor, HoopSpot, Kicker, Lane, LaneGate, Ledge, PitSpot, RingSpot, SmashSpot, Spring, StandSpot, VentSpot } from './course';
-import { LOOP_PITCH, LOOP_R, PLANK_H } from './routes';
-import type { BridgeSpot, LoopSpot } from './routes';
+import type { BeamPath, BoostSpot, Bump, CoursePlan, CrossZone, Floor, HoopSpot, Kicker, Lane, LaneGate, Ledge, PitSpot, RingSpot, SmashSpot, Spring, StandSpot, TrackLine, VentSpot } from './course';
+import { LOOP_PITCH, PLANK_H } from './routes';
+import type { BridgeSpot } from './routes';
+import { KIT_HALF_PITCH, loopCurves } from './track-kits';
+import { pieceFloors } from './def';
+import { curvePoints, trackPlanOf } from './crossings';
+import type { Piece, TrackDef } from '../trackdef';
 
 /** Width of one chunk of land. */
 export const CHUNK_W = 1600;
@@ -120,7 +124,14 @@ export interface InfinityChunk {
   gates: LaneGate[];
   springs: Spring[];
   ledges: Ledge[];
-  loops: LoopSpot[];
+  /**
+   * The loops (the owner: made of the Workshop's four curves, track-kits.ts loopCurves): their Workshop track lines (the
+   * rails, and the floors in their crossing), where the way in crosses the way out, and the curves' beams. `joins` and
+   * the crossings' runs index this chunk's `tracks`; a plan holds each chunk's lines in slots of their own (chunkTracks).
+   */
+  tracks: TrackLine[];
+  crossings: CrossZone[];
+  beams: BeamPath[];
   bridges: BridgeSpot[];
   boosts: BoostSpot[];
   kickers: Kicker[];
@@ -160,7 +171,7 @@ export function infinityChunk(seed: number, index: number): InfinityChunk {
   // Gold rings to collect (the owner): each pays RING_CREDITS; stable ids, so a collected one stays collected while the
   // chunk is rebuilt.
   const ring = (lane: Lane, x: number, y: number) => chunk.rings.push({ id: `${index}:${chunk.rings.length}`, lane, x: Math.round(x), y: Math.round(y) });
-  const chunk: InfinityChunk = { index, x0, x1, floors: [], bumps: [], gates: [], springs: [], ledges: [], loops: [], bridges: [], boosts: [], kickers: [], rings: [], stands: [], hoops: [], smashes: [], vents: [], pits: [] };
+  const chunk: InfinityChunk = { index, x0, x1, floors: [], bumps: [], gates: [], springs: [], ledges: [], tracks: [], crossings: [], beams: [], bridges: [], boosts: [], kickers: [], rings: [], stands: [], hoops: [], smashes: [], vents: [], pits: [] };
   // the goblin stands' spots: every km's level stretch on the back lane that overlaps this chunk
   for (let k = Math.max(1, Math.floor((x0 - STAND_FROM - STAND_LEN) / PX_PER_KM)); k * PX_PER_KM + STAND_FROM < x1; k++) {
     const a = k * PX_PER_KM + STAND_FROM;
@@ -174,6 +185,8 @@ export function infinityChunk(seed: number, index: number): InfinityChunk {
   // a loop's (or a pit's) flat: [from, to, y, ramp length, blend]. A loop eases from the land's height at each end; a
   // pit blends from the land itself (its slope too), so a pit's run-up can start right at a chunk's edge without a kink.
   const flat = new Map<Lane, [number, number, number, number, boolean?]>();
+  // a loop's pieces, laid on its flat (the land's floor gives way to them there)
+  let kit: (ReturnType<typeof loopKit> & { lane: Lane }) | null = null;
   const busy = index >= 2;
 
   const pitK = pitKm(index);
@@ -198,9 +211,9 @@ export function infinityChunk(seed: number, index: number): InfinityChunk {
     }
     chunk.pits.push({ id: pitK, x0: a, x1: b, y: Math.round(Math.min(...LANES.map((lane) => h(lane, a - PIT_RUN)))) });
   } else if (busy && isLoopChunk(seed, index)) {
-    // A loop in one lane: a long flat for the run-up and the ring (a ramp down into it, a ramp down out of it), a boost
-    // pad on the flat. The ball arrives rolling on level ground, never falling onto the ring. Skipped when the land has no
-    // stretch in this chunk that suits it.
+    // A loop in one lane: a long flat for the run-up and the loop (a ramp down into it, a ramp down out of it). The loop
+    // is the Workshop's own, four curves (the owner), on a level run-up and run-out of its own pieces. The ball arrives
+    // rolling on level ground. Skipped when the land has no stretch in this chunk that suits it.
     const lane = LANES[Math.floor(rng() * 3)];
     const RAMP = 300, RUN_UP = 380;
     let best: { entry: number; err: number } | null = null;
@@ -216,7 +229,10 @@ export function infinityChunk(seed: number, index: number): InfinityChunk {
       const entry = best.entry, flatEnd = entry + LOOP_PITCH + 60;
       const y0 = Math.round(h(lane, entry));
       flat.set(lane, [entry - RUN_UP - RAMP, flatEnd + RAMP, y0, RAMP]);
-      chunk.loops.push({ lane, x: entry, y: y0, r: LOOP_R, pitch: LOOP_PITCH });
+      kit = { ...loopKit(lane, entry - 90, y0), lane };
+      // a boost pad on the way in: a slow ball climbed halfway, rolled back and rocked at the bottom (the Workshop loop's
+      // rails have no grip: it takes speed to go round)
+      chunk.boosts.push({ lane, x: kit.x0 + 30, w: 180 });
     }
   } else if (busy) {
     const chasmChance = [0.18, 0.08, 0.2];
@@ -234,8 +250,9 @@ export function infinityChunk(seed: number, index: number): InfinityChunk {
         chunk.springs.push({ lane, x: sx, y: h(lane, sx + SPRING_W / 2) });
         chunk.ledges.push({ lane, x: lx0, w: lx1 - lx0, y: Math.round(low - roll(170, 220)) });
         springLanes.add(lane); ledgeLanes.add(lane);
-      } else if (r < 0.85) {
-        // A rope bridge over it.
+      } else {
+        // A rope bridge over it. (Every chasm has its way across: a bare hole with nothing to cross it by was one the
+        // owner kept falling into, "where there might not be supposed to be a hole". The death pits are the holes.)
         const planks = Math.ceil(width / 20);
         chunk.bridges.push({ lane, x0: a, y0: h(lane, a) + PLANK_H / 2, x1: b, y1: h(lane, b) + PLANK_H / 2, planks, slack: Math.max(8, Math.min(14, Math.round(width * 0.09))) });
       }
@@ -356,7 +373,7 @@ export function infinityChunk(seed: number, index: number): InfinityChunk {
 
   // ---- the floors: slabs of STEP along each lane's land, cut at the chasms, flat where a loop sits
   for (const lane of LANES) {
-    const cut = chasms.get(lane);
+    const cut = chasms.get(lane) ?? (kit?.lane === lane ? [kit.x0, kit.x1] as [number, number] : undefined);
     const lp = flat.get(lane);
     const from = index === 0 ? -400 : x0;
     let x = from;
@@ -382,7 +399,64 @@ export function infinityChunk(seed: number, index: number): InfinityChunk {
       if (x > x1) break;
     }
   }
+  if (kit) {
+    chunk.floors.push(...kit.floors);
+    chunk.tracks.push(...kit.tracks);
+    chunk.crossings.push(...kit.crossings);
+    chunk.beams.push(...kit.beams);
+  }
   return chunk;
+}
+
+/** A loop's run-up and run-out (level, its own pieces): the loop's way in and way out cross between them. */
+const KIT_RUN = 280;
+
+/**
+ * The Workshop's loop at (xc, y) in `lane` (y is the floor line), built from the Workshop's own pieces exactly as a course
+ * made in the Workshop builds them (def.ts, crossings.ts): a level ramp in, the four quarter curves, a level ramp out.
+ * Its floors (the rails' hidden ones left out: their lines are built; a hidden floor along the ground under the loop
+ * instead, so the camera, the forest and the drivers see level ground there), its track lines, crossings and beams.
+ */
+export function loopKit(lane: Lane, xc: number, y: number): { x0: number; x1: number; floors: Floor[]; tracks: TrackLine[]; crossings: CrossZone[]; beams: BeamPath[] } {
+  const H = KIT_HALF_PITCH;
+  const pieces: Piece[] = [
+    { t: 'ramp', a: [xc - KIT_RUN, y], b: [xc - H, y], cliff: false, lane },
+    ...loopCurves(xc, y).map((p) => ({ ...p, lane })),
+    { t: 'ramp', a: [xc + H, y], b: [xc + KIT_RUN, y], cliff: false, lane },
+  ];
+  const def = { v: 1, name: 'Infinity loop', theme: 'classic', mode: 'platformer', height: y + 2000, width: xc + 4000, pieces } as unknown as TrackDef;
+  const tp = trackPlanOf(def, [0, 1, 2]);
+  const floors = pieceFloors(def).filter((f) => !f.hidden);
+  floors.push({ lane, x0: xc - H, y0: y, x1: xc + H, y1: y, hidden: true });
+  const lineOf = new Map(tp.tracks.map((l) => [l.source, l]));
+  const beams: BeamPath[] = [];
+  pieces.forEach((p, source) => {
+    const line = lineOf.get(source);
+    if (line) beams.push({ lane, pts: line.pts, oriented: line.rail, source });
+    else if (p.t === 'curve') beams.push({ lane, pts: curvePoints(p.a, p.c, p.b, p.n ?? 12), source });
+  });
+  return { x0: xc - KIT_RUN, x1: xc + KIT_RUN, floors, tracks: tp.tracks, crossings: tp.crossings, beams };
+}
+
+/** Track line slots per chunk in a plan's `tracks` (a loop has six pieces). */
+export const TRACK_SLOTS = 8;
+/**
+ * Where line `line` of chunk `index` sits in a plan's `tracks`: the same slot for as long as the chunk is built, so the
+ * bodies (which carry their line's index) and a ball's memory of the track it rides stay right while other chunks come
+ * and go. A window is never 32 chunks wide.
+ */
+export const trackSlot = (index: number, line: number): number => (index % 32) * TRACK_SLOTS + line;
+
+/** The chunks' loops as one plan's `tracks` (sparse: each chunk in its slots), `crossings` and `beams`. */
+export function chunkTracks(chunks: readonly InfinityChunk[]): Pick<CoursePlan, 'tracks' | 'crossings' | 'beams'> {
+  const tracks: TrackLine[] = [], crossings: CrossZone[] = [], beams: BeamPath[] = [];
+  for (const c of chunks) {
+    const at = (li: number) => trackSlot(c.index, li);
+    c.tracks.forEach((l, li) => { tracks[at(li)] = { ...l, joins: l.joins.map(at) }; });
+    for (const z of c.crossings) crossings.push({ ...z, passages: z.passages.map((p) => ({ ...p, runs: p.runs.map(([li, s0, s1]) => [at(li), s0, s1] as [number, number, number]) })) });
+    beams.push(...c.beams);
+  }
+  return tracks.length ? { tracks, crossings, beams } : {};
 }
 
 /** A chunk moved by (dx, dy): the same land in another frame (the engine works in coordinates near zero). */
@@ -394,7 +468,9 @@ export function shiftChunk(c: InfinityChunk, dx: number, dy: number): InfinityCh
     gates: c.gates.map((g) => ({ ...g, x: g.x + dx, y: g.y + dy })),
     springs: c.springs.map((s) => ({ ...s, x: s.x + dx, y: s.y + dy })),
     ledges: c.ledges.map((l) => ({ ...l, x: l.x + dx, y: l.y + dy })),
-    loops: c.loops.map((l) => ({ ...l, x: l.x + dx, y: l.y + dy })),
+    tracks: c.tracks.map((l) => ({ ...l, pts: l.pts.map((p) => ({ x: p.x + dx, y: p.y + dy })), box: { x0: l.box.x0 + dx, y0: l.box.y0 + dy, x1: l.box.x1 + dx, y1: l.box.y1 + dy } })),
+    crossings: c.crossings.map((z) => ({ ...z, x0: z.x0 + dx, y0: z.y0 + dy, x1: z.x1 + dx, y1: z.y1 + dy })),
+    beams: c.beams.map((b) => ({ ...b, pts: b.pts.map((p) => ({ x: p.x + dx, y: p.y + dy })) })),
     bridges: c.bridges.map((b) => ({ ...b, x0: b.x0 + dx, x1: b.x1 + dx, y0: b.y0 + dy, y1: b.y1 + dy })),
     boosts: c.boosts.map((b) => ({ ...b, x: b.x + dx })),
     kickers: c.kickers.map((k) => ({ ...k, x: k.x + dx })),

@@ -3,7 +3,8 @@
 // and near zero however far it goes; the same seed and inputs give the same run; a simple bot rolls for many km.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CHUNK_W, PIT_W, infinityChunk, isLoopChunk, pitChunk, pitKm, shiftChunk, terrainY } from '../src/game/platformer/infinity';
+import { CHUNK_W, PIT_W, TRACK_SLOTS, chunkTracks, infinityChunk, isLoopChunk, pitChunk, pitKm, shiftChunk, terrainY } from '../src/game/platformer/infinity';
+import { KIT_R } from '../src/game/platformer/track-kits';
 import type { Lane } from '../src/game/platformer/course';
 
 const LANES: Lane[] = [0, 1, 2];
@@ -53,11 +54,11 @@ test('nothing hostile and no clutter: no wreckers or boxes, features stay inside
     for (const s of c.springs) assert.ok(s.x >= c.x0 + 300 && s.x <= c.x0 + 900);
     for (const l of c.ledges) assert.ok(l.x + l.w <= c.x1 + 260, 'a ledge may spill a little into the next chunk, never far');
     for (const b of c.bridges) assert.ok(b.x0 >= c.x0 + 700 && b.x1 <= c.x0 + 1100);
-    loops += c.loops.length;
+    loops += c.crossings.length; // a loop: the way in crosses the way out
     // (clouds up in the sky are scenery to ride, not clutter on the track: the owner wants lots of them)
-    features += c.bumps.length + c.gates.length + c.springs.length + c.ledges.filter((l) => l.cloud === undefined).length + c.loops.length + c.bridges.length;
-    if (n < 2) assert.equal(c.bumps.length + c.gates.length + c.springs.length + c.loops.length + c.bridges.length, 0, 'the start is clear');
-    assert.equal(c.loops.length > 0, isLoopChunk(11, n) && c.loops.length > 0);
+    features += c.bumps.length + c.gates.length + c.springs.length + c.ledges.filter((l) => l.cloud === undefined).length + c.crossings.length + c.bridges.length;
+    if (n < 2) assert.equal(c.bumps.length + c.gates.length + c.springs.length + c.tracks.length + c.bridges.length, 0, 'the start is clear');
+    if (c.tracks.length) assert.ok(isLoopChunk(11, n), "loops only in loop chunks");
   }
   assert.ok(features / chunks < 1.6, `${(features / chunks).toFixed(2)} features per chunk is not calm`);
   assert.ok(loops >= 8 && loops <= 90, `${loops} loops in ${chunks} chunks`);
@@ -75,6 +76,77 @@ test('chasms are never wider than a normal jump, and every chasm has its floor o
       }
     }
   }
+});
+
+test('every chasm has its way across (a rope bridge, or a spring and a ledge over it): the death pits are the holes', () => {
+  let chasms = 0;
+  for (let n = 2; n < 400; n++) {
+    if (pitKm(n)) continue;
+    const c = infinityChunk(5, n);
+    for (const lane of LANES) {
+      const fl = c.floors.filter((f) => f.lane === lane).sort((p, q) => p.x0 - q.x0);
+      for (let i = 1; i < fl.length; i++) {
+        const a = fl[i - 1].x1, b = fl[i].x0;
+        if (b - a <= 1) continue;
+        chasms++;
+        const bridged = c.bridges.some((br) => br.lane === lane && br.x0 <= a + 1 && br.x1 >= b - 1);
+        const sprung = c.springs.some((s) => s.lane === lane && s.x < a) && c.ledges.some((l) => l.lane === lane && l.cloud === undefined && l.x <= a && l.x + l.w >= b);
+        assert.ok(bridged || sprung, `chunk ${n} lane ${lane}: a bare hole at ${a}..${b}`);
+      }
+    }
+  }
+  assert.ok(chasms > 20, `${chasms} chasms`);
+});
+
+test('the loops are the Workshop\'s own: four quarter curves on a level way in and out, crossing at the bottom', () => {
+  let seen = 0;
+  for (let n = 0; n < 400; n++) {
+    const c = infinityChunk(11, n);
+    if (!c.tracks.length) continue;
+    seen++;
+    assert.ok(isLoopChunk(11, n));
+    assert.ok(c.tracks.length <= TRACK_SLOTS, 'a loop fits its chunk\'s slots');
+    // the four curves are rails (upright and upside down), each a Workshop curve's beam
+    assert.ok(c.tracks.filter((t) => t.rail).length >= 4, 'the four curves');
+    assert.equal(c.crossings.length, 1, 'the way in crosses the way out');
+    assert.equal(c.crossings[0].passages.length, 2);
+    const box = c.tracks.reduce((b, t) => ({ y0: Math.min(b.y0, t.box.y0), y1: Math.max(b.y1, t.box.y1) }), { y0: Infinity, y1: -Infinity });
+    assert.ok(box.y1 - box.y0 >= 2 * KIT_R - 2, 'a full loop, as tall as the kit\'s');
+    // the land under it has no hole: level ground (hidden) between the way in and the way out
+    const lane = c.tracks[0].lane;
+    for (let x = c.tracks[0].box.x0 + 1; x < c.tracks[c.tracks.length - 1].box.x1; x += 10) assert.ok(c.floors.some((f) => f.lane === lane && x >= f.x0 && x <= f.x1), `floor at ${x}`);
+  }
+  assert.ok(seen >= 10, `${seen} loops`);
+  // a plan keeps each chunk's lines in the same slots whatever else is built (the bodies carry their line's index)
+  const loopN = Array.from({ length: 200 }, (_, n) => n).filter((n) => infinityChunk(11, n).tracks.length)[0];
+  const alone = chunkTracks([infinityChunk(11, loopN)]), withMore = chunkTracks([infinityChunk(11, loopN - 1), infinityChunk(11, loopN), infinityChunk(11, loopN + 1)]);
+  alone.tracks!.forEach((t, i) => assert.deepEqual(withMore.tracks![i], t));
+  assert.deepEqual(withMore.crossings, alone.crossings);
+});
+
+test('a ball rolling slowly into a loop is boosted, goes all the way round it and on', () => {
+  const seed = 11;
+  const n = Array.from({ length: 200 }, (_, k) => k).filter((k) => k > 3 && infinityChunk(seed, k).tracks.length)[0];
+  const run = new InfinityRun(seed, driver, { effects: false, lives: Infinity });
+  while (run.absoluteX() < n * CHUNK_W - 1200) { bot(run); run.step(); }
+  const abs = infinityChunk(seed, n), lane = abs.tracks[0].lane;
+  const xs = abs.tracks.flatMap((t) => [t.box.x0, t.box.x1]), x0 = Math.min(...xs), x1 = Math.max(...xs);
+  const floorY = abs.tracks[0].pts[0].y - run.origin.y;
+  const m = run.game.player;
+  m.lane = lane; m.laneFrom = lane; m.laneAt = undefined;
+  Matter.Body.setPosition(m.body, { x: x0 - run.origin.x + 10, y: floorY - 20 });
+  Matter.Body.setVelocity(m.body, { x: 3, y: 0 }); // slow: the boost pad on the way in gives it the speed
+  let top = Infinity, steps = 0;
+  while (run.absoluteX() < x1 + 200 && steps++ < 3000) {
+    run.game.nudge = 1; run.game.jumpPressed = false;
+    run.step();
+    if (run.absoluteX() > x0 && run.absoluteX() < x1) top = Math.min(top, m.body.position.y);
+  }
+  console.log(`# the loop: the ball rose ${Math.round(floorY - top)} px over its floor`);
+  assert.ok(floorY - top > 2 * KIT_R - 40, `the ball only rose ${Math.round(floorY - top)} px: it did not go round`);
+  assert.ok(run.absoluteX() >= x1 + 200, 'it came out of the loop and rolled on');
+  assert.equal(run.falls, 0);
+  run.destroy();
 });
 
 test('a death pit every km: across every lane, a boost pad and a kicker ramp before it on level ground, nothing else', () => {
@@ -100,7 +172,7 @@ test('a death pit every km: across every lane, a boost pad and a kicker ramp bef
       const run = fl.filter((f) => f.x0 >= pit.x0 - 500 && f.x1 <= pit.x0);
       assert.ok(run.length > 5 && run.every((f) => Math.abs(f.y1 - f.y0) < 1), `lane ${lane}: a level run-up`);
     }
-    assert.equal(c.gates.length + c.springs.length + c.loops.length + c.bridges.length + c.vents.length + c.smashes.length, 0, 'nothing else in a pit chunk');
+    assert.equal(c.gates.length + c.springs.length + c.tracks.length + c.bridges.length + c.vents.length + c.smashes.length, 0, 'nothing else in a pit chunk');
   }
   for (let k = 1; k <= 10; k++) assert.ok(kms.has(k), `km ${k} has its pit`);
 });
@@ -262,6 +334,33 @@ test('lives: a run starts with 3, a death pit takes one and sets the ball back o
   const at = run.absoluteX();
   for (let i = 0; i < 100; i++) { bot(run); run.step(); }
   assert.equal(run.absoluteX(), at, 'nothing moves once it is over');
+  run.destroy();
+});
+
+test('a fall into a chasm costs a life too, and sets the ball back on a run-up before it (the owner: it never took a heart)', () => {
+  // the first chasm (a hole whose spring and ledge the ball missed) on seed 5
+  let at: { n: number; lane: Lane; a: number; b: number } | null = null;
+  for (let n = 3; n < 300 && !at; n++) {
+    if (pitKm(n)) continue;
+    const c = infinityChunk(5, n);
+    for (const lane of LANES) {
+      const fl = c.floors.filter((f) => f.lane === lane).sort((p, q) => p.x0 - q.x0);
+      for (let i = 1; i < fl.length && !at; i++) if (fl[i].x0 - fl[i - 1].x1 > 1 && !c.bridges.some((br) => br.lane === lane && br.x0 <= fl[i - 1].x1 + 1)) at = { n, lane, a: fl[i - 1].x1, b: fl[i].x0 };
+    }
+  }
+  assert.ok(at, 'a chasm to fall into');
+  const run = new InfinityRun(5, driver, { effects: false });
+  while (run.absoluteX() < at.n * CHUNK_W - 600) { bot(run); run.step(); }
+  const m = run.game.player;
+  m.lane = at.lane; m.laneFrom = at.lane; m.laneAt = undefined;
+  const lip = terrainY(5, at.lane, at.a) - run.origin.y;
+  Matter.Body.setPosition(m.body, { x: (at.a + at.b) / 2 - run.origin.x, y: lip + 300 });
+  Matter.Body.setVelocity(m.body, { x: 0, y: 5 });
+  run.step();
+  assert.equal(run.lives, 2, 'a heart lost');
+  assert.equal(run.livesLost, 1);
+  assert.equal(run.falls, 0, 'not just lifted back');
+  assert.ok(run.absoluteX() < at.a - 400 && run.absoluteX() > at.a - 900, 'back on a run-up before the hole');
   run.destroy();
 });
 

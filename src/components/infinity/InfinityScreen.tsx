@@ -159,7 +159,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
     const game = run.game;
     const camera: PlatformCamera = { x: game.player.body.position.x + 200, y: game.player.body.position.y - 40, scale: 0.8, focus: 1 };
     if (import.meta.env.DEV) (window as unknown as { __infinityCamera?: unknown }).__infinityCamera = camera; // (tests)
-    let smoothSpeed = 0, shownZoom = zoomRef.current ?? autoZoom(0), framed = false;
+    let smoothSpeed = 0, shownZoom = zoomRef.current ?? autoZoom(0), shownFg = zoomRef.current ?? 1, framed = false;
     let trackBase: number | null = null, airLift = 0;
     let width = 0, height = 0, raf = 0, last = performance.now(), accumulator = 0, hudTimer = 0, bankTimer = 0, banked = 0, lookAhead = 0;
 
@@ -266,9 +266,12 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
         const target = fit * shownZoom;
         // the first frame starts at the right zoom (nothing eases into place when a run starts)
         camera.scale = framed ? camera.scale + (target - camera.scale) * (1 - Math.exp(-dt / 180)) : target;
-        // the trees: sized by your own zoom only (the automatic speed zoom leaves them still)
-        const fgWant = fit * (zoomRef.current ?? 1);
-        camera.fgScale = framed && camera.fgScale !== undefined ? camera.fgScale + (fgWant - camera.fgScale) * (1 - Math.exp(-dt / 120)) : fgWant;
+        // the trees, islands and cliffs: sized by your own zoom only (the automatic speed zoom leaves them still), eased
+        // exactly as the camera eases your zoom (the same two steps), so everything grows and shrinks together (the
+        // owner: the pictures grew and shrank at different times from the track)
+        shownFg += ((zoomRef.current ?? 1) - shownFg) * (1 - Math.exp(-dt / 120));
+        const fgWant = fit * shownFg;
+        camera.fgScale = framed && camera.fgScale !== undefined ? camera.fgScale + (fgWant - camera.fgScale) * (1 - Math.exp(-dt / 180)) : fgWant;
         framed = true;
         // the land the screen shows, out to the back lane (drawn smallest, so widest): the run keeps all of it built
         run.viewHalfWidth = width / 2 / (camera.scale * laneView(0, camera.focus).scale);
