@@ -2,6 +2,7 @@
 // (shield, ram, mirror, charm, EMP), and the things that live in the world (bolts, bombs, spike patches, decoys).
 import type { Game, Marble } from '../engine';
 import { MARBLE_RADIUS } from '../types';
+import { drawPremiumAura, drawPremiumWorld } from './premium-draw';
 
 /** Rings and glows around one ball, drawn in world space at its position. */
 export function drawAura(ctx: CanvasRenderingContext2D, game: Game, m: Marble, t: number) {
@@ -48,6 +49,7 @@ export function drawAura(ctx: CanvasRenderingContext2D, game: Game, m: Marble, t
     ctx.fillStyle = 'rgba(239,68,68,0.3)';
     ctx.beginPath(); ctx.arc(x, y, r * 1.5, 0, Math.PI * 2); ctx.fill();
   }
+  drawPremiumAura(ctx, game, m, t);
   if (fx.grappleTo) {
     ctx.strokeStyle = '#a16207'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(fx.grappleTo.x, fx.grappleTo.y); ctx.stroke();
@@ -58,6 +60,7 @@ export function drawAura(ctx: CanvasRenderingContext2D, game: Game, m: Marble, t
 /** Bolts, bombs, spike patches and decoys in one lane (`lane` null = the whole world, for classic tracks). */
 export function drawSkillWorld(ctx: CanvasRenderingContext2D, game: Game, lane: number | null, t: number) {
   const platformer = !!game.track.platformer;
+  drawPremiumWorld(ctx, game, lane, t);
   for (const s of game.spikes) {
     if (platformer && lane !== null && s.lane !== lane) continue;
     ctx.fillStyle = '#a8a29e';

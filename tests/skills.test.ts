@@ -5,7 +5,7 @@ import Matter from 'matter-js';
 
 import { Game } from '../src/game/engine';
 import { PHYSICS_STEP } from '../src/game/physics';
-import { AI_COLORS, AI_NAMES, ITEM_TYPES, ITEM_INFO, emptyInventory, mulberry32, randomStats, TRACK_THEMES } from '../src/game/types';
+import { AI_COLORS, AI_NAMES, ITEM_TYPES, ITEM_INFO, PREMIUM_ITEMS, emptyInventory, mulberry32, randomStats, TRACK_THEMES } from '../src/game/types';
 import { buildPlatformerTrack } from '../src/game/platformer/build';
 import { floorAt } from '../src/game/platformer/course';
 import type { ItemType } from '../src/game/types';
@@ -46,12 +46,13 @@ function duel(game: Game, gap = 150) {
 const give = (m: { inventory: Record<ItemType, number> }, item: ItemType) => { m.inventory = { ...emptyInventory(), [item]: 3 }; };
 const run = (game: Game, ms: number) => { for (let t = 0; t < ms; t += PHYSICS_STEP) game.step(PHYSICS_STEP); };
 
-test('the registry: 24 items, the original eight first and unchanged', () => {
-  assert.equal(ITEM_TYPES.length, 24);
+test('the registry: 24 items, the original eight first and unchanged, then the twenty premium ones', () => {
+  assert.equal(ITEM_TYPES.length, 44);
+  assert.deepEqual(ITEM_TYPES.slice(24), [...PREMIUM_ITEMS]);
   assert.deepEqual(ITEM_TYPES.slice(0, 8), ['rocket', 'jump', 'oil', 'shock', 'anvil', 'aero', 'freeze', 'ghost']);
   assert.equal(ITEM_INFO.rocket.price, 90);
   assert.equal(ITEM_INFO.ram.name, 'Battering Ram');
-  assert.equal(Object.keys(emptyInventory()).length, 24);
+  assert.equal(Object.keys(emptyInventory()).length, 44);
 });
 
 test('Repair Kit heals 40 and refuses at full health; Bubble Shield soaks 40 damage, then 4 s', () => {

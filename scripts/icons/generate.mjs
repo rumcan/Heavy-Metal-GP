@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Skill button art for the 16 skills added in P2-08 (the first 8 have hand-made art in src/assets/ui/item-*.webp).
+ * Skill button art for the 16 skills added in P2-08 and the 20 premium skills (the first 8 have hand-made art in
+ * src/assets/ui/item-*.webp).
  * Each button is generated in the same style as the originals (they are passed as reference images): a riveted iron and
  * red-wood plaque, a painted icon in the middle, the skill's name on the cream label and a chequered strip below.
  *
@@ -44,6 +45,27 @@ export const ICONS = [
   ['lightning', 'Lightning Strike', 'a bright yellow lightning bolt striking down from a dark storm cloud'],
   ['drill', 'Drill', 'a big spinning steel drill bit boring downward through rock with dust flying'],
   ['charm', "Shaman's Charm", 'a green glowing goblin shaman totem charm on a cord with feathers and a carved skull bead'],
+  // the owner's twenty premium spells and weapons (src/game/skills/premium.ts)
+  ['swap', 'Soul Swap', 'two marbles, one magenta and one gold, trading places along two curved magenta arrows with a swirl of magic sparks'],
+  ['telekinesis', 'Telekinesis', 'a glowing violet magic hand lifting a small marble into the air with purple psychic waves'],
+  ['well', 'Gravity Well', 'a small swirling black hole with a purple accretion ring sucking in sparkles'],
+  ['warp', 'Time Warp', 'an ornate golden hourglass with glowing amber sand and a clock face warping behind it'],
+  ['rewind', 'Rewind', 'a cyan glowing clock with its hands spinning backward and a curved rewind arrow around it'],
+  ['shrink', 'Shrink Hex', 'a pink magic wand zapping a tiny marble that is shrinking, with a pink hex sigil'],
+  ['bubble', 'Bubble Trap', 'a big shiny translucent cyan bubble with a tiny marble trapped floating inside'],
+  ['leech', 'Life Leech', 'a crimson vampire fang tether draining red glowing drops of life along a red ribbon'],
+  ['chain', 'Chain Lightning', 'pale blue forked lightning jumping between three small marbles in a chain'],
+  ['twin', 'Shadow Twin', 'a red marble and its dark smoky shadow copy following right behind it with violet eyes'],
+  ['thorns', 'Thorn Shell', 'a green marble covered in sharp wooden thorns and vines like a spiky shell'],
+  ['spikewall', 'Spike Wall', 'a tall iron wall bristling with sharp steel spikes rising out of the ground with dust'],
+  ['mines', 'Mine Field', 'three round iron landmines half buried in dirt, each with a blinking red light'],
+  ['cluster', 'Cluster Bomb', 'a black bomb bursting open into four small bomblets flying out with orange sparks'],
+  ['megabomb', 'Mega Bomb', 'a huge black bomb with a skull and crossbones and a radiation symbol, fuse lit, sparks flying'],
+  ['blades', 'Orbit Blades', 'three spinning silver circular saw blades orbiting around a small marble with motion trails'],
+  ['boomerang', 'Boomerang', 'a carved golden wooden boomerang spinning through the air with curved motion lines'],
+  ['laser', 'Laser Beam', 'a bright red laser beam firing out of a small brass cannon lens with a hot glow'],
+  ['turret', 'Sentry Turret', 'a small steel goblin sentry turret on a tripod with a barrel firing a tracer round'],
+  ['blank', 'Blank', 'a brilliant white shockwave ring bursting outward and shattering little bullets into dust'],
 ];
 
 function parse(argv) {

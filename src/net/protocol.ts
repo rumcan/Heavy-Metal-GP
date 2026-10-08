@@ -61,7 +61,7 @@ export type { RaceEntry, RankWire };
  * lobby/ready/start, 20 Hz packed `state`, `events`, chunked `snapshot`,
  * `intent`, `resync`, `results`, presence and the hard refusal on mismatch.
  */
-export const PROTOCOL_VERSION = 13; // 13: Tab-slot trial skills (box/peg events carry the item, snapshot pickups); 12: P2-26c minecart rails in share codes; 11: P2-11 rooms accept v2 share codes; 10: P2-18 validated cosmetic look in SeatGarage/Seat; 9: P2-20 loadoutSlots house rule; 8: P2-19 hp byte + DNF flag per marble, ko/skillfx events, dnf/kos result rows, talents; 7: P2-08 24-skill inventories; 6: P2-00 depth lane byte per marble; 5: P2-01 engine flag + jump intent; // 3: the rated wire (rating board, result claim, the room's result);
+export const PROTOCOL_VERSION = 14; // 14: the twenty premium skills (their skillfx kinds); 13: 13: Tab-slot trial skills (box/peg events carry the item, snapshot pickups); 12: P2-26c minecart rails in share codes; 11: P2-11 rooms accept v2 share codes; 10: P2-18 validated cosmetic look in SeatGarage/Seat; 9: P2-20 loadoutSlots house rule; 8: P2-19 hp byte + DNF flag per marble, ko/skillfx events, dnf/kos result rows, talents; 7: P2-08 24-skill inventories; 6: P2-00 depth lane byte per marble; 5: P2-01 engine flag + jump intent; // 3: the rated wire (rating board, result claim, the room's result);
 // 4: MB-10 launchers (cannon/catapult/scoop holds, flipper firedAt, sling flash) and the movers' dynamic state
 
 /**
@@ -652,8 +652,12 @@ export interface KoEvent {
  *   shield   a Bubble Shield around a marble (target)
  *   reflect  a Mirror Plate around a marble (target)
  *   emp      an EMP aura on a marble (target)
+ *
+ * The twenty premium skills (skills/premium.ts): `z-*` a thing left in the world (well, mine, spike wall, turret, mega
+ * bomb, laser, leech tether, shadow twin) at x, y; `s-*` a shot in flight (bubble, boomerang, cluster bomb, turret
+ * round) from x, y; `a-*` a hex or aura on the target marble until `until`.
  */
-export type SkillFxKind = 'bolt' | 'bomb' | 'spikes' | 'decoy' | 'shield' | 'reflect' | 'emp';
+export type SkillFxKind = typeof SKILL_FX_KINDS[number];
 
 /**
  * P2-19: one of the sixteen new skills hit the world. Host-authoritative, DRAW-ONLY on a guest: it
@@ -784,7 +788,7 @@ export type RaceEvent =
 export const RACE_EVENT_KINDS = ['peg', 'crate', 'box', 'oil', 'freeze', 'shock', 'item', 'finish', 'sound', 'ko', 'skillfx', 'switch', 'trapdoor', 'hold', 'seesaw', 'bridge', 'flipper', 'sling', 'turnstile', 'targets'] as const;
 
 /** Every `skillfx` kind, in wire order. `readEvent` rejects anything else. */
-export const SKILL_FX_KINDS = ['bolt', 'bomb', 'spikes', 'decoy', 'shield', 'reflect', 'emp'] as const;
+export const SKILL_FX_KINDS = ['bolt', 'bomb', 'spikes', 'decoy', 'shield', 'reflect', 'emp', 'z-well', 'z-mine', 'z-wall', 'z-turret', 'z-mega', 'z-laser', 'z-leech', 'z-twin', 's-bubble', 's-boomerang', 's-cluster', 's-turret', 'a-lift', 'a-slow', 'a-shrink', 'a-zap', 'a-thorns', 'a-blades', 'a-bubble'] as const;
 
 /**
  * host → server → everyone. What happened since the last frame.

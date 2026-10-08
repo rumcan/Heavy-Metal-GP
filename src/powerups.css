@@ -452,3 +452,11 @@
 .race-dashboard.race-cockpit > .inventory-toolbar:has(.pickup-slot) { width: clamp(297px, 34%, 675px); }
 .inventory-slot.pickup-slot { outline: 2px solid #facc15aa; outline-offset: -2px; border-radius: 6px; }
 .inventory-slot.pickup-slot.empty { outline-color: #facc1540; }
+
+/* The premium spells and weapons: a full-width gold-edged block under the four groups, two columns of skills. */
+.loadout-premium { grid-column: 1 / -1; margin-top: 10px; padding: 8px 10px 10px; border: 1px solid #b4870f; border-radius: 8px; background: linear-gradient(180deg, #2a1f0855, #0000); }
+.loadout-premium-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.loadout-premium-head h3 { display: inline-flex; align-items: center; gap: 6px; margin: 2px 0 6px; color: #fbbf24; font: 700 11px var(--mono); letter-spacing: 1px; text-transform: uppercase; }
+.loadout-premium .loadout-skill-list { grid-template-columns: repeat(2, 1fr); }
+.loadout-skill.is-premium.is-locked small { color: #fbbf24; }
+@media (max-width: 600px) { .loadout-premium .loadout-skill-list { grid-template-columns: 1fr; } }

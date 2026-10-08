@@ -17,6 +17,7 @@
 // No SDK here either: `send` is a callback, so a test can hand it a network of
 // its own making.
 // ══════════════════════════════════════════════════════════════════════════
+import { premiumFx, agePremiumFx } from '../game/skills/premium-guest';
 import Matter from 'matter-js';
 import { Game, LIGHTS_OUT_STAGE } from '../game/engine';
 import type { Marble } from '../game/engine';
@@ -726,6 +727,9 @@ export class RaceGuest {
           case 'emp':
             if (target) target.fx = { ...(target.fx ?? {}), empUntil: event.until };
             break;
+          default:
+            // the premium skills: a thing in the world, a shot, or a hex on a marble (drawn, never simulated)
+            premiumFx(this.game, event, lane);
         }
         break;
       }
@@ -877,6 +881,7 @@ export class RaceGuest {
     }
     for (let i = this.game.spikes.length - 1; i >= 0; i--) if (this.game.spikes[i].until < t) this.game.spikes.splice(i, 1);
     for (let i = this.game.decoys.length - 1; i >= 0; i--) if (this.game.decoys[i].until < t) this.game.decoys.splice(i, 1);
+    agePremiumFx(this.game, dt);
     // A bomb rides its target: when the target is gone, so is the bomb.
     for (let i = this.game.bombs.length - 1; i >= 0; i--) {
       const target = this.game.marbles[this.game.bombs[i].target];

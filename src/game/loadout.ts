@@ -9,6 +9,8 @@ export interface SkillInfo {
   price: number;
   unlockLevel: number;
   starter: boolean;
+  /** A premium skill: only the premium unlock (premium.ts) opens it, never a level. */
+  premium?: boolean;
 }
 
 export type Catalog = Record<string, SkillInfo>;
@@ -85,13 +87,16 @@ export function lockReason(
   cat: Catalog,
   d: Driver,
   online: boolean
-): 'unknown' | 'level' | 'campaign' | null {
+): 'unknown' | 'premium' | 'level' | 'campaign' | null {
   const info = cat[skill];
   if (!info) {
     return 'unknown';
   }
   if (info.starter || unlockAllOwned()) {
     return null; // a starter, or everything is unlocked (premium.ts)
+  }
+  if (info.premium) {
+    return 'premium';
   }
   if (d.level < info.unlockLevel) {
     return 'level';

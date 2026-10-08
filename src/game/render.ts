@@ -308,6 +308,8 @@ export function drawMarble(ctx: CanvasRenderingContext2D, game: Game, m: Marble,
   const rocket = game.time < m.rocketUntil;
 
   ctx.save();
+  // a Shrink Hex draws the ball at half its size (the physics body is unchanged: the hex is a handicap, not a new shape)
+  if (((m.fx as { shrinkUntil?: number } | undefined)?.shrinkUntil ?? 0) > game.time) { ctx.translate(x, y); ctx.scale(0.55, 0.55); ctx.translate(-x, -y); }
   if (ghost) ctx.globalAlpha = 0.45;
 
   const look = ballLookForMarble(m);

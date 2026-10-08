@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 
 import {
   SKILL_IDS, SKILLS, STARTER_SKILLS, LEGACY_SKILLS, GROUP_COLORS,
-  skillDef, skillsInGroup, unlockedSkills, newUnlocks, nextUnlock, allowedOnline, sanitizeSkillList,
+  PREMIUM_LEVEL, skillDef, skillsInGroup, unlockedSkills, newUnlocks, nextUnlock, allowedOnline, sanitizeSkillList,
 } from '../src/game/skills/catalog';
 
 // id, name, short, group, unlock level, price, duration (ms), colour, AI hint
@@ -36,8 +36,9 @@ const TABLE: [string, string, string, string, number, number, number, string, st
   ['charm', "Shaman's Charm", 'CHARM', 'defence', 25, 150, 8000, '#34d399', 'low-hp'],
 ];
 
-test('the catalogue: 24 skills in this order, with exactly these numbers', () => {
-  assert.deepEqual([...SKILL_IDS], TABLE.map((r) => r[0]));
+test('the catalogue: 24 skills in this order, with exactly these numbers (then the premium ones)', () => {
+  assert.deepEqual(SKILL_IDS.filter((id) => !SKILLS[id].premium), TABLE.map((r) => r[0]));
+  assert.deepEqual(SKILL_IDS.slice(0, 24), TABLE.map((r) => r[0]), 'the premium skills come after the 24');
   for (const [id, name, short, group, unlockLevel, price, durationMs, color, aiHint] of TABLE) {
     const d = SKILLS[id as keyof typeof SKILLS];
     assert.deepEqual(
@@ -47,6 +48,19 @@ test('the catalogue: 24 skills in this order, with exactly these numbers', () =>
     assert.ok(d.desc.length >= 20 && d.desc.length <= 120, `${id}: a one-sentence description`);
     assert.equal(d.legacy, (LEGACY_SKILLS as readonly string[]).includes(id), `${id}: legacy flag`);
   }
+});
+
+test('the twenty premium skills: after the 24, flagged, never opened by a level, one-sentence descriptions', () => {
+  const premium = SKILL_IDS.filter((id) => SKILLS[id].premium);
+  assert.equal(premium.length, 20);
+  assert.deepEqual(SKILL_IDS.slice(24), premium);
+  for (const id of premium) {
+    assert.equal(SKILLS[id].unlockLevel, PREMIUM_LEVEL, id);
+    assert.ok(SKILLS[id].desc.length >= 20 && SKILLS[id].desc.length <= 130, `${id}: ${SKILLS[id].desc.length} chars`);
+    assert.ok(!unlockedSkills(999).includes(id), `${id} is not opened by a level`);
+  }
+  assert.ok(!newUnlocks(0, 999).some((id) => SKILLS[id].premium));
+  assert.equal(nextUnlock(25), null, 'no level unlock after the charm');
 });
 
 test('starters, legacy ids and group colours', () => {
@@ -63,9 +77,10 @@ test('skillDef: a known id gives its def; anything else gives null', () => {
 });
 
 test('skillsInGroup: catalogue order', () => {
-  assert.deepEqual(skillsInGroup('utility').map((d) => d.id), ['ram', 'drill']);
-  assert.deepEqual(skillsInGroup('defence').map((d) => d.id), ['shield', 'repair', 'anvil', 'ghost', 'decoy', 'reflect', 'charm']);
-  assert.equal(skillsInGroup('movement').length + skillsInGroup('offence').length + skillsInGroup('defence').length + skillsInGroup('utility').length, 24);
+  const plain = (g: Parameters<typeof skillsInGroup>[0]) => skillsInGroup(g).filter((d) => !d.premium).map((d) => d.id);
+  assert.deepEqual(plain('utility'), ['ram', 'drill']);
+  assert.deepEqual(plain('defence'), ['shield', 'repair', 'anvil', 'ghost', 'decoy', 'reflect', 'charm']);
+  assert.equal(skillsInGroup('movement').length + skillsInGroup('offence').length + skillsInGroup('defence').length + skillsInGroup('utility').length, SKILL_IDS.length);
 });
 
 test('unlockedSkills: everything at or below the level, catalogue order', () => {

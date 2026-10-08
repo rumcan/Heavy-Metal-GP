@@ -11,7 +11,9 @@ export const STAT_MAX = 10;
 /** The eight original items first (their order is part of old saves and tests), then the sixteen P2-08 skills. */
 export const LEGACY_ITEMS = ['rocket', 'jump', 'oil', 'shock', 'anvil', 'aero', 'freeze', 'ghost'] as const;
 const NEW_SKILLS = ['shield', 'ram', 'repair', 'brake', 'bolt', 'overdrive', 'spikes', 'decoy', 'grapple', 'bomb', 'reflect', 'blink', 'emp', 'lightning', 'drill', 'charm'] as const;
-export const ITEM_TYPES = [...LEGACY_ITEMS, ...NEW_SKILLS] as const;
+/** The owner's twenty premium spells and weapons (skills/premium.ts), last: their order is part of saves from now on. */
+export const PREMIUM_ITEMS = ['swap', 'telekinesis', 'well', 'warp', 'rewind', 'shrink', 'bubble', 'leech', 'chain', 'twin', 'thorns', 'spikewall', 'mines', 'cluster', 'megabomb', 'blades', 'boomerang', 'laser', 'turret', 'blank'] as const;
+export const ITEM_TYPES = [...LEGACY_ITEMS, ...NEW_SKILLS, ...PREMIUM_ITEMS] as const;
 export type ItemType = typeof ITEM_TYPES[number];
 export type Inventory = Record<ItemType, number>;
 export const MAX_ITEM_STACK = 9;
@@ -50,7 +52,31 @@ const NEW_INFO: Record<typeof NEW_SKILLS[number], ItemInfo> = {
   charm: { name: "Shaman's Charm", short: 'CHARM', desc: 'The next killing hit leaves you on 1 HP instead, for 8 seconds.', color: '#34d399', price: 150, duration: 8000, category: 'Performance', effect: 'Survive a KO / 8s' },
 };
 
-export const ITEM_INFO = Object.fromEntries(ITEM_TYPES.map((id) => [id, (LEGACY_INFO as Record<string, ItemInfo>)[id] ?? (NEW_INFO as Record<string, ItemInfo>)[id]])) as Record<ItemType, ItemInfo>;
+/** The twenty premium skills (mirroring catalog.ts like NEW_INFO). */
+const PREMIUM_INFO: Record<typeof PREMIUM_ITEMS[number], ItemInfo> = {
+  swap: { name: 'Soul Swap', short: 'SWAP', desc: 'Trade places with the racer one place ahead of you. They land where you were.', color: '#c026d3', price: 160, duration: 0, category: 'Disruption', effect: 'Swap places' },
+  telekinesis: { name: 'Telekinesis', short: 'GRIP', desc: 'Lift the nearest rival into the air for 1.5 seconds, then hurl them back down the course.', color: '#a855f7', price: 150, duration: 1500, category: 'Disruption', effect: 'Lift + throw back' },
+  well: { name: 'Gravity Well', short: 'WELL', desc: 'Leave a black hole behind you for 4 seconds that drags rivals in every lane toward it.', color: '#6d28d9', price: 140, duration: 4000, category: 'Disruption', effect: 'Pull rivals / 4s' },
+  warp: { name: 'Time Warp', short: 'WARP', desc: 'Everyone but you crawls along at a slow speed for 3 seconds.', color: '#d97706', price: 170, duration: 3000, category: 'Disruption', effect: 'Rivals slowed / 3s' },
+  rewind: { name: 'Rewind', short: 'REWIND', desc: 'Snap back to where you were 3 seconds ago, with the health you had then.', color: '#0ea5e9', price: 130, duration: 0, category: 'Performance', effect: 'Back 3s in time' },
+  shrink: { name: 'Shrink Hex', short: 'SHRINK', desc: 'Shrink the race leader for 4 seconds: slow, and every hit throws them twice as far.', color: '#ec4899', price: 150, duration: 4000, category: 'Disruption', effect: 'Leader shrunk / 4s' },
+  bubble: { name: 'Bubble Trap', short: 'BUBBLE', desc: 'Fire a bubble down your lane. The first rival it hits floats helplessly for 2 seconds.', color: '#67e8f9', price: 120, duration: 2000, category: 'Disruption', effect: 'Trap in a bubble / 2s' },
+  leech: { name: 'Life Leech', short: 'LEECH', desc: 'Tether the nearest rival for 3 seconds and drain their health into yours.', color: '#e11d48', price: 140, duration: 3000, category: 'Disruption', effect: 'Drain 20 HP' },
+  chain: { name: 'Chain Lightning', short: 'CHAIN', desc: 'Lightning hits the nearest rival and jumps to up to 3 more close by, 15 damage each.', color: '#93c5fd', price: 150, duration: 0, category: 'Disruption', effect: '15 damage x4' },
+  twin: { name: 'Shadow Twin', short: 'TWIN', desc: 'A shadow of you follows your path a second behind for 8 seconds. It knocks rivals aside and draws homing shots.', color: '#475569', price: 140, duration: 8000, category: 'Performance', effect: 'Shadow escort / 8s' },
+  thorns: { name: 'Thorn Shell', short: 'THORNS', desc: 'Grow thorns for 5 seconds. Any rival that touches you takes 15 damage and bounces off.', color: '#65a30d', price: 120, duration: 5000, category: 'Performance', effect: 'Thorns / 5s' },
+  spikewall: { name: 'Spike Wall', short: 'WALL', desc: 'Raise a wall of spikes in front of the rival behind you. Jump it, or take 25 damage.', color: '#78716c', price: 130, duration: 4000, category: 'Disruption', effect: 'Spike wall / 4s' },
+  mines: { name: 'Mine Field', short: 'MINES', desc: 'Scatter five mines behind you across the lanes. They arm in half a second and last 10.', color: '#b91c1c', price: 140, duration: 10000, category: 'Disruption', effect: '5 mines / 10s' },
+  cluster: { name: 'Cluster Bomb', short: 'CLUSTER', desc: 'Lob a bomb ahead that bursts into four bomblets bouncing down the track.', color: '#f97316', price: 150, duration: 0, category: 'Disruption', effect: 'Bomb + 4 bomblets' },
+  megabomb: { name: 'Mega Bomb', short: 'MEGA', desc: 'Drop a huge bomb with a 3 second fuse. It blasts every lane for 40 damage, you included if you are close.', color: '#7f1d1d', price: 200, duration: 3000, category: 'Disruption', effect: '40 damage, all lanes' },
+  blades: { name: 'Orbit Blades', short: 'BLADES', desc: 'Three saw blades circle you for 8 seconds. Each one cuts a rival once for 12 damage, then breaks.', color: '#cbd5e1', price: 140, duration: 8000, category: 'Performance', effect: '3 blades / 8s' },
+  boomerang: { name: 'Boomerang', short: 'RANG', desc: 'Throw a boomerang down your lane. It hits rivals on the way out and again on the way back.', color: '#ca8a04', price: 120, duration: 0, category: 'Disruption', effect: '15 damage, twice' },
+  laser: { name: 'Laser Beam', short: 'LASER', desc: 'Fire a beam down your lane for 1.5 seconds. Rivals in it are slowed and burned. You slow a little too.', color: '#ef4444', price: 160, duration: 1500, category: 'Disruption', effect: 'Beam / 1.5s' },
+  turret: { name: 'Sentry Turret', short: 'TURRET', desc: 'Set down a turret that fires at every rival passing it for 8 seconds.', color: '#64748b', price: 150, duration: 8000, category: 'Disruption', effect: 'Turret / 8s' },
+  blank: { name: 'Blank', short: 'BLANK', desc: 'A white shockwave wipes out shots, mines, oil, bombs and hexes around you, and throws nearby rivals into other lanes.', color: '#f8fafc', price: 130, duration: 0, category: 'Performance', effect: 'Clear + push away' },
+};
+
+export const ITEM_INFO = Object.fromEntries(ITEM_TYPES.map((id) => [id, (LEGACY_INFO as Record<string, ItemInfo>)[id] ?? (NEW_INFO as Record<string, ItemInfo>)[id] ?? (PREMIUM_INFO as Record<string, ItemInfo>)[id]])) as Record<ItemType, ItemInfo>;
 
 export function emptyInventory(): Inventory {
   return Object.fromEntries(ITEM_TYPES.map((id) => [id, 0])) as Inventory;

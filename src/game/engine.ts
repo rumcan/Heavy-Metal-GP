@@ -225,6 +225,10 @@ export interface Marble {
   fx?: SkillFx;
   spikedAt?: number;
   ramHitAt?: number;
+  /** Premium skills: where this marble was over the last few seconds (Rewind, the Shadow Twin), and hit cooldowns. */
+  past?: PastSample[];
+  thornAt?: number;
+  bladeAt?: number;
   /** P2-07: health (platformer races, offline for now), knocked out of the race, and KOs scored. */
   health?: Health;
   dnf?: boolean;
@@ -298,6 +302,7 @@ import { talentEffects } from './talents';
 import { SKILLS } from './skills/catalog';
 import type { DamageKind, Health } from './health';
 import * as skillfx from './skills/effects';
+import type { PastSample, Shot, Zone } from './skills/premium';
 import type { SkillFx, Projectile, Bomb, SpikePatch, Decoy } from './skills/effects';
 
 export class Game {
@@ -386,6 +391,9 @@ export class Game {
   bombs: Bomb[] = [];
   spikes: SpikePatch[] = [];
   decoys: Decoy[] = [];
+  /** The premium skills' shots in flight and the things they left in the world (skills/premium.ts; host-side state). */
+  shots: Shot[] = [];
+  zones: Zone[] = [];
   nextProjectileId = 1;
 
   /** Items that never run out this race (online house rules). */
