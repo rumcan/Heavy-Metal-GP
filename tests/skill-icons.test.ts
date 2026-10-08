@@ -1,4 +1,4 @@
-// Skill button art: every one of the 24 skills has its plaque (src/assets/ui/item-<id>.webp), the same size as the
+// Skill button art: every skill (the 24 and the premium ones) has its plaque (src/assets/ui/item-<id>.webp), the same size as the
 // original eight, small enough for the single-file build, and no two alike.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -37,5 +37,6 @@ test('button art is the size of the originals, small, transparent around the pla
     hashes.set(hash, id);
   }
   const total = ITEM_TYPES.reduce((sum, id) => sum + statSync(ui(id)).size, 0);
-  assert.ok(total < 900 * 1024, `all button art together is ${Math.round(total / 1024)} KB`);
+  // a budget per plaque (the 24 skills had 900 KB, about 37 KB each): the single-file build stays small as skills are added
+  assert.ok(total < ITEM_TYPES.length * 30 * 1024, `all button art together is ${Math.round(total / 1024)} KB for ${ITEM_TYPES.length} skills`);
 });
