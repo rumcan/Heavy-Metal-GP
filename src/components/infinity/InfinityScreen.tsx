@@ -9,6 +9,7 @@ import RadioPill from '../RadioPill';
 import HeatEdges from '../HeatEdges';
 import { RING_CREDITS } from '../../game/platformer/course';
 import { marbleDepth, renderPlatformer, shiftForeground, trackLineY } from '../../game/platformer/render';
+import { smoothFrameMs } from '../../game/frame-clock';
 import type { PlatformCamera } from '../../game/platformer/render';
 import { laneView } from '../../game/lanes';
 import { PHYSICS_STEP } from '../../game/physics';
@@ -162,6 +163,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
     let smoothSpeed = 0, shownZoom = zoomRef.current ?? autoZoom(0), fgPerScale = 1, wasManual = zoomRef.current !== null, framed = false;
     let trackBase: number | null = null, airLift = 0;
     let width = 0, height = 0, raf = 0, last = performance.now(), accumulator = 0, hudTimer = 0, bankTimer = 0, banked = 0, lookAhead = 0;
+    let motionMs: number | null = null; // the frame time the motion runs on (frame-clock.ts)
 
     const meter = new PerfMeter();
     const renderScale = new RenderScale();
@@ -231,9 +233,12 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
       raf = requestAnimationFrame(frame);
       if (renderScale.observe(now - last)) resize();
       meter.frame(now, now - last);
-      const dt = Math.min(now - last, 100);
+      const rawMs = Math.min(now - last, 100);
       last = now;
-      frameMs += (dt - frameMs) * 0.05;
+      // The motion (physics, camera, zoom, parallax) runs on the smoothed frame time: uneven frames no longer judder.
+      motionMs = smoothFrameMs(motionMs, rawMs);
+      const dt = motionMs;
+      frameMs += (rawMs - frameMs) * 0.05;
       if (!pausedRef.current) elapsed += dt;
       if (!pausedRef.current) {
         game.nudge = nudgeOf(controls.current);
@@ -294,6 +299,7 @@ export default function InfinityScreen({ seedText, driver, onLeave, onNewSeed }:
         airLift = framed ? airLift + (lift - airLift) * (1 - Math.exp(-dt / 260)) : lift;
         camera.y = trackBase + airLift;
         camera.originX = run.origin.x; camera.originY = run.origin.y;
+        camera.dtMs = dt;
         meter.time('draw', () => renderPlatformer(ctx, game, camera, width, height, pausedRef.current ? game.time : now, game.player));
         const grounded = game.player.grounded < 5;
         meter.time('fx', () => painter.paint(ctx, {
