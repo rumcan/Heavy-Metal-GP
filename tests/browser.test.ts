@@ -1,15 +1,16 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { appendFileSync, existsSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { brotliDecompressSync } from 'node:zlib';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { cpus, freemem, tmpdir, totalmem } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { chromium as playwright } from 'playwright-core';
-import type { Browser, Page } from 'playwright-core';
+import type { Browser, Page, Request } from 'playwright-core';
 import chromium from '@sparticuz/chromium';
-import { createServer } from 'vite';
+import { createLogger, createServer, version as viteVersion } from 'vite';
 import type { ViteDevServer } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
@@ -21,48 +22,149 @@ let libraryDir: string;
 const root = fileURLToPath(new URL('../', import.meta.url));
 const artifacts = fileURLToPath(new URL('./artifacts/', import.meta.url));
 
+// Browser setup log: one timestamped line per setup step, written as it happens (so a hang still leaves the
+// steps that finished) to tests/artifacts/browser-setup.log and echoed to the test output. Node only says
+// "failed running before hook" when the hook runs out of time; this names the step instead.
+const setupLogPath = join(artifacts, 'browser-setup.log');
+const setupStart = Date.now();
+let setupDone = false;
+function note(line: string) {
+  const entry = `[+${((Date.now() - setupStart) / 1000).toFixed(1)}s] ${line}`;
+  try { appendFileSync(setupLogPath, `${entry}\n`); } catch { /* the log is a diagnostic only */ }
+  if (!setupDone) console.log(`browser-setup ${entry}`);
+}
+
+/**
+ * Run one setup step within its own time limit; a hang fails with the step's name rather than the hook's.
+ * `dispose` closes whatever a timed-out step still produces later (a server or browser nobody holds would
+ * keep the test process alive after the run).
+ */
+async function step<T>(name: string, limitMs: number, run: () => Promise<T>, dispose?: (late: T) => Promise<unknown>): Promise<T> {
+  const started = Date.now();
+  note(`${name}: start (limit ${limitMs / 1000} s)`);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const running = run();
+  running.catch(() => { /* awaited below; a rejection after a timeout is not news */ });
+  try {
+    const result = await Promise.race([running, new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        if (dispose) running.then((late) => { note(`${name}: finished late after ${Date.now() - started} ms; closed it`); return dispose(late); }).catch(() => { /* already failed */ });
+        reject(new Error(`Browser setup step "${name}" did not finish within ${limitMs / 1000} s. See tests/artifacts/browser-setup.log.`));
+      }, limitMs);
+    })]);
+    note(`${name}: done in ${Date.now() - started} ms`);
+    return result;
+  } catch (error) {
+    note(`${name}: FAILED after ${Date.now() - started} ms: ${(error as Error).message.split('\n')[0]}`);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Step limits. On Linux the whole setup takes under 10 s (cold dependency cache included); the limits are
+// generous so a slow Windows machine still finishes, and the hook's own limit sits above their sum.
+const SERVER_START_MS = 90000;
+const BROWSER_LAUNCH_MS = 90000;
+const WARM_UP_MS = 180000;
+const WARM_UP_IDLE_MS = 15000;
+const WARM_UP_CLOSE_MS = 15000;
+const HOOK_LIMIT_MS = SERVER_START_MS + BROWSER_LAUNCH_MS + WARM_UP_MS + WARM_UP_IDLE_MS + WARM_UP_CLOSE_MS + 60000;
+
+// Keep the tests off the internet: the page's only non-local request is the render-blocking Google Fonts
+// stylesheet in index.html, and while it is pending neither the load event nor networkidle can happen (a
+// black-holed connection held every page load for 30 s in a Linux measurement). Every host name except
+// the dev server's (127.0.0.1; "MAP *" matches IP addresses too, hence the explicit EXCLUDE) fails to resolve
+// straight away, and no system proxy (or proxy auto-detection) is consulted. The page falls back to local
+// fonts, as it already does in the Linux sandbox, where that request is refused.
+const OFFLINE_ARGS = ['--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE 127.0.0.1 , EXCLUDE localhost', '--no-proxy-server'];
+
 before(async () => {
   process.env.NODE_ENV = 'development';
   await mkdir(artifacts, { recursive: true });
-  server = await createServer({
-    configFile: false, root, plugins: [react(), tailwindcss()], logLevel: 'error',
-    // Its own dependency cache: sharing node_modules/.vite with a running dev server made that server re-bundle and
-    // reload the page someone was playing on.
-    cacheDir: join(root, 'node_modules/.vite-browser-test'),
-    css: { postcss: { plugins: [] } },
-    server: { port: 0, host: '127.0.0.1' },
-  });
-  await server.listen();
+  writeFileSync(setupLogPath, '');
+  const cacheDir = join(root, 'node_modules/.vite-browser-test');
+  note(`node ${process.version} ${process.platform}/${process.arch}, vite ${viteVersion}, ${cpus().length} CPUs, ${Math.round(freemem() / 2 ** 20)}/${Math.round(totalmem() / 2 ** 20)} MB free`);
+  note(`root ${root}; dependency cache ${existsSync(join(cacheDir, 'deps/_metadata.json')) ? 'warm' : 'cold (first run optimises dependencies)'}; hook limit ${HOOK_LIMIT_MS / 1000} s`);
+  // Vite's own messages (dependency optimisation, reloads, errors) go to the setup log rather than the console.
+  const viteLogger = createLogger('info');
+  const forward = (level: string) => (message: string) => { if (level !== 'info' || /optimi|depend|reload|error/i.test(message)) note(`vite ${level}: ${message.replace(/\x1b\[[0-9;]*m/g, '').trim().slice(0, 300)}`); };
+  viteLogger.info = forward('info'); viteLogger.warn = forward('warn'); viteLogger.warnOnce = forward('warn'); viteLogger.error = forward('error');
+  server = await step('vite server start', SERVER_START_MS, async () => {
+    const created = await createServer({
+      configFile: false, root, plugins: [react(), tailwindcss()], customLogger: viteLogger,
+      // Its own dependency cache: sharing node_modules/.vite with a running dev server made that server re-bundle and
+      // reload the page someone was playing on.
+      cacheDir,
+      css: { postcss: { plugins: [] } },
+      server: { port: 0, host: '127.0.0.1' },
+    });
+    await created.listen();
+    return created;
+  }, (late) => late.close());
   const address = server.httpServer!.address();
   assert.ok(address && typeof address !== 'string');
   baseUrl = `http://127.0.0.1:${address.port}`;
+  note(`dev server at ${baseUrl}`);
   // Off Linux (Windows/macOS dev machines) the bundled Chromium cannot run: use a locally installed Chrome or Edge.
   // Override with BROWSER_PATH if it lives somewhere else.
   if (process.platform !== 'linux') {
+    const localAppData = process.env.LOCALAPPDATA?.replace(/\\/g, '/');
     const candidates = [process.env.BROWSER_PATH,
-      'C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
+      'C:/Program Files/Google/Chrome/Application/chrome.exe',
+      // The default Chrome installer without admin rights puts Chrome in the user profile.
+      localAppData && `${localAppData}/Google/Chrome/Application/chrome.exe`,
+      'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+      'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', 'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
       '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'].filter(Boolean) as string[];
-    const { existsSync } = await import('node:fs');
     const executablePath = candidates.find((path) => existsSync(path));
+    note(`browser: ${executablePath ?? `none of ${candidates.join(', ')}`}`);
     assert.ok(executablePath, 'No local Chrome or Edge found; set BROWSER_PATH.');
-    browser = await playwright.launch({ executablePath, headless: true, args: ['--disable-gpu'] });
+    browser = await step('browser launch', BROWSER_LAUNCH_MS, () => playwright.launch({ executablePath, headless: true, args: ['--disable-gpu', ...OFFLINE_ARGS], timeout: BROWSER_LAUNCH_MS }), (late) => late.close());
   } else {
     // Use the browser package's bundled Linux libraries in minimal CI images, too.
-    libraryDir = await mkdtemp(join(tmpdir(), 'marble-browser-libs-'));
-    const archive = await readFile(join(root, 'node_modules/@sparticuz/chromium/bin/al2023.tar.br'));
-    const extraction = spawnSync('tar', ['-xf', '-', '-C', libraryDir], { input: brotliDecompressSync(archive) });
-    assert.equal(extraction.status, 0, 'Could not extract bundled browser libraries.');
-    chromium.setGraphicsMode = false;
-    browser = await playwright.launch({
-      args: [...chromium.args.filter((arg) => !['--single-process', '--in-process-gpu'].includes(arg)), '--disable-gpu'], executablePath: await chromium.executablePath(), headless: true,
-      env: { ...process.env, LD_LIBRARY_PATH: `${libraryDir}/lib:${libraryDir}/al2023/lib:${process.env.LD_LIBRARY_PATH ?? ''}`, FONTCONFIG_PATH: join(tmpdir(), 'fonts') },
-    });
+    browser = await step('browser launch', BROWSER_LAUNCH_MS, async () => {
+      libraryDir = await mkdtemp(join(tmpdir(), 'marble-browser-libs-'));
+      const archive = await readFile(join(root, 'node_modules/@sparticuz/chromium/bin/al2023.tar.br'));
+      const extraction = spawnSync('tar', ['-xf', '-', '-C', libraryDir], { input: brotliDecompressSync(archive) });
+      assert.equal(extraction.status, 0, 'Could not extract bundled browser libraries.');
+      chromium.setGraphicsMode = false;
+      return playwright.launch({
+        args: [...chromium.args.filter((arg) => !['--single-process', '--in-process-gpu'].includes(arg)), '--disable-gpu', ...OFFLINE_ARGS], executablePath: await chromium.executablePath(), headless: true,
+        env: { ...process.env, LD_LIBRARY_PATH: `${libraryDir}/lib:${libraryDir}/al2023/lib:${process.env.LD_LIBRARY_PATH ?? ''}`, FONTCONFIG_PATH: join(tmpdir(), 'fonts') },
+        timeout: BROWSER_LAUNCH_MS,
+      });
+    }, (late) => late.close());
   }
+  note(`browser version ${browser.version()}`);
   // Warm Vite's dependency optimiser: the very first page load of a cold dev server can take longer
   // than a single test's navigation budget and used to fail whichever test happened to run first.
+  // It waits for the game's first screen (not networkidle) and stays non-fatal: the tests report real load failures.
   const warm = await browser.newPage();
-  await warm.goto(baseUrl, { waitUntil: 'networkidle', timeout: 180000 }).catch(() => { /* the tests report real load failures */ });
-  await warm.close();
+  const pending = new Map<Request, number>();
+  const failed: string[] = [];
+  let requests = 0;
+  let navigations = 0;
+  warm.on('request', (request) => { requests++; pending.set(request, Date.now()); });
+  warm.on('requestfinished', (request) => pending.delete(request));
+  warm.on('requestfailed', (request) => { pending.delete(request); failed.push(`${request.url().slice(0, 120)} (${request.failure()?.errorText})`); });
+  warm.on('framenavigated', (frame) => { if (frame === warm.mainFrame()) navigations++; });
+  warm.on('pageerror', (error) => note(`warm-up page error: ${error.message.slice(0, 300)}`));
+  const reportPending = () => {
+    note(`warm-up: ${requests} requests, ${navigations} navigation(s), ${failed.length} failed, ${pending.size} still open`);
+    for (const url of failed.slice(0, 10)) note(`  failed: ${url}`);
+    for (const [request, at] of [...pending].slice(0, 25)) note(`  open for ${((Date.now() - at) / 1000).toFixed(1)} s: ${request.method()} ${request.url().slice(0, 160)}`);
+  };
+  await step('warm-up: load and first screen', WARM_UP_MS, async () => {
+    await warm.goto(baseUrl, { waitUntil: 'load', timeout: WARM_UP_MS });
+    note('warm-up: load event');
+    await warm.getByRole('button', { name: /Same as last time|Enter the paddock|Lights out|Let's race/ })
+      .or(warm.getByRole('main', { name: 'Main menu' })).first().waitFor({ state: 'visible', timeout: WARM_UP_MS });
+  }).catch(() => { /* logged by step(); the open requests are listed below */ });
+  // Diagnostic only: the tests' ready() and reloads wait for networkidle, so record whether it comes and what is still open.
+  await step('warm-up: networkidle', WARM_UP_IDLE_MS, () => warm.waitForLoadState('networkidle', { timeout: WARM_UP_IDLE_MS })).catch(() => { /* logged below */ });
+  reportPending();
+  await step('warm-up: close page', WARM_UP_CLOSE_MS, () => warm.close()).catch(() => { /* a stuck page must not fail the run */ });
   const origNewContext = browser.newContext.bind(browser);
   browser.newContext = async (options) => {
     const ctx = await origNewContext(options);
@@ -75,7 +177,9 @@ before(async () => {
     pg.setDefaultTimeout(60000);
     return pg;
   };
-}, { timeout: 240000 });
+  note('setup done');
+  setupDone = true;
+}, { timeout: HOOK_LIMIT_MS });
 
 after(async () => { await browser?.close(); await server?.close(); if (libraryDir) await rm(libraryDir, { recursive: true, force: true }); });
 
