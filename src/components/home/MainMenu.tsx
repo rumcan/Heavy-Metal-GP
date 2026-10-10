@@ -46,7 +46,8 @@ export default function MainMenu({ onPick, last }: Props) {
           <ArrowRight className="main-menu-go" size={20} aria-hidden="true" />
         </button>;
       })}
+      {/* the advert for the studio's other game, in the slot the Online card had */}
+      <MoreGames />
     </div>
-    <MoreGames />
   </main>;
 }
