@@ -237,37 +237,31 @@
 .main-menu-card:hover .main-menu-go { opacity: 1; transform: translateX(3px); }
 .main-menu-card.is-last { border-color: #d63e2e99; }
 
-/* More games by MaplePhoenix: the banner under the modes */
-.more-games { position: relative; flex: none; display: flex; align-items: stretch; justify-content: space-between; gap: 16px; min-height: 168px; overflow: hidden; border: 2px solid #ff8a1f; border-radius: 6px; background: #1a0508; color: #fff; text-decoration: none; box-shadow: 0 0 0 1px #000, 0 6px 22px #0009; transition: transform .15s, box-shadow .15s; }
-.more-games:hover, .more-games:focus-visible { transform: translateY(-2px); box-shadow: 0 0 26px #ff8a1f88; outline: none; }
-.more-games-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 35%; }
-.more-games-shade { position: absolute; inset: 0; background: linear-gradient(90deg, #12030af2 0%, #12030ab8 42%, #12030a40 100%); }
-.more-games-copy { position: relative; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 6px; padding: 12px 18px; min-width: 0; }
-.more-games-kicker { padding: 3px 8px; border-radius: 3px; background: #ff8a1f; color: #1a0508; font: 700 11px var(--mono); letter-spacing: 1px; text-transform: uppercase; }
-.more-games-logo { width: min(300px, 100%); height: auto; filter: drop-shadow(0 3px 6px #000c); }
-.more-games-line { font: 13px/1.35 var(--sans); color: #ffe6c4; max-width: 44ch; }
-.more-games-cta { display: inline-flex; align-items: center; gap: 6px; margin-top: 2px; padding: 8px 14px; border-radius: 4px; background: #ff8a1f; color: #1a0508; font: 700 15px var(--display); letter-spacing: .8px; text-transform: uppercase; }
+/* More games by MaplePhoenix: the advert card in the mode grid (where the Online card was) */
+.more-games { position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-end; gap: 6px; min-height: clamp(150px, 26vh, 260px); padding: 12px 14px; border: 2px solid #ff8a1f; border-radius: 8px; background: #1a0508; color: #fff; text-decoration: none; transition: transform .15s, box-shadow .15s; }
+.more-games:hover, .more-games:focus-visible { transform: translateY(-2px); box-shadow: 0 0 22px #ff8a1f99; outline: none; }
+.more-games-slide { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .8s; }
+.more-games-slide.is-on { opacity: 1; }
+.more-games-shade { position: absolute; inset: 0; background: linear-gradient(180deg, #12030a99 0%, #12030a22 38%, #12030af0 100%); }
+.more-games-kicker { position: absolute; top: 10px; left: 10px; padding: 3px 8px; border-radius: 3px; background: #ff8a1f; color: #1a0508; font: 700 10px var(--mono); letter-spacing: .8px; text-transform: uppercase; }
+.more-games-logo { position: relative; width: min(250px, 78%); height: auto; filter: drop-shadow(0 3px 6px #000) drop-shadow(0 0 10px #000a); }
+.more-games-cta { position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 4px; background: #ff8a1f; color: #1a0508; font: 700 14px var(--display); letter-spacing: .8px; text-transform: uppercase; white-space: nowrap; }
 .more-games:hover .more-games-cta { background: #ffb347; }
-.more-games-shots { position: relative; flex: none; align-self: center; width: min(44%, 330px); aspect-ratio: 2 / 1; margin: 10px 14px 10px 0; border: 2px solid #ffffffcc; border-radius: 4px; overflow: hidden; box-shadow: 0 4px 16px #000b; transform: rotate(1.5deg); background: #000; }
-.more-games-shots img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .7s; }
-.more-games-shots img.is-on { opacity: 1; }
-.more-games-dots { position: absolute; left: 0; right: 0; bottom: 5px; display: flex; justify-content: center; gap: 5px; }
+.more-games-dots { position: absolute; right: 12px; bottom: 14px; display: flex; gap: 5px; }
 .more-games-dots i { width: 6px; height: 6px; border-radius: 50%; background: #ffffff66; }
 .more-games-dots i.is-on { background: #ff8a1f; }
 @media (max-width: 640px) {
-  .more-games { min-height: 0; }
-  .more-games-copy { padding: 10px 12px; gap: 5px; }
-  .more-games-logo { width: min(190px, 100%); }
-  .more-games-line { display: none; }
-  .more-games-cta { font-size: 13px; padding: 6px 10px; }
-  .more-games-shots { width: 42%; margin: 10px 10px 10px 0; }
+  .more-games { min-height: 150px; padding: 10px; }
+  .more-games-kicker { font-size: 8.5px; letter-spacing: .4px; top: 8px; left: 8px; right: 8px; }
+  .more-games-logo { width: 100%; }
+  .more-games-cta { font-size: 12px; padding: 5px 9px; }
+  .more-games-dots { display: none; }
 }
 @media (max-height: 480px) and (orientation: landscape) {
-  .more-games { min-height: 0; }
-  .more-games-copy { flex-direction: row; align-items: center; flex-wrap: wrap; padding: 6px 12px; }
-  .more-games-logo { width: 150px; }
-  .more-games-line { display: none; }
-  .more-games-shots { width: 150px; margin: 6px 10px 6px 0; }
+  .more-games { min-height: 88px; padding: 6px 10px; flex-direction: row; align-items: flex-end; justify-content: space-between; }
+  .more-games-logo { width: 120px; }
+  .more-games-cta { font-size: 12px; padding: 5px 8px; }
+  .more-games-dots { display: none; }
 }
 @media (max-width: 760px) {
   .main-menu { padding: 16px 16px 24px; gap: 12px; }
