@@ -1,7 +1,8 @@
 import { ArrowRight } from 'lucide-react';
-import { HOME_TABS } from '../../game/garages';
+import { MENU_TABS } from '../../game/garages';
 import type { HomeTab } from '../../game/garages';
 import { TAB_META } from './HomeTabs';
+import MoreGames from './MoreGames';
 import storyArt from '../../assets/story/backgrounds/scrapyard-at-dusk.webp';
 import championshipArt from '../../assets/story/backgrounds/finale-podium.webp';
 import quickArt from '../../assets/story/backgrounds/grandstand-race-day.webp';
@@ -32,7 +33,7 @@ export default function MainMenu({ onPick, last }: Props) {
   return <main className="main-menu" aria-label="Main menu">
     <h1 className="main-menu-title">Choose your race</h1>
     <div className="main-menu-grid">
-      {HOME_TABS.map((id) => {
+      {MENU_TABS.map((id) => {
         const { label, Icon, blurb } = TAB_META[id];
         return <button key={id} className={`main-menu-card${last === id ? ' is-last' : ''}`} data-testid={`menu-${id}`} onClick={() => onPick(id)}>
           <img src={ART[id]} alt="" draggable={false} />
@@ -46,5 +47,6 @@ export default function MainMenu({ onPick, last }: Props) {
         </button>;
       })}
     </div>
+    <MoreGames />
   </main>;
 }

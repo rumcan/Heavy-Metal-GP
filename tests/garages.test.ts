@@ -16,7 +16,7 @@ import type { MarbleInfo } from '../src/game/types';
 import type { SeasonState } from '../src/game/season';
 import type { StoryState } from '../src/game/story/state';
 import {
-  DEFAULT_HOME_TAB, GARAGES_KEY, GARAGE_MODES, HOME_TABS, LEGACY_PORTRAIT_KEY,
+  DEFAULT_HOME_TAB, GARAGES_KEY, GARAGE_MODES, HOME_TABS, MENU_TABS, MULTIPLAYER_ENABLED, LEGACY_PORTRAIT_KEY,
   defaultGarage, garageOfPlayer, loadGarages, loadHomeTab, normalizeGarage, saveGarages, saveHomeTab,
   seasonLocksGarage, setGarage, storyRunStarted, uniformGarages, withSeasonSetup,
 } from '../src/game/garages';
@@ -88,7 +88,7 @@ test('The last tab is remembered, and saving it never costs the garages (or the 
   garages = setGarage(garages, 'story', { stats: { weight: 4, speed: 6, bounce: 5 }, color: PLAYER_COLORS[2], portrait: 3 });
   saveGarages(garages);
 
-  for (const tab of HOME_TABS) {
+  for (const tab of MENU_TABS) {
     saveHomeTab(tab);
     assert.equal(loadHomeTab(), tab);
     assert.deepEqual(loadGarages(PORTRAITS), garages, `the garages survive saving the ${tab} tab`);
@@ -99,15 +99,19 @@ test('The last tab is remembered, and saving it never costs the garages (or the 
 });
 
 test('The tab can be remembered before any garage has been saved, and the migration keeps it', () => {
-  saveHomeTab('online');
-  assert.equal(loadHomeTab(), 'online');
+  saveHomeTab('infinity');
+  assert.equal(loadHomeTab(), 'infinity');
   const garages = loadGarages(PORTRAITS);
   assert.deepEqual(garages.quick, defaultGarage());
-  assert.equal(loadHomeTab(), 'online');
+  assert.equal(loadHomeTab(), 'infinity');
 });
 
 test('Every tab the screen draws can be remembered, and an unknown one is ignored', () => {
   assert.deepEqual([...HOME_TABS], ['story', 'championship', 'quick', 'online', 'infinity', 'workshop']);
+  // Multiplayer is hidden: Online is not on the menus, and a save that was last on it opens on the default mode.
+  assert.equal(MENU_TABS.includes('online'), MULTIPLAYER_ENABLED);
+  saveHomeTab('online');
+  assert.equal(loadHomeTab(), MULTIPLAYER_ENABLED ? 'online' : DEFAULT_HOME_TAB);
   saveGarages(loadGarages(PORTRAITS));
   storage.setItem(GARAGES_KEY, JSON.stringify({ ...JSON.parse(storage.getItem(GARAGES_KEY)!), tab: 'community' }));
   assert.equal(loadHomeTab(), DEFAULT_HOME_TAB, 'the Community button is gone, and so is its tab');

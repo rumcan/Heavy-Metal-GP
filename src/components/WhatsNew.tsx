@@ -1,4 +1,5 @@
 /** What's new: a small pop-up shown once per version when the game starts. */
+import { MULTIPLAYER_ENABLED } from '../game/garages';
 import { Globe, Hammer, Sparkles } from 'lucide-react';
 import Dialog from './Dialog';
 import { APP_VERSION } from '../game/version';
@@ -10,7 +11,7 @@ interface Props {
 export default function WhatsNew({ onClose }: Props) {
   return <Dialog titleId="whats-new-title" onClose={onClose} className="whats-new">
     <span className="eyebrow"><Sparkles size={14} /> WHAT'S NEW <span className="whats-new-version">v{APP_VERSION}</span></span>
-    <h2 id="whats-new-title">Workshop &amp; Online</h2>
+    <h2 id="whats-new-title">{MULTIPLAYER_ENABLED ? <>Workshop &amp; Online</> : 'Workshop'}</h2>
 
     <ul className="whats-new-list">
       <li className="whats-new-feature">
@@ -21,13 +22,13 @@ export default function WhatsNew({ onClose }: Props) {
         </div>
       </li>
 
-      <li className="whats-new-feature">
+      {MULTIPLAYER_ENABLED && <li className="whats-new-feature">
         <Globe size={20} />
         <div>
           <strong>Online matchmaking</strong>
           <p>Online races now run on the same hand-built circuits as the championship. No more random layouts.</p>
         </div>
-      </li>
+      </li>}
     </ul>
 
     <div className="pause-actions">

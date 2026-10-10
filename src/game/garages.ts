@@ -28,6 +28,10 @@ export const GARAGE_MODES: readonly GarageMode[] = ['story', 'championship', 'qu
 /** The home screen's tabs, in the order they are drawn. */
 export type HomeTab = GarageMode | 'workshop';
 export const HOME_TABS: readonly HomeTab[] = ['story', 'championship', 'quick', 'online', 'infinity', 'workshop'];
+/** Multiplayer is hidden from the game for now (the owner's call, 2026-10-10): flip this to bring Online back. */
+export const MULTIPLAYER_ENABLED: boolean = false;
+/** The modes the menus offer. */
+export const MENU_TABS: readonly HomeTab[] = HOME_TABS.filter((tab) => MULTIPLAYER_ENABLED || tab !== 'online');
 /** Where a player who has never picked a tab lands: the live circuit preview and one big button. */
 export const DEFAULT_HOME_TAB: HomeTab = 'quick';
 
@@ -164,7 +168,8 @@ function readTab(): HomeTab | null {
 
 /** The tab the home screen was last left on. */
 export function loadHomeTab(): HomeTab {
-  return readTab() ?? DEFAULT_HOME_TAB;
+  const tab = readTab() ?? DEFAULT_HOME_TAB;
+  return MENU_TABS.includes(tab) ? tab : DEFAULT_HOME_TAB;
 }
 
 /** Remember the tab. The garages in the same record are kept. */

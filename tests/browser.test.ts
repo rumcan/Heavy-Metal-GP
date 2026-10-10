@@ -683,7 +683,7 @@ for (const { label, options } of SCREEN_VIEWPORTS) {
       await assertDialogFits(page, 'LOADOUT');
       assert.equal(await loadout.locator('.loadout-slot').count(), 8);
       // Every mode keeps its own bar.
-      for (const mode of ['Quick', 'Championship', 'Story', 'Online']) {
+      for (const mode of ['Quick', 'Championship', 'Story']) { // Online is hidden with multiplayer
         await loadout.getByRole('button', { name: mode, exact: true }).click();
         assert.equal(await loadout.getByRole('button', { name: mode, exact: true }).getAttribute('aria-pressed'), 'true');
       }

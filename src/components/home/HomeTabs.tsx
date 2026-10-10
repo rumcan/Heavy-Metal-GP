@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { BookOpen, Flag, Hammer, Infinity as InfinityIcon, Radio, Trophy } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { HOME_TABS } from '../../game/garages';
+import { MENU_TABS } from '../../game/garages';
 import type { HomeTab } from '../../game/garages';
 
 export const TAB_META: Record<HomeTab, { label: string; Icon: LucideIcon; blurb: string }> = {
@@ -32,7 +32,7 @@ export default function HomeTabs({ tab, onTab }: Props) {
     strip.scrollTo({ left: Math.max(0, active.offsetLeft - (strip.clientWidth - active.offsetWidth) / 2) });
   }, [tab]);
   return <nav className="home-tabs" aria-label="Game modes" ref={ref}>
-    {HOME_TABS.map((id) => {
+    {MENU_TABS.map((id) => {
       const { label, Icon, blurb } = TAB_META[id];
       return <button key={id} className={tab === id ? 'active' : ''} aria-current={tab === id ? 'page' : undefined} title={blurb} onClick={() => onTab(id)}>
         <Icon size={15} aria-hidden="true" /><span>{label}</span>
