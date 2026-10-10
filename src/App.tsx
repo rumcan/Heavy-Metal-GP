@@ -73,7 +73,7 @@ import TrackEditor from './components/TrackEditor';
 import InfinityScreen from './components/infinity/InfinityScreen';
 import { loadRecords, saveRecords, seedTextFor } from './game/infinity-store';
 import CommunityScreen from './components/CommunityScreen';
-import { loadGarages, saveGarages, setGarage, withSeasonSetup } from './game/garages';
+import { MULTIPLAYER_ENABLED, loadGarages, saveGarages, setGarage, withSeasonSetup } from './game/garages';
 import type { Garage, GarageMode, Garages } from './game/garages';
 
 /**
@@ -863,7 +863,7 @@ export default function App() {
   if (phase === 'menu' || phase === 'retune') {
     return withShop(
       <SetupScreen
-        rank={rank ? chipOf(rank) : null}
+        rank={MULTIPLAYER_ENABLED && rank ? chipOf(rank) : null}
         onRank={openLadder}
         garages={garages}
         onGarage={updateGarage}

@@ -11,6 +11,7 @@ import type { SkillGroup } from '../../game/skills/catalog';
 import { lockReason } from '../../game/loadout';
 import type { Catalog } from '../../game/loadout';
 import { loadSlots, saveSlots, LOADOUT_MODES } from '../../game/loadout-store';
+import { MULTIPLAYER_ENABLED } from '../../game/garages';
 import type { LoadoutMode, Slots } from '../../game/loadout-store';
 import { progressOf } from '../../game/economy';
 import type { RacerAccount } from '../../game/economy';
@@ -111,7 +112,7 @@ export default function LoadoutScreen({ account, onBuy, onBuyCredits, onClose, m
       </button>}
       {packNote && <span className="credit-pack-note" role="status">{packNote}</span>}</span></div>
     {!preRace && <div className="mode-switch loadout-mode" role="group" aria-label="Loadout mode">
-      {LOADOUT_MODES.map((m) => <button key={m} className={m === mode ? 'selected' : ''} aria-pressed={m === mode} onClick={() => pickMode(m)}>{MODE_LABELS[m]}</button>)}
+      {LOADOUT_MODES.filter((m) => MULTIPLAYER_ENABLED || m !== 'online').map((m) => <button key={m} className={m === mode ? 'selected' : ''} aria-pressed={m === mode} onClick={() => pickMode(m)}>{MODE_LABELS[m]}</button>)}
     </div>}
     <p className="dialog-intro">Pick up to 8 skills for your keys in <b>{MODE_LABELS[mode]}</b> mode. Each mode keeps its own bar; charges are shared by every mode and carry between races.</p>
     {error && <p className="loadout-error" role="alert">{error}</p>}
